@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Environment files (never commit secrets)
+.env
+.env.*.local
+frontend/.env.production
+
+# Build output
+frontend/dist/
+backend/public/build/
+backend/hot
+backend/storage/*.key
+
+# Expo / React Native
+mobile/.expo/
+mobile/web-build/
+
+# E2E artifacts
+e2e/screenshots/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

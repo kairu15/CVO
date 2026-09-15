@@ -1,5 +1,10 @@
 # Dependencies
 node_modules/
+vendor/
+
+# Repo-root composer tooling (backend/ owns the real composer.json)
+/composer.json
+/composer.lock
 
 # Environment files (never commit secrets)
 .env

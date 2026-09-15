@@ -105,6 +105,9 @@ php artisan test          # 19 passing; uses sqlite in-memory, does not touch My
   AsyncStorage and attached by an axios request interceptor.
 - **Security**: CORS restricted to known origins, auth routes throttled 6/min,
   `.env` files gitignored, no secrets in source.
+- **Vendor hygiene**: `vendor/`, `node_modules/`, and `.env` files are
+  gitignored at the repo root — dependencies are always installed from
+  `backend/composer.lock` and `frontend/package-lock.json`, never committed.
 - **Production checklist**: set `APP_ENV=production`, `APP_DEBUG=false`, HTTPS
   `APP_URL`, update `SANCTUM_STATEFUL_DOMAINS` / `SESSION_DOMAIN` /
   `CORS_ALLOWED_ORIGINS` to the real frontend origin, and set

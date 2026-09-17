@@ -35,6 +35,25 @@ api.interceptors.response.use(
   },
 );
 
+/**
+ * Extract Laravel validation errors keyed by field name, so forms can show
+ * messages against the offending input. Returns null when the failure was not
+ * a 422 validation response.
+ *
+ * @returns {Record<string, string> | null}
+ */
+export function getFieldErrors(error) {
+  const errors = error.response?.data?.errors;
+  if (!errors || typeof errors !== "object") return null;
+
+  return Object.fromEntries(
+    Object.entries(errors).map(([field, messages]) => [
+      field,
+      Array.isArray(messages) ? messages[0] : String(messages),
+    ]),
+  );
+}
+
 /** Extract a human-readable message from an API error. */
 export function getErrorMessage(error) {
   if (error.response?.data?.message) return error.response.data.message;

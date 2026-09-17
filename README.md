@@ -83,22 +83,69 @@ npm start                 # scan the QR code with Expo Go, or press a for Androi
 
 ## Demo accounts (after seeding)
 
-| Email               | Password   | Role  |
-|---------------------|------------|-------|
-| admin@example.com   | password   | admin |
-| member@example.com  | password   | member|
+Login accepts either the email or the username.
+
+| Email                  | Username     | Password   | Role       | Dashboard              |
+|------------------------|--------------|------------|------------|------------------------|
+| admin@example.com      | `admin`      | password   | admin      | /dashboard/admin       |
+| doctor@example.com     | `doctor`     | password   | doctor     | /dashboard/doctor      |
+| technician@example.com | `technician` | password   | technician | /dashboard/technician  |
+| farmer@example.com     | `farmer`     | password   | farmer     | /dashboard/farmer      |
+
+Public self-registration always creates a **farmer**. Staff roles are assigned
+by an administrator — the register form's role field is locked and the API
+ignores any `role` value sent with the payload.
 
 ## Tests
 
 ```bash
 cd backend
-php artisan test          # 19 passing; uses sqlite in-memory, does not touch MySQL
+php artisan test          # 22 passing; uses sqlite in-memory, does not touch MySQL
 ```
+
+End-to-end browser checks live in `e2e/` (puppeteer-core driving the installed
+Chrome). They need the backend, frontend and MySQL all running:
+
+```bash
+cd e2e
+node e2e.mjs               # full stack: landing, sliding auth panel, all four dashboards, RBAC
+node dashboards.mjs        # dashboard shells only — stubs the API, no backend or database needed
+node smoke.mjs             # landing + auth panel only
+node geometry.mjs          # sliding-panel geometry and responsive overflow checks
+```
+
+## Frontend structure
+
+| Path                          | Purpose                                                        |
+|-------------------------------|----------------------------------------------------------------|
+| `/`                           | Public landing page (navbar, hero, about, services, roles, footer) |
+| `/login`, `/register`         | Sliding auth panel — one component, `mode` comes from the route  |
+| `/dashboard`                  | Forwards to the signed-in user's own role dashboard             |
+| `/dashboard/{role}`           | Blank dashboard scaffold; guarded by `RoleRoute`                |
+
+- **Design tokens** live in `frontend/src/index.css` under `@theme` — the light
+  green `brand-*` ramp, the `earth-*` accent, fonts, radius and elevation.
+  `brand-700` is the lightest green that keeps white button text at WCAG AA;
+  `brand-400`/`brand-500` are for surfaces and accents. Reusable recipes
+  (`card`, `field`, `btn-primary`, `btn-secondary`, `btn-on-brand`, `eyebrow`)
+  are `@utility` definitions in the same file.
+- **Roles** live in `frontend/src/config/roles.js` — dashboard path, label,
+  sidebar items and icons per role. One `DashboardLayout` and one
+  `RoleDashboard` serve all four roles, so the dashboards cannot drift apart.
+- **Sidebar placeholders** have no `to` value; the sidebar renders them as
+  inert rows tagged "Soon". Add a `to` once the module's route exists.
+- **Copy and contact details** live in `frontend/src/config/site.js`. The email,
+  phone and social links there are placeholders — replace them before launch.
 
 ## Architecture notes
 
 - **API**: versioned under `/api/v1`, JSON via API Resources, validation via Form
   Requests, logic in `app/Services/*`, authorization via Policies.
+- **Roles**: `admin`, `doctor`, `technician`, `farmer` (`App\Models\User::ROLES`).
+  Role checks are a routing guard in the SPA — any endpoint feeding these
+  dashboards must enforce the same rule server-side.
+- **Migration note**: the starter template's `member` role was backfilled to
+  `farmer`, so pre-existing accounts keep working.
 - **SPA auth**: `GET /sanctum/csrf-cookie` → `POST /api/v1/login` → session cookie.
   Axios sends `withCredentials: true` and the `X-XSRF-TOKEN` header automatically.
 - **Mobile auth**: `POST /api/v1/token-login` returns a bearer token stored in

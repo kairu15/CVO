@@ -1,5 +1,125 @@
 @import "tailwindcss";
 
-body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+/* ============================================================================
+   CVO Design Tokens
+   ----------------------------------------------------------------------------
+   Single source of truth for the City Veterinary Office system. Everything
+   below is a Tailwind v4 theme variable, so each entry automatically becomes
+   utilities: `--color-brand-400` -> `bg-brand-400` / `text-brand-400`, etc.
+
+   Palette
+     brand-*   light green — agriculture, livestock, growth (primary)
+     earth-*   tan / soil — icons, highlights, secondary surfaces
+     slate-*   framework default — body copy and structure
+
+   Contrast note: brand-700 is the lightest green that keeps white button text
+   at WCAG AA (4.5:1). brand-400/500 are for surfaces, borders and accents.
+   ============================================================================ */
+@theme {
+  /* Typography */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, Arial, sans-serif;
+  --font-display: "Poppins", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Brand — light green */
+  --color-brand-50: #f3f9ee;
+  --color-brand-100: #e3f1d9;
+  --color-brand-200: #c8e6c9;
+  --color-brand-300: #a5d6a7; /* overlay gradient start */
+  --color-brand-400: #8bc34a; /* primary accent */
+  --color-brand-500: #7cb342; /* hover / active */
+  --color-brand-600: #66bb6a; /* overlay gradient end */
+  --color-brand-700: #558b2f; /* AA-safe primary button */
+  --color-brand-800: #3f6b22;
+  --color-brand-900: #2d4d19;
+
+  /* Earth — soil, feed, leather */
+  --color-earth-50: #faf6f0;
+  --color-earth-100: #f2e7d8;
+  --color-earth-200: #e5d0b3;
+  --color-earth-300: #d2b48c;
+  --color-earth-400: #bb9469;
+  --color-earth-500: #a1784d;
+  --color-earth-600: #825f3c;
+  --color-earth-700: #63482e;
+
+  /* Shape */
+  --radius-card: 1rem;
+  --radius-pill: 9999px;
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04),
+    0 12px 28px -18px rgb(15 23 42 / 0.28);
+  --shadow-panel: 0 24px 64px -28px rgb(15 23 42 / 0.35);
+
+  /* Motion — shared easing for the sliding auth panel */
+  --ease-panel: cubic-bezier(0.65, 0.05, 0.36, 1);
+}
+
+@layer base {
+  body {
+    @apply bg-brand-50/60 text-slate-800 antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5 {
+    @apply font-display font-bold text-slate-900;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Reusable component recipes
+   --------------------------------------------------------------------------- */
+
+/* White card surface used across the landing page and dashboards. */
+@utility card {
+  @apply rounded-card border border-slate-200/80 bg-white shadow-card;
+}
+
+/* Text input / select / textarea. */
+@utility field {
+  @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm
+    text-slate-900 outline-none transition
+    placeholder:text-slate-400
+    focus:border-brand-400 focus:ring-4 focus:ring-brand-400/25
+    disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500;
+}
+
+@utility field-invalid {
+  @apply border-red-400 focus:border-red-400 focus:ring-red-400/25;
+}
+
+/* Buttons — pill shaped, per the design brief. */
+@utility btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-pill
+    bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white transition
+    hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2
+    focus-visible:outline-brand-700
+    disabled:cursor-not-allowed disabled:opacity-60;
+}
+
+@utility btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 rounded-pill
+    border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold
+    text-slate-700 transition hover:border-brand-400 hover:bg-brand-50
+    hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2
+    focus-visible:outline-brand-700
+    disabled:cursor-not-allowed disabled:opacity-60;
+}
+
+/* Outline button tuned for use on top of the green overlay panel. */
+@utility btn-on-brand {
+  @apply inline-flex items-center justify-center gap-2 rounded-pill
+    border-2 border-white/80 bg-transparent px-6 py-2.5 text-sm font-semibold
+    text-white transition hover:bg-white hover:text-brand-800
+    focus-visible:outline-2 focus-visible:outline-offset-2
+    focus-visible:outline-white;
+}
+
+/* Small uppercase section label. */
+@utility eyebrow {
+  @apply text-xs font-semibold tracking-[0.18em] text-brand-700 uppercase;
 }

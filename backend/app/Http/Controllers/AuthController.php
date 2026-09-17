@@ -25,6 +25,7 @@ class AuthController extends Controller
     {
         $user = $this->auth->register(
             name: $request->string('name')->toString(),
+            username: $request->string('username')->toString(),
             email: $request->string('email')->toString(),
             password: $request->string('password')->toString(),
         );
@@ -44,7 +45,7 @@ class AuthController extends Controller
     public function login(LoginRequest $request): UserResource
     {
         $user = $this->auth->login(
-            email: $request->string('email')->toString(),
+            identifier: $request->string('identifier')->toString(),
             password: $request->string('password')->toString(),
         );
 
@@ -63,7 +64,7 @@ class AuthController extends Controller
     public function tokenLogin(TokenLoginRequest $request): JsonResponse
     {
         $user = $this->auth->login(
-            email: $request->string('email')->toString(),
+            identifier: $request->string('email')->toString(),
             password: $request->string('password')->toString(),
         );
 

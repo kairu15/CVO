@@ -14,21 +14,60 @@ class AuthTest extends TestCase
     {
         $response = $this->postJson('/api/v1/register', [
             'name' => 'Kylle',
+            'username' => 'kylle',
             'email' => 'kylle@example.com',
             'password' => 'Sup3r-Secret!',
             'password_confirmation' => 'Sup3r-Secret!',
         ]);
 
         $response->assertCreated()
-            ->assertJsonPath('data.email', 'kylle@example.com');
+            ->assertJsonPath('data.email', 'kylle@example.com')
+            ->assertJsonPath('data.username', 'kylle')
+            ->assertJsonPath('data.role', 'farmer');
 
-        $this->assertDatabaseHas('users', ['email' => 'kylle@example.com']);
+        $this->assertDatabaseHas('users', [
+            'email' => 'kylle@example.com',
+            'role' => 'farmer',
+        ]);
+    }
+
+    public function test_self_registration_always_creates_a_farmer(): void
+    {
+        $response = $this->postJson('/api/v1/register', [
+            'name' => 'Sneaky',
+            'username' => 'sneaky',
+            'email' => 'sneaky@example.com',
+            'password' => 'Sup3r-Secret!',
+            'password_confirmation' => 'Sup3r-Secret!',
+            'role' => 'admin',
+        ]);
+
+        $response->assertCreated()->assertJsonPath('data.role', 'farmer');
+
+        $this->assertDatabaseMissing('users', ['email' => 'sneaky@example.com', 'role' => 'admin']);
+    }
+
+    public function test_registration_requires_a_unique_username(): void
+    {
+        User::factory()->create(['username' => 'taken']);
+
+        $response = $this->postJson('/api/v1/register', [
+            'name' => 'Copycat',
+            'username' => 'taken',
+            'email' => 'copycat@example.com',
+            'password' => 'Sup3r-Secret!',
+            'password_confirmation' => 'Sup3r-Secret!',
+        ]);
+
+        $response->assertUnprocessable()
+            ->assertJsonValidationErrors(['username']);
     }
 
     public function test_registration_requires_a_strong_password(): void
     {
         $response = $this->postJson('/api/v1/register', [
             'name' => 'Weak',
+            'username' => 'weak',
             'email' => 'weak@example.com',
             'password' => 'password',
             'password_confirmation' => 'password',
@@ -56,12 +95,25 @@ class AuthTest extends TestCase
         $user = User::factory()->create();
 
         $response = $this->postJson('/api/v1/login', [
-            'email' => $user->email,
+            'identifier' => $user->email,
             'password' => 'wrong-password',
         ]);
 
         $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['email']);
+            ->assertJsonValidationErrors(['identifier']);
+    }
+
+    public function test_users_can_login_with_a_username(): void
+    {
+        $user = User::factory()->create(['username' => 'juan']);
+
+        $response = $this->postJson('/api/v1/login', [
+            'identifier' => 'JUAN',
+            'password' => 'password',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.id', $user->id);
     }
 
     public function test_authenticated_user_can_be_fetched(): void

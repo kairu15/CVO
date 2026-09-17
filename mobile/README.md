@@ -14,9 +14,9 @@ Edit `.env` (or export `EXPO_PUBLIC_API_URL`):
 
 | Target            | URL                          |
 |-------------------|------------------------------|
-| Android emulator  | `http://10.0.2.2:8000` (default) |
-| iOS simulator     | `http://localhost:8000`      |
-| Physical device   | `http://<your-LAN-IP>:8000`  |
+| Android emulator  | `http://10.0.2.2:8005` (default) |
+| iOS simulator     | `http://localhost:8005`      |
+| Physical device   | `http://<your-LAN-IP>:8005`  |
 
 The backend must be reachable from the device — make sure `php artisan serve` is running.
 

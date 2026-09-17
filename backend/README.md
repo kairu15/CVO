@@ -20,7 +20,7 @@ php artisan migrate --seed
 ### Environment variables (key values)
 
 ```env
-APP_URL=http://localhost:8000
+APP_URL=http://localhost:8005
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
@@ -41,7 +41,7 @@ CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ## Run
 
 ```bash
-php artisan serve            # http://localhost:8000
+php artisan serve            # http://localhost:8005
 ```
 
 ## Run tests

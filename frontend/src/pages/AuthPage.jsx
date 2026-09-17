@@ -83,7 +83,7 @@ function SlidingPanel({ isRegister }) {
       <div
         inert={isRegister ? true : undefined}
         aria-hidden={isRegister}
-        className={`absolute inset-y-0 left-0 flex w-1/2 flex-col justify-center overflow-y-auto px-12 py-10 ${SLIDE} ${
+        className={`absolute inset-y-0 left-0 z-10 flex w-1/2 flex-col justify-center overflow-y-auto bg-white px-12 py-10 ${SLIDE} ${
           isRegister ? "translate-x-full" : "translate-x-0"
         }`}
       >
@@ -94,7 +94,7 @@ function SlidingPanel({ isRegister }) {
       <div
         inert={isRegister ? undefined : true}
         aria-hidden={!isRegister}
-        className={`absolute inset-y-0 left-0 flex w-1/2 flex-col justify-center overflow-y-auto px-12 py-10 transition-[transform,opacity] duration-[600ms] ease-[var(--ease-panel)] ${
+        className={`absolute inset-y-0 left-0 flex w-1/2 flex-col justify-center overflow-y-auto bg-white px-12 py-10 transition-[transform,opacity] duration-[600ms] ease-[var(--ease-panel)] ${
           isRegister
             ? "z-20 translate-x-full opacity-100"
             : "pointer-events-none z-0 translate-x-0 opacity-0"
@@ -103,9 +103,10 @@ function SlidingPanel({ isRegister }) {
         <RegisterForm />
       </div>
 
-      {/* Green overlay — slides between the two halves */}
+      {/* Green overlay — slides between the two halves. z-30 keeps it above
+          both form halves while it sweeps across the middle. */}
       <div
-        className={`absolute inset-y-0 left-1/2 w-1/2 overflow-hidden ${SLIDE} ${
+        className={`absolute inset-y-0 left-1/2 z-30 w-1/2 overflow-hidden ${SLIDE} ${
           isRegister ? "-translate-x-full" : "translate-x-0"
         }`}
       >

@@ -13,7 +13,7 @@ npm install
 `.env` (local):
 
 ```env
-VITE_API_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8005
 ```
 
 `.env.production` is used by `npm run build` — point it at your deployed API.

@@ -29,10 +29,16 @@ async function visit(page, path, viewport, name) {
 try {
   const page = await browser.newPage();
   page.on("console", (m) => {
-    // The API is not running for this smoke test; connection failures are
-    // expected and handled by AuthContext.
-    if (m.type() === "error" && !/ERR_CONNECTION_REFUSED|Failed to fetch/.test(m.text()))
+    // This smoke test only ever visits guest pages, so two "errors" are
+    // expected and handled by the app:
+    //   401  - the session probe on a guest is correctly unauthorized
+    //   refused - the API simply is not running
+    if (
+      m.type() === "error" &&
+      !/ERR_CONNECTION_REFUSED|Failed to fetch|status of 401/.test(m.text())
+    ) {
       errors.push(m.text());
+    }
   });
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
 
@@ -79,6 +85,45 @@ try {
 
   text = await page.evaluate(() => document.body.innerText);
   ok("register: overlay offers sign in", /Already have an account\?/.test(text));
+
+  // Regression: both form halves sit on the same half once slid, so each needs
+  // an opaque background or the hidden form's text bleeds through.
+  const halves = await page.evaluate(() => {
+    const panel = document.querySelector(".shadow-panel");
+    const forms = [...panel.querySelectorAll("form")].map((f) => f.parentElement);
+    return forms.map((el) => getComputedStyle(el).backgroundColor);
+  });
+  ok(
+    "register: both form halves are opaque",
+    halves.length === 2 && halves.every((c) => c === "rgb(255, 255, 255)"),
+    halves.join(" / "),
+  );
+
+  const bleed = await page.evaluate(() => {
+    const loginForm = document.querySelector("form:has(#login-identifier)");
+    const p = loginForm.querySelector("p");
+    const r = p.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return {
+      covered: !loginForm.contains(hit),
+      topmost: hit ? `${hit.tagName}.${String(hit.className).slice(0, 40)}` : "none",
+    };
+  });
+  ok(
+    "register: hidden login form does not bleed through",
+    bleed.covered,
+    bleed.topmost,
+  );
+
+  // ...and the register form itself must be the thing on top there.
+  const onTop = await page.evaluate(() => {
+    const signupForm = document.querySelector("form:has(#register-name)");
+    const h = signupForm.querySelector("h2");
+    const r = h.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return signupForm.contains(hit);
+  });
+  ok("register: the register form is the topmost layer", onTop);
 
   const roleField = await page.$eval("#register-role", (el) => ({
     disabled: el.disabled,

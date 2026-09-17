@@ -9,11 +9,11 @@ import axios from "axios";
  *   XSRF-TOKEN cookie set by /sanctum/csrf-cookie
  */
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:8000",
+  baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:8005",
   withCredentials: true,
   // axios >= 1.8 only auto-attaches the X-XSRF-TOKEN header for same-origin
   // requests unless this is explicitly enabled — required for our
-  // localhost:5173 -> localhost:8000 setup.
+  // localhost:5173 -> localhost:8005 setup.
   withXSRFToken: true,
   headers: { Accept: "application/json" },
 });

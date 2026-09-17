@@ -31,13 +31,13 @@ cd backend
 composer install
 php artisan key:generate
 php artisan migrate --seed
-php artisan serve          # http://localhost:8000
+php artisan serve          # http://localhost:8005
 ```
 
 Key `backend/.env` values:
 
 ```env
-APP_URL=http://localhost:8000
+APP_URL=http://localhost:8005
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
@@ -62,7 +62,7 @@ npm run dev               # http://localhost:5173
 `frontend/.env`:
 
 ```env
-VITE_API_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8005
 ```
 
 ### 4. Mobile (Expo)
@@ -77,9 +77,9 @@ npm start                 # scan the QR code with Expo Go, or press a for Androi
 
 | Target            | URL                          |
 |-------------------|------------------------------|
-| Android emulator  | `http://10.0.2.2:8000` (default) |
-| iOS simulator     | `http://localhost:8000`      |
-| Physical device   | `http://<your-LAN-IP>:8000`  |
+| Android emulator  | `http://10.0.2.2:8005` (default) |
+| iOS simulator     | `http://localhost:8005`      |
+| Physical device   | `http://<your-LAN-IP>:8005`  |
 
 ## Demo accounts (after seeding)
 
@@ -95,6 +95,19 @@ Login accepts either the email or the username.
 Public self-registration always creates a **farmer**. Staff roles are assigned
 by an administrator — the register form's role field is locked and the API
 ignores any `role` value sent with the payload.
+
+### All access account
+
+`admin@example.com` (or username `admin`) is the **all access** login: it can
+open all four dashboards, not just its own. The sidebar shows a switcher listing
+every workspace, and a banner marks when you are viewing one that is not your
+own. A scoped role only ever sees its own dashboard and is redirected if it
+tries to open another.
+
+The rule lives in `ALL_ACCESS_ROLES` in `frontend/src/config/roles.js`, so
+adding a second all access role (or a dedicated superuser) is a one-line change.
+**This guards routing in the SPA only** — when the dashboard modules get real
+endpoints, the same rule has to be enforced per endpoint on the API side.
 
 ## Tests
 
@@ -130,8 +143,9 @@ node geometry.mjs          # sliding-panel geometry and responsive overflow chec
   (`card`, `field`, `btn-primary`, `btn-secondary`, `btn-on-brand`, `eyebrow`)
   are `@utility` definitions in the same file.
 - **Roles** live in `frontend/src/config/roles.js` — dashboard path, label,
-  sidebar items and icons per role. One `DashboardLayout` and one
-  `RoleDashboard` serve all four roles, so the dashboards cannot drift apart.
+  sidebar items and icons per role, plus the `ALL_ACCESS_ROLES` list. One
+  `DashboardLayout` and one `RoleDashboard` serve all four roles, so the
+  dashboards cannot drift apart.
 - **Sidebar placeholders** have no `to` value; the sidebar renders them as
   inert rows tagged "Soon". Add a `to` once the module's route exists.
 - **Copy and contact details** live in `frontend/src/config/site.js`. The email,

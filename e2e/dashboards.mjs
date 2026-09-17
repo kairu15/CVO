@@ -48,7 +48,7 @@ try {
       "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     };
 
-    if (url.startsWith("http://localhost:8000")) {
+    if (url.startsWith("http://localhost:8005")) {
       if (req.method() === "OPTIONS") return req.respond({ status: 204, headers: cors });
       if (url.includes("/sanctum/csrf-cookie")) return req.respond({ status: 204, headers: cors });
       if (url.includes("/api/v1/user")) {
@@ -168,6 +168,68 @@ try {
     new URL(page.url()).pathname === "/dashboard/doctor",
     new URL(page.url()).pathname,
   );
+
+  // ---------- All access account (admin) ----------
+  currentRole = "admin";
+  for (const target of Object.keys(EXPECTED)) {
+    await page.goto(`${BASE}/dashboard/${target}`, { waitUntil: "networkidle2" });
+    await new Promise((r) => setTimeout(r, 400));
+
+    const state = await page.evaluate(() => ({
+      path: window.location.pathname,
+      heading: document.querySelector("h1")?.textContent?.trim(),
+      aside: document.querySelector("aside")?.innerText ?? "",
+      main: document.querySelector("main")?.innerText ?? "",
+    }));
+
+    ok(
+      `all access: admin opens /dashboard/${target}`,
+      state.path === `/dashboard/${target}`,
+      state.path,
+    );
+    ok(
+      `all access: header reads "${EXPECTED[target].title}"`,
+      state.heading === EXPECTED[target].title,
+      state.heading,
+    );
+    ok(
+      `all access: sidebar switches to ${target} modules`,
+      state.aside.includes(EXPECTED[target].items[0]),
+    );
+    ok(
+      `all access: ${target} placeholder cards render`,
+      state.main.includes(EXPECTED[target].items[0]),
+    );
+
+    // The banner only makes sense for a workspace that is not your own.
+    const banner = /You are viewing the/.test(state.main);
+    ok(
+      `all access: other-role banner ${target === "admin" ? "hidden" : "shown"} on ${target}`,
+      banner === (target !== "admin"),
+    );
+  }
+
+  const switcherText = await page.evaluate(
+    () => document.querySelector("aside")?.innerText ?? "",
+  );
+  // innerText returns rendered text, and the label is uppercased via CSS.
+  ok(
+    "all access: switcher lists all four dashboards",
+    /all access/i.test(switcherText) && /4 dashboards/i.test(switcherText),
+  );
+  ok(
+    "all access: switcher lists each workspace",
+    ["Admin", "Doctor", "Technician", "Farmer"].every((s) => switcherText.includes(s)),
+  );
+
+  // A scoped role must not get the switcher.
+  currentRole = "doctor";
+  await page.goto(`${BASE}/dashboard/doctor`, { waitUntil: "networkidle2" });
+  await new Promise((r) => setTimeout(r, 400));
+  const scopedAside = await page.evaluate(
+    () => document.querySelector("aside")?.innerText ?? "",
+  );
+  ok("scoped role: no dashboard switcher", !/all access/i.test(scopedAside));
 
   // ---------- Mobile: sidebar drawer ----------
   await page.setViewport({ width: 390, height: 844 });

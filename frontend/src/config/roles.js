@@ -12,10 +12,25 @@
 
 export const ROLE_KEYS = ["admin", "doctor", "technician", "farmer"];
 
+/**
+ * Roles allowed into *every* dashboard, not just their own.
+ *
+ * The CVO administrator oversees all four workspaces, so it is the "all
+ * access" account — a single login can review the vet, field and farmer views
+ * without signing in and out. This is what makes admin@example.com an all
+ * access account after seeding.
+ *
+ * NOTE: this only guards routing in the SPA. When the dashboard modules get
+ * their real endpoints, the same rule has to be enforced server-side per
+ * endpoint — a client-side check is not authorization.
+ */
+export const ALL_ACCESS_ROLES = ["admin"];
+
 export const roles = {
   admin: {
     key: "admin",
     label: "Administrator",
+    shortLabel: "Admin",
     dashboardLabel: "Admin Dashboard",
     path: "/dashboard/admin",
     blurb: "Owns accounts, permissions and city-wide program reporting.",
@@ -32,6 +47,7 @@ export const roles = {
   doctor: {
     key: "doctor",
     label: "Veterinarian",
+    shortLabel: "Doctor",
     dashboardLabel: "Doctor Dashboard",
     path: "/dashboard/doctor",
     blurb: "Handles animal health records, vaccination and case notes.",
@@ -47,6 +63,7 @@ export const roles = {
   technician: {
     key: "technician",
     label: "Field Technician",
+    shortLabel: "Technician",
     dashboardLabel: "Technician Dashboard",
     path: "/dashboard/technician",
     blurb: "Tags animals in the field and records dispersal movements.",
@@ -62,6 +79,7 @@ export const roles = {
   farmer: {
     key: "farmer",
     label: "Farmer / Beneficiary",
+    shortLabel: "Farmer",
     dashboardLabel: "Farmer Dashboard",
     path: "/dashboard/farmer",
     blurb: "Sees the animals received and the status of each dispersal.",
@@ -92,4 +110,34 @@ export function dashboardPathFor(role) {
 /** Display label for a role, safe for unknown values. */
 export function roleLabel(role) {
   return roles[role]?.label ?? "Unassigned role";
+}
+
+/** True when this user is signed in with an all access role. */
+export function hasAllAccess(role) {
+  return ALL_ACCESS_ROLES.includes(role);
+}
+
+/** Can this user open the given role's dashboard? */
+export function canAccessDashboard(userRole, dashboardRole) {
+  return userRole === dashboardRole || hasAllAccess(userRole);
+}
+
+/**
+ * Every dashboard this user may open, in display order.
+ *
+ * More than one entry means the sidebar should offer a switcher.
+ */
+export function dashboardsFor(userRole) {
+  if (hasAllAccess(userRole)) return ROLE_KEYS;
+  return roles[userRole] ? [userRole] : [];
+}
+
+/**
+ * Which dashboard a pathname belongs to, or null for anything unrecognised.
+ * Used so the shell describes the dashboard being viewed rather than the
+ * user's own role — they differ for all access accounts.
+ */
+export function roleFromPath(pathname) {
+  const match = /^\/dashboard\/([^/]+)/.exec(pathname);
+  return match && roles[match[1]] ? match[1] : null;
 }

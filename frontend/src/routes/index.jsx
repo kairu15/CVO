@@ -65,7 +65,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin"
               element={
-                <RoleRoute allow={["admin"]}>
+                <RoleRoute dashboard="admin">
                   <RoleDashboard roleKey="admin" />
                 </RoleRoute>
               }
@@ -73,7 +73,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/doctor"
               element={
-                <RoleRoute allow={["doctor"]}>
+                <RoleRoute dashboard="doctor">
                   <RoleDashboard roleKey="doctor" />
                 </RoleRoute>
               }
@@ -81,7 +81,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/technician"
               element={
-                <RoleRoute allow={["technician"]}>
+                <RoleRoute dashboard="technician">
                   <RoleDashboard roleKey="technician" />
                 </RoleRoute>
               }
@@ -89,7 +89,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/farmer"
               element={
-                <RoleRoute allow={["farmer"]}>
+                <RoleRoute dashboard="farmer">
                   <RoleDashboard roleKey="farmer" />
                 </RoleRoute>
               }

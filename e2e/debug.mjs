@@ -16,7 +16,7 @@ try {
   const requests = [];
   page.on("request", (req) => {
     const u = req.url();
-    if (u.includes(":8000")) {
+    if (u.includes(":8005")) {
       requests.push({
         phase: "req",
         method: req.method(),
@@ -29,7 +29,7 @@ try {
   });
   page.on("response", async (res) => {
     const u = res.url();
-    if (u.includes(":8000")) {
+    if (u.includes(":8005")) {
       let body = "";
       try {
         body = (await res.text()).slice(0, 200);
@@ -43,9 +43,9 @@ try {
   // Cookie state before anything
   const docCookie = await page.evaluate(() => document.cookie);
   console.log("document.cookie (origin 5173):", docCookie || "(empty)");
-  const apiCookies = await page.cookies("http://localhost:8000");
+  const apiCookies = await page.cookies("http://localhost:8005");
   console.log(
-    "cookies visible for :8000:",
+    "cookies visible for :8005:",
     apiCookies.map((c) => `${c.name} domain=${c.domain} path=${c.path}`),
   );
 
@@ -60,7 +60,7 @@ try {
   ]);
   await new Promise((r) => setTimeout(r, 1500));
 
-  console.log("\n--- :8000 traffic ---");
+  console.log("\n--- :8005 traffic ---");
   for (const r of requests) console.log(JSON.stringify(r));
 
   console.log("\nfinal URL:", page.url());

@@ -2,7 +2,7 @@
  * End-to-end checks for the CVO web client.
  *
  * Requires the full stack to be running:
- *   backend   php artisan serve          -> http://localhost:8000
+ *   backend   php artisan serve          -> http://localhost:8005
  *   frontend  npm run dev                -> http://localhost:5173
  *   database  php artisan migrate --seed  (provides the demo accounts below)
  *
@@ -211,15 +211,27 @@ try {
     ok(`${demo.role}: header is "${demo.title}"`, state.heading === demo.title, state.heading);
     ok(`${demo.role}: sidebar lists "${demo.module}"`, state.nav.includes(demo.module));
 
-    // Cross-role access is refused.
-    const other = demo.role === "admin" ? "technician" : "admin";
-    await goto(page, `/dashboard/${other}`);
-    await sleep(400);
-    ok(
-      `${demo.role}: cannot open /dashboard/${other}`,
-      new URL(page.url()).pathname === `/dashboard/${demo.role}`,
-      new URL(page.url()).pathname,
-    );
+    if (demo.role === "admin") {
+      // The administrator is the all access account: every dashboard opens.
+      for (const target of ["doctor", "technician", "farmer"]) {
+        await goto(page, `/dashboard/${target}`);
+        await sleep(400);
+        ok(
+          `all access: admin opens /dashboard/${target}`,
+          new URL(page.url()).pathname === `/dashboard/${target}`,
+          new URL(page.url()).pathname,
+        );
+      }
+    } else {
+      // Every other role is scoped to its own dashboard.
+      await goto(page, "/dashboard/admin");
+      await sleep(400);
+      ok(
+        `${demo.role}: cannot open /dashboard/admin`,
+        new URL(page.url()).pathname === `/dashboard/${demo.role}`,
+        new URL(page.url()).pathname,
+      );
+    }
 
     await shot(page, `06-dashboard-${demo.role}`);
     await signOut(page);

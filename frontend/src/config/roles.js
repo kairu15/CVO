@@ -37,11 +37,13 @@ export const roles = {
     icon: "shield",
     nav: [
       { label: "Overview", icon: "grid", to: "/dashboard/admin" },
+      { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/admin/monitoring" },
       { label: "User Management", icon: "users" },
       { label: "Roles & Permissions", icon: "shield" },
       { label: "Reports", icon: "chart" },
       { label: "System Settings", icon: "sliders" },
-      { label: "Beneficiary Records", icon: "clipboard" },
+      { label: "Beneficiaries", icon: "clipboard", to: "/dashboard/admin/beneficiaries" },
+      { label: "Technicians", icon: "map-pin", to: "/dashboard/admin/technicians" },
     ],
   },
   doctor: {
@@ -54,6 +56,7 @@ export const roles = {
     icon: "medical-cross",
     nav: [
       { label: "Overview", icon: "grid", to: "/dashboard/doctor" },
+      { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/doctor/monitoring" },
       { label: "Health Records", icon: "medical-cross" },
       { label: "Vaccination Schedule", icon: "calendar" },
       { label: "Case Notes", icon: "file-text" },
@@ -70,6 +73,7 @@ export const roles = {
     icon: "map-pin",
     nav: [
       { label: "Overview", icon: "grid", to: "/dashboard/technician" },
+      { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/technician/monitoring" },
       { label: "Geo-Tagging Map", icon: "map" },
       { label: "Dispersal Records", icon: "truck" },
       { label: "Field Visits", icon: "route" },
@@ -86,7 +90,7 @@ export const roles = {
     icon: "livestock",
     nav: [
       { label: "Overview", icon: "grid", to: "/dashboard/farmer" },
-      { label: "My Animals", icon: "livestock" },
+      { label: "My Animals", icon: "livestock", to: "/dashboard/farmer/monitoring" },
       { label: "Dispersal Status", icon: "clipboard-check" },
       { label: "Notifications", icon: "bell" },
       { label: "Support / Contact CVO", icon: "life-buoy" },

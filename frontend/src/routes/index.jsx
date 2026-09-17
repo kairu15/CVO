@@ -8,6 +8,9 @@ import { dashboardPathFor } from "../config/roles";
 import AuthPage from "../pages/AuthPage";
 import LandingPage from "../pages/LandingPage";
 import RoleDashboard from "../pages/RoleDashboard";
+import MonitoringPage from "../pages/MonitoringPage";
+import TechnicianAssignmentsPage from "../pages/TechnicianAssignmentsPage";
+import BeneficiariesPage from "../pages/BeneficiariesPage";
 
 /**
  * `/dashboard` is a convenience entry point: it forwards each user to the
@@ -91,6 +94,58 @@ export default function AppRoutes() {
               element={
                 <RoleRoute dashboard="farmer">
                   <RoleDashboard roleKey="farmer" />
+                </RoleRoute>
+              }
+            />
+
+            {/* Livestock monitoring — shared page, role-scoped data */}
+            <Route
+              path="/dashboard/admin/monitoring"
+              element={
+                <RoleRoute dashboard="admin">
+                  <MonitoringPage roleKey="admin" />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/dashboard/doctor/monitoring"
+              element={
+                <RoleRoute dashboard="doctor">
+                  <MonitoringPage roleKey="doctor" />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/dashboard/technician/monitoring"
+              element={
+                <RoleRoute dashboard="technician">
+                  <MonitoringPage roleKey="technician" />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/dashboard/farmer/monitoring"
+              element={
+                <RoleRoute dashboard="farmer">
+                  <MonitoringPage roleKey="farmer" />
+                </RoleRoute>
+              }
+            />
+
+            {/* Admin management screens */}
+            <Route
+              path="/dashboard/admin/technicians"
+              element={
+                <RoleRoute dashboard="admin">
+                  <TechnicianAssignmentsPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/dashboard/admin/beneficiaries"
+              element={
+                <RoleRoute dashboard="admin">
+                  <BeneficiariesPage />
                 </RoleRoute>
               }
             />

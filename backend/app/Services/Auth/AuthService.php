@@ -4,6 +4,7 @@ namespace App\Services\Auth;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -17,20 +18,43 @@ class AuthService
      * Public self-registration can only ever create a farmer. Staff roles
      * (admin, doctor, technician) are assigned by an administrator, so the
      * role is hard-coded here rather than taken from the request.
+     *
+     * When dispersal details are supplied, a beneficiary record is created in
+     * the same transaction — those four identity fields (name of farmer,
+     * address, animal type, sex) are what every future monitoring record
+     * auto-fills from, so they are captured exactly once, here.
+     *
+     * @param array{name_of_farmer?: string, address?: string, animal_type?: string, sex?: string}|null $dispersal
      */
     public function register(
         string $name,
         string $username,
         string $email,
         string $password,
+        ?array $dispersal = null,
     ): User {
-        return User::create([
-            'name' => $name,
-            'username' => Str::lower($username),
-            'email' => $email,
-            'password' => $password,
-            'role' => User::DEFAULT_ROLE,
-        ]);
+        $user = DB::transaction(function () use ($name, $username, $email, $password, $dispersal): User {
+            $user = User::create([
+                'name' => $name,
+                'username' => Str::lower($username),
+                'email' => $email,
+                'password' => $password,
+                'role' => User::DEFAULT_ROLE,
+            ]);
+
+            if ($dispersal !== null && array_filter($dispersal)) {
+                $user->beneficiaries()->create([
+                    'name_of_farmer' => ($dispersal['name_of_farmer'] ?? '') !== '' ? $dispersal['name_of_farmer'] : $name,
+                    'address' => $dispersal['address'] ?? '',
+                    'animal_type' => $dispersal['animal_type'] ?? '',
+                    'sex' => $dispersal['sex'] ?? 'F',
+                ]);
+            }
+
+            return $user;
+        });
+
+        return $user;
     }
 
     /**

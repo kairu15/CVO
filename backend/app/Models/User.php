@@ -67,4 +67,20 @@ class User extends Authenticatable
     {
         return $this->hasMany(Project::class);
     }
+
+    /**
+     * Dispersed animals registered under this account (always as the farmer).
+     */
+    public function beneficiaries(): HasMany
+    {
+        return $this->hasMany(Beneficiary::class, 'farmer_id');
+    }
+
+    /**
+     * Beneficiaries this account is assigned to monitor (technician role).
+     */
+    public function assignedBeneficiaries(): HasMany
+    {
+        return $this->hasMany(Beneficiary::class, 'technician_id');
+    }
 }

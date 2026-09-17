@@ -29,6 +29,14 @@ export function RegisterForm({ idPrefix = "register" }) {
     username: "",
     password: "",
     password_confirmation: "",
+
+    // Dispersal details — become the beneficiary record that monitoring
+    // auto-fills from. Optional: an account can be created without an animal
+    // and the details added later by staff.
+    name_of_farmer: "",
+    address: "",
+    animal_type: "",
+    sex: "F",
   });
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
@@ -96,6 +104,9 @@ export function RegisterForm({ idPrefix = "register" }) {
         name: form.name.trim(),
         email: form.email.trim(),
         username: form.username.trim(),
+        name_of_farmer: form.name_of_farmer.trim(),
+        address: form.address.trim(),
+        animal_type: form.animal_type.trim(),
       });
       navigate("/dashboard", { replace: true });
     } catch (error) {
@@ -211,6 +222,84 @@ export function RegisterForm({ idPrefix = "register" }) {
           </p>
         </div>
       </div>
+
+        <fieldset className="mt-5 rounded-xl border border-brand-200 bg-brand-50/50 p-4">
+          <legend className="px-1.5 text-xs font-semibold tracking-wide text-brand-800 uppercase">
+            Dispersal details (optional)
+          </legend>
+          <p className="mb-3 text-xs text-slate-500">
+            Register the animal you received. These details pre-fill every
+            monitoring form, so they are only ever captured here.
+          </p>
+
+          <div className="space-y-3">
+            <TextField
+              id={`${idPrefix}-name_of_farmer`}
+              label="Name of Farmer"
+              type="text"
+              placeholder="Leave empty to use your full name"
+              value={form.name_of_farmer}
+              onChange={update("name_of_farmer")}
+              error={errors.name_of_farmer}
+            />
+
+            <TextField
+              id={`${idPrefix}-address`}
+              label="Address (barangay / sitio)"
+              type="text"
+              autoComplete="street-address"
+              placeholder="e.g. Banay Banay"
+              value={form.address}
+              onChange={update("address")}
+              error={errors.address}
+            />
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label
+                  htmlFor={`${idPrefix}-animal_type`}
+                  className="block text-sm font-medium text-slate-700"
+                >
+                  Type of Animal dispersed
+                </label>
+                <select
+                  id={`${idPrefix}-animal_type`}
+                  className="field mt-1.5"
+                  value={form.animal_type}
+                  onChange={update("animal_type")}
+                >
+                  <option value="">Select animal…</option>
+                  <option>Carabao</option>
+                  <option>Cattle</option>
+                  <option>Goat</option>
+                  <option>Swine</option>
+                  <option>Boar</option>
+                </select>
+                {errors.animal_type && (
+                  <p className="mt-1.5 text-xs font-medium text-red-600">{errors.animal_type}</p>
+                )}
+              </div>
+
+              <div>
+                <label
+                  htmlFor={`${idPrefix}-sex`}
+                  className="block text-sm font-medium text-slate-700"
+                >
+                  Sex of animal
+                </label>
+                <select
+                  id={`${idPrefix}-sex`}
+                  className="field mt-1.5"
+                  value={form.sex}
+                  onChange={update("sex")}
+                >
+                  <option value="F">Female (F)</option>
+                  <option value="M">Male (M)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </fieldset>
 
       <button type="submit" disabled={submitting} className="btn-primary mt-5 w-full">
         {submitting ? (

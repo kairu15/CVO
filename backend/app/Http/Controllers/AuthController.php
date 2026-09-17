@@ -23,11 +23,14 @@ class AuthController extends Controller
      */
     public function register(RegisterRequest $request): JsonResponse
     {
+        $validated = $request->validated();
+
         $user = $this->auth->register(
             name: $request->string('name')->toString(),
             username: $request->string('username')->toString(),
             email: $request->string('email')->toString(),
             password: $request->string('password')->toString(),
+            dispersal: $validated['dispersal'] ?? null,
         );
 
         if ($request->hasSession()) {

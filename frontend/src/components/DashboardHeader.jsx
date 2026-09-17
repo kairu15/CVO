@@ -18,7 +18,8 @@ function initialsOf(name) {
 export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [panel, setPanel] = useState(null); // "notifications" | "profile" | null
+  const [panel, setPanel] = useState(null); // "search" | "notifications" | "profile" | null
+  const [query, setQuery] = useState("");
 
   const close = () => setPanel(null);
 
@@ -48,19 +49,52 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
         )}
       </div>
 
-      {/* Search is intentionally disabled: there are no records to query yet. */}
+      {/* Search — placeholder: record search is not built yet, so typing or
+          submitting opens a "coming soon" panel instead of querying. */}
       <div className="relative hidden md:block">
-        <Icon
-          name="search"
-          className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400"
-        />
-        <input
-          type="search"
-          disabled
-          aria-label="Search records"
-          placeholder="Search records — coming soon"
-          className="field w-60 pl-9 text-xs"
-        />
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            setPanel("search");
+          }}
+        >
+          <Icon
+            name="search"
+            className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPanel("search");
+            }}
+            aria-label="Search records"
+            placeholder="Search records"
+            className="field w-60 pl-9 text-xs"
+          />
+        </form>
+
+        {panel === "search" && (
+          <>
+            <button
+              type="button"
+              aria-label="Close search"
+              onClick={close}
+              className="fixed inset-0 z-10 cursor-default"
+            />
+            <div className="card absolute right-0 z-20 mt-2 w-72 p-4">
+              <p className="font-display text-sm font-semibold text-slate-900">
+                Search records
+              </p>
+              <p className="mt-1.5 text-xs text-slate-500">
+                {query.trim()
+                  ? `Searching for “${query.trim()}” isn’t available yet — record search is coming soon.`
+                  : "Record search is coming soon — beneficiaries, monitoring records and accounts will be searchable from here."}
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Notifications */}

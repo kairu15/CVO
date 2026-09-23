@@ -1,4 +1,8 @@
-# CVO — Full-Stack Monorepo
+# CVO — City Veterinary Office Livestock Traceability
+
+**CVO** is a full-stack monorepo for the City Veterinary Office’s livestock and poultry traceability system. It tracks animal dispersal to farmer‑beneficiaries, monitors health and body‑condition data through re‑dispersal chains, and provides role‑based dashboards for admins, veterinarians, technicians, and farmers.
+
+Built as a monorepo with:
 
 | Folder      | Stack                                             | Auth                                        |
 |-------------|---------------------------------------------------|---------------------------------------------|

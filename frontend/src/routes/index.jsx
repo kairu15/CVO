@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { GuestRoute, ProtectedRoute } from "../components/ProtectedRoute";
@@ -11,6 +12,10 @@ import RoleDashboard from "../pages/RoleDashboard";
 import MonitoringPage from "../pages/MonitoringPage";
 import TechnicianAssignmentsPage from "../pages/TechnicianAssignmentsPage";
 import BeneficiariesPage from "../pages/BeneficiariesPage";
+
+// The map bundle (MapLibre GL) is heavy — load it only when a map page opens.
+const DispersalMapPage = lazy(() => import("../pages/DispersalMapPage"));
+const BeneficiaryLineagePage = lazy(() => import("../pages/BeneficiaryLineagePage"));
 
 /**
  * `/dashboard` is a convenience entry point: it forwards each user to the
@@ -149,11 +154,58 @@ export default function AppRoutes() {
                 </RoleRoute>
               }
             />
+
+            {/* Dispersal map — geo-tagged beneficiaries per role */}
+            <Route
+              path="/dashboard/admin/map"
+              element={
+                <RoleRoute dashboard="admin">
+                  <Suspense fallback={<MapFallback />}>
+                    <DispersalMapPage roleKey="admin" />
+                  </Suspense>
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/dashboard/doctor/map"
+              element={
+                <RoleRoute dashboard="doctor">
+                  <Suspense fallback={<MapFallback />}>
+                    <DispersalMapPage roleKey="doctor" />
+                  </Suspense>
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/dashboard/technician/map"
+              element={
+                <RoleRoute dashboard="technician">
+                  <Suspense fallback={<MapFallback />}>
+                    <DispersalMapPage roleKey="technician" />
+                  </Suspense>
+                </RoleRoute>
+              }
+            />
+
+            {/* Re-dispersal lineage for one beneficiary */}
+            <Route
+              path="/dashboard/:role/beneficiaries/:id/lineage"
+              element={<BeneficiaryLineagePage />}
+            />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+  );
+}
+
+/** Placeholder while the lazy map chunk loads. */
+function MapFallback() {
+  return (
+    <div className="card grid h-72 place-items-center">
+      <p className="text-sm text-slate-500">Loading map…</p>
+    </div>
   );
 }

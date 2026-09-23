@@ -24,24 +24,27 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     authApi
       .fetchUser()
-      .then((res) => setUser(res.data.data))
+      .then((user) => setUser(user))
       .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
 
   const login = useCallback(async (email, password) => {
-    const res = await authApi.login({ email, password });
-    setUser(res.data.data);
+    setUser(await authApi.login({ email, password }));
   }, []);
 
   const register = useCallback(async (payload) => {
-    const res = await authApi.register(payload);
-    setUser(res.data.data);
+    setUser(await authApi.register(payload));
   }, []);
 
   const logout = useCallback(async () => {
+    // The local session is cleared no matter what the server says — a
+    // failed revocation call must never trap the user on a dead page
+    // (callers navigate away right after this resolves).
     try {
       await authApi.logout();
+    } catch {
+      // ignored — session is cleared below regardless
     } finally {
       setUser(null);
     }

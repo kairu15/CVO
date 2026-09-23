@@ -38,6 +38,7 @@ export const roles = {
     nav: [
       { label: "Overview", icon: "grid", to: "/dashboard/admin" },
       { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/admin/monitoring" },
+      { label: "Dispersal Map", icon: "map", to: "/dashboard/admin/map" },
       { label: "User Management", icon: "users" },
       { label: "Roles & Permissions", icon: "shield" },
       { label: "Reports", icon: "chart" },
@@ -57,6 +58,7 @@ export const roles = {
     nav: [
       { label: "Overview", icon: "grid", to: "/dashboard/doctor" },
       { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/doctor/monitoring" },
+      { label: "Dispersal Map", icon: "map", to: "/dashboard/doctor/map" },
       { label: "Health Records", icon: "medical-cross" },
       { label: "Vaccination Schedule", icon: "calendar" },
       { label: "Case Notes", icon: "file-text" },
@@ -74,10 +76,10 @@ export const roles = {
     nav: [
       { label: "Overview", icon: "grid", to: "/dashboard/technician" },
       { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/technician/monitoring" },
-      { label: "Geo-Tagging Map", icon: "map" },
-      { label: "Dispersal Records", icon: "truck" },
+      { label: "Geo-Tagging Map", icon: "map", to: "/dashboard/technician/map" },
+      { label: "Dispersal Records", icon: "truck", to: "/dashboard/technician/map" },
       { label: "Field Visits", icon: "route" },
-      { label: "Re-Dispersal Tracking", icon: "refresh" },
+      { label: "Re-Dispersal Tracking", icon: "refresh", to: "/dashboard/technician/map" },
     ],
   },
   farmer: {

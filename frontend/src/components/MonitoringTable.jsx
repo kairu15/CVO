@@ -119,7 +119,13 @@ export function MonitoringTable({ records = [], loading = false, onEdit }) {
             </button>
 
             {!isCollapsed && (
-              <div className="overflow-x-auto">
+              /* `relative` keeps the absolutely positioned `sr-only` label in
+                 the actions header inside this scroll container. Without it the
+                 label's containing block is the initial containing block, so it
+                 escapes the overflow clip and lands far to the right, widening
+                 the document — a page-level horizontal scrollbar even though
+                 the table scrolls inside this wrapper. */
+              <div className="relative overflow-x-auto">
                 <table className="w-full min-w-[1080px] text-left text-xs">
                   <thead>
                     <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">

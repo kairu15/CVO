@@ -1,16 +1,21 @@
-import { api } from "./client";
+import { api, ensureCsrfCookie, unwrap } from "./client";
 
-/** Fetch the CSRF cookie required before any state-changing SPA request. */
-const ensureCsrfCookie = () => api.get("/sanctum/csrf-cookie");
-
+/**
+ * Authentication endpoints. Every method returns already-unwrapped data
+ * (see `unwrap` in client.js).
+ */
 export const authApi = {
-  register: (payload) =>
-    ensureCsrfCookie().then(() => api.post("/api/v1/register", payload)),
+  register: async (payload) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/register", payload));
+  },
 
-  login: (payload) =>
-    ensureCsrfCookie().then(() => api.post("/api/v1/login", payload)),
+  login: async (payload) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/login", payload));
+  },
 
   logout: () => api.post("/api/v1/logout"),
 
-  fetchUser: () => api.get("/api/v1/user"),
+  fetchUser: async () => unwrap(await api.get("/api/v1/user")),
 };

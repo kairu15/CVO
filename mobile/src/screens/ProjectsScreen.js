@@ -24,8 +24,8 @@ export default function ProjectsScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await projectsApi.list();
-      setProjects(res.data.data);
+      const projects = await projectsApi.list();
+      setProjects(projects ?? []);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {

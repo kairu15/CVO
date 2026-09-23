@@ -1,4 +1,19 @@
-import { api } from "./client";
+import { api, ensureCsrfCookie, unwrap } from "./client";
+
+/**
+ * Resolve a free-text address to coordinates (server-side Nominatim lookup,
+ * cached). Returns { lat, lng, display_name } or null when unresolved.
+ */
+export const geocodeAddress = async (address) =>
+  unwrap(
+    await api.get("/api/v1/geocode", {
+      params: { address },
+    }),
+  );
+
+/** The barangays the program covers — drives the registration dropdown. */
+export const fetchBarangays = async () =>
+  unwrap.list(await api.get("/api/v1/barangays"));
 
 /**
  * Beneficiaries — the dispersed animals and their households.
@@ -6,28 +21,34 @@ import { api } from "./client";
  * The identity fields (name_of_farmer, address, animal_type, sex) live here
  * and are read-only everywhere in the UI: they are captured once, at
  * registration, and every monitoring record auto-fills from them.
+ *
+ * Every method returns already-unwrapped data (see `unwrap` in client.js).
  */
-
-const ensureCsrfCookie = () => api.get("/sanctum/csrf-cookie");
 
 export const beneficiariesApi = {
   /** Role-scoped: admin/doctor see all, technician sees assigned, farmer sees own. */
-  list: (params = {}) => api.get("/api/v1/beneficiaries", { params }),
+  list: async (params = {}) => unwrap.list(await api.get("/api/v1/beneficiaries", { params })),
 
-  get: (id) => api.get(`/api/v1/beneficiaries/${id}`),
+  get: async (id) => unwrap(await api.get(`/api/v1/beneficiaries/${id}`)),
 
   create: async (payload) => {
     await ensureCsrfCookie();
-    return api.post("/api/v1/beneficiaries", payload);
+    return unwrap(await api.post("/api/v1/beneficiaries", payload));
   },
 
   update: async (id, payload) => {
     await ensureCsrfCookie();
-    return api.put(`/api/v1/beneficiaries/${id}`, payload);
+    return unwrap(await api.put(`/api/v1/beneficiaries/${id}`, payload));
   },
 
   remove: async (id) => {
     await ensureCsrfCookie();
-    return api.delete(`/api/v1/beneficiaries/${id}`);
+    return unwrap(await api.delete(`/api/v1/beneficiaries/${id}`));
   },
+
+  /**
+   * The pass-on chain for one beneficiary: where the animal came from
+   * (chain, oldest first) and where its offspring went (descendant_events).
+   */
+  lineage: async (id) => unwrap(await api.get(`/api/v1/beneficiaries/${id}/lineage`)),
 };

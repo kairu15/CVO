@@ -4,6 +4,7 @@ import { getErrorMessage } from "../api/client";
 import { Modal } from "../components/Modal";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { EmptyState } from "../components/EmptyState";
+import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 
 /**
@@ -33,8 +34,8 @@ export default function TechnicianAssignmentsPage() {
         adminApi.listBeneficiaries({ per_page: 200 }),
       ]);
 
-      setTechnicians(usersRes.data.data ?? []);
-      setBeneficiaries(beneficiariesRes.data.data ?? []);
+      setTechnicians(usersRes ?? []);
+      setBeneficiaries(beneficiariesRes ?? []);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -90,11 +91,7 @@ export default function TechnicianAssignmentsPage() {
         </p>
       </section>
 
-      {error && (
-        <div role="alert" className="card border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
 
       {loading ? (
         <div className="card space-y-3 p-6">

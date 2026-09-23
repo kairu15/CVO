@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { PasswordToggle, TextField } from "./TextField";
+import { useBarangays } from "../hooks/useBarangays";
+
+// The map picker pulls in MapLibre GL (~230 kB min) — load it only when the
+// optional fine-tune section is opened, keeping it out of the main bundle.
+const CoordinatePicker = lazy(() =>
+  import("./CoordinatePicker").then((m) => ({ default: m.CoordinatePicker })),
+);
 
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
 
@@ -13,6 +20,11 @@ const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
  * Self-registration can only ever produce a farmer — the role field is locked
  * and the API ignores any role sent with the payload, so staff accounts stay
  * under the administrator's control.
+ *
+ * The address is a barangay dropdown (not free text, not coordinates): the
+ * server resolves the chosen barangay name to a map pin automatically. The
+ * optional map section only exists to fine-tune the pin to the exact farm
+ * spot or capture a GPS fix.
  */
 /**
  * @param {object} props
@@ -22,6 +34,7 @@ const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
 export function RegisterForm({ idPrefix = "register" }) {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const barangays = useBarangays();
 
   const [form, setForm] = useState({
     name: "",
@@ -34,14 +47,16 @@ export function RegisterForm({ idPrefix = "register" }) {
     // auto-fills from. Optional: an account can be created without an animal
     // and the details added later by staff.
     name_of_farmer: "",
-    address: "",
+    address: "", // a barangay name from the coverage list
     animal_type: "",
     sex: "F",
+    coordinates: null, // [lat, lng] — optional fine-tune / GPS fix
   });
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showMap, setShowMap] = useState(false);
 
   function update(field) {
     return (event) => {
@@ -105,8 +120,11 @@ export function RegisterForm({ idPrefix = "register" }) {
         email: form.email.trim(),
         username: form.username.trim(),
         name_of_farmer: form.name_of_farmer.trim(),
-        address: form.address.trim(),
+        address: form.address,
         animal_type: form.animal_type.trim(),
+        latitude: form.coordinates?.[0],
+        longitude: form.coordinates?.[1],
+        coordinates: undefined,
       });
       navigate("/dashboard", { replace: true });
     } catch (error) {
@@ -223,83 +241,142 @@ export function RegisterForm({ idPrefix = "register" }) {
         </div>
       </div>
 
-        <fieldset className="mt-5 rounded-xl border border-brand-200 bg-brand-50/50 p-4">
-          <legend className="px-1.5 text-xs font-semibold tracking-wide text-brand-800 uppercase">
-            Dispersal details (optional)
-          </legend>
-          <p className="mb-3 text-xs text-slate-500">
-            Register the animal you received. These details pre-fill every
-            monitoring form, so they are only ever captured here.
-          </p>
+      <fieldset className="mt-5 rounded-xl border border-brand-200 bg-brand-50/50 p-4">
+        <legend className="px-1.5 text-xs font-semibold tracking-wide text-brand-800 uppercase">
+          Dispersal details (optional)
+        </legend>
+        <p className="mb-3 text-xs text-slate-500">
+          Register the animal you received. These details pre-fill every
+          monitoring form, so they are only ever captured here.
+        </p>
 
-          <div className="space-y-3">
-            <TextField
-              id={`${idPrefix}-name_of_farmer`}
-              label="Name of Farmer"
-              type="text"
-              placeholder="Leave empty to use your full name"
-              value={form.name_of_farmer}
-              onChange={update("name_of_farmer")}
-              error={errors.name_of_farmer}
-            />
+        <div className="space-y-3">
+          <TextField
+            id={`${idPrefix}-name_of_farmer`}
+            label="Name of Farmer"
+            type="text"
+            placeholder="Leave empty to use your full name"
+            value={form.name_of_farmer}
+            onChange={update("name_of_farmer")}
+            error={errors.name_of_farmer}
+          />
 
-            <TextField
+          <div>
+            <label
+              htmlFor={`${idPrefix}-address`}
+              className="block text-sm font-medium text-slate-700"
+            >
+              Barangay
+            </label>
+            <select
               id={`${idPrefix}-address`}
-              label="Address (barangay / sitio)"
-              type="text"
-              autoComplete="street-address"
-              placeholder="e.g. Banay Banay"
+              name="address"
+              className="field mt-1.5"
               value={form.address}
               onChange={update("address")}
-              error={errors.address}
-            />
+            >
+              <option value="">Select barangay…</option>
+              {barangays.map((barangay) => (
+                <option key={barangay} value={barangay}>
+                  {barangay}
+                </option>
+              ))}
+            </select>
+            {errors.address ? (
+              <p className="mt-1.5 text-xs font-medium text-red-600">
+                {errors.address}
+              </p>
+            ) : (
+              <p className="mt-1.5 text-xs text-slate-500">
+                The map pin is placed automatically from the barangay.
+              </p>
+            )}
+          </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label
-                  htmlFor={`${idPrefix}-animal_type`}
-                  className="block text-sm font-medium text-slate-700"
-                >
-                  Type of Animal dispersed
-                </label>
-                <select
-                  id={`${idPrefix}-animal_type`}
-                  className="field mt-1.5"
-                  value={form.animal_type}
-                  onChange={update("animal_type")}
-                >
-                  <option value="">Select animal…</option>
-                  <option>Carabao</option>
-                  <option>Cattle</option>
-                  <option>Goat</option>
-                  <option>Swine</option>
-                  <option>Boar</option>
-                </select>
-                {errors.animal_type && (
-                  <p className="mt-1.5 text-xs font-medium text-red-600">{errors.animal_type}</p>
-                )}
-              </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor={`${idPrefix}-animal_type`}
+                className="block text-sm font-medium text-slate-700"
+              >
+                Type of Animal dispersed
+              </label>
+              <select
+                id={`${idPrefix}-animal_type`}
+                className="field mt-1.5"
+                value={form.animal_type}
+                onChange={update("animal_type")}
+              >
+                <option value="">Select animal…</option>
+                <option>Carabao</option>
+                <option>Cattle</option>
+                <option>Goat</option>
+                <option>Swine</option>
+                <option>Boar</option>
+              </select>
+              {errors.animal_type && (
+                <p className="mt-1.5 text-xs font-medium text-red-600">{errors.animal_type}</p>
+              )}
+            </div>
 
-              <div>
-                <label
-                  htmlFor={`${idPrefix}-sex`}
-                  className="block text-sm font-medium text-slate-700"
-                >
-                  Sex of animal
-                </label>
-                <select
-                  id={`${idPrefix}-sex`}
-                  className="field mt-1.5"
-                  value={form.sex}
-                  onChange={update("sex")}
-                >
-                  <option value="F">Female (F)</option>
-                  <option value="M">Male (M)</option>
-                </select>
-              </div>
+            <div>
+              <label
+                htmlFor={`${idPrefix}-sex`}
+                className="block text-sm font-medium text-slate-700"
+              >
+                Sex of animal
+              </label>
+              <select
+                id={`${idPrefix}-sex`}
+                className="field mt-1.5"
+                value={form.sex}
+                onChange={update("sex")}
+              >
+                <option value="F">Female (F)</option>
+                <option value="M">Male (M)</option>
+              </select>
             </div>
           </div>
-        </fieldset>
+        </div>
+
+        {form.address ? (
+          <>
+            <button
+              type="button"
+              className="btn-secondary mt-4 !px-3.5 !py-1.5 text-xs"
+              onClick={() => setShowMap((shown) => !shown)}
+              aria-expanded={showMap}
+            >
+              {showMap ? "Hide map fine-tune" : "Fine-tune pin on map (optional)"}
+            </button>
+
+            {showMap && (
+              <div className="mt-3">
+                <Suspense
+                  fallback={
+                    <div className="grid h-40 place-items-center rounded-xl bg-white/60 text-xs text-slate-500">
+                      Loading map…
+                    </div>
+                  }
+                >
+                  <CoordinatePicker
+                    idPrefix={`${idPrefix}-geo`}
+                    value={form.coordinates}
+                    address={form.address}
+                    onChange={(coordinates) =>
+                      setForm((prev) => ({ ...prev, coordinates }))
+                    }
+                  />
+                </Suspense>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="mt-4 text-xs text-slate-500">
+            Pick a barangay above to enable map fine-tuning.
+          </p>
+        )}
+      </fieldset>
 
       <button type="submit" disabled={submitting} className="btn-primary mt-5 w-full">
         {submitting ? (

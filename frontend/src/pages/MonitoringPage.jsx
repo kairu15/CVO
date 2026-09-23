@@ -4,7 +4,9 @@ import { monitoringApi } from "../api/monitoringApi";
 import { getErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { MonitoringTable } from "../components/MonitoringTable";
+import { MonitoringExcelToolbar } from "../components/MonitoringExcelToolbar";
 import { VisitFormModal } from "../components/VisitFormModal";
+import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 
 /**
@@ -30,6 +32,7 @@ export default function MonitoringPage({ roleKey }) {
 
   const isTechnician = viewerRole === "technician";
   const canEdit = ["admin", "doctor", "technician"].includes(viewerRole);
+  const isAdmin = viewerRole === "admin";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -41,8 +44,8 @@ export default function MonitoringPage({ roleKey }) {
 
       const [recordsRes, beneficiariesRes] = await Promise.all(requests);
 
-      setRecords(recordsRes.data.data ?? []);
-      setBeneficiaries(beneficiariesRes?.data.data ?? []);
+      setRecords(recordsRes ?? []);
+      setBeneficiaries(beneficiariesRes ?? []);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -94,13 +97,15 @@ export default function MonitoringPage({ roleKey }) {
             </button>
           )}
         </div>
+
+        {isAdmin && (
+          <div className="mt-5 border-t border-slate-100 pt-5">
+            <MonitoringExcelToolbar />
+          </div>
+        )}
       </section>
 
-      {error && (
-        <div role="alert" className="card border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
 
       <section className="card overflow-hidden">
         <MonitoringTable

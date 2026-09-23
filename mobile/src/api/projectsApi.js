@@ -1,7 +1,8 @@
 import { api } from "./client";
+import { unwrap } from "./unwrap";
 
 export const projectsApi = {
-  list: (page = 1) => api.get("/api/v1/projects", { params: { page } }),
+  list: async (page = 1) => unwrap(await api.get("/api/v1/projects", { params: { page } })),
 
   create: (payload) => api.post("/api/v1/projects", payload),
 

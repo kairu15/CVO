@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    // Address → coordinates lookups (Nominatim). On Windows/XAMPP PHP ships
+    // without a CA bundle, which fails every HTTPS lookup with cURL error 60;
+    // download https://curl.se/ca/cacert.pem and point this at it.
+    'geocoding' => [
+        'ca_bundle' => env('GEOCODING_CA_BUNDLE'),
+    ],
+
 ];

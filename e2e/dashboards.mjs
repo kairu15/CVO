@@ -81,7 +81,6 @@ try {
         "Roles & Permissions",
         "Reports",
         "System Settings",
-        "Beneficiary Records",
       ],
     },
     doctor: {
@@ -98,10 +97,7 @@ try {
       title: "Technician Dashboard",
       label: "Field Technician",
       items: [
-        "Geo-Tagging Map",
-        "Dispersal Records",
         "Field Visits",
-        "Re-Dispersal Tracking",
       ],
     },
     farmer: {
@@ -252,8 +248,8 @@ try {
   await new Promise((r) => setTimeout(r, 300));
   const drawer = await visibleNav();
   ok("mobile: drawer opens with role modules", Boolean(drawer?.text.includes("Vaccination Schedule")));
-  // Only the Overview entry is a real route; the rest are placeholders.
-  ok("sidebar: only built routes are links", drawer?.links === 1, String(drawer?.links));
+  // Doctor: Overview and Dispersal Map are real routes; the rest are placeholders.
+  ok("sidebar: only built routes are links", drawer?.links === 2, String(drawer?.links));
   await page.screenshot({ path: `${shots}/dash-mobile-drawer.png`, fullPage: true });
 
   // Closing the drawer removes it again.

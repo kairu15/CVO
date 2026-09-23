@@ -10,6 +10,7 @@ vendor/
 .env
 .env.*.local
 frontend/.env.production
+frontend/.env.ngrok
 
 # Build output
 frontend/dist/

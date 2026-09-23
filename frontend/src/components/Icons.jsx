@@ -72,6 +72,19 @@ const ICONS = {
       <path d="M12 7.8v5M12 16.2h.01" />
     </>
   ),
+  "alert-circle": (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.2v5.6M12 16.4h.01" />
+    </>
+  ),
+  "locate-fixed": (
+    <>
+      <circle cx="12" cy="12" r="3.2" />
+      <circle cx="12" cy="12" r="7.5" />
+      <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22" />
+    </>
+  ),
 
   /* Agriculture, livestock & veterinary */
   sprout: (

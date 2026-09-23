@@ -36,6 +36,32 @@ api.interceptors.response.use(
 );
 
 /**
+ * Fetch the CSRF cookie required before any state-changing SPA request.
+ * Shared by every API module so the handshake lives in exactly one place.
+ */
+export const ensureCsrfCookie = () => api.get("/sanctum/csrf-cookie");
+
+/**
+ * Unwrap a Laravel API Resource envelope (`{ data: ... }`) into the plain
+ * payload. Every API module returns already-unwrapped data so pages never
+ * repeat the `res.data.data ?? []` dance.
+ *
+ * - `unwrap(res)`          → the resource object (or the raw body when the
+ *                            endpoint does not use an envelope)
+ * - `unwrap.list(res)`     → the resource collection array, defaulting to []
+ */
+export function unwrap(response) {
+  const body = response?.data;
+  if (body && typeof body === "object" && "data" in body) return body.data;
+  return body;
+}
+
+unwrap.list = (response) => {
+  const data = unwrap(response);
+  return Array.isArray(data) ? data : [];
+};
+
+/**
  * Extract Laravel validation errors keyed by field name, so forms can show
  * messages against the offending input. Returns null when the failure was not
  * a 422 validation response.

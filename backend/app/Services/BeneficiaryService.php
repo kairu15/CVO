@@ -4,11 +4,14 @@ namespace App\Services;
 
 use App\Models\Beneficiary;
 use App\Models\User;
+use Database\Factories\BeneficiaryFactory;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 
 class BeneficiaryService
 {
+    public function __construct(private readonly GeocodingService $geocoder) {}
+
     /**
      * Role-scoped beneficiary list.
      *
@@ -52,10 +55,52 @@ class BeneficiaryService
 
         $farmerId ??= $actor->id;
 
+        // No pin captured in the field? Resolve the address to real
+        // coordinates so the dispersal map shows it in the right place.
+        if (! isset($data['latitude'], $data['longitude'])) {
+            $geo = $this->geocodeFor($data['address'] ?? null);
+
+            $data['latitude'] = $geo['lat'] ?? null;
+            $data['longitude'] = $geo['lng'] ?? null;
+        }
+
         return Beneficiary::create([
             ...$data,
             'farmer_id' => $farmerId,
         ]);
+    }
+
+    /**
+     * Resolve a beneficiary address to coordinates (city-scoped), or null.
+     *
+     * @return array{lat: float, lng: float, display_name: string}|null
+     */
+    public function geocodeFor(?string $address): ?array
+    {
+        if (! $address) {
+            return null;
+        }
+
+        $hit = $this->geocoder->geocode($address, 'Bayawan, Philippines');
+
+        if ($hit) {
+            return ['lat' => $hit['lat'], 'lng' => $hit['lng'], 'display_name' => $hit['display_name']];
+        }
+
+        // OSM doesn't index every local barangay name — fall back to the
+        // authoritative barangay centroid so the pin still lands in the
+        // right barangay instead of nowhere (or in the wrong province).
+        $centroid = BeneficiaryFactory::BARANGAY_COORDS[$address] ?? null;
+
+        if ($centroid) {
+            return [
+                'lat' => $centroid[0],
+                'lng' => $centroid[1],
+                'display_name' => "{$address}, Bayawan City, Negros Oriental (barangay centroid)",
+            ];
+        }
+
+        return null;
     }
 
     public function assignTechnician(Beneficiary $beneficiary, ?int $technicianId): Beneficiary

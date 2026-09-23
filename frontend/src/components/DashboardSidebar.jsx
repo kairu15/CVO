@@ -102,6 +102,12 @@ export function DashboardSidebar({
                 key={item.label}
                 to={item.to}
                 onClick={onNavigate}
+                /* NavLink matches by path prefix, so the dashboard root
+                   ("Overview") would stay lit on every sub-page — clicking
+                   Monitoring Records appeared to do nothing. Require an exact
+                   match for the root; deeper modules keep prefix matching so
+                   they stay lit on their own sub-routes. */
+                end={item.to === config?.path}
                 className={({ isActive }) =>
                   `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                     isActive

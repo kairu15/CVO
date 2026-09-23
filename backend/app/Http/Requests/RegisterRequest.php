@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\User;
+use App\Support\Barangays;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -43,11 +44,25 @@ class RegisterRequest extends FormRequest
 
             // Optional dispersal details — when present they create the
             // beneficiary record that monitoring auto-fills from. Either all
-            // three of address/animal/sex are given or none.
+            // three of address/animal/sex are given or none. The address is
+            // a barangay name from the program's coverage list — the pin is
+            // resolved from the name, users never type coordinates.
             'name_of_farmer' => ['sometimes', 'string', 'max:255'],
-            'address' => ['required_with:animal_type', 'nullable', 'string', 'max:255'],
+            'address' => [
+                'required_with:animal_type',
+                'nullable',
+                'string',
+                'max:255',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value !== null && ! Barangays::isCovered($value)) {
+                        $fail('Choose a barangay covered by the program: '.implode(', ', Barangays::all()).'.');
+                    }
+                },
+            ],
             'animal_type' => ['required_with:address', 'nullable', 'string', 'max:255'],
             'sex' => ['required_with:address', Rule::in(['M', 'F', ''])],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
         ];
     }
 
@@ -74,9 +89,13 @@ class RegisterRequest extends FormRequest
 
         $dispersal = [
             'name_of_farmer' => $validated['name_of_farmer'] ?? '',
-            'address' => $validated['address'] ?? '',
+            'address' => isset($validated['address'])
+                ? Barangays::normalize($validated['address'])
+                : '',
             'animal_type' => $validated['animal_type'] ?? '',
             'sex' => $validated['sex'] ?? '',
+            'latitude' => $validated['latitude'] ?? null,
+            'longitude' => $validated['longitude'] ?? null,
         ];
 
         unset(
@@ -84,6 +103,8 @@ class RegisterRequest extends FormRequest
             $validated['address'],
             $validated['animal_type'],
             $validated['sex'],
+            $validated['latitude'],
+            $validated['longitude'],
         );
 
         $validated['dispersal'] = array_filter($dispersal, fn ($v) => $v !== '') ?: null;

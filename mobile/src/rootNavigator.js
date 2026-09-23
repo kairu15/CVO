@@ -4,6 +4,7 @@ import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import LoginScreen from "../screens/LoginScreen";
 import ProjectsScreen from "../screens/ProjectsScreen";
+import GeoTagScreen from "../screens/GeoTagScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -22,11 +23,18 @@ export default function RootNavigator() {
     <NavigationContainer>
       <Stack.Navigator>
         {isAuthenticated ? (
-          <Stack.Screen
-            name="Projects"
-            component={ProjectsScreen}
-            options={{ title: "CVO Mobile" }}
-          />
+          <>
+            <Stack.Screen
+              name="GeoTag"
+              component={GeoTagScreen}
+              options={{ title: "CVO Field" }}
+            />
+            <Stack.Screen
+              name="Projects"
+              component={ProjectsScreen}
+              options={{ title: "Projects" }}
+            />
+          </>
         ) : (
           <Stack.Screen
             name="Login"

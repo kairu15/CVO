@@ -9,6 +9,15 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const port = Number(env.VITE_DEV_PORT) || 5173
 
+  // Tunnel mode — `npm run dev:ngrok` with frontend/.env.ngrok. The dev server
+  // is then reached through a public host instead of localhost, which changes
+  // three things: Vite has to accept that Host header, API calls have to stay
+  // same-origin so the Sanctum session cookie is still first-party, and the HMR
+  // socket has to come back over the tunnel's TLS endpoint. All of it is inert
+  // unless VITE_TUNNEL_HOST is set, so plain `npm run dev` is unaffected.
+  const tunnelHost = env.VITE_TUNNEL_HOST?.trim()
+  const apiTarget = env.VITE_API_PROXY_TARGET?.trim() || 'http://127.0.0.1:8005'
+
   return {
     plugins: [react(), tailwindcss()],
     server: {
@@ -20,6 +29,30 @@ export default defineConfig(({ mode }) => {
       //   SANCTUM_STATEFUL_DOMAINS=localhost:<port>,127.0.0.1:<port>
       //   CORS_ALLOWED_ORIGINS=http://localhost:<port>,http://127.0.0.1:<port>
       strictPort: true,
+
+      // Tunnel mode only (see VITE_TUNNEL_HOST above). Vite 6+ rejects requests
+      // whose Host header it does not recognise, and the SPA has to reach the
+      // API on the tunnel origin so csrf-cookie/session cookies stay
+      // first-party — pair this with VITE_API_URL= in frontend/.env.ngrok and
+      // the tunnel host in backend/.env SANCTUM_STATEFUL_DOMAINS.
+      ...(tunnelHost
+        ? {
+            allowedHosts: [
+              tunnelHost,
+              '.ngrok-free.app',
+              '.ngrok-free.dev',
+              '.trycloudflare.com',
+            ],
+
+            proxy: {
+              '/api': { target: apiTarget, changeOrigin: false },
+              '/sanctum': { target: apiTarget, changeOrigin: false },
+            },
+
+            // HMR reconnects through the tunnel's TLS endpoint.
+            hmr: { protocol: 'wss', clientPort: 443 },
+          }
+        : {}),
     },
   }
 })

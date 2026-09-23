@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\BeneficiaryFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Beneficiary extends Model
 {
-    /** @use HasFactory<\Database\Factories\BeneficiaryFactory> */
+    /** @use HasFactory<BeneficiaryFactory> */
     use HasFactory;
 
     protected $fillable = [
@@ -19,7 +20,17 @@ class Beneficiary extends Model
         'animal_type',
         'sex',
         'technician_id',
+        'latitude',
+        'longitude',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'latitude' => 'float',
+            'longitude' => 'float',
+        ];
+    }
 
     /**
      * The farmer user account that owns this dispersed animal.
@@ -40,5 +51,13 @@ class Beneficiary extends Model
     public function monitoringRecords(): HasMany
     {
         return $this->hasMany(MonitoringRecord::class);
+    }
+
+    /**
+     * Dispersal events that delivered an animal to this beneficiary.
+     */
+    public function dispersalEvents(): HasMany
+    {
+        return $this->hasMany(DispersalEvent::class);
     }
 }

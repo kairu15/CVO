@@ -83,24 +83,35 @@ function SlidingPanel({ isRegister }) {
       <div
         inert={isRegister ? true : undefined}
         aria-hidden={isRegister}
-        className={`absolute inset-y-0 left-0 z-10 flex w-1/2 flex-col justify-center overflow-y-auto bg-white px-12 py-10 ${SLIDE} ${
+        className={`absolute inset-y-0 left-0 z-10 w-1/2 overflow-y-auto bg-white px-12 py-10 ${SLIDE} ${
           isRegister ? "translate-x-full" : "translate-x-0"
         }`}
       >
-        <LoginForm />
+        {/* Scroll wrapper: centers the form when it fits and falls back to
+            top-aligned scrolling when it overflows. justify-center on a fixed
+            height + overflow container clips the heading above the scroll
+            origin, which made the register panel look overlapped. */}
+        <div className="flex min-h-full w-full items-center">
+          <LoginForm />
+        </div>
       </div>
 
       {/* Sign up — slides in from the right */}
       <div
         inert={isRegister ? undefined : true}
         aria-hidden={!isRegister}
-        className={`absolute inset-y-0 left-0 flex w-1/2 flex-col justify-center overflow-y-auto bg-white px-12 py-10 transition-[transform,opacity] duration-[600ms] ease-[var(--ease-panel)] ${
+        className={`absolute inset-y-0 left-0 w-1/2 overflow-y-auto bg-white px-12 py-10 transition-[transform,opacity] duration-[600ms] ease-[var(--ease-panel)] ${
           isRegister
             ? "z-20 translate-x-full opacity-100"
             : "pointer-events-none z-0 translate-x-0 opacity-0"
         }`}
       >
-        <RegisterForm />
+        {/* Same safe scroll wrapper as the sign-in half — the register form is
+            tall (5 fields + dispersal details) and must scroll from its
+            heading instead of being centered past the scroll origin. */}
+        <div className="flex min-h-full w-full items-center">
+          <RegisterForm />
+        </div>
       </div>
 
       {/* Green overlay — slides between the two halves. z-30 keeps it above

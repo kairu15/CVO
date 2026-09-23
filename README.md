@@ -81,6 +81,48 @@ npm start                 # scan the QR code with Expo Go, or press a for Androi
 | iOS simulator     | `http://localhost:8005`      |
 | Physical device   | `http://<your-LAN-IP>:8005`  |
 
+### 5. Tunnelling the dev server (ngrok, optional)
+
+To let a phone, a teammate or a webhook reach your machine, put the dev server
+behind an ngrok tunnel. Sanctum cookie auth is origin-locked, so the SPA has to
+reach the API on the **tunnel** origin: tunnel Vite and let it proxy the API, and
+the session cookie stays first-party. Tunnelling the API on its own and leaving
+the SPA on `localhost` breaks login (cross-site cookie + `same_site=lax`).
+
+```bash
+cd frontend
+npm run dev:ngrok                                   # vite --mode ngrok, port 5174
+powershell -ExecutionPolicy Bypass -File tools/ngrok-dev.ps1
+```
+
+`tools/ngrok-dev.ps1` starts (or reuses) the agent, reads the public URL from
+ngrok's local API, and writes it into the only two places it has to appear:
+
+| File | What changes |
+|------|--------------|
+| `frontend/.env.ngrok` | `VITE_API_URL=` (relative), `VITE_TUNNEL_HOST=<host>`, `VITE_DEV_PORT=5174` |
+| `backend/.env` | `<host>` appended to (and later replaced in) `SANCTUM_STATEFUL_DOMAINS` |
+
+Vite restarts itself when `.env.ngrok` changes and `php artisan serve` re-reads
+`.env` on every request, so neither server needs a manual restart. A free account
+is assigned one domain and the agent reclaims it on restart, but the script
+rewrites both files every run anyway — so the habit is: start the agent, then open
+the URL it prints. `-Stop` shuts the agent down again.
+
+Worth knowing:
+
+- The first browser visit shows ngrok's free-tier interstitial; click *Visit
+  Site* once. Requests carrying `ngrok-skip-browser-warning: true` (curl, the
+  `e2e/` scripts) skip it.
+- `vite.config.js` only adds `allowedHosts`, the `/api` + `/sanctum` proxy and
+  `hmr: { protocol: 'wss', clientPort: 443 }` when `VITE_TUNNEL_HOST` is set, so
+  `npm run dev` and the `e2e/` suites behave exactly as before.
+- **Mobile** can point at the same URL — `EXPO_PUBLIC_API_URL=https://<host>`:
+  `/api/v1/*` is proxied to Laravel and bearer tokens need no cookie or CORS
+  setup. Verified against `/api/v1/token-login`.
+- Don't leave the tunnel open: `APP_DEBUG=true` means a public error page can
+  leak stack traces and env values, and the seeded demo logins are live.
+
 ## Demo accounts (after seeding)
 
 Login accepts either the email or the username.
@@ -113,7 +155,7 @@ endpoints, the same rule has to be enforced per endpoint on the API side.
 
 ```bash
 cd backend
-php artisan test          # 22 passing; uses sqlite in-memory, does not touch MySQL
+php artisan test          # 68 passing; uses sqlite in-memory, does not touch MySQL
 ```
 
 End-to-end browser checks live in `e2e/` (puppeteer-core driving the installed
@@ -125,6 +167,9 @@ node e2e.mjs               # full stack: landing, sliding auth panel, all four d
 node dashboards.mjs        # dashboard shells only — stubs the API, no backend or database needed
 node smoke.mjs             # landing + auth panel only
 node geometry.mjs          # sliding-panel geometry and responsive overflow checks
+node monitoring-overflow.mjs [role]  # monitoring table: window must not scroll horizontally
+node sidebar-active.mjs [role ...] [cross]  # sidebar highlights only the current page
+node tunnel.mjs https://<host>   # sign-in through an ngrok tunnel (see step 5 above)
 ```
 
 ## Frontend structure
@@ -146,6 +191,15 @@ node geometry.mjs          # sliding-panel geometry and responsive overflow chec
   sidebar items and icons per role, plus the `ALL_ACCESS_ROLES` list. One
   `DashboardLayout` and one `RoleDashboard` serve all four roles, so the
   dashboards cannot drift apart.
+- **Dispersal map**: MapLibre GL + OpenStreetMap (no API key), split into a lazy
+  chunk loaded only by the map pages. The map is always paired with a table
+  view of the same beneficiaries for screen-reader users. Geo-tagging happens
+  at registration (map picker / browser geolocation) or in the field from the
+  Expo app (`expo-location`); coordinates live on `beneficiaries` and demo
+  chains are seeded.
+- **Dispersal lineage**: `GET /api/v1/beneficiaries/{id}/lineage` returns the
+  pass-on chain (original household → … → current) plus where the animal's
+  offspring went. The UI renders it at `/dashboard/{role}/beneficiaries/{id}/lineage`.
 - **Sidebar placeholders** have no `to` value; the sidebar renders them as
   inert rows tagged "Soon". Add a `to` once the module's route exists.
 - **Copy and contact details** live in `frontend/src/config/site.js`. The email,
@@ -182,3 +236,7 @@ node geometry.mjs          # sliding-panel geometry and responsive overflow chec
   automatically; check that `/sanctum/csrf-cookie` is reachable.
 - **Mobile can't connect**: `php artisan serve` binds to localhost; for physical
   devices use `php artisan serve --host=0.0.0.0` and the LAN IP.
+- **419/401 only through a tunnel**: the tunnel host is missing from
+  `SANCTUM_STATEFUL_DOMAINS`, or the tunnel points at `npm run dev` (which is
+  built with an absolute `VITE_API_URL`) instead of `npm run dev:ngrok`. Run
+  `tools/ngrok-dev.ps1` after (re)starting the agent.

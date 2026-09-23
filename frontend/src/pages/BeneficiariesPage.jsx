@@ -4,11 +4,17 @@ import { getErrorMessage } from "../api/client";
 import { Modal } from "../components/Modal";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { EmptyState } from "../components/EmptyState";
+import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 /**
  * Admin "Beneficiaries" screen — the full directory with per-row and bulk
  * (per-barangay) technician assignment.
+ *
+ * The search box is debounced (300ms) so typing does not fire a request per
+ * keystroke, and bulk assignment is one transactional API call whose
+ * partial failures are surfaced per row.
  */
 export default function BeneficiariesPage() {
   const [beneficiaries, setBeneficiaries] = useState([]);
@@ -16,6 +22,7 @@ export default function BeneficiariesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const [selected, setSelected] = useState(() => new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -28,18 +35,21 @@ export default function BeneficiariesPage() {
 
     try {
       const [beneficiariesRes, usersRes] = await Promise.all([
-        adminApi.listBeneficiaries({ per_page: 200, search: search || undefined }),
+        adminApi.listBeneficiaries({
+          per_page: 200,
+          search: debouncedSearch || undefined,
+        }),
         adminApi.listUsers({ role: "technician", per_page: 100 }),
       ]);
 
-      setBeneficiaries(beneficiariesRes.data.data ?? []);
-      setTechnicians(usersRes.data.data ?? []);
+      setBeneficiaries(beneficiariesRes ?? []);
+      setTechnicians(usersRes ?? []);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     load();
@@ -87,13 +97,24 @@ export default function BeneficiariesPage() {
 
     try {
       const technicianId = bulkTechnician === "" ? null : Number(bulkTechnician);
-      await Promise.all(
-        [...selected].map((id) => adminApi.assignTechnician(id, technicianId)),
-      );
+      const result = await adminApi.bulkAssignTechnician([...selected], technicianId);
+
+      const failedIds = new Set(result?.failed_ids ?? []);
+      let partialMessage = null;
+
+      if (failedIds.size > 0) {
+        const failedNames = beneficiaries
+          .filter((b) => failedIds.has(b.id))
+          .map((b) => b.name_of_farmer);
+        partialMessage = `Assigned ${result.updated} of ${result.updated + failedIds.size} beneficiaries, but ${failedIds.size} failed: ${failedNames.join(", ")}`;
+      }
 
       setSelected(new Set());
       setBulkOpen(false);
       await load();
+
+      // Set after load() so the refresh does not clear the message.
+      if (partialMessage) setError(partialMessage);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -144,11 +165,7 @@ export default function BeneficiariesPage() {
         </div>
       </section>
 
-      {error && (
-        <div role="alert" className="card border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
 
       <section className="card overflow-hidden">
         {loading ? (

@@ -24,7 +24,7 @@ class AuthService
      * address, animal type, sex) are what every future monitoring record
      * auto-fills from, so they are captured exactly once, here.
      *
-     * @param array{name_of_farmer?: string, address?: string, animal_type?: string, sex?: string}|null $dispersal
+     * @param  array{name_of_farmer?: string, address?: string, animal_type?: string, sex?: string, latitude?: float|null, longitude?: float|null}|null  $dispersal
      */
     public function register(
         string $name,
@@ -48,6 +48,8 @@ class AuthService
                     'address' => $dispersal['address'] ?? '',
                     'animal_type' => $dispersal['animal_type'] ?? '',
                     'sex' => $dispersal['sex'] ?? 'F',
+                    'latitude' => $dispersal['latitude'] ?? null,
+                    'longitude' => $dispersal['longitude'] ?? null,
                 ]);
             }
 

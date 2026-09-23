@@ -38,6 +38,8 @@ class DatabaseSeeder extends Seeder
         $this->call([
             ProjectSeeder::class,
             BeneficiarySeeder::class,
+            DispersalChainSeeder::class,
+            BeneficiaryGeoBackfillSeeder::class,
         ]);
 
         $farmer = $users['farmer'];

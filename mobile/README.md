@@ -34,7 +34,18 @@ npm run ios        # iOS simulator (macOS only)
 
 ## Demo login (after `php artisan migrate --seed`)
 
+- technician@example.com / password (the GeoTag screen is technician-facing)
 - member@example.com / password
+
+## Field geo-tagging
+
+The **GeoTag** screen is the technician's field tool: it captures a GPS fix
+via `expo-location` at the farm and registers the dispersed animal + household
+through the same `/api/v1/beneficiaries` endpoint the web app uses, so the
+record appears on the admin/doctor dispersal map immediately.
+
+Location permissions are declared in `app.json` (iOS `infoPlist`, Android
+`permissions`, and the `expo-location` config plugin).
 
 ## Structure
 
@@ -43,5 +54,5 @@ src/
 ├── api/            # axios client (token interceptor), endpoint fns, token store
 ├── config.js       # API_URL resolution
 ├── context/        # AuthContext (token + user persistence)
-└── screens/        # LoginScreen, ProjectsScreen
+└── screens/        # LoginScreen, GeoTagScreen (field geo-tagging), ProjectsScreen
 ```

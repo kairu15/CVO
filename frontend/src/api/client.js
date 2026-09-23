@@ -80,8 +80,24 @@ export function getFieldErrors(error) {
   );
 }
 
-/** Extract a human-readable message from an API error. */
+/**
+ * Extract a human-readable message from an API error.
+ *
+ * A request that never got a response (the API is down, offline, or a CORS
+ * preflight was blocked) rejects with axios's opaque "Network Error", which
+ * tells the user nothing they can act on — so those cases get an explicit
+ * message. Everything else is the server's own wording.
+ */
 export function getErrorMessage(error) {
+  if (!error?.response) {
+    if (error?.code === "ECONNABORTED" || error?.code === "ETIMEDOUT") {
+      return "The server took too long to respond. Please try again.";
+    }
+    if (error?.request) {
+      return "Can't reach the server. Check your connection and try again.";
+    }
+  }
+
   if (error.response?.data?.message) return error.response.data.message;
   if (error.response?.data?.errors) {
     const first = Object.values(error.response.data.errors)[0];

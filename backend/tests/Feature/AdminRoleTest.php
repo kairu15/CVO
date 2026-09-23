@@ -55,6 +55,50 @@ class AdminRoleTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_admin_cannot_change_their_own_role(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($admin)
+            ->patchJson("/api/v1/admin/users/{$admin->id}/role", ['role' => 'farmer']);
+
+        $response->assertUnprocessable()->assertJsonValidationErrors(['role']);
+
+        // The account keeps admin access — the change was refused, not applied.
+        $this->assertDatabaseHas('users', ['id' => $admin->id, 'role' => 'admin']);
+    }
+
+    public function test_admin_cannot_self_demote_even_when_other_admins_exist(): void
+    {
+        // The rule is absolute rather than a last-administrator check, so the
+        // presence of a second admin makes no difference.
+        $admin = User::factory()->create(['role' => 'admin']);
+        User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)
+            ->patchJson("/api/v1/admin/users/{$admin->id}/role", ['role' => 'doctor'])
+            ->assertUnprocessable();
+
+        $this->assertDatabaseHas('users', ['id' => $admin->id, 'role' => 'admin']);
+    }
+
+    public function test_at_least_one_admin_always_remains(): void
+    {
+        // The only way to strand the system would be demoting the last admin,
+        // and only an admin can assign roles — so the actor would have to be
+        // that same account, which self-change already refuses. An admin
+        // demoting a *different* admin therefore always leaves themselves.
+        $admin = User::factory()->create(['role' => 'admin']);
+        $other = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)
+            ->patchJson("/api/v1/admin/users/{$other->id}/role", ['role' => 'doctor'])
+            ->assertOk();
+
+        $this->assertDatabaseHas('users', ['id' => $admin->id, 'role' => 'admin']);
+        $this->assertSame(1, User::query()->where('role', 'admin')->count());
+    }
+
     public function test_role_change_validates_the_role_value(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);

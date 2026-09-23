@@ -40,6 +40,8 @@ class DatabaseSeeder extends Seeder
             BeneficiarySeeder::class,
             DispersalChainSeeder::class,
             BeneficiaryGeoBackfillSeeder::class,
+            // Needs beneficiaries to exist first, so it runs last.
+            HealthRecordSeeder::class,
         ]);
 
         $farmer = $users['farmer'];

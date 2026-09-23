@@ -10,6 +10,7 @@ use App\Http\Resources\UserResource;
 use App\Models\Beneficiary;
 use App\Models\User;
 use App\Services\MonitoringExcelService;
+use App\Services\UserRoleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -21,7 +22,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class AdminController extends Controller
 {
-    public function __construct(private readonly MonitoringExcelService $excel) {}
+    public function __construct(
+        private readonly MonitoringExcelService $excel,
+        private readonly UserRoleService $roles,
+    ) {}
 
     /**
      * List users, optionally filtered by role — e.g.
@@ -50,14 +54,16 @@ class AdminController extends Controller
     }
 
     /**
-     * Set a user's role. Mirrors the rule that role changes are admin-only.
+     * Set a user's role. Admin-only, and an administrator cannot change their
+     * own role — see UserRoleService for why that guard is not optional.
      */
     public function assignRole(AssignRoleRequest $request, int $id): UserResource
     {
         $user = User::findOrFail($id);
-        $user->update(['role' => $request->validated('role')]);
 
-        return new UserResource($user->refresh());
+        return new UserResource(
+            $this->roles->assignRole($request->user(), $user, $request->validated('role')),
+        );
     }
 
     /**

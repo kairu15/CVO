@@ -1,11 +1,20 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AnimalHealthController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CaseNoteController;
 use App\Http\Controllers\BeneficiaryController;
 use App\Http\Controllers\DispersalEventController;
+use App\Http\Controllers\FieldVisitController;
+use App\Http\Controllers\HealthRecordController;
 use App\Http\Controllers\MonitoringRecordController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\SearchController;
+use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\VaccinationScheduleController;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use Illuminate\Support\Facades\Route;
 
@@ -52,6 +61,42 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
 
     Route::apiResource('monitoring-records', MonitoringRecordController::class);
 
+    // Clinical health records (veterinarian-authored).
+    //
+    // The options route MUST come before the apiResource: apiResource registers
+    // `health-records/{health_record}`, which would otherwise swallow
+    // "options" as a record id and fail to bind.
+    Route::get('health-records/options', [HealthRecordController::class, 'options'])
+        ->name('api.health-records.options');
+    Route::apiResource('health-records', HealthRecordController::class);
+
+    // Freeform veterinary case notes (veterinarian-authored).
+    Route::apiResource('case-notes', CaseNoteController::class);
+
+    // Technician field visits — the trip, with an optional on-site GPS fix.
+    // The options route is declared first so apiResource cannot bind
+    // "options" as a visit id.
+    Route::get('field-visits/options', [FieldVisitController::class, 'options'])
+        ->name('api.field-visits.options');
+    Route::apiResource('field-visits', FieldVisitController::class);
+
+    // Vaccination schedule — derived, read-only, role-scoped.
+    Route::get('vaccination-schedule', [VaccinationScheduleController::class, 'index'])
+        ->name('api.vaccination-schedule');
+
+    // Animal health rollup — derived, read-only, role-scoped.
+    Route::get('animal-health', [AnimalHealthController::class, 'index'])
+        ->name('api.animal-health');
+
+    // Notification feed — derived, read-only, and always the caller's own.
+    Route::get('notifications', [NotificationController::class, 'index'])
+        ->name('api.notifications');
+
+    // Global header search — read-only, role-scoped to the caller's own rows.
+    Route::get('search', [SearchController::class, 'index'])
+        ->middleware('throttle:60,1')
+        ->name('api.search');
+
     // Livestock pass-on / re-dispersal chain
     Route::apiResource('dispersal-events', DispersalEventController::class);
 
@@ -69,5 +114,16 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
             ->name('api.admin.monitoring.import');
         Route::get('/monitoring-records/export', [AdminController::class, 'exportMonitoringExcel'])
             ->name('api.admin.monitoring.export');
+
+        // City-wide program report — aggregated, read-only.
+        Route::get('/report', [ReportController::class, 'index'])
+            ->name('api.admin.report');
+
+        // System settings — office contact profile (writable), program
+        // configuration (read-only).
+        Route::get('/settings', [SettingsController::class, 'index'])
+            ->name('api.admin.settings');
+        Route::patch('/settings', [SettingsController::class, 'update'])
+            ->name('api.admin.settings.update');
     });
 });

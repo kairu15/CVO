@@ -83,4 +83,20 @@ class User extends Authenticatable
     {
         return $this->hasMany(Beneficiary::class, 'technician_id');
     }
+
+    /**
+     * Clinical health records this account authored (doctor role).
+     */
+    public function authoredHealthRecords(): HasMany
+    {
+        return $this->hasMany(HealthRecord::class, 'doctor_id');
+    }
+
+    /**
+     * Case notes this account wrote (doctor role).
+     */
+    public function authoredCaseNotes(): HasMany
+    {
+        return $this->hasMany(CaseNote::class, 'doctor_id');
+    }
 }

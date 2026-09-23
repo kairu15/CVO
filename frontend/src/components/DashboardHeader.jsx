@@ -1,7 +1,10 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { roleLabel } from "../config/roles";
+import { notificationsApi } from "../api/notificationsApi";
+import { searchApi } from "../api/searchApi";
+import { getErrorMessage } from "../api/client";
 import { Icon } from "./Icons";
 
 /** Up to two initials for the avatar chip. */
@@ -13,6 +16,35 @@ function initialsOf(name) {
     .slice(0, 2)
     .map((part) => part[0].toUpperCase())
     .join("");
+}
+
+const SEARCH_GROUP_ICONS = {
+  beneficiary: "map-pin",
+  "monitoring-record": "clipboard-check",
+  account: "users",
+};
+
+const NOTIFICATION_ICONS = {
+  "vaccination-overdue": "alert-circle",
+  "vaccination-due-soon": "calendar",
+  dispersal: "truck",
+  "re-dispersal": "refresh",
+};
+
+const MIN_QUERY = 2;
+
+/** "32 days overdue" / "due in 19 days" — same wording as the alerts page. */
+function dueHint(days) {
+  if (days === null || days === undefined) return null;
+  if (days === 0) return "due today";
+  if (days < 0) return `${Math.abs(days)} ${Math.abs(days) === 1 ? "day" : "days"} overdue`;
+  return `due in ${days} ${days === 1 ? "day" : "days"}`;
+}
+
+function formatDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
 }
 
 export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
@@ -49,8 +81,9 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
         )}
       </div>
 
-      {/* Search — placeholder: record search is not built yet, so typing or
-          submitting opens a "coming soon" panel instead of querying. */}
+      {/* Search — queries the same role-scoped records the list pages show.
+          Nothing outside the user's own scope can come back, because the
+          scoping happens server-side, not here. */}
       <div className="relative hidden md:block">
         <form
           onSubmit={(event) => {
@@ -83,21 +116,14 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
               onClick={close}
               className="fixed inset-0 z-10 cursor-default"
             />
-            <div className="card absolute right-0 z-20 mt-2 w-72 p-4">
-              <p className="font-display text-sm font-semibold text-slate-900">
-                Search records
-              </p>
-              <p className="mt-1.5 text-xs text-slate-500">
-                {query.trim()
-                  ? `Searching for “${query.trim()}” isn’t available yet — record search is coming soon.`
-                  : "Record search is coming soon — beneficiaries, monitoring records and accounts will be searchable from here."}
-              </p>
-            </div>
+            <SearchPanel query={query} onNavigate={close} />
           </>
         )}
       </div>
 
-      {/* Notifications */}
+      {/* Notifications — the live alert feed (same endpoint the farmer
+          notifications page reads), with a badge only when something needs
+          attention, so an empty feed reads as "all clear", not "broken". */}
       <div className="relative">
         <button
           type="button"
@@ -107,7 +133,7 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
           className="relative grid h-10 w-10 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700"
         >
           <Icon name="bell" />
-          <span className="absolute top-2 right-2.5 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white" />
+          <NotificationBadge active={panel === "notifications"} />
         </button>
 
         {panel === "notifications" && (
@@ -118,15 +144,7 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
               onClick={close}
               className="fixed inset-0 z-10 cursor-default"
             />
-            <div className="card absolute right-0 z-20 mt-2 w-72 p-4">
-              <p className="font-display text-sm font-semibold text-slate-900">
-                Notifications
-              </p>
-              <p className="mt-1.5 text-xs text-slate-500">
-                Dispersal, vaccination and re-dispersal alerts will appear here
-                once records are encoded.
-              </p>
-            </div>
+            <NotificationPanel onNavigate={close} />
           </>
         )}
       </div>
@@ -184,5 +202,269 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
         )}
       </div>
     </header>
+  );
+}
+
+/**
+ * The debounced search results panel.
+ *
+ * Lives outside the header's own state so typing re-renders only this panel
+ * and its request cycle, not the whole header (and the bell with it).
+ */
+function SearchPanel({ query, onNavigate }) {
+  const { user } = useAuth();
+  const trimmed = query.trim();
+  const short = trimmed.length < MIN_QUERY;
+
+  const [state, setState] = useState({ status: "idle", groups: [], total: 0, error: null });
+  const latestQuery = useRef(trimmed);
+
+  useEffect(() => {
+    // Below the minimum there is nothing to fetch: the hint panel renders
+    // straight from `short`, and any previous results simply stay unused.
+    if (short) return undefined;
+
+    latestQuery.current = trimmed;
+    setState((prev) => ({ ...prev, status: "loading" }));
+
+    // Debounced, and stale responses discarded: fast typing must not let an
+    // older answer overwrite a newer one.
+    const timer = setTimeout(async () => {
+      try {
+        const { groups, total } = await searchApi.search(trimmed);
+
+        if (latestQuery.current === trimmed) {
+          setState({ status: "done", groups, total, error: null });
+        }
+      } catch (err) {
+        if (latestQuery.current === trimmed) {
+          setState({ status: "done", groups: [], total: 0, error: getErrorMessage(err) });
+        }
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [trimmed, short]);
+
+  if (short) {
+    // Accounts are a staff-only search group; the copy reflects that.
+    const canSeeAccounts = ["admin", "doctor"].includes(user?.role);
+
+    return (
+      <div className="card absolute right-0 z-20 mt-2 w-80 p-4">
+        <p className="font-display text-sm font-semibold text-slate-900">Search records</p>
+        <p className="mt-1.5 text-xs text-slate-500">
+          Type at least {MIN_QUERY} characters — households, monitoring visits
+          {canSeeAccounts ? " and accounts" : ""} are searched by name,
+          barangay or animal.
+        </p>
+      </div>
+    );
+  }
+
+  if (state.status === "loading" || state.status === "idle") {
+    return (
+      <div className="card absolute right-0 z-20 mt-2 w-80 space-y-2 p-4">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-10 animate-pulse rounded-xl bg-slate-100" />
+        ))}
+      </div>
+    );
+  }
+
+  if (state.error) {
+    return (
+      <div className="card absolute right-0 z-20 mt-2 w-80 p-4">
+        <p className="font-display text-sm font-semibold text-slate-900">Search failed</p>
+        <p className="mt-1.5 text-xs text-red-600">{state.error}</p>
+      </div>
+    );
+  }
+
+  if (state.total === 0) {
+    return (
+      <div className="card absolute right-0 z-20 mt-2 w-80 p-4">
+        <p className="font-display text-sm font-semibold text-slate-900">No matches</p>
+        <p className="mt-1.5 text-xs text-slate-500">
+          Nothing in your records matches “{trimmed}”. Only records you can
+          already open are searched.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card absolute right-0 z-20 mt-2 max-h-96 w-80 overflow-y-auto p-2">
+      {state.groups.map((group) => (
+        <div key={group.type} className="p-2">
+          <p className="px-1 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+            {group.label} · {group.total}
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {group.results.map((result) => (
+              <li key={`${group.type}-${result.id}`}>
+                <Link
+                  to={result.link}
+                  onClick={onNavigate}
+                  className="flex items-start gap-2.5 rounded-xl px-2 py-2 transition hover:bg-brand-50"
+                >
+                  <Icon
+                    name={SEARCH_GROUP_ICONS[group.type] ?? "search"}
+                    className="mt-0.5 h-4 w-4 shrink-0 text-brand-700"
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-semibold text-slate-900">
+                      {result.title}
+                    </span>
+                    {result.subtitle && (
+                      <span className="block truncate text-[11px] text-slate-500">
+                        {result.subtitle}
+                      </span>
+                    )}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Badge dot driven by the live feed, hidden when nothing needs attention. */
+function NotificationBadge({ active }) {
+  const [needsAttention, setNeedsAttention] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    notificationsApi
+      .list({ limit: 5 })
+      .then(({ counts }) => {
+        if (!cancelled) {
+          setNeedsAttention((counts.urgent ?? 0) + (counts.warning ?? 0));
+        }
+      })
+      .catch(() => {
+        // The bell stays quiet on failure: no badge is better than a lying
+        // one, and the panel shows the error when opened.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (needsAttention === 0 || active) return null;
+
+  return (
+    <span className="absolute top-2 right-2.5 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white" />
+  );
+}
+
+/**
+ * The bell's dropdown: the top of the same feed the notifications page
+ * renders in full, so the two surfaces cannot disagree about what happened.
+ */
+function NotificationPanel({ onNavigate }) {
+  const { user } = useAuth();
+  const [state, setState] = useState({ status: "loading", alerts: [], counts: {}, error: null });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    notificationsApi
+      .list({ limit: 5 })
+      .then(({ alerts, counts }) => {
+        if (!cancelled) setState({ status: "done", alerts, counts, error: null });
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setState({ status: "done", alerts: [], counts: {}, error: getErrorMessage(err) });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const attention = (state.counts.urgent ?? 0) + (state.counts.warning ?? 0);
+  // The full page exists so far only on the farmer dashboard; other roles read
+  // the feed here, which is why the panel carries the alerts itself.
+  const allHref = user?.role === "farmer" ? "/dashboard/farmer/notifications" : null;
+
+  return (
+    <div className="card absolute right-0 z-20 mt-2 w-80 p-4">
+      <div className="flex items-center justify-between">
+        <p className="font-display text-sm font-semibold text-slate-900">Notifications</p>
+        {attention > 0 && (
+          <span className="rounded-pill bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+            {attention} needing action
+          </span>
+        )}
+      </div>
+
+      {state.status === "loading" ? (
+        <div className="mt-3 space-y-2">
+          {[0, 1].map((i) => (
+            <div key={i} className="h-12 animate-pulse rounded-xl bg-slate-100" />
+          ))}
+        </div>
+      ) : state.error ? (
+        <p className="mt-2 text-xs text-red-600">{state.error}</p>
+      ) : state.alerts.length === 0 ? (
+        <p className="mt-2 text-xs text-slate-500">
+          Nothing needs attention and no movements have been recorded yet.
+          Alerts appear here when a dispersal is recorded or a vaccination
+          falls due.
+        </p>
+      ) : (
+        <ul className="mt-2 space-y-1">
+          {state.alerts.map((alert) => {
+            const hint = dueHint(alert.days_until_due);
+            const meta = [formatDate(alert.date), hint].filter(Boolean).join(" · ");
+
+            return (
+              <li key={alert.id}>
+                <Link
+                  to={alert.link}
+                  onClick={onNavigate}
+                  className="flex items-start gap-2.5 rounded-xl px-2 py-2 transition hover:bg-brand-50"
+                >
+                  <Icon
+                    name={NOTIFICATION_ICONS[alert.type] ?? "bell"}
+                    className="mt-0.5 h-4 w-4 shrink-0 text-brand-700"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-xs font-semibold text-slate-900">
+                      {alert.title}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                      {alert.message}
+                    </span>
+                    {meta && (
+                      <span className="mt-0.5 block text-[11px] text-slate-400">{meta}</span>
+                    )}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {allHref && (
+        <Link
+          to={allHref}
+          onClick={onNavigate}
+          className="mt-3 flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-brand-300 hover:bg-brand-50"
+        >
+          View all notifications
+          <Icon name="arrow-right" className="h-3.5 w-3.5" />
+        </Link>
+      )}
+    </div>
   );
 }

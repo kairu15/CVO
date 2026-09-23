@@ -60,4 +60,20 @@ class Beneficiary extends Model
     {
         return $this->hasMany(DispersalEvent::class);
     }
+
+    /**
+     * Clinical health records for this beneficiary's animal.
+     */
+    public function healthRecords(): HasMany
+    {
+        return $this->hasMany(HealthRecord::class);
+    }
+
+    /**
+     * Freeform veterinary notes about this beneficiary's animal.
+     */
+    public function caseNotes(): HasMany
+    {
+        return $this->hasMany(CaseNote::class);
+    }
 }

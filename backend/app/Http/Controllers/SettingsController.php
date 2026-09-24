@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\SettingsRequest;
 use App\Services\SettingsService;
+use App\Support\Barangays;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Arr;
 
@@ -30,7 +31,7 @@ class SettingsController extends Controller
         return response()->json([
             'data' => [
                 'office_profile' => $this->settings->officeProfile(),
-                'barangays' => config('cvo.barangays'),
+                'barangays' => Barangays::all(),
                 'vocabulary' => [
                     'health_outcomes' => config('cvo.health_outcomes'),
                     'field_visit_purposes' => config('cvo.field_visit_purposes'),
@@ -48,7 +49,7 @@ class SettingsController extends Controller
                 'office_profile' => $this->settings->saveOfficeProfile(
                     Arr::only($validated, SettingsService::KEYS),
                 ),
-                'barangays' => config('cvo.barangays'),
+                'barangays' => Barangays::all(),
                 'vocabulary' => [
                     'health_outcomes' => config('cvo.health_outcomes'),
                     'field_visit_purposes' => config('cvo.field_visit_purposes'),

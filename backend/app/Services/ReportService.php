@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Beneficiary;
+use App\Support\Barangays;
 use App\Models\CaseNote;
 use App\Models\DispersalEvent;
 use App\Models\FieldVisit;
@@ -54,7 +55,7 @@ class ReportService
         return [
             'scope' => [
                 'barangay' => $barangay,
-                'barangays' => config('cvo.barangays'),
+                'barangays' => Barangays::all(),
             ],
             'program' => $this->programSection($base),
             'activity' => $this->activitySection($barangay, $from),

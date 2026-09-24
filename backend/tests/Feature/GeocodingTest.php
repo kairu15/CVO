@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Beneficiary;
 use App\Models\User;
 use App\Support\Barangays;
+use Database\Seeders\BarangaySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -107,8 +108,8 @@ class GeocodingTest extends TestCase
                 'sex' => 'F',
             ])
             ->assertCreated()
-            ->assertJsonPath('data.latitude', 9.4712)
-            ->assertJsonPath('data.longitude', 122.8319);
+            ->assertJsonPath('data.latitude', 9.5766683)
+            ->assertJsonPath('data.longitude', 122.8819134);
     }
 
     public function test_address_update_re_resolves_coordinates(): void
@@ -187,7 +188,7 @@ class GeocodingTest extends TestCase
                 'sex' => 'F',
             ])
             ->assertCreated()
-            ->assertJsonPath('data.address', 'Banay Banay');
+            ->assertJsonPath('data.address', 'Banaybanay');
     }
 
     public function test_registration_rejects_uncovered_barangay(): void
@@ -229,15 +230,19 @@ class GeocodingTest extends TestCase
 
     public function test_barangays_endpoint_lists_the_coverage(): void
     {
+        // The endpoint serves the seeded reference table.
+        $this->seed(BarangaySeeder::class);
+
         $this->getJson('/api/v1/barangays')
             ->assertOk()
-            ->assertJsonPath('data.1', 'Banay Banay');
+            ->assertJsonCount(28, 'data')
+            ->assertJsonPath('data.0.name', 'Ali-is');
     }
 
     public function test_normalize_matches_loose_spellings(): void
     {
-        $this->assertSame('Banay Banay', Barangays::normalize('banaybanay'));
-        $this->assertSame('Banay Banay', Barangays::normalize('  BANAY BANAY '));
+        $this->assertSame('Banaybanay', Barangays::normalize('banaybanay'));
+        $this->assertSame('Banaybanay', Barangays::normalize('  BANAY BANAY '));
         $this->assertSame('Dawis', Barangays::normalize('dawis'));
         $this->assertSame('Nowhere XYZ', Barangays::normalize('Nowhere XYZ'));
     }

@@ -139,7 +139,7 @@ class DispersalEventTest extends TestCase
     {
         $original = Beneficiary::factory()->create([
             'name_of_farmer' => 'Original Farmer',
-            'address' => 'Banay Banay',
+            'address' => 'Banaybanay',
         ]);
 
         $recipient = Beneficiary::factory()->create([
@@ -246,7 +246,7 @@ class DispersalEventTest extends TestCase
         $this->actingAs($farmer)
             ->postJson('/api/v1/beneficiaries', [
                 'name_of_farmer' => 'Geo Farmer',
-                'address' => 'Banay Banay',
+                'address' => 'Banaybanay',
                 'animal_type' => 'Goat',
                 'sex' => 'F',
                 'latitude' => 9.5538,
@@ -264,7 +264,7 @@ class DispersalEventTest extends TestCase
         $this->actingAs($farmer)
             ->postJson('/api/v1/beneficiaries', [
                 'name_of_farmer' => 'Geo Farmer',
-                'address' => 'Banay Banay',
+                'address' => 'Banaybanay',
                 'animal_type' => 'Goat',
                 'sex' => 'F',
                 'latitude' => 200,

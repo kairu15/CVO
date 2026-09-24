@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AnimalHealthController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BarangayController;
 use App\Http\Controllers\CaseNoteController;
 use App\Http\Controllers\BeneficiaryController;
 use App\Http\Controllers\DispersalEventController;
@@ -35,10 +36,14 @@ Route::prefix('v1')->middleware('throttle:6,1')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login'])->name('api.login');
     Route::post('/token-login', [AuthController::class, 'tokenLogin'])->name('api.token-login');
 
-    // Program config for the public forms (barangay dropdown)
-    Route::get('/barangays', fn () => response()->json([
-        'data' => config('cvo.barangays'),
-    ]))->name('api.barangays');
+    // Location reference data for the public forms — the registration
+    // form's barangay → purok cascade. Read-only and session-free: these
+    // are reference tables, not user data, so they need no auth. Ordered
+    // by id (the config seed order) so the dropdown reads as a stable list.
+    Route::get('/barangays', [BarangayController::class, 'index'])->name('api.barangays');
+    Route::get('/barangays/{barangay}/puroks', [BarangayController::class, 'puroks'])
+        ->middleware('throttle:60,1')
+        ->name('api.barangays.puroks');
 
     // Address → coordinates for the public registration form's pin preview.
     // Cached server-side and throttled — it proxies Nominatim, which forbids

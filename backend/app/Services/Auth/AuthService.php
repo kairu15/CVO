@@ -20,11 +20,13 @@ class AuthService
      * role is hard-coded here rather than taken from the request.
      *
      * When dispersal details are supplied, a beneficiary record is created in
-     * the same transaction — those four identity fields (name of farmer,
-     * address, animal type, sex) are what every future monitoring record
-     * auto-fills from, so they are captured exactly once, here.
+     * the same transaction — those identity fields (name of farmer, address,
+     * animal type, sex) are what every future monitoring record auto-fills
+     * from, so they are captured exactly once, here. The structured location
+     * (barangay_id/purok_id) rides along; RegisterRequest has already checked
+     * that the purok belongs to the barangay.
      *
-     * @param  array{name_of_farmer?: string, address?: string, animal_type?: string, sex?: string, latitude?: float|null, longitude?: float|null}|null  $dispersal
+     * @param  array{name_of_farmer?: string, address?: string, animal_type?: string, sex?: string, latitude?: float|null, longitude?: float|null, barangay_id?: int|null, purok_id?: int|null}|null  $dispersal
      */
     public function register(
         string $name,
@@ -46,6 +48,8 @@ class AuthService
                 $user->beneficiaries()->create([
                     'name_of_farmer' => ($dispersal['name_of_farmer'] ?? '') !== '' ? $dispersal['name_of_farmer'] : $name,
                     'address' => $dispersal['address'] ?? '',
+                    'barangay_id' => $dispersal['barangay_id'] ?? null,
+                    'purok_id' => $dispersal['purok_id'] ?? null,
                     'animal_type' => $dispersal['animal_type'] ?? '',
                     'sex' => $dispersal['sex'] ?? 'F',
                     'latitude' => $dispersal['latitude'] ?? null,

@@ -1,21 +1,11 @@
 <?php
 
 // City Veterinary Office program configuration.
-// The barangay list is the single source of truth for the registration
-// form's dropdown; the factory/seeders keep their own coordinate table
-// (BeneficiaryFactory::BARANGAY_COORDS) used for demo data and geocoding
-// fallback only.
+// The program's barangay coverage lives in config/barangays.php and is
+// seeded into the database `barangays` table (see App\Support\Barangays);
+// the registration dropdown and every validation rule read from there.
 
 return [
-    'barangays' => [
-        'Ali-Nan-Ban',
-        'Banay Banay',
-        'Cansumalig',
-        'Daw-Kal-Vil',
-        'Dawis',
-        'Kalumboyan',
-        'Tayawan',
-    ],
 
     /*
     |--------------------------------------------------------------------------

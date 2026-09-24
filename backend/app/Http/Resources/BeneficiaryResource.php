@@ -19,6 +19,8 @@ class BeneficiaryResource extends JsonResource
             'farmer_id' => $this->farmer_id,
             'name_of_farmer' => $this->name_of_farmer,
             'address' => $this->address,
+            'barangay_id' => $this->barangay_id,
+            'purok_id' => $this->purok_id,
             'animal_type' => $this->animal_type,
             'sex' => $this->sex,
             'latitude' => $this->latitude,

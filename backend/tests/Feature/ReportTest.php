@@ -110,9 +110,9 @@ class ReportTest extends TestCase
         $admin = $this->admin();
         $farmer = User::factory()->create(['role' => 'farmer']);
 
-        $a = Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Banay Banay']);
+        $a = Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Banaybanay']);
         $b = Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Dawis']);
-        Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Banay Banay']);
+        Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Banaybanay']);
 
         MonitoringRecord::factory()->for($a, 'beneficiary')->create();
 
@@ -120,11 +120,11 @@ class ReportTest extends TestCase
 
         $rows = array_column($data['per_barangay'], null, 'barangay');
 
-        $this->assertSame(2, $rows['Banay Banay']['households']);
+        $this->assertSame(2, $rows['Banaybanay']['households']);
         $this->assertSame(1, $rows['Dawis']['households']);
         // A barangay with households but no visits still appears, with zeros.
         $this->assertSame(0, $rows['Dawis']['monitoring_visits']);
-        $this->assertSame(1, $rows['Banay Banay']['monitoring_visits']);
+        $this->assertSame(1, $rows['Banaybanay']['monitoring_visits']);
         // Both barangays with households appear — exactly two rows.
         $this->assertCount(2, $rows);
     }
@@ -134,7 +134,7 @@ class ReportTest extends TestCase
         $admin = $this->admin();
         $farmer = User::factory()->create(['role' => 'farmer']);
 
-        $inScope = Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Banay Banay']);
+        $inScope = Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Banaybanay']);
         $outOfScope = Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Dawis']);
 
         MonitoringRecord::factory()->for($inScope, 'beneficiary')->create();
@@ -142,7 +142,7 @@ class ReportTest extends TestCase
         HealthRecord::factory()->for($outOfScope, 'beneficiary')->create();
         FieldVisit::factory()->for($outOfScope, 'beneficiary')->create();
 
-        $data = $this->report($admin, ['barangay' => 'Banay Banay']);
+        $data = $this->report($admin, ['barangay' => 'Banaybanay']);
 
         $this->assertSame(1, $data['program']['households']);
         $this->assertSame(1, $data['activity']['monitoring_visits']);

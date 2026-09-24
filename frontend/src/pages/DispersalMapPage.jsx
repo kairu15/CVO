@@ -216,8 +216,8 @@ export default function DispersalMapPage({ roleKey }) {
             >
               <option value="">Select barangay…</option>
               {barangays.map((barangay) => (
-                <option key={barangay} value={barangay}>
-                  {barangay}
+                <option key={barangay.id ?? barangay.name} value={barangay.name}>
+                  {barangay.name}
                 </option>
               ))}
             </select>

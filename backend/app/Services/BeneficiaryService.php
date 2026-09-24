@@ -88,9 +88,9 @@ class BeneficiaryService
         }
 
         // OSM doesn't index every local barangay name — fall back to the
-        // authoritative barangay centroid so the pin still lands in the
-        // right barangay instead of nowhere (or in the wrong province).
-        $centroid = BeneficiaryFactory::BARANGAY_COORDS[$address] ?? null;
+        // authoritative barangay center so the pin still lands in the right
+        // barangay instead of nowhere (or in the wrong province).
+        $centroid = BeneficiaryFactory::BARANGAY_COORDS()[$address] ?? null;
 
         if ($centroid) {
             return [

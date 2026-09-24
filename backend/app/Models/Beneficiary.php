@@ -17,6 +17,8 @@ class Beneficiary extends Model
         'farmer_id',
         'name_of_farmer',
         'address',
+        'barangay_id',
+        'purok_id',
         'animal_type',
         'sex',
         'technician_id',
@@ -29,6 +31,8 @@ class Beneficiary extends Model
         return [
             'latitude' => 'float',
             'longitude' => 'float',
+            'barangay_id' => 'integer',
+            'purok_id' => 'integer',
         ];
     }
 
@@ -46,6 +50,24 @@ class Beneficiary extends Model
     public function technician(): BelongsTo
     {
         return $this->belongsTo(User::class, 'technician_id');
+    }
+
+    /**
+     * The barangay this household sits in — the structured twin of the
+     * free-text `address` string (which stays the synced display value).
+     */
+    public function barangay(): BelongsTo
+    {
+        return $this->belongsTo(Barangay::class);
+    }
+
+    /**
+     * The purok/sitio within the barangay — the finest location grain the
+     * program tracks, and what dispersal geo-tagging resolves against.
+     */
+    public function purok(): BelongsTo
+    {
+        return $this->belongsTo(Purok::class);
     }
 
     public function monitoringRecords(): HasMany

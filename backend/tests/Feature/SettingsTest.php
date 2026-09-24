@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\Barangays;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
@@ -44,7 +45,7 @@ class SettingsTest extends TestCase
             ->json('data');
 
         $this->assertSame(config('cvo.office.phone'), $data['office_profile']['office_phone']);
-        $this->assertSame(config('cvo.barangays'), $data['barangays']);
+        $this->assertSame(Barangays::all(), $data['barangays']);
         $this->assertSame(config('cvo.health_outcomes'), $data['vocabulary']['health_outcomes']);
     }
 

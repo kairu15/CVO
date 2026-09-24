@@ -11,9 +11,21 @@ export const geocodeAddress = async (address) =>
     }),
   );
 
-/** The barangays the program covers — drives the registration dropdown. */
+/**
+ * The barangays the program covers — drives the registration dropdown.
+ * Returns reference rows ({ id, name, latitude, longitude }), not names:
+ * the map zooms to the coordinates and the purok fetch keys off the id.
+ */
 export const fetchBarangays = async () =>
   unwrap.list(await api.get("/api/v1/barangays"));
+
+/**
+ * The puroks/sitios inside one barangay — the second select in the
+ * registration cascade. `is_placeholder` flags seeded stand-ins that are
+ * waiting on the CVO's real purok list.
+ */
+export const fetchPuroks = async (barangayId) =>
+  unwrap.list(await api.get(`/api/v1/barangays/${barangayId}/puroks`));
 
 /**
  * Beneficiaries — the dispersed animals and their households.

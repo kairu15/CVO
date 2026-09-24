@@ -25,7 +25,7 @@ class DispersalChainSeeder extends Seeder
     {
         $technician = User::where('email', 'technician@example.com')->first();
         $original = Beneficiary::query()
-            ->where('address', 'Banay Banay')
+            ->where('address', 'Banaybanay')
             ->where('animal_type', 'Carabao')
             ->first();
 
@@ -69,8 +69,8 @@ class DispersalChainSeeder extends Seeder
                 'farmer_id' => $recipientFarmer->id,
                 'sex' => $hop['sex'],
                 'technician_id' => $technician->id,
-                'latitude' => (BeneficiaryFactory::BARANGAY_COORDS[$hop['address']][0]) + (mt_rand(-300, 300) / 100000),
-                'longitude' => (BeneficiaryFactory::BARANGAY_COORDS[$hop['address']][1]) + (mt_rand(-300, 300) / 100000),
+                'latitude' => (BeneficiaryFactory::BARANGAY_COORDS()[$hop['address']][0]) + (mt_rand(-300, 300) / 100000),
+                'longitude' => (BeneficiaryFactory::BARANGAY_COORDS()[$hop['address']][1]) + (mt_rand(-300, 300) / 100000),
             ]);
 
             DispersalEvent::firstOrCreate([

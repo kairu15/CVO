@@ -74,7 +74,7 @@ class SearchTest extends TestCase
     public function test_households_can_be_found_by_barangay_and_by_animal(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        Beneficiary::factory()->create(['name_of_farmer' => 'Someone Else', 'address' => 'Banay Banay']);
+        Beneficiary::factory()->create(['name_of_farmer' => 'Someone Else', 'address' => 'Banaybanay']);
 
         $byBarangay = $this->searchAs($admin, 'banay');
         $this->assertSame(['beneficiary'], $this->groupTypes($byBarangay));
@@ -90,7 +90,7 @@ class SearchTest extends TestCase
 
         // Both match "banay": one in the farmer name, one only in the address.
         Beneficiary::factory()->create(['name_of_farmer' => 'Banay Farms Inc', 'address' => 'Dawis']);
-        Beneficiary::factory()->create(['name_of_farmer' => 'Unrelated Household', 'address' => 'Banay Banay']);
+        Beneficiary::factory()->create(['name_of_farmer' => 'Unrelated Household', 'address' => 'Banaybanay']);
 
         $body = $this->searchAs($admin, 'banay');
 

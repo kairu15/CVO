@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Purok;
 use App\Models\User;
 use App\Support\Barangays;
 use Illuminate\Foundation\Http\FormRequest;
@@ -61,6 +62,35 @@ class RegisterRequest extends FormRequest
             ],
             'animal_type' => ['required_with:address', 'nullable', 'string', 'max:255'],
             'sex' => ['required_with:address', Rule::in(['M', 'F', ''])],
+
+            // Optional purok/sitio within the chosen barangay. When given it
+            // must actually belong to that barangay — a farmer's location has
+            // to resolve to one consistent place for dispersal tracking.
+            'purok_id' => [
+                'nullable',
+                'integer',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null) {
+                        return;
+                    }
+
+                    $purok = Purok::query()->find($value);
+
+                    if (! $purok) {
+                        $fail('Choose a purok/sitio from the list.');
+
+                        return;
+                    }
+
+                    $barangayId = Barangays::idFor(
+                        Barangays::normalize((string) ($this->input('address') ?? '')),
+                    );
+
+                    if ($barangayId === null || $purok->barangay_id !== $barangayId) {
+                        $fail('The selected purok does not belong to the chosen barangay.');
+                    }
+                },
+            ],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
         ];
@@ -87,15 +117,23 @@ class RegisterRequest extends FormRequest
     {
         $validated = parent::validated();
 
+        $address = isset($validated['address'])
+            ? Barangays::normalize($validated['address'])
+            : '';
+
         $dispersal = [
             'name_of_farmer' => $validated['name_of_farmer'] ?? '',
-            'address' => isset($validated['address'])
-                ? Barangays::normalize($validated['address'])
-                : '',
+            'address' => $address,
             'animal_type' => $validated['animal_type'] ?? '',
             'sex' => $validated['sex'] ?? '',
             'latitude' => $validated['latitude'] ?? null,
             'longitude' => $validated['longitude'] ?? null,
+
+            // The structured location twins of the address string. The
+            // barangay id is resolved server-side from the (normalized) name
+            // so a client cannot pair the name with a foreign id.
+            'barangay_id' => $address !== '' ? Barangays::idFor($address) : null,
+            'purok_id' => $validated['purok_id'] ?? null,
         ];
 
         unset(
@@ -105,6 +143,7 @@ class RegisterRequest extends FormRequest
             $validated['sex'],
             $validated['latitude'],
             $validated['longitude'],
+            $validated['purok_id'],
         );
 
         $validated['dispersal'] = array_filter($dispersal, fn ($v) => $v !== '') ?: null;

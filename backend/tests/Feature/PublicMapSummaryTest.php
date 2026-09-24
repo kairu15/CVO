@@ -28,8 +28,8 @@ class PublicMapSummaryTest extends TestCase
     public function test_summary_counts_per_barangay_with_centroids(): void
     {
         Beneficiary::factory()->count(2)->create(['address' => 'Dawis']);
-        Beneficiary::factory()->create(['address' => 'Banay Banay']);
-        Beneficiary::factory()->create(['address' => 'Banay Banay', 'latitude' => null, 'longitude' => null]);
+        Beneficiary::factory()->create(['address' => 'Banaybanay']);
+        Beneficiary::factory()->create(['address' => 'Banaybanay', 'latitude' => null, 'longitude' => null]);
 
         $response = $this->getJson('/api/v1/public/map-summary')
             ->assertOk();
@@ -39,11 +39,11 @@ class PublicMapSummaryTest extends TestCase
         // Counts are per barangay, geo-tagged or not — the map shows program
         // coverage, not coordinate completeness.
         $this->assertSame(2, $barangays->get('Dawis')['count']);
-        $this->assertSame(2, $barangays->get('Banay Banay')['count']);
+        $this->assertSame(2, $barangays->get('Banaybanay')['count']);
 
         // Pins sit on the fixed centroids, rounded to ~110 m.
-        $this->assertSame(9.471, $barangays->get('Dawis')['lat']);
-        $this->assertSame(122.832, $barangays->get('Dawis')['lng']);
+        $this->assertSame(9.577, $barangays->get('Dawis')['lat']);
+        $this->assertSame(122.882, $barangays->get('Dawis')['lng']);
 
         // Only barangays with rows appear.
         $this->assertNull($barangays->get('Tayawan'));

@@ -1,10 +1,12 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { PasswordToggle, TextField } from "./TextField";
+import { RegisterLocationMap } from "./RegisterLocationMap";
 import { useBarangays } from "../hooks/useBarangays";
+import { usePuroks } from "../hooks/usePuroks";
 
 // The map picker pulls in MapLibre GL (~230 kB min) — load it only when the
 // optional fine-tune section is opened, keeping it out of the main bundle.
@@ -48,6 +50,7 @@ export function RegisterForm({ idPrefix = "register" }) {
     // and the details added later by staff.
     name_of_farmer: "",
     address: "", // a barangay name from the coverage list
+    purok_id: "", // id within the chosen barangay — cleared when the barangay changes
     animal_type: "",
     sex: "F",
     coordinates: null, // [lat, lng] — optional fine-tune / GPS fix
@@ -58,12 +61,35 @@ export function RegisterForm({ idPrefix = "register" }) {
   const [submitting, setSubmitting] = useState(false);
   const [showMap, setShowMap] = useState(false);
 
+  // Derived cascade state — the select values drive the purok fetch and the
+  // live map. Kept after the state declarations above (they read `form`).
+  const selectedBarangay = useMemo(
+    () => barangays.find((barangay) => barangay.name === form.address) ?? null,
+    [barangays, form.address],
+  );
+  const { puroks, loading: puroksLoading } = usePuroks(selectedBarangay?.id ?? null);
+  const selectedPurok = useMemo(
+    () => puroks.find((purok) => String(purok.id) === String(form.purok_id)) ?? null,
+    [puroks, form.purok_id],
+  );
+
   function update(field) {
     return (event) => {
       const { value } = event.target;
       setForm((prev) => ({ ...prev, [field]: value }));
       setErrors((prev) => ({ ...prev, [field]: undefined }));
     };
+  }
+
+  /**
+   * Barangay change: reset the purok with it, so a purok from the previous
+   * barangay can never ride along under the new one (the cascade stays
+   * consistent even before validation runs).
+   */
+  function handleBarangayChange(event) {
+    const { value } = event.target;
+    setForm((prev) => ({ ...prev, address: value, purok_id: "" }));
+    setErrors((prev) => ({ ...prev, address: undefined, purok_id: undefined }));
   }
 
   /** Mirrors the rules in App\Http\Requests\RegisterRequest. */
@@ -99,6 +125,11 @@ export function RegisterForm({ idPrefix = "register" }) {
     else if (form.password_confirmation !== form.password)
       next.password_confirmation = "Passwords do not match.";
 
+    // A farmer's location must resolve to a specific purok for dispersal
+    // tracking — a barangay alone is not enough once puroks are offered.
+    if (form.address && !form.purok_id)
+      next.purok_id = "Choose the purok/sitio of the farm.";
+
     return next;
   }
 
@@ -121,6 +152,8 @@ export function RegisterForm({ idPrefix = "register" }) {
         username: form.username.trim(),
         name_of_farmer: form.name_of_farmer.trim(),
         address: form.address,
+        barangay_id: selectedBarangay?.id ?? undefined,
+        purok_id: form.purok_id ? Number(form.purok_id) : undefined,
         animal_type: form.animal_type.trim(),
         latitude: form.coordinates?.[0],
         longitude: form.coordinates?.[1],
@@ -273,12 +306,12 @@ export function RegisterForm({ idPrefix = "register" }) {
               name="address"
               className="field mt-1.5"
               value={form.address}
-              onChange={update("address")}
+              onChange={handleBarangayChange}
             >
               <option value="">Select barangay…</option>
               {barangays.map((barangay) => (
-                <option key={barangay} value={barangay}>
-                  {barangay}
+                <option key={barangay.id ?? barangay.name} value={barangay.name}>
+                  {barangay.name}
                 </option>
               ))}
             </select>
@@ -288,7 +321,51 @@ export function RegisterForm({ idPrefix = "register" }) {
               </p>
             ) : (
               <p className="mt-1.5 text-xs text-slate-500">
-                The map pin is placed automatically from the barangay.
+                The map pans to the barangay as soon as it is chosen.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label
+              htmlFor={`${idPrefix}-purok`}
+              className="block text-sm font-medium text-slate-700"
+            >
+              Purok / Sitio
+            </label>
+            <select
+              id={`${idPrefix}-purok`}
+              name="purok_id"
+              className="field mt-1.5"
+              value={form.purok_id}
+              onChange={update("purok_id")}
+              disabled={!form.address || puroks.length === 0}
+            >
+              <option value="">
+                {!form.address
+                  ? "Select a barangay first…"
+                  : puroksLoading
+                    ? "Loading puroks…"
+                    : puroks.length === 0
+                      ? "No puroks listed yet"
+                      : "Select purok/sitio…"}
+              </option>
+              {puroks.map((purok) => (
+                <option key={purok.id} value={purok.id}>
+                  {purok.name}
+                  {purok.is_placeholder ? " (to be confirmed)" : ""}
+                </option>
+              ))}
+            </select>
+            {errors.purok_id ? (
+              <p className="mt-1.5 text-xs font-medium text-red-600">
+                {errors.purok_id}
+              </p>
+            ) : (
+              <p className="mt-1.5 text-xs text-slate-500">
+                {puroks.some((purok) => purok.is_placeholder)
+                  ? "Some purok names are placeholders until the CVO confirms the official list."
+                  : "The finest location grain — what dispersal tracking resolves against."}
               </p>
             )}
           </div>
@@ -341,6 +418,14 @@ export function RegisterForm({ idPrefix = "register" }) {
 
         {form.address ? (
           <>
+            <div className="mt-4">
+              <RegisterLocationMap
+                barangays={barangays}
+                barangay={selectedBarangay}
+                purok={selectedPurok}
+              />
+            </div>
+
             <button
               type="button"
               className="btn-secondary mt-4 !px-3.5 !py-1.5 text-xs"
@@ -373,7 +458,7 @@ export function RegisterForm({ idPrefix = "register" }) {
           </>
         ) : (
           <p className="mt-4 text-xs text-slate-500">
-            Pick a barangay above to enable map fine-tuning.
+            Pick a barangay above to see it on the map and enable fine-tuning.
           </p>
         )}
       </fieldset>

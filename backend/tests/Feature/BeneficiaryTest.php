@@ -57,7 +57,7 @@ class BeneficiaryTest extends TestCase
             'email' => 'juan@example.com',
             'password' => 'Sup3r-Secret!',
             'password_confirmation' => 'Sup3r-Secret!',
-            'address' => 'Banay Banay',
+            'address' => 'Banaybanay',
             'animal_type' => 'Carabao',
             'sex' => 'F',
         ]);
@@ -66,7 +66,7 @@ class BeneficiaryTest extends TestCase
 
         $this->assertDatabaseHas('beneficiaries', [
             'name_of_farmer' => 'Juan Dela Cruz',
-            'address' => 'Banay Banay',
+            'address' => 'Banaybanay',
             'animal_type' => 'Carabao',
             'sex' => 'F',
         ]);

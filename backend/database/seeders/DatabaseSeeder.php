@@ -36,6 +36,11 @@ class DatabaseSeeder extends Seeder
         }
 
         $this->call([
+            // Location reference data first — beneficiaries point at it via
+            // barangay_id/purok_id and the registration cascade serves it.
+            BarangaySeeder::class,
+            PurokSeeder::class,
+
             ProjectSeeder::class,
             BeneficiarySeeder::class,
             DispersalChainSeeder::class,

@@ -19,7 +19,7 @@ class BeneficiaryGeoBackfillSeeder extends Seeder
 {
     public function run(): void
     {
-        $coords = BeneficiaryFactory::BARANGAY_COORDS;
+        $coords = BeneficiaryFactory::BARANGAY_COORDS();
 
         $pending = Beneficiary::query()
             ->whereNull('latitude')

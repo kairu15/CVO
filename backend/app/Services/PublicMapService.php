@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
  * derived from barangay-level aggregates only: how many animals were
  * dispersed per barangay and the program totals. Farmer names and exact farm
  * coordinates never leave the server through this path — the pin positions
- * are the fixed barangay centroids from BeneficiaryFactory::BARANGAY_COORDS
+ * are the fixed barangay centers from BeneficiaryFactory::BARANGAY_COORDS()
  * (the same table the geocoder falls back to), rounded further to ~110 m.
  *
  * PublicMapSummaryTest asserts the privacy guarantee, so a refactor that
@@ -52,7 +52,7 @@ class PublicMapService
 
         $barangays = [];
 
-        foreach (BeneficiaryFactory::BARANGAY_COORDS as $name => [$lat, $lng]) {
+        foreach (BeneficiaryFactory::BARANGAY_COORDS() as $name => [$lat, $lng]) {
             $count = (int) ($perBarangay[$name] ?? 0);
 
             if ($count === 0) {

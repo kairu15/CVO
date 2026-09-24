@@ -1,12 +1,37 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Link } from "react-router-dom";
 import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icons";
 import { features, navLinks, site } from "../config/site";
 import { publicRoles } from "../config/roles";
+import { usePublicMapSummary } from "../hooks/usePublicMapSummary";
+
+// MapLibre is heavy — keep it out of the main bundle and load it only when the
+// hero card renders (same lazy pattern as the dashboard's DispersalMap).
+const LandingMap = lazy(() =>
+  import("../components/LandingMap").then((m) => ({ default: m.LandingMap })),
+);
+
+/** Decorative footer stats while the real summary has not loaded (or failed). */
+const ILLUSTRATIVE_STATS = [
+  { icon: "map-pin", label: "Farm location" },
+  { icon: "livestock", label: "Livestock" },
+  { icon: "calendar", label: "Vaccination due" },
+];
 
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { data, loading, error } = usePublicMapSummary();
+
+  // Real numbers under the map once the summary arrives; the original
+  // illustrative labels until then.
+  const stats = data
+    ? [
+        { icon: "users", label: "Beneficiaries", value: data.totals.beneficiaries },
+        { icon: "refresh", label: "Re-dispersals", value: data.totals.re_dispersals },
+        { icon: "calendar", label: "Vaccination due", value: data.totals.vaccinations_due },
+      ]
+    : ILLUSTRATIVE_STATS;
 
   return (
     <div className="min-h-screen">
@@ -122,68 +147,41 @@ export default function LandingPage() {
                     <Icon name="map" className="h-4 w-4 text-brand-600" />
                     Dispersal map
                   </span>
-                  <span className="rounded-pill bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-800">
-                    Illustrative
+                  <span
+                    className={`rounded-pill px-2.5 py-1 text-[11px] font-semibold ${
+                      data ? "bg-brand-100 text-brand-800" : "bg-brand-50 text-brand-800"
+                    }`}
+                  >
+                    {data ? "Live" : "Illustrative"}
                   </span>
                 </div>
 
-                <svg viewBox="0 0 400 260" className="block h-auto w-full" aria-hidden="true">
-                  <rect width="400" height="260" fill="var(--color-brand-50)" />
-                  <path
-                    d="M-10 92c70 26 130-18 200 6s130 26 220-6"
-                    fill="none"
-                    stroke="var(--color-brand-200)"
-                    strokeWidth="3"
-                    strokeDasharray="9 9"
-                  />
-                  <path
-                    d="M0 188c60-30 120 10 180-14s160-24 220 4v82H0Z"
-                    fill="var(--color-brand-100)"
-                  />
-                  <path
-                    d="M0 218c70-26 140 8 210-10s130-8 190 12v40H0Z"
-                    fill="var(--color-brand-200)"
-                  />
-
-                  <g>
-                    <circle cx="96" cy="152" r="17" fill="var(--color-brand-400)" opacity="0.3" />
-                    <path
-                      d="M96 132c-8 0-14.5 6.5-14.5 14.5 0 11 14.5 23 14.5 23s14.5-12 14.5-23c0-8-6.5-14.5-14.5-14.5Z"
-                      fill="var(--color-brand-600)"
+                {error ? (
+                  <IllustrativeMapSvg />
+                ) : (
+                  <Suspense fallback={<div className="h-64 w-full sm:h-72" aria-hidden="true" />}>
+                    <LandingMap
+                      barangays={data?.barangays ?? []}
+                      center={data?.center}
+                      loading={loading}
+                      error={error}
+                      renderFallback={() => <IllustrativeMapSvg />}
                     />
-                    <circle cx="96" cy="146" r="5" fill="#ffffff" />
-                  </g>
-
-                  <g>
-                    <circle cx="252" cy="106" r="17" fill="var(--color-earth-300)" opacity="0.35" />
-                    <path
-                      d="M252 86c-8 0-14.5 6.5-14.5 14.5 0 11 14.5 23 14.5 23s14.5-12 14.5-23c0-8-6.5-14.5-14.5-14.5Z"
-                      fill="var(--color-earth-400)"
-                    />
-                    <circle cx="252" cy="100" r="5" fill="#ffffff" />
-                  </g>
-
-                  <g>
-                    <circle cx="330" cy="176" r="15" fill="var(--color-brand-400)" opacity="0.28" />
-                    <path
-                      d="M330 158c-7 0-12.8 5.8-12.8 12.8 0 9.7 12.8 20.2 12.8 20.2s12.8-10.5 12.8-20.2c0-7-5.8-12.8-12.8-12.8Z"
-                      fill="var(--color-brand-600)"
-                    />
-                    <circle cx="330" cy="170" r="4.4" fill="#ffffff" />
-                  </g>
-                </svg>
+                  </Suspense>
+                )}
 
                 <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100">
-                  {[
-                    { icon: "map-pin", label: "Farm location" },
-                    { icon: "livestock", label: "Livestock" },
-                    { icon: "calendar", label: "Vaccination due" },
-                  ].map((item) => (
+                  {stats.map((item) => (
                     <div
                       key={item.label}
                       className="flex flex-col items-center gap-1.5 px-3 py-3.5 text-center"
                     >
                       <Icon name={item.icon} className="h-5 w-5 text-brand-600" />
+                      {item.value !== undefined && (
+                        <span className="font-display text-lg leading-none font-bold text-slate-900">
+                          {item.value.toLocaleString()}
+                        </span>
+                      )}
                       <span className="text-[11px] font-medium text-slate-500">
                         {item.label}
                       </span>
@@ -428,5 +426,61 @@ export default function LandingPage() {
         </div>
       </footer>
     </div>
+  );
+}
+
+/** The original decorative map — shown when the summary endpoint is unreachable. */
+function IllustrativeMapSvg() {
+  return (
+    <svg
+      viewBox="0 0 400 260"
+      className="block h-auto w-full"
+      aria-hidden="true"
+      data-testid="illustrative-map"
+    >
+      <rect width="400" height="260" fill="var(--color-brand-50)" />
+      <path
+        d="M-10 92c70 26 130-18 200 6s130 26 220-6"
+        fill="none"
+        stroke="var(--color-brand-200)"
+        strokeWidth="3"
+        strokeDasharray="9 9"
+      />
+      <path
+        d="M0 188c60-30 120 10 180-14s160-24 220 4v82H0Z"
+        fill="var(--color-brand-100)"
+      />
+      <path
+        d="M0 218c70-26 140 8 210-10s130-8 190 12v40H0Z"
+        fill="var(--color-brand-200)"
+      />
+
+      <g>
+        <circle cx="96" cy="152" r="17" fill="var(--color-brand-400)" opacity="0.3" />
+        <path
+          d="M96 132c-8 0-14.5 6.5-14.5 14.5 0 11 14.5 23 14.5 23s14.5-12 14.5-23c0-8-6.5-14.5-14.5-14.5Z"
+          fill="var(--color-brand-600)"
+        />
+        <circle cx="96" cy="146" r="5" fill="#ffffff" />
+      </g>
+
+      <g>
+        <circle cx="252" cy="106" r="17" fill="var(--color-earth-300)" opacity="0.35" />
+        <path
+          d="M252 86c-8 0-14.5 6.5-14.5 14.5 0 11 14.5 23 14.5 23s14.5-12 14.5-23c0-8-6.5-14.5-14.5-14.5Z"
+          fill="var(--color-earth-400)"
+        />
+        <circle cx="252" cy="100" r="5" fill="#ffffff" />
+      </g>
+
+      <g>
+        <circle cx="330" cy="176" r="15" fill="var(--color-brand-400)" opacity="0.28" />
+        <path
+          d="M330 158c-7 0-12.8 5.8-12.8 12.8 0 9.7 12.8 20.2 12.8 20.2s12.8-10.5 12.8-20.2c0-7-5.8-12.8-12.8-12.8Z"
+          fill="var(--color-brand-600)"
+        />
+        <circle cx="330" cy="170" r="4.4" fill="#ffffff" />
+      </g>
+    </svg>
   );
 }

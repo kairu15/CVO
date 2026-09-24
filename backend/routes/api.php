@@ -11,6 +11,7 @@ use App\Http\Controllers\FieldVisitController;
 use App\Http\Controllers\HealthRecordController;
 use App\Http\Controllers\MonitoringRecordController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\PublicMapController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SettingsController;
@@ -45,6 +46,13 @@ Route::prefix('v1')->middleware('throttle:6,1')->group(function (): void {
     Route::get('/geocode', [BeneficiaryController::class, 'geocode'])
         ->middleware('throttle:30,1')
         ->name('api.geocode');
+
+    // Landing page map — aggregated program statistics only (per-barangay
+    // counts on fixed barangay centroids and program totals). No names, no
+    // exact farm coordinates, no session required. Cached server-side.
+    Route::get('/public/map-summary', [PublicMapController::class, 'summary'])
+        ->middleware('throttle:30,1')
+        ->name('api.public.map-summary');
 });
 
 // Authenticated routes

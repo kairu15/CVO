@@ -27,7 +27,7 @@ class BeneficiaryFactory extends Factory
         'Daw-Kal-Vil' => [9.5203, 122.8412],
         'Dawis' => [9.4712, 122.8319],
         'Cansumalig' => [9.3834, 122.8021],
-        'Tayawan' => [9.3248, 122.7905],
+        'Tayawan' => [9.4996, 122.7398],
     ];
 
     public function definition(): array

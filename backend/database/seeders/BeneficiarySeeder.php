@@ -34,7 +34,6 @@ class BeneficiarySeeder extends Seeder
             ['name_of_farmer' => 'Dave Jacobi Sr.', 'address' => 'Daw-Kal-Vil', 'animal_type' => 'Goat', 'sex' => 'M', 'farmer_id' => User::where('email', 'ecorwin@example.com')->value('id') ?? $farmer->id],
             ['name_of_farmer' => 'Miss Serenity Kozey Jr.', 'address' => 'Dawis', 'animal_type' => 'Carabao', 'sex' => 'F', 'farmer_id' => User::where('email', 'nrenner@example.net')->value('id') ?? $farmer->id],
             ['name_of_farmer' => 'Dr. Hector Ebert', 'address' => 'Cansumalig', 'animal_type' => 'Cattle', 'sex' => 'M', 'farmer_id' => User::where('email', 'shanie94@example.com')->value('id') ?? $farmer->id],
-            ['name_of_farmer' => 'Vita Nicolas', 'address' => 'Tayawan', 'animal_type' => 'Boar', 'sex' => 'M', 'farmer_id' => User::where('email', 'jonathon90@example.net')->value('id') ?? $farmer->id],
         ];
 
         foreach ($demo as $entry) {

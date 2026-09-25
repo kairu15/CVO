@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { site } from "../config/site";
 import { ButtonSpinner } from "./LoadingSpinner";
@@ -13,6 +14,7 @@ import { PasswordToggle, TextField } from "./TextField";
  */
 export function LoginForm({ idPrefix = "login" }) {
   const { login } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -24,7 +26,6 @@ export function LoginForm({ idPrefix = "login" }) {
     password: "",
   }));
   const [errors, setErrors] = useState({});
-  const [formError, setFormError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showResetNote, setShowResetNote] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -50,7 +51,6 @@ export function LoginForm({ idPrefix = "login" }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setFormError(null);
 
     const invalid = validate();
     if (Object.keys(invalid).length > 0) {
@@ -61,12 +61,15 @@ export function LoginForm({ idPrefix = "login" }) {
     setSubmitting(true);
     try {
       await login(form.identifier.trim(), form.password);
+      // Global toast survives the navigation, so the confirmation is still
+      // on screen when the dashboard renders.
+      toast.success("Signed in successfully.");
       // /dashboard resolves to the signed-in user's own role dashboard.
       navigate(location.state?.from?.pathname ?? "/dashboard", { replace: true });
     } catch (error) {
       const fields = getFieldErrors(error);
       if (fields) setErrors(fields);
-      else setFormError(getErrorMessage(error));
+      else toast.error(getErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
@@ -80,15 +83,6 @@ export function LoginForm({ idPrefix = "login" }) {
       <p className="mt-1.5 text-sm text-slate-500">
         Use the account issued by the {site.office}.
       </p>
-
-      {formError && (
-        <div
-          role="alert"
-          className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700"
-        >
-          {formError}
-        </div>
-      )}
 
       <div className="mt-6 space-y-4">
         <TextField

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { getErrorMessage, getFieldErrors } from "../api/client";
+import { useToast } from "../context/ToastContext";
+import { getFieldErrors } from "../api/client";
 import { ButtonSpinner } from "./LoadingSpinner";
-import { Icon } from "./Icons";
 import { Skeleton } from "./Skeleton";
 import { PasswordToggle, TextField } from "./TextField";
 import { useBarangays } from "../hooks/useBarangays";
@@ -30,6 +30,7 @@ const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
  */
 export function RegisterForm({ idPrefix = "register" }) {
   const { register } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const [barangays, barangaysStatus] = useBarangays();
 
@@ -49,7 +50,6 @@ export function RegisterForm({ idPrefix = "register" }) {
     sex: "F",
   });
   const [errors, setErrors] = useState({});
-  const [formError, setFormError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -120,7 +120,6 @@ export function RegisterForm({ idPrefix = "register" }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setFormError(null);
 
     const invalid = validate();
     if (Object.keys(invalid).length > 0) {
@@ -141,8 +140,10 @@ export function RegisterForm({ idPrefix = "register" }) {
         animal_type: form.animal_type.trim(),
       });
 
-      // 2xx received — success is real, never optimistic.
+      // 2xx received — success is real, never optimistic. The toast is
+      // global, so it stays visible across the redirect to sign-in.
       setSucceeded(true);
+      toast.success("Account created successfully. Redirecting you to sign in…");
       redirectTimer.current = window.setTimeout(() => {
         // Hand the identifier to the sign-in form via route state so the
         // farmer doesn't retype it. /login's GuestRoute renders LoginForm,
@@ -154,8 +155,12 @@ export function RegisterForm({ idPrefix = "register" }) {
       }, REDIRECT_DELAY_MS);
     } catch (error) {
       const fields = getFieldErrors(error);
-      if (fields) setErrors(fields);
-      else setFormError(getErrorMessage(error));
+      if (fields) {
+        setErrors(fields);
+      } else {
+        // No field-level guidance from the API — global toast.
+        toast.error(getErrorMessage(error));
+      }
 
       // Standard practice on a failed attempt: drop the passwords but keep
       // every other field, so the farmer only fixes what the API flagged.
@@ -173,27 +178,6 @@ export function RegisterForm({ idPrefix = "register" }) {
       <p className="mt-1.5 text-sm text-slate-500">
         For farmers and beneficiaries of the {site.office} dispersal program.
       </p>
-
-      {succeeded && (
-        <div
-          role="status"
-          className="mt-4 flex items-start gap-2.5 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-3 text-sm text-brand-900"
-        >
-          <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" />
-          <span>
-            Account created successfully. Redirecting you to sign in…
-          </span>
-        </div>
-      )}
-
-      {formError && (
-        <div
-          role="alert"
-          className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700"
-        >
-          {formError}
-        </div>
-      )}
 
       <div className="mt-5 space-y-3">
         <TextField

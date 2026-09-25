@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fieldVisitsApi } from "../api/fieldVisitsApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
+import { useToast } from "../context/ToastContext";
 import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
@@ -47,8 +48,8 @@ export function FieldVisitFormModal({
   const [coords, setCoords] = useState(null); // [lat, lng]
   const [locating, setLocating] = useState(false);
   const [locationNote, setLocationNote] = useState(null);
+  const toast = useToast();
   const [errors, setErrors] = useState({});
-  const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const beneficiary = useMemo(
@@ -82,7 +83,6 @@ export function FieldVisitFormModal({
 
     setLocationNote(null);
     setErrors({});
-    setFormError(null);
   }, [open, visit, beneficiaries]);
 
   function update(field) {
@@ -122,7 +122,6 @@ export function FieldVisitFormModal({
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setFormError(null);
 
     if (!editing && !beneficiaryId) {
       setErrors((prev) => ({ ...prev, beneficiary_id: "Choose the beneficiary visited." }));
@@ -154,12 +153,13 @@ export function FieldVisitFormModal({
         await fieldVisitsApi.create({ ...payload, beneficiary_id: Number(beneficiaryId) });
       }
 
+      toast.success(editing ? "Field visit updated." : "Field visit recorded.");
       onSaved?.();
       onClose();
     } catch (error) {
       const fields = getFieldErrors(error);
       if (fields) setErrors(fields);
-      else setFormError(getErrorMessage(error));
+      else toast.error(getErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -193,15 +193,6 @@ export function FieldVisitFormModal({
             </p>
           )}
         </div>
-
-        {formError && (
-          <div
-            role="alert"
-            className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700"
-          >
-            {formError}
-          </div>
-        )}
 
         {!editing && (
           <div className="mt-4">

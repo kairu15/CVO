@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import HealthRecordsPage from "../pages/HealthRecordsPage";
 import { healthRecordsApi } from "../api/healthRecordsApi";
+import { ToastProvider } from "../context/ToastContext";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 
 vi.mock("../api/healthRecordsApi", () => ({
@@ -62,7 +63,9 @@ const RECORDS = [
 function renderPage() {
   return render(
     <MemoryRouter>
-      <HealthRecordsPage roleKey="doctor" />
+      <ToastProvider>
+        <HealthRecordsPage roleKey="doctor" />
+      </ToastProvider>
     </MemoryRouter>,
   );
 }

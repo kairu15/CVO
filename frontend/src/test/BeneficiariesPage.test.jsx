@@ -1,9 +1,10 @@
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import BeneficiariesPage from "../pages/BeneficiariesPage";
 import { adminApi } from "../api/adminApi";
+import { ToastProvider } from "../context/ToastContext";
 
 vi.mock("../api/adminApi", () => ({
   adminApi: {
@@ -60,7 +61,9 @@ function mockList(beneficiaries = BENEFICIARIES) {
 function renderPage() {
   return render(
     <MemoryRouter>
-      <BeneficiariesPage />
+      <ToastProvider>
+        <BeneficiariesPage />
+      </ToastProvider>
     </MemoryRouter>,
   );
 }
@@ -93,6 +96,40 @@ describe("BeneficiariesPage search", () => {
       const last = calls[calls.length - 1]?.[0];
       expect(last?.search).toBe("Nena");
     });
+  });
+});
+
+describe("BeneficiariesPage detail window", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockList();
+  });
+
+  it("opens a floating details window when the farmer's name is clicked", async () => {
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    expect(screen.queryByRole("dialog", { name: "Beneficiary details" })).not.toBeInTheDocument();
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Aling Nena" }));
+    });
+
+    const dialog = screen.getByRole("dialog", { name: "Beneficiary details" });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText("Banay Banay")).toBeInTheDocument();
+    expect(within(dialog).getByText("Carabao")).toBeInTheDocument();
+    expect(within(dialog).getByText("Unassigned")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: /View dispersal lineage/ })).toHaveAttribute(
+      "href",
+      "/dashboard/admin/beneficiaries/11/lineage",
+    );
+
+    // Closes again without leaving anything behind.
+    await act(async () => {
+      await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    });
+    expect(screen.queryByRole("dialog", { name: "Beneficiary details" })).not.toBeInTheDocument();
   });
 });
 

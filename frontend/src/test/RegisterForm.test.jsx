@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../context/AuthContext";
+import { ToastProvider } from "../context/ToastContext";
 import { authApi } from "../api/authApi";
 import { RegisterForm } from "../components/RegisterForm";
 
@@ -41,7 +42,9 @@ function renderForm() {
   return render(
     <MemoryRouter>
       <AuthProvider>
-        <RegisterForm />
+        <ToastProvider>
+          <RegisterForm />
+        </ToastProvider>
       </AuthProvider>
     </MemoryRouter>,
   );
@@ -63,10 +66,12 @@ function renderFormWithLoginProbe() {
   return render(
     <MemoryRouter initialEntries={["/register"]}>
       <AuthProvider>
-        <Routes>
-          <Route path="/register" element={<RegisterForm />} />
-          <Route path="/login" element={<LoginProbe />} />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path="/register" element={<RegisterForm />} />
+            <Route path="/login" element={<LoginProbe />} />
+          </Routes>
+        </ToastProvider>
       </AuthProvider>
     </MemoryRouter>,
   );
@@ -160,10 +165,11 @@ describe("RegisterForm location cascade", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
 
-    // The banner renders only after the real 2xx — authApi.register has
-    // resolved at this point, never before.
-    const banner = await screen.findByRole("status");
-    expect(banner).toHaveTextContent(/Account created successfully/);
+    // The toast renders only after the real 2xx — authApi.register has
+    // resolved at this point, never before. Success feedback is now global,
+    // so it survives the redirect to sign-in.
+    const toast = await screen.findByRole("status");
+    expect(toast).toHaveTextContent(/Account created successfully/);
     expect(screen.getByRole("button", { name: "Create account" })).toBeDisabled();
 
     // Still on the register form during the read window.
@@ -194,7 +200,9 @@ describe("RegisterForm location cascade", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
 
-    // The API's own field message surfaces, not a generic error.
+    // The API's own field message surfaces next to the email field — field-
+    // level guidance stays inline; only messages without a field go to the
+    // global toast.
     expect(
       await screen.findByText("That email is already registered."),
     ).toBeInTheDocument();

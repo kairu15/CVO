@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../api/adminApi";
 import { getErrorMessage } from "../api/client";
 import { Modal } from "../components/Modal";
+import { BeneficiaryDetailModal } from "../components/BeneficiaryDetailModal";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useToast } from "../context/ToastContext";
 
 /**
  * Admin "Beneficiaries" screen — the full directory with per-row and bulk
@@ -18,6 +20,7 @@ import { useDebouncedValue } from "../hooks/useDebouncedValue";
  * partial failures are surfaced per row.
  */
 export default function BeneficiariesPage() {
+  const toast = useToast();
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +32,9 @@ export default function BeneficiariesPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkTechnician, setBulkTechnician] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // The floating details window — the clicked row itself, so opening it
+  // never fires another request (the list payload carries every field).
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -92,32 +98,37 @@ export default function BeneficiariesPage() {
     });
   }
 
+  const [detail, setDetail] = useState(null);
+
   async function saveBulk() {
     setSaving(true);
-    setError(null);
 
     try {
       const technicianId = bulkTechnician === "" ? null : Number(bulkTechnician);
       const result = await adminApi.bulkAssignTechnician([...selected], technicianId);
 
       const failedIds = new Set(result?.failed_ids ?? []);
-      let partialMessage = null;
-
-      if (failedIds.size > 0) {
-        const failedNames = beneficiaries
-          .filter((b) => failedIds.has(b.id))
-          .map((b) => b.name_of_farmer);
-        partialMessage = `Assigned ${result.updated} of ${result.updated + failedIds.size} beneficiaries, but ${failedIds.size} failed: ${failedNames.join(", ")}`;
-      }
 
       setSelected(new Set());
       setBulkOpen(false);
       await load();
 
-      // Set after load() so the refresh does not clear the message.
-      if (partialMessage) setError(partialMessage);
+      // Action feedback is a global toast (fires after the refresh so it is
+      // not cleared by it); page-level load failures stay inline.
+      if (failedIds.size > 0) {
+        const failedNames = beneficiaries
+          .filter((b) => failedIds.has(b.id))
+          .map((b) => b.name_of_farmer);
+        toast.error(
+          `Assigned ${result.updated} of ${result.updated + failedIds.size} beneficiaries, but ${failedIds.size} failed: ${failedNames.join(", ")}`,
+        );
+      } else {
+        toast.success(
+          `Technician assigned to ${result.updated} ${result.updated === 1 ? "beneficiary" : "beneficiaries"}.`,
+        );
+      }
     } catch (err) {
-      setError(getErrorMessage(err));
+      toast.error(getErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -219,8 +230,15 @@ export default function BeneficiariesPage() {
                             onChange={() => toggle(beneficiary.id)}
                           />
                         </td>
-                        <td className="px-4 py-2.5 font-medium whitespace-nowrap text-slate-900">
-                          {beneficiary.name_of_farmer}
+                        <td className="px-4 py-2.5 font-medium whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => setDetail(beneficiary)}
+                            title="View details"
+                            className="text-slate-900 underline-offset-2 transition hover:text-brand-800 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                          >
+                            {beneficiary.name_of_farmer}
+                          </button>
                         </td>
                         <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
                           {beneficiary.animal_type}
@@ -242,6 +260,12 @@ export default function BeneficiariesPage() {
           </div>
         )}
       </section>
+
+      <BeneficiaryDetailModal
+        beneficiary={detail}
+        onClose={() => setDetail(null)}
+        technicianName={technicianName}
+      />
 
       <Modal
         open={bulkOpen}

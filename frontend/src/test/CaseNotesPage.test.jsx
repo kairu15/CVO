@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import CaseNotesPage from "../pages/CaseNotesPage";
 import { caseNotesApi } from "../api/caseNotesApi";
+import { ToastProvider } from "../context/ToastContext";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 
 vi.mock("../api/caseNotesApi", () => ({
@@ -54,7 +55,9 @@ const NOTES = [
 function renderPage() {
   return render(
     <MemoryRouter>
-      <CaseNotesPage roleKey="doctor" />
+      <ToastProvider>
+        <CaseNotesPage roleKey="doctor" />
+      </ToastProvider>
     </MemoryRouter>,
   );
 }

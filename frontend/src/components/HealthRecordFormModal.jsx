@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { healthRecordsApi } from "../api/healthRecordsApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
+import { useToast } from "../context/ToastContext";
 import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
@@ -45,8 +46,8 @@ export function HealthRecordFormModal({
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [beneficiaryId, setBeneficiaryId] = useState("");
+  const toast = useToast();
   const [errors, setErrors] = useState({});
-  const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const beneficiary = useMemo(
@@ -75,7 +76,6 @@ export function HealthRecordFormModal({
     }
 
     setErrors({});
-    setFormError(null);
   }, [open, record, beneficiaries]);
 
   function update(field) {
@@ -88,7 +88,6 @@ export function HealthRecordFormModal({
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setFormError(null);
 
     if (!editing && !beneficiaryId) {
       setErrors((prev) => ({ ...prev, beneficiary_id: "Choose the animal this record is about." }));
@@ -121,12 +120,13 @@ export function HealthRecordFormModal({
         await healthRecordsApi.create({ ...payload, beneficiary_id: Number(beneficiaryId) });
       }
 
+      toast.success(editing ? "Health record updated." : "Health record created.");
       onSaved?.();
       onClose();
     } catch (error) {
       const fields = getFieldErrors(error);
       if (fields) setErrors(fields);
-      else setFormError(getErrorMessage(error));
+      else toast.error(getErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -164,15 +164,6 @@ export function HealthRecordFormModal({
             </p>
           )}
         </div>
-
-        {formError && (
-          <div
-            role="alert"
-            className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700"
-          >
-            {formError}
-          </div>
-        )}
 
         {/* A record is about one animal; moving it is not allowed, so the
             picker is create-only (see UpdateHealthRecordRequest). */}

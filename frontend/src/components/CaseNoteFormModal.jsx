@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { caseNotesApi } from "../api/caseNotesApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
+import { useToast } from "../context/ToastContext";
 import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
@@ -30,8 +31,8 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [beneficiaryId, setBeneficiaryId] = useState("");
+  const toast = useToast();
   const [errors, setErrors] = useState({});
-  const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const beneficiary = useMemo(
@@ -54,7 +55,6 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
     }
 
     setErrors({});
-    setFormError(null);
   }, [open, note, beneficiaries]);
 
   function update(field) {
@@ -67,7 +67,6 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setFormError(null);
 
     if (!editing && !beneficiaryId) {
       setErrors((prev) => ({ ...prev, beneficiary_id: "Choose the animal this note is about." }));
@@ -95,12 +94,13 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
         await caseNotesApi.create({ ...payload, beneficiary_id: Number(beneficiaryId) });
       }
 
+      toast.success(editing ? "Case note updated." : "Case note created.");
       onSaved?.();
       onClose();
     } catch (error) {
       const fields = getFieldErrors(error);
       if (fields) setErrors(fields);
-      else setFormError(getErrorMessage(error));
+      else toast.error(getErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -134,15 +134,6 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
             </p>
           )}
         </div>
-
-        {formError && (
-          <div
-            role="alert"
-            className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700"
-          >
-            {formError}
-          </div>
-        )}
 
         {!editing && (
           <div className="mt-4">

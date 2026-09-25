@@ -21,7 +21,7 @@ import { useBarangays } from "../hooks/useBarangays";
  */
 export default function DispersalMapPage({ roleKey }) {
   const { user } = useAuth();
-  const barangays = useBarangays();
+  const [barangays] = useBarangays();
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

@@ -4,6 +4,7 @@ import { dispersalApi } from "../api/dispersalApi";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
+import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
@@ -129,11 +130,7 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
 
       <section className="card overflow-hidden">
         {loading ? (
-          <div className="space-y-3 p-6">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="h-12 animate-pulse rounded-xl bg-slate-100" />
-            ))}
-          </div>
+          <SkeletonList rows={4} rowClassName="h-12" />
         ) : events.length === 0 ? (
           <EmptyState
             title="No dispersal records yet"

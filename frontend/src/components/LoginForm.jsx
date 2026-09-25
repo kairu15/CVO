@@ -16,7 +16,13 @@ export function LoginForm({ idPrefix = "login" }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [form, setForm] = useState({ identifier: "", password: "" });
+  // Route state prefill: the register form hands over the just-registered
+  // email so the farmer doesn't retype it. Falls back to the redirect-target
+  // capture used by ProtectedRoute.
+  const [form, setForm] = useState(() => ({
+    identifier: location.state?.prefill ?? "",
+    password: "",
+  }));
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -69,10 +75,10 @@ export function LoginForm({ idPrefix = "login" }) {
   return (
     <form onSubmit={handleSubmit} noValidate className="w-full">
       <h2 className="font-display text-2xl font-bold text-slate-900">
-        Welcome back
+        Sign in
       </h2>
       <p className="mt-1.5 text-sm text-slate-500">
-        Sign in with the account issued by the {site.office}.
+        Use the account issued by the {site.office}.
       </p>
 
       {formError && (
@@ -90,7 +96,7 @@ export function LoginForm({ idPrefix = "login" }) {
           label="Username or email"
           type="text"
           autoComplete="username"
-          placeholder="juan_dela or juan@example.com"
+          placeholder="Enter your username or email"
           value={form.identifier}
           onChange={update("identifier")}
           error={errors.identifier}
@@ -126,9 +132,7 @@ export function LoginForm({ idPrefix = "login" }) {
 
       {showResetNote && (
         <p className="mt-3 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-2.5 text-xs text-brand-900">
-          Password resets are handled by the CVO administrator for security
-          reasons. Contact {site.email} or call {site.phone} to request a new
-          password.
+          {site.passwordResetPolicy}
         </p>
       )}
 

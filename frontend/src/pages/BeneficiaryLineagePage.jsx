@@ -4,7 +4,7 @@ import { beneficiariesApi } from "../api/beneficiariesApi";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { InlineAlert } from "../components/InlineAlert";
-import { LoadingSpinner } from "../components/LoadingSpinner";
+import { SkeletonDetail, SkeletonList } from "../components/Skeleton";
 import { Icon } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import { dashboardPathFor } from "../config/roles";
@@ -31,7 +31,15 @@ export default function BeneficiaryLineagePage() {
     try {
       setLineage(await beneficiariesApi.lineage(id));
     } catch (err) {
-      setError(getErrorMessage(err));
+      // A 404 here means the beneficiary is gone or out of scope for this
+      // role — Laravel's bare 404 body carries no message, so axios's
+      // default "Request failed with status code 404" would surface and
+      // say nothing the reader can act on.
+      setError(
+        err.response?.status === 404
+          ? "This beneficiary could not be found. It may have been removed, or your account does not have access to it."
+          : getErrorMessage(err),
+      );
     } finally {
       setLoading(false);
     }
@@ -42,9 +50,17 @@ export default function BeneficiaryLineagePage() {
   }, [load]);
 
   if (loading) {
+    // Detail-shaped skeleton — medallion + text lines for the header card,
+    // row blocks for the lineage list — mirrors the loaded layout so the
+    // swap doesn't reflow (and replaces the old bare spinner).
     return (
-      <div className="grid place-items-center py-24">
-        <LoadingSpinner />
+      <div className="space-y-5">
+        <div className="card p-6">
+          <SkeletonDetail />
+        </div>
+        <div className="card overflow-hidden">
+          <SkeletonList rows={3} rowClassName="h-14" />
+        </div>
       </div>
     );
   }

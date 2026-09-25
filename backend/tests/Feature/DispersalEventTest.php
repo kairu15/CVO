@@ -170,13 +170,28 @@ class DispersalEventTest extends TestCase
         $this->assertCount(0, $response->json('data.descendant_events'));
     }
 
-    public function test_lineage_is_404_for_beneficiary_without_dispersal(): void
+    public function test_lineage_answers_an_empty_chain_for_beneficiary_without_dispersal(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
         $beneficiary = Beneficiary::factory()->create();
 
-        $this->actingAs($admin)
+        // Registered but no dispersal recorded yet — a normal state, not an
+        // error: the client shows its "No dispersal recorded" empty state.
+        $response = $this->actingAs($admin)
             ->getJson("/api/v1/beneficiaries/{$beneficiary->id}/lineage")
+            ->assertOk()
+            ->assertJsonPath('data.beneficiary.id', $beneficiary->id);
+
+        $this->assertSame([], $response->json('data.chain'));
+        $this->assertSame([], $response->json('data.descendant_events'));
+    }
+
+    public function test_lineage_is_404_for_a_missing_beneficiary(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/beneficiaries/999999/lineage')
             ->assertNotFound();
     }
 

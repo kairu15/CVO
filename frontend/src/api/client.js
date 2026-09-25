@@ -103,5 +103,15 @@ export function getErrorMessage(error) {
     const first = Object.values(error.response.data.errors)[0];
     if (Array.isArray(first) && first.length > 0) return first[0];
   }
+
+  // Bare statuses (Laravel's abort() bodies carry no message) must not leak
+  // axios internals like "Request failed with status code 404".
+  if (error.response?.status === 404) {
+    return "The record you're looking for could not be found. It may have been removed, or your account does not have access to it.";
+  }
+  if (error.response?.status === 403) {
+    return "Your account does not have permission to do that.";
+  }
+
   return error.message ?? "Something went wrong";
 }

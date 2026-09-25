@@ -6,6 +6,7 @@ import { CaseNoteFormModal } from "../components/CaseNoteFormModal";
 import { Modal } from "../components/Modal";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { EmptyState } from "../components/EmptyState";
+import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
@@ -137,10 +138,8 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
       )}
 
       {loading ? (
-        <div className="card space-y-3 p-6">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-20 animate-pulse rounded-xl bg-slate-100" />
-          ))}
+        <div className="card overflow-hidden">
+          <SkeletonList rows={3} rowClassName="h-20" />
         </div>
       ) : notes.length === 0 ? (
         <section className="card">

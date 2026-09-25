@@ -91,7 +91,7 @@ describe("AuthContext", () => {
     await waitFor(() => expect(screen.getByTestId("user")).toHaveTextContent("Dr. Maria Santos"));
   });
 
-  it("register stores the returned user", async () => {
+  it("register does not sign the new account in", async () => {
     authApi.authApi.fetchUser.mockRejectedValue(new Error("guest"));
     authApi.authApi.register.mockResolvedValue({ id: 3, name: "New Farmer" });
 
@@ -107,7 +107,12 @@ describe("AuthContext", () => {
       await userEvent.click(screen.getByRole("button", { name: "register" }));
     });
 
-    await waitFor(() => expect(screen.getByTestId("user")).toHaveTextContent("New Farmer"));
+    // Registration ends on the sign-in panel (the register form hands the
+    // email over via route state), so no session is established here — the
+    // payload must still reach the API.
+    await waitFor(() => expect(authApi.authApi.register).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("user")).toHaveTextContent("none");
+    expect(screen.getByTestId("authed")).toHaveTextContent("false");
   });
 
   it("logout clears the user even if the API call fails", async () => {

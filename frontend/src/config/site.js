@@ -5,6 +5,12 @@
  * component needs editing. The contact details below are placeholders — swap
  * them for the real office numbers.
  */
+
+// Defined once so every surface that mentions them (the site object below,
+// the shared password-reset policy) stays in sync.
+const CONTACT_EMAIL = "cvo@example.gov.ph";
+const CONTACT_PHONE = "(035) 000-0000";
+
 export const site = {
   systemName: "Geo-Tagging of Livestock and Poultry Dispersal and Re-Dispersal",
   shortName: "CVO Geo-Tagging",
@@ -12,8 +18,8 @@ export const site = {
   city: "Bayawan City",
   province: "Negros Oriental",
   address: "City Veterinary Office, City Hall Compound, Bayawan City, Negros Oriental 6221",
-  email: "cvo@example.gov.ph",
-  phone: "(035) 000-0000",
+  email: CONTACT_EMAIL,
+  phone: CONTACT_PHONE,
   hours: "Monday to Friday, 8:00 AM – 5:00 PM",
   tagline:
     "Tracking every animal the City Veterinary Office disperses — from the first geo-tag to every re-dispersal — so livestock and poultry support reaches the right farmer.",
@@ -22,6 +28,13 @@ export const site = {
     { label: "Official website", href: "#", icon: "globe" },
     { label: "Email the office", href: "#", icon: "mail" },
   ],
+
+  /**
+   * The password-reset policy, shared verbatim by the sign-in form's
+   * "Forgot password?" note and the farmer Support page — defined once so
+   * the two screens cannot drift apart.
+   */
+  passwordResetPolicy: `Password resets are handled by the CVO administrator for security reasons. Contact the office at ${CONTACT_EMAIL} or ${CONTACT_PHONE} to request a new password.`,
 };
 
 /** Top navigation for the landing page — all anchors into page sections. */

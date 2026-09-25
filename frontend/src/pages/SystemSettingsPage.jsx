@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { settingsApi } from "../api/settingsApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { InlineAlert } from "../components/InlineAlert";
+import { SkeletonList } from "../components/Skeleton";
 import { Icon } from "../components/Icons";
 import { getRole } from "../config/roles";
 
@@ -128,10 +129,8 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
       {notice && <InlineAlert tone="success" message={notice} onDismiss={() => setNotice(null)} />}
 
       {loading ? (
-        <section className="card space-y-3 p-6">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-16 animate-pulse rounded-xl bg-slate-100" />
-          ))}
+        <section className="card overflow-hidden">
+          <SkeletonList rows={3} rowClassName="h-16" />
         </section>
       ) : !data ? (
         <section className="card">

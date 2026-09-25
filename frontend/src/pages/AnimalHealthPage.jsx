@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { animalHealthApi } from "../api/animalHealthApi";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
+import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 import { getRole } from "../config/roles";
@@ -124,11 +125,7 @@ export default function AnimalHealthPage({ roleKey = "doctor" }) {
 
       <section className="card overflow-hidden">
         {loading ? (
-          <div className="space-y-3 p-6">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="h-12 animate-pulse rounded-xl bg-slate-100" />
-            ))}
-          </div>
+          <SkeletonList rows={4} rowClassName="h-12" />
         ) : rows.length === 0 ? (
           <EmptyState
             title={attentionOnly ? "Nothing needs attention" : "No animals yet"}

@@ -98,8 +98,11 @@ class DispersalEventService
      * most once, so each event can appear only once, and a visited guard
      * protects against corrupted data.
      *
-     * Returns null when the beneficiary is not visible to this user or has
-     * no dispersal record at all.
+     * Returns null only when the beneficiary is not visible to this user
+     * (missing or out of scope — the controller answers 404). A beneficiary
+     * with no dispersal record yet is a normal state, answered with an
+     * empty chain so the client can show its "no dispersal recorded"
+     * empty state instead of an error.
      *
      * @return array{chain: list<array<string, mixed>>, events: list<DispersalEvent>, descendant_events: list<array<string, mixed>>, current: Beneficiary}|null
      */
@@ -118,7 +121,14 @@ class DispersalEventService
         $entry = $this->deliveryEventFor($beneficiaryId);
 
         if (! $entry) {
-            return null;
+            // Registered, visible, but staff have not recorded the dispersal
+            // that delivered its animal — empty chain, not an error.
+            return [
+                'chain' => [],
+                'events' => [],
+                'descendant_events' => [],
+                'current' => $current,
+            ];
         }
 
         // Walk backwards to the root: follow the parent beneficiary's own

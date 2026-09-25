@@ -121,12 +121,10 @@ export default function SupportPage() {
             {roleLabel(user?.role)}
           </p>
 
-          {/* The same policy the login form states, kept in one place so the
-              two screens cannot contradict each other. */}
+          {/* The same policy the sign-in form states, kept in one place so
+              the two screens cannot contradict each other. */}
           <p className="mt-4 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-3 text-xs text-brand-900">
-            Password resets are handled by the CVO administrator for security
-            reasons. Contact the office at {site.email} or {site.phone} to
-            request a new password.
+            {site.passwordResetPolicy}
           </p>
         </section>
       </div>

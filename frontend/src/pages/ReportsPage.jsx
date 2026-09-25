@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { reportsApi } from "../api/reportsApi";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
+import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 import { getRole } from "../config/roles";
@@ -133,10 +134,8 @@ export default function ReportsPage({ roleKey = "admin" }) {
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
 
       {loading ? (
-        <section className="card space-y-3 p-6">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-16 animate-pulse rounded-xl bg-slate-100" />
-          ))}
+        <section className="card overflow-hidden">
+          <SkeletonList rows={3} rowClassName="h-16" />
         </section>
       ) : !data ? (
         <section className="card">

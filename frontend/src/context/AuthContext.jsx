@@ -33,8 +33,13 @@ export function AuthProvider({ children }) {
     setUser(await authApi.login({ email, password }));
   }, []);
 
+  /**
+   * Register a new farmer. Deliberately does NOT sign the new account in:
+   * self-registration ends on the sign-in panel (the register form hands the
+   * email over via route state), so no session is established here.
+   */
   const register = useCallback(async (payload) => {
-    setUser(await authApi.register(payload));
+    await authApi.register(payload);
   }, []);
 
   const logout = useCallback(async () => {

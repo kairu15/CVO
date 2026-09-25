@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { vaccinationApi } from "../api/vaccinationApi";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
+import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 import { getRole } from "../config/roles";
@@ -134,11 +135,7 @@ export default function VaccinationSchedulePage({ roleKey = "doctor" }) {
 
       <section className="card overflow-hidden">
         {loading ? (
-          <div className="space-y-3 p-6">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="h-10 animate-pulse rounded-xl bg-slate-100" />
-            ))}
-          </div>
+          <SkeletonList rows={4} />
         ) : rows.length === 0 ? (
           <EmptyState
             title="Nothing due"

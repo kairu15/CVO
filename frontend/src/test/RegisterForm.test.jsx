@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../context/AuthContext";
 import { authApi } from "../api/authApi";
@@ -47,6 +47,31 @@ function renderForm() {
   );
 }
 
+/**
+ * Renders the form inside a Routes tree with a probe at /login, so the
+ * success redirect (and the identifier handed over via route state) can be
+ * asserted without mocking the router.
+ */
+function renderFormWithLoginProbe() {
+  function LoginProbe() {
+    const location = useLocation();
+    return (
+      <div data-testid="login-probe" data-prefill={location.state?.prefill ?? ""} />
+    );
+  }
+
+  return render(
+    <MemoryRouter initialEntries={["/register"]}>
+      <AuthProvider>
+        <Routes>
+          <Route path="/register" element={<RegisterForm />} />
+          <Route path="/login" element={<LoginProbe />} />
+        </Routes>
+      </AuthProvider>
+    </MemoryRouter>,
+  );
+}
+
 async function fillAccountDetails() {
   await userEvent.type(screen.getByLabelText("Full name"), "Juan Dela Cruz");
   await userEvent.type(screen.getByLabelText("Email address"), "juan@example.com");
@@ -87,7 +112,7 @@ describe("RegisterForm location cascade", () => {
     await screen.findByRole("option", { name: "Dawis" });
     await userEvent.selectOptions(screen.getByLabelText("Barangay"), "Dawis");
     await userEvent.selectOptions(
-      screen.getByLabelText("Type of Animal dispersed"),
+      screen.getByLabelText("Type of animal dispersed"),
       "Carabao",
     );
 
@@ -116,5 +141,71 @@ describe("RegisterForm location cascade", () => {
       screen.queryByRole("button", { name: /Use my location|Locating/ }),
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Barangay")).toBeInTheDocument();
+  });
+
+  // -------------------------------------------------------------------------
+  // Success feedback → delayed redirect to sign-in with the identifier
+  // -------------------------------------------------------------------------
+
+  it("shows the success banner and redirects to /login with the email prefilled", async () => {
+    renderFormWithLoginProbe();
+
+    await fillAccountDetails();
+    await screen.findByRole("option", { name: "Dawis" });
+    await userEvent.selectOptions(screen.getByLabelText("Barangay"), "Dawis");
+    await userEvent.selectOptions(
+      screen.getByLabelText("Type of animal dispersed"),
+      "Carabao",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    // The banner renders only after the real 2xx — authApi.register has
+    // resolved at this point, never before.
+    const banner = await screen.findByRole("status");
+    expect(banner).toHaveTextContent(/Account created successfully/);
+    expect(screen.getByRole("button", { name: "Create account" })).toBeDisabled();
+
+    // Still on the register form during the read window.
+    expect(screen.queryByTestId("login-probe")).not.toBeInTheDocument();
+
+    // Then the delayed redirect lands on sign-in, identifier handed over.
+    const probe = await screen.findByTestId(
+      "login-probe",
+      {},
+      { timeout: 3000 },
+    );
+    expect(probe.dataset.prefill).toBe("juan@example.com");
+  });
+
+  it("stays on the form on a 422, keeps fields, clears passwords", async () => {
+    authApi.register.mockRejectedValueOnce({
+      response: {
+        status: 422,
+        data: { errors: { email: ["That email is already registered."] } },
+      },
+    });
+
+    renderForm();
+
+    await fillAccountDetails();
+    await screen.findByRole("option", { name: "Dawis" });
+    await userEvent.selectOptions(screen.getByLabelText("Barangay"), "Dawis");
+
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    // The API's own field message surfaces, not a generic error.
+    expect(
+      await screen.findByText("That email is already registered."),
+    ).toBeInTheDocument();
+
+    // Correctable input survives; passwords are dropped.
+    expect(screen.getByLabelText("Full name")).toHaveValue("Juan Dela Cruz");
+    expect(screen.getByLabelText("Barangay")).toHaveValue("Dawis");
+    expect(screen.getByLabelText(/^Password/)).toHaveValue("");
+    expect(screen.getByLabelText("Confirm password")).toHaveValue("");
+
+    // Resubmittable.
+    expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled();
   });
 });

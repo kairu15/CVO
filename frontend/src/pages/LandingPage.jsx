@@ -59,7 +59,7 @@ export default function LandingPage() {
 
           <div className="flex shrink-0 items-center gap-2">
             <Link to="/login" className="btn-primary">
-              Login
+              Sign in
             </Link>
             <button
               type="button"
@@ -258,8 +258,8 @@ export default function LandingPage() {
               </h2>
               <p className="mt-4 text-base text-slate-600">
                 Each role signs in to a dashboard scoped to what it needs. Staff
-                accounts are created by the CVO administrator; farmers can
-                register themselves.
+                accounts are created by the City Veterinary Office administrator;
+                farmers can register themselves.
               </p>
             </div>
 
@@ -325,10 +325,10 @@ export default function LandingPage() {
                   to="/login"
                   className="inline-flex items-center justify-center gap-2 rounded-pill bg-white px-6 py-2.5 text-sm font-semibold text-brand-800 transition hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                 >
-                  Login
+                  Sign in
                 </Link>
                 <Link to="/register" className="btn-on-brand">
-                  Create an account
+                  Create account
                 </Link>
               </div>
             </div>
@@ -390,7 +390,7 @@ export default function LandingPage() {
               ))}
               <li>
                 <Link to="/login" className="text-slate-600 hover:text-brand-800">
-                  Login
+                  Sign in
                 </Link>
               </li>
               <li>

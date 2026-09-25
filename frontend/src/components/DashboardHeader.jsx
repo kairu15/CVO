@@ -6,6 +6,7 @@ import { notificationsApi } from "../api/notificationsApi";
 import { searchApi } from "../api/searchApi";
 import { getErrorMessage } from "../api/client";
 import { Icon } from "./Icons";
+import { SkeletonList } from "./Skeleton";
 
 /** Up to two initials for the avatar chip. */
 function initialsOf(name) {
@@ -264,10 +265,8 @@ function SearchPanel({ query, onNavigate }) {
 
   if (state.status === "loading" || state.status === "idle") {
     return (
-      <div className="card absolute right-0 z-20 mt-2 w-80 space-y-2 p-4">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="h-10 animate-pulse rounded-xl bg-slate-100" />
-        ))}
+      <div className="card absolute right-0 z-20 mt-2 w-80 overflow-hidden">
+        <SkeletonList className="space-y-2 p-4" rowClassName="h-10" />
       </div>
     );
   }
@@ -407,10 +406,8 @@ function NotificationPanel({ onNavigate }) {
       </div>
 
       {state.status === "loading" ? (
-        <div className="mt-3 space-y-2">
-          {[0, 1].map((i) => (
-            <div key={i} className="h-12 animate-pulse rounded-xl bg-slate-100" />
-          ))}
+        <div className="mt-3">
+          <SkeletonList className="space-y-2" rows={2} rowClassName="h-12" />
         </div>
       ) : state.error ? (
         <p className="mt-2 text-xs text-red-600">{state.error}</p>

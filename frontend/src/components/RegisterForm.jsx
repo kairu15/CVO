@@ -1,10 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { ButtonSpinner } from "./LoadingSpinner";
+import { Icon } from "./Icons";
+import { Skeleton } from "./Skeleton";
 import { PasswordToggle, TextField } from "./TextField";
 import { useBarangays } from "../hooks/useBarangays";
+import { site } from "../config/site";
 
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
 
@@ -28,7 +31,7 @@ const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
 export function RegisterForm({ idPrefix = "register" }) {
   const { register } = useAuth();
   const navigate = useNavigate();
-  const barangays = useBarangays();
+  const [barangays, barangaysStatus] = useBarangays();
 
   const [form, setForm] = useState({
     name: "",
@@ -50,6 +53,16 @@ export function RegisterForm({ idPrefix = "register" }) {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  /**
+   * Success feedback before the redirect. The banner renders only after a
+   * real 2xx from the API — never optimistically — and the timer is cleaned
+   * up on unmount so a fast farmer (or a strict-mode double-mount) can't
+   * trigger a redirect from a dead component.
+   */
+  const [succeeded, setSucceeded] = useState(false);
+  const redirectTimer = useRef(null);
+  const REDIRECT_DELAY_MS = 1800;
+
   const selectedBarangay = useMemo(
     () => barangays.find((barangay) => barangay.name === form.address) ?? null,
     [barangays, form.address],
@@ -62,6 +75,12 @@ export function RegisterForm({ idPrefix = "register" }) {
       setErrors((prev) => ({ ...prev, [field]: undefined }));
     };
   }
+
+  // Clear the pending redirect when the form unmounts (mode switch,
+  // desktop/mobile panel swap) so no timer fires into a dead component.
+  useEffect(() => {
+    return () => window.clearTimeout(redirectTimer.current);
+  }, []);
 
   /** Mirrors the rules in App\Http\Requests\RegisterRequest. */
   function validate() {
@@ -121,11 +140,26 @@ export function RegisterForm({ idPrefix = "register" }) {
         barangay_id: selectedBarangay?.id ?? undefined,
         animal_type: form.animal_type.trim(),
       });
-      navigate("/dashboard", { replace: true });
+
+      // 2xx received — success is real, never optimistic.
+      setSucceeded(true);
+      redirectTimer.current = window.setTimeout(() => {
+        // Hand the identifier to the sign-in form via route state so the
+        // farmer doesn't retype it. /login's GuestRoute renders LoginForm,
+        // which reads location.state?.prefill.
+        navigate("/login", {
+          replace: true,
+          state: { prefill: form.email.trim() },
+        });
+      }, REDIRECT_DELAY_MS);
     } catch (error) {
       const fields = getFieldErrors(error);
       if (fields) setErrors(fields);
       else setFormError(getErrorMessage(error));
+
+      // Standard practice on a failed attempt: drop the passwords but keep
+      // every other field, so the farmer only fixes what the API flagged.
+      setForm((prev) => ({ ...prev, password: "", password_confirmation: "" }));
     } finally {
       setSubmitting(false);
     }
@@ -137,8 +171,20 @@ export function RegisterForm({ idPrefix = "register" }) {
         Create your account
       </h2>
       <p className="mt-1.5 text-sm text-slate-500">
-        For farmers and beneficiaries of the dispersal program.
+        For farmers and beneficiaries of the {site.office} dispersal program.
       </p>
+
+      {succeeded && (
+        <div
+          role="status"
+          className="mt-4 flex items-start gap-2.5 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-3 text-sm text-brand-900"
+        >
+          <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" />
+          <span>
+            Account created successfully. Redirecting you to sign in…
+          </span>
+        </div>
+      )}
 
       {formError && (
         <div
@@ -155,7 +201,7 @@ export function RegisterForm({ idPrefix = "register" }) {
           label="Full name"
           type="text"
           autoComplete="name"
-          placeholder="Juan Dela Cruz"
+          placeholder="Enter your full name"
           value={form.name}
           onChange={update("name")}
           error={errors.name}
@@ -166,7 +212,7 @@ export function RegisterForm({ idPrefix = "register" }) {
           label="Email address"
           type="email"
           autoComplete="email"
-          placeholder="juan@example.com"
+          placeholder="Enter your email address"
           value={form.email}
           onChange={update("email")}
           error={errors.email}
@@ -177,7 +223,7 @@ export function RegisterForm({ idPrefix = "register" }) {
           label="Username"
           type="text"
           autoComplete="username"
-          placeholder="juan_dela"
+          placeholder="Enter your username"
           value={form.username}
           onChange={update("username")}
           error={errors.username}
@@ -189,7 +235,7 @@ export function RegisterForm({ idPrefix = "register" }) {
           label="Password"
           type={showPassword ? "text" : "password"}
           autoComplete="new-password"
-          placeholder="Create a password"
+          placeholder="Enter your password"
           value={form.password}
           onChange={update("password")}
           error={errors.password}
@@ -242,13 +288,13 @@ export function RegisterForm({ idPrefix = "register" }) {
         </legend>
         <p className="mb-3 text-xs text-slate-500">
           Register the animal you received. These details pre-fill every
-          monitoring form, so they are only ever captured here.
+          monitoring form and are captured only here.
         </p>
 
         <div className="space-y-3">
           <TextField
             id={`${idPrefix}-name_of_farmer`}
-            label="Name of Farmer"
+            label="Name of farmer"
             type="text"
             placeholder="Leave empty to use your full name"
             value={form.name_of_farmer}
@@ -263,23 +309,33 @@ export function RegisterForm({ idPrefix = "register" }) {
             >
               Barangay
             </label>
-            <select
-              id={`${idPrefix}-address`}
-              name="address"
-              className="field mt-1.5"
-              value={form.address}
-              onChange={update("address")}
-            >
-              <option value="">Select barangay…</option>
-              {barangays.map((barangay) => (
-                <option key={barangay.id ?? barangay.name} value={barangay.name}>
-                  {barangay.name}
-                </option>
-              ))}
-            </select>
-            {errors.address && (
+            {barangaysStatus === "loading" ? (
+              // Skeleton while the coverage list is being fetched — mirrors
+              // the select's footprint so the swap doesn't reflow.
+              <Skeleton className="field mt-1.5 h-11" />
+            ) : (
+              <select
+                id={`${idPrefix}-address`}
+                name="address"
+                className="field mt-1.5"
+                value={form.address}
+                onChange={update("address")}
+              >
+                <option value="">Select barangay…</option>
+                {barangays.map((barangay) => (
+                  <option key={barangay.id ?? barangay.name} value={barangay.name}>
+                    {barangay.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            {errors.address ? (
               <p className="mt-1.5 text-xs font-medium text-red-600">
                 {errors.address}
+              </p>
+            ) : (
+              <p className="mt-1.5 text-xs text-slate-500">
+                Select the barangay where the farm is located.
               </p>
             )}
           </div>
@@ -290,7 +346,7 @@ export function RegisterForm({ idPrefix = "register" }) {
                 htmlFor={`${idPrefix}-animal_type`}
                 className="block text-sm font-medium text-slate-700"
               >
-                Type of Animal dispersed
+                Type of animal dispersed
               </label>
               <select
                 id={`${idPrefix}-animal_type`}
@@ -331,11 +387,15 @@ export function RegisterForm({ idPrefix = "register" }) {
         </div>
       </fieldset>
 
-      <button type="submit" disabled={submitting} className="btn-primary mt-5 w-full">
+      <button
+        type="submit"
+        disabled={submitting || succeeded}
+        className="btn-primary mt-5 w-full"
+      >
         {submitting ? (
           <>
             <ButtonSpinner />
-            Creating account…
+            Creating your account…
           </>
         ) : (
           "Create account"

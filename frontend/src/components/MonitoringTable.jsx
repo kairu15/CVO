@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { EmptyState } from "./EmptyState";
 import { Icon } from "./Icons";
+import { SkeletonList } from "./Skeleton";
 
 /**
  * Table columns mirroring the CVO's Excel monitoring sheet, in order.
@@ -74,13 +75,7 @@ export function MonitoringTable({ records = [], loading = false, onEdit }) {
   }
 
   if (loading) {
-    return (
-      <div className="space-y-3 p-6">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="h-10 animate-pulse rounded-xl bg-slate-100" />
-        ))}
-      </div>
-    );
+    return <SkeletonList rows={4} />;
   }
 
   if (records.length === 0) {

@@ -62,7 +62,7 @@ export default function AuthPage({ mode = "login" }) {
         </main>
 
         <p className="shrink-0 text-center text-xs text-slate-400">
-          Seeded demo accounts: admin@example.com, doctor@example.com,
+          Demonstration accounts: admin@example.com, doctor@example.com,
           technician@example.com, farmer@example.com — password:{" "}
           <span className="font-medium">password</span>
         </p>
@@ -131,11 +131,10 @@ function SlidingPanel({ isRegister }) {
               <Icon name="livestock" className="h-6 w-6 text-white" />
             </div>
             <h2 className="mt-5 font-display text-3xl font-bold text-white">
-              Welcome back
+              Already registered?
             </h2>
             <p className="mt-3 max-w-xs text-sm text-white/90">
-              Already have an account? Sign in to keep tracking dispersals and
-              re-dispersals.
+              Sign in to follow your dispersals and re-dispersals.
             </p>
             <button type="button" onClick={toggle} className="btn-on-brand mt-8">
               Sign in
@@ -147,11 +146,11 @@ function SlidingPanel({ isRegister }) {
               <Icon name="sprout" className="h-6 w-6 text-white" />
             </div>
             <h2 className="mt-5 font-display text-3xl font-bold text-white">
-              New here?
+              New to the program?
             </h2>
             <p className="mt-3 max-w-xs text-sm text-white/90">
-              Create a farmer account to follow the status of the animals you
-              receive from the program.
+              Create a farmer account to follow the animals you receive from
+              the dispersal program.
             </p>
             <button type="button" onClick={toggle} className="btn-on-brand mt-8">
               Register
@@ -198,7 +197,7 @@ function StackedTabs({ isRegister }) {
         className="grid grid-cols-2 gap-1 rounded-pill border border-slate-200 bg-white p-1 shadow-card"
       >
         <TabButton active={!isRegister} onClick={() => navigate("/login")}>
-          Login
+          Sign in
         </TabButton>
         <TabButton active={isRegister} onClick={() => navigate("/register")}>
           Register

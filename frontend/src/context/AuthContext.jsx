@@ -34,6 +34,22 @@ export function AuthProvider({ children }) {
   }, []);
 
   /**
+   * Re-pull the session user — the header/menu should reflect profile edits
+   * without a sign-out/sign-in cycle. A failed fetch (expired session)
+   * clears the user, same as the 401 interceptor.
+   */
+  const refreshUser = useCallback(async () => {
+    try {
+      const fresh = await authApi.fetchUser();
+      setUser(fresh);
+      return fresh;
+    } catch {
+      setUser(null);
+      return null;
+    }
+  }, []);
+
+  /**
    * Register a new farmer. Deliberately does NOT sign the new account in:
    * self-registration ends on the sign-in panel (the register form hands the
    * email over via route state), so no session is established here.
@@ -61,10 +77,11 @@ export function AuthProvider({ children }) {
       loading,
       isAuthenticated: Boolean(user),
       login,
+      refreshUser,
       register,
       logout,
     }),
-    [user, loading, login, register, logout],
+    [user, loading, login, refreshUser, register, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

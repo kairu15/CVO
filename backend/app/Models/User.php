@@ -12,7 +12,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'username', 'email', 'password', 'role'])]
+#[Fillable(['name', 'username', 'email', 'password', 'role', 'avatar_path'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -66,6 +66,24 @@ class User extends Authenticatable
     public function projects(): HasMany
     {
         return $this->hasMany(Project::class);
+    }
+
+    public function isFarmer(): bool
+    {
+        return $this->role === self::DEFAULT_ROLE;
+    }
+
+    /**
+     * Public URL of the profile photo, or null when the account has none
+     * (the UI falls back to initials).
+     */
+    protected function avatarUrl(): \Illuminate\Database\Eloquent\Casts\Attribute
+    {
+        return \Illuminate\Database\Eloquent\Casts\Attribute::get(
+            fn () => $this->avatar_path !== null
+                ? \Illuminate\Support\Facades\Storage::disk('public')->url($this->avatar_path)
+                : null,
+        );
     }
 
     /**

@@ -159,9 +159,17 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
           aria-label="Account menu"
           className="flex items-center gap-2 rounded-pill border border-slate-200 py-1.5 pr-2.5 pl-1.5 transition hover:border-brand-300 hover:bg-brand-50"
         >
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-100 text-[11px] font-bold text-brand-800">
-            {initialsOf(user?.name)}
-          </span>
+          {user?.avatar_url ? (
+            <img
+              src={user.avatar_url}
+              alt=""
+              className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
+            />
+          ) : (
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-100 text-[11px] font-bold text-brand-800">
+              {initialsOf(user?.name)}
+            </span>
+          )}
           <span className="hidden text-left sm:block">
             <span className="block text-xs leading-tight font-semibold text-slate-800">
               {user?.name}
@@ -182,7 +190,18 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
               className="fixed inset-0 z-10 cursor-default"
             />
             <div className="card absolute right-0 z-20 mt-2 w-64 p-4">
-              <p className="truncate font-display text-sm font-semibold text-slate-900">
+              {user?.avatar_url ? (
+                <img
+                  src={user.avatar_url}
+                  alt=""
+                  className="h-10 w-10 rounded-full object-cover ring-1 ring-slate-200"
+                />
+              ) : (
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-100 text-xs font-bold text-brand-800">
+                  {initialsOf(user?.name)}
+                </span>
+              )}
+              <p className="mt-2 truncate font-display text-sm font-semibold text-slate-900">
                 {user?.name}
               </p>
               <p className="truncate text-xs text-slate-500">{user?.email}</p>
@@ -190,10 +209,18 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
                 <Icon name="shield" className="h-3.5 w-3.5" />
                 {roleLabel(user?.role)}
               </p>
+              <Link
+                to="/dashboard/profile"
+                onClick={close}
+                className="mt-3 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800"
+              >
+                <Icon name="user" className="h-4 w-4" />
+                My Profile
+              </Link>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="mt-3 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                className="mt-2 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
               >
                 <Icon name="logout" className="h-4 w-4" />
                 Log out

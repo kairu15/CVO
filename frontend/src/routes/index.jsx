@@ -22,6 +22,7 @@ import VaccinationSchedulePage from "../pages/VaccinationSchedulePage";
 import CaseNotesPage from "../pages/CaseNotesPage";
 import AnimalHealthPage from "../pages/AnimalHealthPage";
 import FieldVisitsPage from "../pages/FieldVisitsPage";
+import { ProfilePage } from "../pages/ProfilePage";
 import DispersalStatusPage from "../pages/DispersalStatusPage";
 import NotificationsPage from "../pages/NotificationsPage";
 import SupportPage from "../pages/SupportPage";
@@ -85,6 +86,11 @@ export default function AppRoutes() {
             }
           >
             <Route path="/dashboard" element={<DashboardIndex />} />
+
+            {/* My Profile — one page for every role, so deliberately no
+                RoleRoute: it's the signed-in user's own data, scoped
+                server-side to the caller. */}
+            <Route path="/dashboard/profile" element={<ProfilePage />} />
             <Route
               path="/dashboard/admin"
               element={

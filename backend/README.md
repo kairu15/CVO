@@ -15,6 +15,7 @@ composer install
 cp .env.example .env   # then adjust values below (a ready .env is already provided)
 php artisan key:generate
 php artisan migrate --seed
+php artisan storage:link   # serves uploaded files (avatars, visit photos) at /storage
 ```
 
 ### Environment variables (key values)

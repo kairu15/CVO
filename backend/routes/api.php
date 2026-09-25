@@ -11,6 +11,7 @@ use App\Http\Controllers\DispersalEventController;
 use App\Http\Controllers\FieldVisitController;
 use App\Http\Controllers\HealthRecordController;
 use App\Http\Controllers\MonitoringRecordController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\PublicMapController;
 use App\Http\Controllers\ReportController;
@@ -75,6 +76,18 @@ Route::prefix('v1')->middleware('throttle:6,1')->group(function (): void {
 Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::get('/user', [AuthController::class, 'user'])->name('api.user');
     Route::post('/logout', [AuthController::class, 'logout'])->name('api.logout');
+
+    // The authenticated user's own profile — no {id} anywhere: every route
+    // is scoped to the caller by construction.
+    Route::get('/profile', [ProfileController::class, 'show'])->name('api.profile.show');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('api.profile.update');
+    Route::patch('/profile/password', [ProfileController::class, 'updatePassword'])
+        ->middleware('throttle:6,1')
+        ->name('api.profile.password');
+    Route::post('/profile/avatar', [ProfileController::class, 'storeAvatar'])
+        ->name('api.profile.avatar.store');
+    Route::delete('/profile/avatar', [ProfileController::class, 'destroyAvatar'])
+        ->name('api.profile.avatar.destroy');
 
     Route::apiResource('projects', ProjectController::class);
 

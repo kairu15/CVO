@@ -26,7 +26,7 @@ class AuthService
      * (barangay_id/purok_id) rides along; RegisterRequest has already checked
      * that the purok belongs to the barangay.
      *
-     * @param  array{name_of_farmer?: string, address?: string, animal_type?: string, sex?: string, latitude?: float|null, longitude?: float|null, barangay_id?: int|null, purok_id?: int|null}|null  $dispersal
+     * @param  array{name_of_farmer?: string, address?: string, animal_type?: string, sex?: string, latitude?: float|null, longitude?: float|null, location_source?: string, barangay_id?: int|null, purok_id?: int|null}|null  $dispersal
      */
     public function register(
         string $name,
@@ -54,6 +54,10 @@ class AuthService
                     'sex' => $dispersal['sex'] ?? 'F',
                     'latitude' => $dispersal['latitude'] ?? null,
                     'longitude' => $dispersal['longitude'] ?? null,
+                    // How the location was captured — gps fix, moved map pin
+                    // (or a confirmed suggestion), or a manual dropdown
+                    // choice. Staff use it to judge coordinate quality.
+                    'location_source' => $dispersal['location_source'] ?? 'manual',
                 ]);
             }
 

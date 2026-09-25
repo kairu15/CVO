@@ -20,6 +20,17 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+
+    // maplibre-gl resolves its web worker as a sibling file
+    // (dist/maplibre-gl-worker.mjs). The dep optimizer rewrites that URL
+    // into node_modules/.vite/deps/ but never emits the worker there, so
+    // the browser 404s and MapLibre fails to start. Excluding the package
+    // keeps dev serving it from source — it is ESM, so that is fine — and
+    // the worker URL stays intact. Production (rollup) is unaffected.
+    optimizeDeps: {
+      exclude: ['maplibre-gl'],
+    },
+
     server: {
       port,
       // Fail loudly instead of hopping to another port — Sanctum cookie auth

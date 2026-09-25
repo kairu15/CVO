@@ -45,6 +45,17 @@ Route::prefix('v1')->middleware('throttle:6,1')->group(function (): void {
         ->middleware('throttle:60,1')
         ->name('api.barangays.puroks');
 
+    // GPS/pin → barangay/purok auto-detect for the registration form.
+    // Public like the rest of the cascade (used before login); POST because
+    // it carries the farmer's coordinates. Nearest-centroid matching — see
+    // App\Support\Geo for why this is a suggestion, not a boundary lookup.
+    Route::post('/barangays/nearest', [BarangayController::class, 'nearest'])
+        ->middleware('throttle:30,1')
+        ->name('api.barangays.nearest');
+    Route::post('/barangays/{barangay}/puroks/nearest', [BarangayController::class, 'nearestPurok'])
+        ->middleware('throttle:60,1')
+        ->name('api.barangays.puroks.nearest');
+
     // Address → coordinates for the public registration form's pin preview.
     // Cached server-side and throttled — it proxies Nominatim, which forbids
     // heavy use. Public because the register page has no session yet.

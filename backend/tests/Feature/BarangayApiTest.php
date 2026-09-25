@@ -157,4 +157,115 @@ class BarangayApiTest extends TestCase
             'name_of_farmer' => 'Plain',
         ]);
     }
+
+    // -------------------------------------------------------------------------
+    // GPS / map-pin auto-detection (nearest-centroid matching)
+    // -------------------------------------------------------------------------
+
+    public function test_nearest_barangay_matches_the_closest_center(): void
+    {
+        $dawis = Barangay::create(['name' => 'Dawis', 'latitude' => 9.5766683, 'longitude' => 122.8819134]);
+        Barangay::create(['name' => 'Tayawan', 'latitude' => 9.4995966, 'longitude' => 122.7398316]);
+
+        // A point clearly nearer Dawis' center than Tayawan's.
+        $match = $this->postJson('/api/v1/barangays/nearest', [
+            'latitude' => 9.5750,
+            'longitude' => 122.8800,
+        ])->assertOk()
+            ->assertJsonStructure(['data' => ['id', 'name', 'latitude', 'longitude', 'distance_km']])
+            ->json('data');
+
+        $this->assertSame($dawis->id, $match['id']);
+        $this->assertSame('Dawis', $match['name']);
+        $this->assertGreaterThan(0, $match['distance_km']);
+        $this->assertLessThan(2, $match['distance_km']);
+    }
+
+    public function test_nearest_barangay_answers_null_far_from_any_center(): void
+    {
+        Barangay::create(['name' => 'Dawis', 'latitude' => 9.5766683, 'longitude' => 122.8819134]);
+
+        // Manila — far outside every seeded center's search radius. A miss
+        // is a normal outcome, not an error.
+        $this->postJson('/api/v1/barangays/nearest', [
+            'latitude' => 14.5995,
+            'longitude' => 120.9842,
+        ])->assertOk()
+            ->assertJsonPath('data', null);
+    }
+
+    public function test_nearest_barangay_validates_the_coordinate_payload(): void
+    {
+        $this->postJson('/api/v1/barangays/nearest', [])->assertUnprocessable();
+        $this->postJson('/api/v1/barangays/nearest', ['latitude' => 99, 'longitude' => 122.8])->assertUnprocessable();
+        $this->postJson('/api/v1/barangays/nearest', ['latitude' => 9.5, 'longitude' => 'east'])->assertUnprocessable();
+    }
+
+    public function test_nearest_purok_is_scoped_to_one_barangay(): void
+    {
+        $dawis = Barangay::create(['name' => 'Dawis', 'latitude' => 9.5766683, 'longitude' => 122.8819134]);
+        $purok = Purok::create([
+            'barangay_id' => $dawis->id,
+            'name' => 'Purok 2 (placeholder)',
+            'latitude' => 9.5775,
+            'longitude' => 122.8827,
+        ]);
+
+        // A pin dropped right next to that purok's center.
+        $match = $this->postJson("/api/v1/barangays/{$dawis->id}/puroks/nearest", [
+            'latitude' => 9.5776,
+            'longitude' => 122.8828,
+        ])->assertOk()
+            ->json('data');
+
+        $this->assertSame($purok->id, $match['id']);
+        $this->assertSame('Purok 2 (placeholder)', $match['name']);
+    }
+
+    public function test_nearest_purok_answers_null_without_purok_coordinates(): void
+    {
+        $dawis = Barangay::create(['name' => 'Dawis', 'latitude' => 9.5766683, 'longitude' => 122.8819134]);
+
+        // No purok rows yet — the graceful-degradation case the register
+        // form's pin → purok auto-fill relies on.
+        $this->postJson("/api/v1/barangays/{$dawis->id}/puroks/nearest", [
+            'latitude' => 9.5776,
+            'longitude' => 122.8828,
+        ])->assertOk()
+            ->assertJsonPath('data', null);
+    }
+
+    public function test_registration_records_the_location_source(): void
+    {
+        $barangay = Barangay::create(['name' => 'Dawis', 'latitude' => 9.5766683, 'longitude' => 122.8819134]);
+        $purok = Purok::create(['barangay_id' => $barangay->id, 'name' => 'Purok 1 (placeholder)']);
+
+        $this->postJson('/api/v1/register', $this->registrationPayload([
+            'purok_id' => $purok->id,
+            'latitude' => 9.5771,
+            'longitude' => 122.8821,
+            'location_source' => 'gps',
+        ]))->assertCreated();
+
+        $this->assertDatabaseHas('beneficiaries', [
+            'barangay_id' => $barangay->id,
+            'purok_id' => $purok->id,
+            'latitude' => 9.5771,
+            'location_source' => 'gps',
+        ]);
+
+        // A manual dropdown choice (or any older client) records as manual.
+        $this->postJson('/api/v1/register', $this->registrationPayload())
+            ->assertCreated();
+
+        $this->assertDatabaseHas('beneficiaries', ['location_source' => 'manual']);
+    }
+
+    public function test_registration_rejects_an_unknown_location_source(): void
+    {
+        $this->postJson('/api/v1/register', $this->registrationPayload([
+            'location_source' => 'psychic',
+        ]))->assertUnprocessable()
+            ->assertJsonValidationErrors(['location_source']);
+    }
 }

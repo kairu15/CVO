@@ -93,6 +93,11 @@ class RegisterRequest extends FormRequest
             ],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+
+            // How the location was captured — gps fix, moved map pin, or a
+            // manual dropdown choice. Lets staff judge data quality later:
+            // a confirmed GPS point outranks a barangay picked by name.
+            'location_source' => ['nullable', Rule::in(['gps', 'map_pin', 'manual'])],
         ];
     }
 
@@ -128,6 +133,7 @@ class RegisterRequest extends FormRequest
             'sex' => $validated['sex'] ?? '',
             'latitude' => $validated['latitude'] ?? null,
             'longitude' => $validated['longitude'] ?? null,
+            'location_source' => $validated['location_source'] ?? 'manual',
 
             // The structured location twins of the address string. The
             // barangay id is resolved server-side from the (normalized) name
@@ -144,6 +150,7 @@ class RegisterRequest extends FormRequest
             $validated['latitude'],
             $validated['longitude'],
             $validated['purok_id'],
+            $validated['location_source'],
         );
 
         $validated['dispersal'] = array_filter($dispersal, fn ($v) => $v !== '') ?: null;

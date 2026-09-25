@@ -24,6 +24,7 @@ class Beneficiary extends Model
         'technician_id',
         'latitude',
         'longitude',
+        'location_source',
     ];
 
     protected function casts(): array

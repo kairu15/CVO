@@ -2,14 +2,9 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getErrorMessage, getFieldErrors } from "../api/client";
-import { findNearestBarangay, findNearestPurok } from "../api/beneficiariesApi";
 import { ButtonSpinner } from "./LoadingSpinner";
-import { Icon } from "./Icons";
 import { PasswordToggle, TextField } from "./TextField";
-import { RegisterLocationMap } from "./RegisterLocationMap";
 import { useBarangays } from "../hooks/useBarangays";
-import { useGeolocation } from "../hooks/useGeolocation";
-import { usePuroks } from "../hooks/usePuroks";
 
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
 
@@ -20,10 +15,10 @@ const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
  * and the API ignores any role sent with the payload, so staff accounts stay
  * under the administrator's control.
  *
- * The address is a barangay dropdown (not free text, not coordinates): the
- * server resolves the chosen barangay name to a map pin automatically. The
- * optional map section only exists to fine-tune the pin to the exact farm
- * spot or capture a GPS fix.
+ * The location is a single barangay dropdown (not free text): the server
+ * resolves the chosen barangay name to its structured id. Purok, GPS and map
+ * capture are not part of registration — the API and database still accept
+ * them, so they can be reintroduced when the CVO has verified purok data.
  */
 /**
  * @param {object} props
@@ -47,38 +42,18 @@ export function RegisterForm({ idPrefix = "register" }) {
     // and the details added later by staff.
     name_of_farmer: "",
     address: "", // a barangay name from the coverage list
-    purok_id: "", // id within the chosen barangay — cleared when the barangay changes
     animal_type: "",
     sex: "F",
-    pin: null, // [lat, lng] — the farmer's ACTUAL spot: a GPS fix, a placed/dragged marker
   });
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // GPS / map-pin auto-detection state. Suggestions are exactly that — the
-  // farmer confirms or overrides them; nothing is ever auto-submitted.
-  const [pinAccuracy, setPinAccuracy] = useState(null); // metres, GPS fix only
-  const [pinFromGps, setPinFromGps] = useState(false);
-  const [locationSource, setLocationSource] = useState("manual"); // gps | map_pin | manual
-  const [barangaySuggestion, setBarangaySuggestion] = useState(null); // { id, name, distance_km, accuracy }
-  const [purokSuggestion, setPurokSuggestion] = useState(null); // { id, name, distance_km }
-  const [gpsNote, setGpsNote] = useState(null); // farmer-readable GPS outcome message
-
-  // Derived cascade state — the select values drive the purok fetch and the
-  // live map. Kept after the state declarations above (they read `form`).
   const selectedBarangay = useMemo(
     () => barangays.find((barangay) => barangay.name === form.address) ?? null,
     [barangays, form.address],
   );
-  const { puroks, loading: puroksLoading } = usePuroks(selectedBarangay?.id ?? null);
-  const selectedPurok = useMemo(
-    () => puroks.find((purok) => String(purok.id) === String(form.purok_id)) ?? null,
-    [puroks, form.purok_id],
-  );
-
-  const { locate, locating: locatingGps, error: gpsError } = useGeolocation();
 
   function update(field) {
     return (event) => {
@@ -86,125 +61,6 @@ export function RegisterForm({ idPrefix = "register" }) {
       setForm((prev) => ({ ...prev, [field]: value }));
       setErrors((prev) => ({ ...prev, [field]: undefined }));
     };
-  }
-
-  /**
-   * Barangay change: reset the purok with it, so a purok from the previous
-   * barangay can never ride along under the new one (the cascade stays
-   * consistent even before validation runs). Any pending detected-
-   * purok suggestion dies with its parent barangay, and a manual pick
-   * re-labels the location source.
-   */
-  function handleBarangayChange(event) {
-    const { value } = event.target;
-    setForm((prev) => ({ ...prev, address: value, purok_id: "" }));
-    setErrors((prev) => ({ ...prev, address: undefined, purok_id: undefined }));
-    setPurokSuggestion(null);
-    setLocationSource("manual");
-  }
-
-  /**
-   * GPS fix → nearest-centroid barangay suggestion. NEVER auto-selects:
-   * the match is an approximation (center points, not boundaries — see
-   * App\Support\Geo on the server), so the farmer confirms it first.
-   */
-  function handleUseMyLocation() {
-    locate(({ latitude, longitude, accuracy }) => {
-      setGpsNote(null);
-      setBarangaySuggestion(null);
-      setPinAccuracy(accuracy);
-      setPinFromGps(true);
-      setForm((prev) => ({ ...prev, pin: [latitude, longitude] }));
-      setLocationSource("gps");
-
-      findNearestBarangay(latitude, longitude)
-        .then((match) => {
-          if (!match) {
-            setGpsNote(
-              "We got your position, but it's outside the covered barangays — pick your barangay from the list.",
-            );
-            return;
-          }
-          setBarangaySuggestion({ ...match, accuracy });
-        })
-        .catch(() => {
-          setGpsNote("Could not match your position to a barangay — pick from the list instead.");
-        });
-    });
-  }
-
-  /**
-   * Confirm (or dismiss) the GPS-detected barangay. Confirming selects it
-   * through the same path as a manual pick — the map pans, the purok list
-   * loads — and the source stays "gps" only because the point came from GPS.
-   */
-  function acceptBarangaySuggestion() {
-    if (!barangaySuggestion) return;
-
-    const match = barangays.find((b) => b.id === barangaySuggestion.id);
-    setBarangaySuggestion(null);
-
-    if (!match) return;
-
-    // Re-confirming the barangay that is already chosen keeps its purok; a
-    // genuinely new barangay always resets the purok with it.
-    setForm((prev) => ({
-      ...prev,
-      address: match.name,
-      purok_id: prev.address === match.name ? prev.purok_id : "",
-    }));
-    setErrors((prev) => ({ ...prev, address: undefined, purok_id: undefined }));
-
-    // The GPS point may already resolve to a purok of the confirmed
-    // barangay — suggest it the same way, confirm-or-change.
-    if (form.pin) {
-      findNearestPurok(match.id, form.pin[0], form.pin[1])
-        .then((purokMatch) => {
-          if (purokMatch) setPurokSuggestion(purokMatch);
-        })
-        .catch(() => {
-          // No purok coordinates yet — the select stays as-is.
-        });
-    }
-  }
-
-  function dismissBarangaySuggestion() {
-    setBarangaySuggestion(null);
-  }
-
-  /**
-   * Pin moved (drag, map click, or fresh GPS fix): re-match the nearest
-   * purok within the chosen barangay. Barangays without purok coordinates
-   * (the current "No puroks listed yet" state) simply answer null and the
-   * field stays untouched — the auto-fill degrades gracefully as the real
-   * purok data is added later.
-   */
-  function handlePinMove([lat, lng]) {
-    setForm((prev) => ({ ...prev, pin: [lat, lng] }));
-    setPinFromGps(false);
-    setPinAccuracy(null);
-    setLocationSource("map_pin");
-    setPurokSuggestion(null);
-
-    if (!selectedBarangay?.id) return;
-
-    findNearestPurok(selectedBarangay.id, lat, lng)
-      .then((match) => {
-        if (match) setPurokSuggestion(match);
-      })
-      .catch(() => {
-        // No purok suggestion is a fine outcome — leave the select alone.
-      });
-  }
-
-  function acceptPurokSuggestion() {
-    if (!purokSuggestion) return;
-    setForm((prev) => ({ ...prev, purok_id: String(purokSuggestion.id) }));
-    setPurokSuggestion(null);
-  }
-
-  function dismissPurokSuggestion() {
-    setPurokSuggestion(null);
   }
 
   /** Mirrors the rules in App\Http\Requests\RegisterRequest. */
@@ -240,14 +96,6 @@ export function RegisterForm({ idPrefix = "register" }) {
     else if (form.password_confirmation !== form.password)
       next.password_confirmation = "Passwords do not match.";
 
-    // A farmer's location must resolve to a specific purok for dispersal
-    // tracking — a barangay alone is not enough once puroks are offered.
-    if (form.address && !form.purok_id)
-      next.purok_id = "Choose the purok/sitio of the farm.";
-
-    if (form.pin && !form.address)
-      next.address = "Choose the barangay your pin falls in.";
-
     return next;
   }
 
@@ -271,15 +119,7 @@ export function RegisterForm({ idPrefix = "register" }) {
         name_of_farmer: form.name_of_farmer.trim(),
         address: form.address,
         barangay_id: selectedBarangay?.id ?? undefined,
-        purok_id: form.purok_id ? Number(form.purok_id) : undefined,
         animal_type: form.animal_type.trim(),
-        // The geo-tag the rest of the system depends on: the farmer's actual
-        // spot — a GPS fix, a placed/dragged pin — not just the barangay name.
-        latitude: form.pin?.[0],
-        longitude: form.pin?.[1],
-        // How the location was captured, for later data-quality review.
-        location_source: locationSource,
-        pin: undefined,
       });
       navigate("/dashboard", { replace: true });
     } catch (error) {
@@ -428,7 +268,7 @@ export function RegisterForm({ idPrefix = "register" }) {
               name="address"
               className="field mt-1.5"
               value={form.address}
-              onChange={handleBarangayChange}
+              onChange={update("address")}
             >
               <option value="">Select barangay…</option>
               {barangays.map((barangay) => (
@@ -437,168 +277,10 @@ export function RegisterForm({ idPrefix = "register" }) {
                 </option>
               ))}
             </select>
-            {errors.address ? (
+            {errors.address && (
               <p className="mt-1.5 text-xs font-medium text-red-600">
                 {errors.address}
               </p>
-            ) : (
-              <p className="mt-1.5 text-xs text-slate-500">
-                The map pans to the barangay as soon as it is chosen.
-              </p>
-            )}
-
-            {/* GPS auto-detect: a suggestion the farmer confirms — never a
-                silent auto-select. The dropdown stays the always-valid path
-                when permission is denied or geolocation is unavailable. */}
-            <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                className="btn-secondary !px-3.5 !py-1.5 text-xs"
-                onClick={handleUseMyLocation}
-                disabled={locatingGps}
-              >
-                <Icon name="locate-fixed" className="h-4 w-4" />
-                {locatingGps
-                  ? "Locating…"
-                  : pinFromGps
-                    ? "Re-check my location"
-                    : "Use my location"}
-              </button>
-              <span className="text-xs text-slate-500">
-                Detects your barangay from GPS — you confirm it.
-              </span>
-            </div>
-
-            {gpsNote ? (
-              <p
-                role="status"
-                className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
-              >
-                {gpsNote}
-              </p>
-            ) : (
-              gpsError && (
-                // Hook-level failures (permission denied, insecure context,
-                // timeout) surface inline — the dropdown stays the always-
-                // valid path and nothing fails silently.
-                <p
-                  role="alert"
-                  className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
-                >
-                  {gpsError}
-                </p>
-              )
-            )}
-
-            {barangaySuggestion && (
-              <div
-                role="status"
-                className="mt-2 rounded-lg border border-brand-200 bg-white px-3 py-2.5 text-xs text-slate-600"
-              >
-                <p>
-                  <span className="font-semibold text-brand-800">
-                    Detected: {barangaySuggestion.name}
-                  </span>{" "}
-                  — {barangaySuggestion.distance_km} km from its center point
-                  {barangaySuggestion.accuracy
-                    ? `, GPS fix ±${Math.round(barangaySuggestion.accuracy)} m`
-                    : ""}
-                  . Is this correct?
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="btn-secondary !px-3 !py-1 text-xs"
-                    onClick={acceptBarangaySuggestion}
-                  >
-                    <Icon name="check" className="h-3.5 w-3.5" />
-                    Yes, use it
-                  </button>
-                  <button
-                    type="button"
-                    className="text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
-                    onClick={dismissBarangaySuggestion}
-                  >
-                    No — I'll pick it myself
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label
-              htmlFor={`${idPrefix}-purok`}
-              className="block text-sm font-medium text-slate-700"
-            >
-              Purok / Sitio
-            </label>
-            <select
-              id={`${idPrefix}-purok`}
-              name="purok_id"
-              className="field mt-1.5"
-              value={form.purok_id}
-              onChange={update("purok_id")}
-              disabled={!form.address || puroks.length === 0}
-            >
-              <option value="">
-                {!form.address
-                  ? "Select a barangay first…"
-                  : puroksLoading
-                    ? "Loading puroks…"
-                    : puroks.length === 0
-                      ? "No puroks listed yet"
-                      : "Select purok/sitio…"}
-              </option>
-              {puroks.map((purok) => (
-                <option key={purok.id} value={purok.id}>
-                  {purok.name}
-                  {purok.is_placeholder ? " (to be confirmed)" : ""}
-                </option>
-              ))}
-            </select>
-            {errors.purok_id ? (
-              <p className="mt-1.5 text-xs font-medium text-red-600">
-                {errors.purok_id}
-              </p>
-            ) : (
-              <p className="mt-1.5 text-xs text-slate-500">
-                {puroks.some((purok) => purok.is_placeholder)
-                  ? "Some purok names are placeholders until the CVO confirms the official list."
-                  : "The finest location grain — what dispersal tracking resolves against."}
-              </p>
-            )}
-
-            {purokSuggestion && (
-              <div
-                role="status"
-                className="mt-2 rounded-lg border border-brand-200 bg-white px-3 py-2.5 text-xs text-slate-600"
-              >
-                <p>
-                  <span className="font-semibold text-brand-800">
-                    Detected: {purokSuggestion.name}
-                  </span>{" "}
-                  — {purokSuggestion.distance_km} km from the pin. Confirm or
-                  change it.
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="btn-secondary !px-3 !py-1 text-xs"
-                    onClick={acceptPurokSuggestion}
-                  >
-                    <Icon name="check" className="h-3.5 w-3.5" />
-                    Use this purok
-                  </button>
-                  <button
-                    type="button"
-                    className="text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
-                    onClick={dismissPurokSuggestion}
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              </div>
             )}
           </div>
 
@@ -647,28 +329,6 @@ export function RegisterForm({ idPrefix = "register" }) {
             </div>
           </div>
         </div>
-
-        {form.address ? (
-          <div className="mt-4">
-            <RegisterLocationMap
-              barangays={barangays}
-              barangay={selectedBarangay}
-              purok={selectedPurok}
-              pin={form.pin}
-              accuracy={pinAccuracy}
-              onPinMove={handlePinMove}
-            />
-            <p className="mt-1.5 text-xs text-slate-500">
-              Drag the marker or click the map to pin the exact farm spot — the
-              purok is re-detected from the pin when the barangay lists purok
-              coordinates.
-            </p>
-          </div>
-        ) : (
-          <p className="mt-4 text-xs text-slate-500">
-            Pick a barangay above to see it on the map and pin the exact spot.
-          </p>
-        )}
       </fieldset>
 
       <button type="submit" disabled={submitting} className="btn-primary mt-5 w-full">

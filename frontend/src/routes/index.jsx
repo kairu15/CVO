@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "../context/AuthContext";
 import { GuestRoute, ProtectedRoute } from "../components/ProtectedRoute";
 import { RoleRoute } from "../components/RoleRoute";
 import { DashboardLayout } from "../components/DashboardLayout";
+import { RouteProgress } from "../components/RouteProgress";
 import { EmptyState } from "../components/EmptyState";
 import { dashboardPathFor } from "../config/roles";
 import AuthPage from "../pages/AuthPage";
@@ -53,6 +54,8 @@ export default function AppRoutes() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        {/* Top progress bar for route transitions; must live inside the router */}
+        <RouteProgress />
         <Routes>
           <Route path="/" element={<LandingPage />} />
 

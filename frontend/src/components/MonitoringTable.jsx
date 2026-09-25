@@ -122,12 +122,15 @@ export function MonitoringTable({ records = [], loading = false, onEdit, onDelet
                  the document — a page-level horizontal scrollbar even though
                  the table scrolls inside this wrapper. */
               <div className="relative overflow-x-auto">
-                <table className="w-full min-w-[1080px] table-fixed text-left text-xs">
+                <table className="w-full min-w-[1080px] text-left text-xs">
+                  {/* No fixed widths: columns auto-size to content so long
+                     values widen the table (scrolling in the wrapper) rather
+                     than overlapping the neighbouring cell. */}
                   <colgroup>
                     {COLUMNS.map((col) => (
-                      <col key={col.key} className={col.key === "name_of_farmer" ? "w-[14%]" : col.key === "remarks" ? "w-[14%]" : undefined} />
+                      <col key={col.key} />
                     ))}
-                    {(onEdit || onDelete) && <col className="w-[8%]" />}
+                    {(onEdit || onDelete) && <col />}
                   </colgroup>
                   <thead>
                     <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">

@@ -209,7 +209,7 @@ export default function UserManagementPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full table-fixed text-left text-xs">
+              <table className="w-full text-left text-xs">
                 <colgroup>
                   <col className="w-[24%]" />
                   <col className="w-[16%]" />

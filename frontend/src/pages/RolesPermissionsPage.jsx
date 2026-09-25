@@ -138,7 +138,7 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full table-fixed text-sm">
+          <table className="w-full text-sm">
             <colgroup>
               <col className="w-[30%]" />
               {ROLE_KEYS.map((key) => (

@@ -168,7 +168,7 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full table-fixed min-w-[960px] text-left text-xs">
+            <table className="w-full min-w-[960px] text-left text-xs">
               <colgroup>
                 <col className="w-[10%]" />
                 <col className="w-[20%]" />

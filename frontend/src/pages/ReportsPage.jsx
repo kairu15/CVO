@@ -241,7 +241,7 @@ export default function ReportsPage({ roleKey = "admin" }) {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full table-fixed text-sm">
+                <table className="w-full text-sm">
                   <colgroup>
                     <col className="w-[25%]" />
                     {Array.from({ length: 5 }, (_, i) => (

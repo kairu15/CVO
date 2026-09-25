@@ -208,9 +208,10 @@ export default function BeneficiariesPage() {
                   </span>
                 </div>
 
-                {/* table-fixed + shared widths: every barangay group's columns
-                    line up on the same grid instead of drifting per group. */}
-                <table className="w-full table-fixed text-left text-xs">
+                {/* Shared widths nudge every barangay group's columns onto a
+                    similar grid; columns still auto-size to content so long
+                    values scroll the wrapper instead of overlapping. */}
+                <table className="w-full text-left text-xs">
                   <colgroup>
                     <col className="w-10" />
                     <col className="w-[38%]" />

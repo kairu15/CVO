@@ -56,14 +56,15 @@ class BeneficiaryController extends Controller
     }
 
     /**
-     * Role-scoped single fetch.
+     * Role-scoped single fetch. A technician pointing at an unassigned
+     * beneficiary gets 403 (a permissions boundary); everyone else gets the
+     * usual 404 for out-of-scope rows.
      */
     public function show(Request $request, int $id): BeneficiaryResource
     {
-        $beneficiary = $this->beneficiaries->scopeQueryFor($request->user())
-            ->with(['technician', 'farmer'])
-            ->withCount('monitoringRecords')
-            ->findOrFail($id);
+        $beneficiary = $this->beneficiaries->findFor($request->user(), $id);
+        $beneficiary->load(['technician', 'farmer'])
+            ->loadCount('monitoringRecords');
 
         return new BeneficiaryResource($beneficiary);
     }
@@ -73,7 +74,7 @@ class BeneficiaryController extends Controller
      */
     public function update(Request $request, int $id): BeneficiaryResource
     {
-        $beneficiary = $this->beneficiaries->scopeQueryFor($request->user())->findOrFail($id);
+        $beneficiary = $this->beneficiaries->findFor($request->user(), $id);
 
         $this->authorize('update', $beneficiary);
 
@@ -117,7 +118,7 @@ class BeneficiaryController extends Controller
 
     public function destroy(Request $request, int $id): JsonResponse
     {
-        $beneficiary = $this->beneficiaries->scopeQueryFor($request->user())->findOrFail($id);
+        $beneficiary = $this->beneficiaries->findFor($request->user(), $id);
 
         $this->authorize('delete', $beneficiary);
 

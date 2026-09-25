@@ -154,7 +154,15 @@ export default function VaccinationSchedulePage({ roleKey = "doctor" }) {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full table-fixed text-left text-xs">
+                <colgroup>
+                  <col className="w-[24%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[12%]" />
+                  <col />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
                     <th scope="col" className="px-4 py-2.5 font-semibold">Farmer</th>

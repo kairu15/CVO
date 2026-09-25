@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../api/adminApi";
 import { getErrorMessage } from "../api/client";
+import { useToast } from "../context/ToastContext";
 import { Modal } from "../components/Modal";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { EmptyState } from "../components/EmptyState";
@@ -16,6 +17,7 @@ import { Icon } from "../components/Icons";
  * Assignment changes are enforced server-side; this is the control surface.
  */
 export default function TechnicianAssignmentsPage() {
+  const toast = useToast();
   const [technicians, setTechnicians] = useState([]);
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -69,11 +71,19 @@ export default function TechnicianAssignmentsPage() {
 
     setSaving(true);
     try {
-      await adminApi.assignTechnician(assignFor.id, pick === "" ? null : Number(pick));
+      const technicianId = pick === "" ? null : Number(pick);
+      await adminApi.assignTechnician(assignFor.id, technicianId);
       setAssignFor(null);
       await load();
-    } catch (err) {
-      setError(getErrorMessage(err));
+
+      const technicianName = technicians.find((t) => t.id === technicianId)?.name;
+      toast.success(
+        technicianName
+          ? `${assignFor.name_of_farmer} assigned to ${technicianName}.`
+          : `Technician cleared for ${assignFor.name_of_farmer}.`,
+      );
+    } catch {
+      toast.error("Failed to update the assignment. Please try again.");
     } finally {
       setSaving(false);
     }

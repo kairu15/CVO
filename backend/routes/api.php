@@ -104,6 +104,16 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         ->name('api.field-visits.options');
     Route::apiResource('field-visits', FieldVisitController::class);
 
+    // Geotagged visit photos — declared AFTER the apiResource so the explicit
+    // paths win over the resource's {field_visit} binding. POST attaches (and
+    // a retake replaces) the composited image + structured metadata; DELETE
+    // removes it. Photo routes must come after apiResource, same pattern as
+    // health-records/options above.
+    Route::post('field-visits/{id}/photo', [FieldVisitController::class, 'storePhoto'])
+        ->name('api.field-visits.photos.store');
+    Route::delete('field-visits/{id}/photo', [FieldVisitController::class, 'destroyPhoto'])
+        ->name('api.field-visits.photos.destroy');
+
     // Vaccination schedule — derived, read-only, role-scoped.
     Route::get('vaccination-schedule', [VaccinationScheduleController::class, 'index'])
         ->name('api.vaccination-schedule');

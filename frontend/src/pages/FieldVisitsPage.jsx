@@ -136,7 +136,7 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
               className="btn-primary"
             >
               <Icon name="route" className="h-4 w-4" />
-              Log a Visit
+              Log a Field Visit
             </button>
           )}
         </div>
@@ -150,6 +150,13 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
       <section className="card overflow-hidden">
         {loading ? (
           <SkeletonList rows={4} />
+        ) : visits.length === 0 && canLog && beneficiaries.length === 0 ? (
+          // A technician with zero assigned households: an explicit boundary
+          // message, not the generic "no visits yet".
+          <EmptyState
+            title="No farmers assigned to you yet"
+            description="You haven't been assigned any farmers. Contact an administrator to be assigned households to visit."
+          />
         ) : visits.length === 0 ? (
           <EmptyState
             title="No field visits yet"
@@ -161,12 +168,23 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full table-fixed min-w-[960px] text-left text-xs">
+              <colgroup>
+                <col className="w-[10%]" />
+                <col className="w-[20%]" />
+                <col className="w-[12%]" />
+                <col className="w-[10%]" />
+                <col className="w-[14%]" />
+                <col className="w-[18%]" />
+                <col className="w-[10%]" />
+                <col />
+              </colgroup>
               <thead>
                 <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
                   <th scope="col" className="px-4 py-2.5 font-semibold">Date</th>
                   <th scope="col" className="px-4 py-2.5 font-semibold">Farmer</th>
                   <th scope="col" className="px-4 py-2.5 font-semibold">Animal</th>
+                  <th scope="col" className="px-4 py-2.5 font-semibold">Photo</th>
                   <th scope="col" className="px-4 py-2.5 font-semibold">Purpose</th>
                   <th scope="col" className="px-4 py-2.5 font-semibold">On-site location</th>
                   <th scope="col" className="px-4 py-2.5 font-semibold">Technician</th>
@@ -186,15 +204,31 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
                       <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
                         {formatDate(visit.visited_on)}
                       </td>
-                      <td className="px-4 py-2.5 font-medium whitespace-nowrap text-slate-900">
-                        {visit.name_of_farmer}
-                        <span className="block text-[11px] font-normal text-slate-500">
+                      <td className="px-4 py-2.5 font-medium text-slate-900">
+                        <span className="block truncate">{visit.name_of_farmer}</span>
+                        <span className="block truncate text-[11px] font-normal text-slate-500">
                           {visit.address}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
+                      <td className="truncate px-4 py-2.5 text-slate-600">
                         {visit.animal_type}
                         {visit.sex ? ` (${visit.sex})` : ""}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        {visit.photo ? (
+                          <a
+                            href={visit.photo.image_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="View geotagged photo"
+                            className="inline-flex items-center gap-1 font-medium text-brand-800 transition hover:text-brand-600 hover:underline"
+                          >
+                            <Icon name="map-pin" className="h-3.5 w-3.5" />
+                            View photo
+                          </a>
+                        ) : (
+                          <span className="text-slate-400">None</span>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap">
                         <span className="rounded-pill bg-slate-100 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-slate-600 uppercase">

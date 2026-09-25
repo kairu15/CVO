@@ -44,8 +44,9 @@ function cellValue(record, key) {
  * @param {Array<object>} props.records
  * @param {boolean} [props.loading]
  * @param {(record: object) => void} [props.onEdit] renders an actions column when given
+ * @param {(record: object) => void} [props.onDelete] renders a Delete action beside Edit
  */
-export function MonitoringTable({ records = [], loading = false, onEdit }) {
+export function MonitoringTable({ records = [], loading = false, onEdit, onDelete }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
 
   const groups = useMemo(() => {
@@ -121,7 +122,13 @@ export function MonitoringTable({ records = [], loading = false, onEdit }) {
                  the document — a page-level horizontal scrollbar even though
                  the table scrolls inside this wrapper. */
               <div className="relative overflow-x-auto">
-                <table className="w-full min-w-[1080px] text-left text-xs">
+                <table className="w-full min-w-[1080px] table-fixed text-left text-xs">
+                  <colgroup>
+                    {COLUMNS.map((col) => (
+                      <col key={col.key} className={col.key === "name_of_farmer" ? "w-[14%]" : col.key === "remarks" ? "w-[14%]" : undefined} />
+                    ))}
+                    {(onEdit || onDelete) && <col className="w-[8%]" />}
+                  </colgroup>
                   <thead>
                     <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
                       {COLUMNS.map((col) => (
@@ -129,7 +136,7 @@ export function MonitoringTable({ records = [], loading = false, onEdit }) {
                           {col.label}
                         </th>
                       ))}
-                      {onEdit && (
+                      {(onEdit || onDelete) && (
                         <th scope="col" className="px-4 py-2.5 text-right font-semibold">
                           <span className="sr-only">Actions</span>
                         </th>
@@ -151,15 +158,26 @@ export function MonitoringTable({ records = [], loading = false, onEdit }) {
                             {cellValue(record, col.key)}
                           </td>
                         ))}
-                        {onEdit && (
-                          <td className="px-4 py-2.5 text-right">
-                            <button
-                              type="button"
-                              onClick={() => onEdit(record)}
-                              className="rounded-pill px-3 py-1 text-[11px] font-semibold text-brand-800 transition hover:bg-brand-100"
-                            >
-                              Edit
-                            </button>
+                        {(onEdit || onDelete) && (
+                          <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                            {onEdit && (
+                              <button
+                                type="button"
+                                onClick={() => onEdit(record)}
+                                className="rounded-pill px-3 py-1 text-[11px] font-semibold text-brand-800 transition hover:bg-brand-100"
+                              >
+                                Edit
+                              </button>
+                            )}
+                            {onDelete && (
+                              <button
+                                type="button"
+                                onClick={() => onDelete(record)}
+                                className="rounded-pill px-3 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-50"
+                              >
+                                Delete
+                              </button>
+                            )}
                           </td>
                         )}
                       </tr>

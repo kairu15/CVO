@@ -39,4 +39,31 @@ export const fieldVisitsApi = {
     await ensureCsrfCookie();
     return unwrap(await api.delete(`/api/v1/field-visits/${id}`));
   },
+
+  /**
+   * Attach the geotagged photo to a visit (a retake replaces). `meta` is the
+   * structured capture metadata — sent as real columns, not read back out of
+   * the pixels.
+   */
+  uploadPhoto: async (id, blob, meta) => {
+    await ensureCsrfCookie();
+
+    const form = new FormData();
+    form.append("image", blob, "field-visit.jpg");
+    for (const [key, value] of Object.entries(meta)) {
+      if (value !== null && value !== undefined) form.append(key, String(value));
+    }
+
+    return unwrap(
+      await api.post(`/api/v1/field-visits/${id}/photo`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      }),
+    );
+  },
+
+  /** Remove the visit's photo. */
+  removePhoto: async (id) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.delete(`/api/v1/field-visits/${id}/photo`));
+  },
 };

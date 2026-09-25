@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fieldVisitsApi } from "../api/fieldVisitsApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { useToast } from "../context/ToastContext";
+import { captureGeotag } from "../lib/geotagPhoto";
 import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
@@ -52,6 +53,14 @@ export function FieldVisitFormModal({
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
 
+  // Geotagged photo evidence. Required for new visits (per-product decision,
+  // 2026-09); existing visits are grandfathered and editing never forces a
+  // retroactive photo. A retake replaces the capture — never appends.
+  const cameraInputRef = useRef(null);
+  const [capturing, setCapturing] = useState(false); // GPS + composition
+  const [capture, setCapture] = useState(null); // { meta, photo } | null
+  const [captureNote, setCaptureNote] = useState(null); // farmer-readable outcome
+
   const beneficiary = useMemo(
     () =>
       beneficiaries.find((b) => String(b.id) === String(beneficiaryId)) ??
@@ -83,6 +92,8 @@ export function FieldVisitFormModal({
 
     setLocationNote(null);
     setErrors({});
+    setCapture(null);
+    setCaptureNote(null);
   }, [open, visit, beneficiaries]);
 
   function update(field) {
@@ -91,6 +102,49 @@ export function FieldVisitFormModal({
       setForm((prev) => ({ ...prev, [field]: value }));
       setErrors((prev) => ({ ...prev, [field]: undefined }));
     };
+  }
+
+  /**
+   * Take Photo: the device camera app supplies the image; at the same moment
+   * we take the GPS fix and derive the clock metadata, then compose the
+   * metadata panel onto the left side of the photo. HTTPS note: camera input
+   * and geolocation need a secure context (https or localhost) — same as the
+   * GPS feature; use the dev tunnel for phone testing.
+   */
+  async function handleCapture(event) {
+    const file = event.target.files?.[0];
+    // Reset so choosing the same file again re-fires change.
+    event.target.value = "";
+    if (!file) return;
+
+    setCapturing(true);
+    setCaptureNote(null);
+    setErrors((prev) => ({ ...prev, photo: undefined }));
+
+    try {
+      const result = await captureGeotag(file);
+      setCapture(result);
+
+      if (result.meta.latitude === null) {
+        setCaptureNote({
+          tone: "warn",
+          text: "Photo captured, but no GPS fix was available — it will be marked as having no location data.",
+        });
+      }
+    } catch {
+      setCaptureNote({
+        tone: "error",
+        text: "Could not process that photo. Try taking it again.",
+      });
+    } finally {
+      setCapturing(false);
+    }
+  }
+
+  function discardCapture() {
+    // A retake replaces: previous capture and metadata are dropped entirely.
+    setCapture(null);
+    setCaptureNote(null);
   }
 
   /** Same options as CoordinatePicker uses, so behaviour is consistent. */
@@ -135,6 +189,11 @@ export function FieldVisitFormModal({
       setErrors((prev) => ({ ...prev, purpose: "Choose why you went out." }));
       return;
     }
+    if (!editing && !capture) {
+      // Field evidence is mandatory on new visits.
+      setErrors((prev) => ({ ...prev, photo: "Take the geotagged photo before logging the visit." }));
+      return;
+    }
 
     setSaving(true);
     try {
@@ -150,7 +209,18 @@ export function FieldVisitFormModal({
       if (editing) {
         await fieldVisitsApi.update(visit.id, payload);
       } else {
-        await fieldVisitsApi.create({ ...payload, beneficiary_id: Number(beneficiaryId) });
+        const created = await fieldVisitsApi.create({
+          ...payload,
+          beneficiary_id: Number(beneficiaryId),
+          has_photo: true,
+        });
+
+        // The structured metadata uploads with the composited image — the
+        // backend stores it as real columns, queryable without OCR.
+        await fieldVisitsApi.uploadPhoto(created.id, capture.photo.blob, {
+          ...capture.meta,
+          gps_timestamp: undefined, // derived server-side from the columns
+        });
       }
 
       toast.success(editing ? "Field visit updated." : "Field visit recorded.");
@@ -313,6 +383,97 @@ export function FieldVisitFormModal({
           )}
         </fieldset>
 
+        {/* Geotagged photo evidence — required on new visits. */}
+        <fieldset className="mt-4 rounded-xl border border-slate-200 p-4">
+          <legend className="px-1.5 text-xs font-semibold tracking-wide text-slate-600 uppercase">
+            Photo evidence {editing ? "" : "(required)"}
+          </legend>
+
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleCapture}
+            aria-label="Take photo with camera"
+          />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn-secondary !px-3.5 !py-1.5 text-xs"
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={capturing}
+            >
+              <Icon name="map-pin" className="h-4 w-4" />
+              {capturing ? "Processing…" : capture ? "Retake photo" : "Take photo"}
+            </button>
+            {capture && (
+              <button
+                type="button"
+                onClick={discardCapture}
+                className="rounded-pill px-3 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+              >
+                Discard
+              </button>
+            )}
+          </div>
+
+          {capture && (
+            <div className="mt-3 flex items-start gap-3">
+              <img
+                src={capture.photo.dataUrl}
+                alt="Captured visit photo with location panel"
+                className="h-28 w-auto max-w-[55%] rounded-lg border border-slate-200"
+              />
+              <dl className="text-[11px] leading-relaxed text-slate-600">
+                <div>
+                  <dt className="inline text-slate-500">Captured: </dt>
+                  <dd className="inline font-semibold text-slate-900">
+                    {capture.meta.capture_date} {capture.meta.capture_time} ({capture.meta.timezone_offset})
+                  </dd>
+                </div>
+                <div>
+                  <dt className="inline text-slate-500">Location: </dt>
+                  <dd className="inline font-semibold text-slate-900">
+                    {capture.meta.latitude !== null
+                      ? `${capture.meta.latitude.toFixed(5)}, ${capture.meta.longitude.toFixed(5)}`
+                      : "No GPS fix"}
+                  </dd>
+                </div>
+                {capture.meta.address && (
+                  <div>
+                    <dt className="inline text-slate-500">Address: </dt>
+                    <dd className="inline font-semibold text-slate-900">{capture.meta.address}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          )}
+
+          {captureNote ? (
+            <p
+              className={`mt-2 text-xs ${
+                captureNote.tone === "error" ? "text-red-700" : "text-amber-700"
+              }`}
+            >
+              {captureNote.text}
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-slate-500">
+              The photo gets a timestamp and GPS panel burned into its left side.
+              {editing
+                ? " Editing a visit never requires a new photo."
+                : " Every new visit needs one."}
+            </p>
+          )}
+
+          {errors.photo && (
+            <p className="mt-1.5 text-xs font-medium text-red-600">{errors.photo}</p>
+          )}
+        </fieldset>
+
         <div className="mt-3">
           <label htmlFor="visit-notes" className="block text-sm font-medium text-slate-700">
             Notes
@@ -345,7 +506,7 @@ export function FieldVisitFormModal({
             ) : editing ? (
               "Save changes"
             ) : (
-              "Log visit"
+              "Log field visit"
             )}
           </button>
         </div>

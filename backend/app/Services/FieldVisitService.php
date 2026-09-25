@@ -20,7 +20,7 @@ class FieldVisitService
     public function listFor(User $user): LengthAwarePaginator
     {
         return $this->scopeFor($user)
-            ->with(['beneficiary', 'technician'])
+            ->with(['beneficiary', 'technician', 'photos'])
             ->latest('visited_on')
             ->latest('id')
             ->paginate(15);
@@ -33,7 +33,7 @@ class FieldVisitService
     public function findScoped(User $user, int $id): ?FieldVisit
     {
         return $this->scopeFor($user)
-            ->with(['beneficiary', 'technician'])
+            ->with(['beneficiary', 'technician', 'photos'])
             ->find($id);
     }
 

@@ -34,6 +34,7 @@ class FieldVisitTest extends TestCase
             'latitude' => 9.3714,
             'longitude' => 122.80916,
             'notes' => 'Checked the carabao, in good condition.',
+            'has_photo' => true,
         ]);
 
         $response->assertCreated()
@@ -60,6 +61,7 @@ class FieldVisitTest extends TestCase
             'visited_on' => now()->toDateString(),
             'purpose' => 'follow-up',
             'notes' => 'Nobody home, left a note for the owner.',
+            'has_photo' => true,
         ]);
 
         $response->assertCreated()
@@ -106,6 +108,7 @@ class FieldVisitTest extends TestCase
                 'visited_on' => now()->toDateString(),
                 'purpose' => 'other',
                 'technician_id' => $other->id,
+                'has_photo' => true,
             ])
             ->assertCreated()
             ->assertJsonPath('data.technician_id', $this->technician->id);

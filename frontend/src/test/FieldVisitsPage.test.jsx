@@ -1,4 +1,4 @@
-import { render, screen, waitFor, act, within } from "@testing-library/react";
+import { render, screen, waitFor, act, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -14,8 +14,46 @@ vi.mock("../api/fieldVisitsApi", () => ({
     create: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
+    uploadPhoto: vi.fn(),
+    removePhoto: vi.fn(),
   },
 }));
+
+// The geotag pipeline is mocked at the boundary: it returns a fixed capture
+// (clock fields, no GPS fix — the no-location path) and a blob stub, so the
+// form flow is exercised without a real camera, canvas or GPS sensor.
+const geotag = vi.hoisted(() => ({
+  captureGeotag: vi.fn(),
+}));
+
+vi.mock("../lib/geotagPhoto", () => ({
+  captureGeotag: geotag.captureGeotag,
+}));
+
+const CAPTURE = {
+  meta: {
+    capture_date: "2026-09-25",
+    capture_time: "11:45:32",
+    timezone_offset: "UTC+08:00",
+    capture_year: 2026,
+    capture_month: 9,
+    capture_day: 25,
+    capture_hour: 11,
+    capture_minute: 45,
+    capture_second: 32,
+    capture_millisecond: 500,
+    latitude: null,
+    longitude: null,
+    accuracy_m: null,
+    altitude_m: null,
+    speed_kmh: null,
+    heading_deg: null,
+    location_source: "none",
+    address: null,
+    gps_timestamp: null,
+  },
+  photo: { blob: new Blob(["x"], { type: "image/jpeg" }), dataUrl: "data:image/jpeg;base64,xyz", width: 800, height: 600 },
+};
 
 vi.mock("../api/beneficiariesApi", () => ({
   beneficiariesApi: { list: vi.fn() },
@@ -108,6 +146,8 @@ describe("FieldVisitsPage", () => {
     auth.user = { id: 7, name: "Jun Technician", role: "technician" };
     fieldVisitsApi.list.mockResolvedValue(VISITS);
     fieldVisitsApi.options.mockResolvedValue({ purposes: PURPOSES });
+    fieldVisitsApi.uploadPhoto.mockResolvedValue({ id: 1 });
+    geotag.captureGeotag.mockResolvedValue(CAPTURE);
     beneficiariesApi.list.mockResolvedValue([
       { id: 11, name_of_farmer: "Aling Nena", address: "Banay Banay", animal_type: "Carabao", sex: "F" },
     ]);
@@ -144,14 +184,15 @@ describe("FieldVisitsPage", () => {
     expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(2);
   });
 
-  it("logs a trip without any animal-condition fields", async () => {
+  it("logs a trip without any animal-condition fields, after the required photo", async () => {
     fieldVisitsApi.create.mockResolvedValue({ ...VISITS[0], id: 9 });
+    fieldVisitsApi.uploadPhoto.mockResolvedValue({ id: 1 });
 
     renderPage();
     await screen.findByText("Aling Nena");
 
     await act(async () => {
-      await userEvent.click(screen.getByRole("button", { name: "Log a Visit" }));
+      await userEvent.click(screen.getByRole("button", { name: "Log a Field Visit" }));
     });
 
     // This is the distinction the module rests on: a trip is not an observation.
@@ -167,8 +208,27 @@ describe("FieldVisitsPage", () => {
     await act(async () => {
       await userEvent.type(screen.getByLabelText("Notes"), "Nobody home.");
     });
+
+    // New visits require the geotagged photo before they can be logged.
     await act(async () => {
-      await userEvent.click(screen.getByRole("button", { name: "Log visit" }));
+      await userEvent.click(screen.getByRole("button", { name: "Log field visit" }));
+    });
+    expect(
+      await screen.findByText("Take the geotagged photo before logging the visit."),
+    ).toBeInTheDocument();
+    expect(fieldVisitsApi.create).not.toHaveBeenCalled();
+
+    // Capture through the mocked geotag pipeline (jsdom can't open a real
+    // camera/file dialog, so the change event is fired on the input directly),
+    // then submit.
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Take photo with camera"), {
+        target: { files: [new File(["x"], "shot.jpg", { type: "image/jpeg" })] },
+      });
+    });
+    await screen.findByAltText("Captured visit photo with location panel");
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Log field visit" }));
     });
 
     await waitFor(() => {
@@ -177,10 +237,18 @@ describe("FieldVisitsPage", () => {
           beneficiary_id: 11,
           purpose: "follow-up",
           notes: "Nobody home.",
+          has_photo: true,
           // No GPS captured, so the pair is sent as null rather than omitted.
           latitude: null,
           longitude: null,
         }),
+      );
+    });
+    await waitFor(() => {
+      expect(fieldVisitsApi.uploadPhoto).toHaveBeenCalledWith(
+        9,
+        expect.any(Blob),
+        expect.objectContaining({ capture_date: "2026-09-25", latitude: null }),
       );
     });
   });
@@ -190,13 +258,13 @@ describe("FieldVisitsPage", () => {
     await screen.findByText("Aling Nena");
 
     await act(async () => {
-      await userEvent.click(screen.getByRole("button", { name: "Log a Visit" }));
+      await userEvent.click(screen.getByRole("button", { name: "Log a Field Visit" }));
     });
     await act(async () => {
       await userEvent.selectOptions(screen.getByLabelText("Beneficiary visited"), "11");
     });
     await act(async () => {
-      await userEvent.click(screen.getByRole("button", { name: "Log visit" }));
+      await userEvent.click(screen.getByRole("button", { name: "Log field visit" }));
     });
 
     expect(fieldVisitsApi.create).not.toHaveBeenCalled();
@@ -209,7 +277,7 @@ describe("FieldVisitsPage", () => {
     await screen.findByText("Aling Nena");
 
     await act(async () => {
-      await userEvent.click(screen.getByRole("button", { name: "Log a Visit" }));
+      await userEvent.click(screen.getByRole("button", { name: "Log a Field Visit" }));
     });
     await act(async () => {
       await userEvent.click(screen.getByRole("button", { name: "Capture my position" }));
@@ -227,7 +295,7 @@ describe("FieldVisitsPage", () => {
     await screen.findByText("Aling Nena");
 
     expect(beneficiariesApi.list).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "Log a Visit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Log a Field Visit" })).not.toBeInTheDocument();
   });
 
   it("surfaces an API failure", async () => {

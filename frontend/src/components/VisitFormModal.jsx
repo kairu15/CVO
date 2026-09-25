@@ -127,7 +127,7 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
   }
 
   return (
-    <Modal open={open} title={editing ? "Edit monitoring entry" : "Log a visit"} onClose={onClose}>
+    <Modal open={open} title={editing ? "Edit monitoring entry" : "Add monitoring record"} onClose={onClose}>
       <form onSubmit={handleSubmit} noValidate>
         {/* Identity block — read-only, from the beneficiary record. */}
         <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4">

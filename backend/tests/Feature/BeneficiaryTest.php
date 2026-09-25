@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Beneficiary;
 use App\Models\MonitoringRecord;
+use App\Models\TechnicianAssignment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -37,6 +38,96 @@ class BeneficiaryTest extends TestCase
         $response = $this->actingAs($technician)->getJson('/api/v1/beneficiaries');
 
         $response->assertOk()->assertJsonCount(2, 'data');
+    }
+
+    public function test_technician_direct_fetch_of_an_unassigned_beneficiary_is_403(): void
+    {
+        $technician = User::factory()->create(['role' => 'technician']);
+        $mine = Beneficiary::factory()->assignedTo($technician)->create();
+        $other = Beneficiary::factory()->create(); // exists, assigned to nobody
+
+        // Assigned: fine. Unassigned but existing: an explicit 403 — a
+        // permissions boundary, not a missing row.
+        $this->actingAs($technician)
+            ->getJson("/api/v1/beneficiaries/{$mine->id}")
+            ->assertOk();
+
+        $this->actingAs($technician)
+            ->getJson("/api/v1/beneficiaries/{$other->id}")
+            ->assertForbidden()
+            ->assertJsonPath('message', 'This farmer is not assigned to you.');
+    }
+
+    public function test_a_missing_beneficiary_is_still_404_for_a_technician(): void
+    {
+        $technician = User::factory()->create(['role' => 'technician']);
+
+        $this->actingAs($technician)
+            ->getJson('/api/v1/beneficiaries/999999')
+            ->assertNotFound();
+    }
+
+    public function test_reassignment_moves_visibility_between_technicians(): void
+    {
+        $first = User::factory()->create(['role' => 'technician']);
+        $second = User::factory()->create(['role' => 'technician']);
+        $admin = User::factory()->create(['role' => 'admin']);
+        $beneficiary = Beneficiary::factory()->assignedTo($first)->create();
+
+        // Before: only the first technician can see it; the second hits 403.
+        $this->actingAs($first)->getJson("/api/v1/beneficiaries/{$beneficiary->id}")->assertOk();
+        $this->actingAs($second)->getJson("/api/v1/beneficiaries/{$beneficiary->id}")->assertForbidden();
+
+        // Admin reassigns to the second technician.
+        $this->actingAs($admin)
+            ->patchJson("/api/v1/admin/beneficiaries/{$beneficiary->id}/assign-technician", [
+                'technician_id' => $second->id,
+            ])->assertOk();
+
+        // After: access has flipped — the first is now the one outside.
+        $this->actingAs($second)->getJson("/api/v1/beneficiaries/{$beneficiary->id}")->assertOk();
+        $this->actingAs($first)->getJson("/api/v1/beneficiaries/{$beneficiary->id}")->assertForbidden();
+
+        // The audit trail recorded the chain: null → first → second.
+        $this->assertDatabaseHas('technician_assignments', [
+            'beneficiary_id' => $beneficiary->id,
+            'technician_id' => $second->id,
+            'previous_technician_id' => $first->id,
+            'assigned_by' => $admin->id,
+        ]);
+    }
+
+    public function test_clearing_an_assignment_revokes_technician_access(): void
+    {
+        $technician = User::factory()->create(['role' => 'technician']);
+        $admin = User::factory()->create(['role' => 'admin']);
+        $beneficiary = Beneficiary::factory()->assignedTo($technician)->create();
+
+        $this->actingAs($admin)
+            ->patchJson("/api/v1/admin/beneficiaries/{$beneficiary->id}/assign-technician", [
+                'technician_id' => null,
+            ])->assertOk();
+
+        $this->actingAs($technician)
+            ->getJson("/api/v1/beneficiaries/{$beneficiary->id}")
+            ->assertForbidden();
+    }
+
+    public function test_technician_scoping_covers_monitoring_records(): void
+    {
+        $technician = User::factory()->create(['role' => 'technician']);
+        $mine = Beneficiary::factory()->assignedTo($technician)->create();
+        $other = Beneficiary::factory()->create();
+
+        MonitoringRecord::factory()->count(2)->create(['beneficiary_id' => $mine->id]);
+        MonitoringRecord::factory()->create(['beneficiary_id' => $other->id]);
+
+        // The monitoring list is scoped through the same beneficiary query —
+        // only records of assigned households can appear.
+        $response = $this->actingAs($technician)->getJson('/api/v1/monitoring-records');
+        $ids = collect($response->assertOk()->json('data'))->pluck('beneficiary_id')->unique();
+
+        $this->assertSame([$mine->id], $ids->values()->all());
     }
 
     public function test_admin_sees_all_beneficiaries(): void

@@ -38,6 +38,12 @@ class FieldVisitResource extends JsonResource
             'latitude' => $this->latitude,
             'longitude' => $this->longitude,
             'has_location' => $this->hasLocation(),
+            'has_photo' => $this->hasPhoto(),
+            'photo' => $this->whenLoaded('photos', fn () => (
+                ($latest = $this->photos->sortByDesc('id')->first())
+                    ? new FieldVisitPhotoResource($latest)
+                    : null
+            )),
             'registered_latitude' => $registeredLat,
             'registered_longitude' => $registeredLng,
             'distance_from_registered_m' => FieldVisitService::distanceMeters(

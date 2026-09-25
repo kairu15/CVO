@@ -208,10 +208,19 @@ export default function BeneficiariesPage() {
                   </span>
                 </div>
 
-                <table className="w-full text-left text-xs">
+                {/* table-fixed + shared widths: every barangay group's columns
+                    line up on the same grid instead of drifting per group. */}
+                <table className="w-full table-fixed text-left text-xs">
+                  <colgroup>
+                    <col className="w-10" />
+                    <col className="w-[38%]" />
+                    <col className="w-[24%]" />
+                    <col className="w-[12%]" />
+                    <col />
+                  </colgroup>
                   <thead>
                     <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
-                      <th scope="col" className="w-10 px-4 py-2" />
+                      <th scope="col" className="px-4 py-2" />
                       <th scope="col" className="px-4 py-2.5 font-semibold">Name of Farmer</th>
                       <th scope="col" className="px-4 py-2.5 font-semibold">Animal</th>
                       <th scope="col" className="px-4 py-2.5 font-semibold">Sex</th>
@@ -230,7 +239,7 @@ export default function BeneficiariesPage() {
                             onChange={() => toggle(beneficiary.id)}
                           />
                         </td>
-                        <td className="px-4 py-2.5 font-medium whitespace-nowrap">
+                        <td className="px-4 py-2.5 font-medium">
                           <button
                             type="button"
                             onClick={() => setDetail(beneficiary)}
@@ -240,13 +249,13 @@ export default function BeneficiariesPage() {
                             {beneficiary.name_of_farmer}
                           </button>
                         </td>
-                        <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
+                        <td className="truncate px-4 py-2.5 text-slate-600">
                           {beneficiary.animal_type}
                         </td>
                         <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
                           {beneficiary.sex}
                         </td>
-                        <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
+                        <td className="truncate px-4 py-2.5 text-slate-600">
                           {beneficiary.technician_id
                             ? technicianName(beneficiary.technician_id)
                             : <span className="font-medium text-amber-700">Unassigned</span>}

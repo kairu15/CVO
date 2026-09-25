@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import UserManagementPage from "../pages/UserManagementPage";
 import { adminApi } from "../api/adminApi";
+import { ToastProvider } from "../context/ToastContext";
 
 vi.mock("../api/adminApi", () => ({
   adminApi: {
@@ -55,7 +56,9 @@ const ACCOUNTS = [
 function renderPage() {
   return render(
     <MemoryRouter>
-      <UserManagementPage />
+      <ToastProvider>
+        <UserManagementPage />
+      </ToastProvider>
     </MemoryRouter>,
   );
 }
@@ -129,6 +132,7 @@ describe("UserManagementPage", () => {
     await waitFor(() => {
       expect(adminApi.assignRole).toHaveBeenCalledWith(3, "technician");
     });
+    // Success feedback is a global toast now (role="status" in the viewport).
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Nena Farmer is now Field Technician.",
     );

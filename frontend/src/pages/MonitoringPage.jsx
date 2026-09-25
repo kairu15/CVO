@@ -3,9 +3,12 @@ import { beneficiariesApi } from "../api/beneficiariesApi";
 import { monitoringApi } from "../api/monitoringApi";
 import { getErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import { MonitoringTable } from "../components/MonitoringTable";
 import { MonitoringExcelToolbar } from "../components/MonitoringExcelToolbar";
 import { VisitFormModal } from "../components/VisitFormModal";
+import { Modal } from "../components/Modal";
+import { ButtonSpinner } from "../components/LoadingSpinner";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 
@@ -29,6 +32,9 @@ export default function MonitoringPage({ roleKey }) {
   const [error, setError] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [removing, setRemoving] = useState(false);
+  const toast = useToast();
 
   const isTechnician = viewerRole === "technician";
   const canEdit = ["admin", "doctor", "technician"].includes(viewerRole);
@@ -67,6 +73,24 @@ export default function MonitoringPage({ roleKey }) {
     setFormOpen(true);
   }
 
+  /** Delete the technician's own record (admin may delete any) — policy mirrors FieldVisit. */
+  async function confirmDelete() {
+    if (!deleting) return;
+
+    setRemoving(true);
+
+    try {
+      await monitoringApi.remove(deleting.id);
+      toast.success("Monitoring record deleted.");
+      setDeleting(null);
+      await load();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setRemoving(false);
+    }
+  }
+
   function openEdit(record) {
     setEditingRecord(record);
     setFormOpen(true);
@@ -93,7 +117,7 @@ export default function MonitoringPage({ roleKey }) {
           {canLogVisit && (
             <button type="button" onClick={openCreate} className="btn-primary">
               <Icon name="clipboard-check" className="h-4 w-4" />
-              Log a Visit
+              Add monitoring record
             </button>
           )}
         </div>
@@ -107,13 +131,25 @@ export default function MonitoringPage({ roleKey }) {
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
 
-      <section className="card overflow-hidden">
+      {/* A technician with zero assignments sees an explicit boundary message,
+          not a generic "no records" — the two mean different things. */}
+      {isTechnician && !loading && !error && beneficiaries.length === 0 ? (
+        <section className="card">
+          <EmptyState
+            title="No farmers assigned to you yet"
+            description="You haven't been assigned any farmers. Contact an administrator to be assigned households to monitor."
+          />
+        </section>
+      ) : (
+        <section className="card overflow-hidden">
         <MonitoringTable
           records={records}
           loading={loading}
           onEdit={canEdit ? openEdit : undefined}
+          onDelete={canEdit ? (record) => setDeleting(record) : undefined}
         />
-      </section>
+        </section>
+      )}
 
       <VisitFormModal
         open={formOpen}
@@ -122,6 +158,30 @@ export default function MonitoringPage({ roleKey }) {
         record={editingRecord}
         onSaved={load}
       />
+
+      <Modal open={deleting !== null} title="Delete monitoring record" onClose={() => setDeleting(null)}>
+        <p className="text-sm text-slate-600">
+          Delete the {deleting?.date_monitored ?? ""} monitoring entry for{" "}
+          <strong>{deleting?.name_of_farmer}</strong>? This removes it from the
+          monitoring sheet and cannot be undone.
+        </p>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={() => setDeleting(null)}>
+            Cancel
+          </button>
+          <button type="button" className="btn-primary" onClick={confirmDelete} disabled={removing}>
+            {removing ? (
+              <>
+                <ButtonSpinner />
+                Deleting…
+              </>
+            ) : (
+              "Delete record"
+            )}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

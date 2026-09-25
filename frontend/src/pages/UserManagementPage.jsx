@@ -9,6 +9,7 @@ import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import { ROLE_KEYS, roleLabel } from "../config/roles";
 
 /**
@@ -39,12 +40,12 @@ function formatDate(value) {
 }
 
 export default function UserManagementPage() {
+  const toast = useToast();
   const { user: currentUser } = useAuth();
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [notice, setNotice] = useState(null);
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -104,12 +105,12 @@ export default function UserManagementPage() {
       setEditing(null);
       await load();
 
-      // Set after load() so the refresh does not clear the message.
-      setNotice(
+      // Global toast — survives the list refresh.
+      toast.success(
         `${updated?.name ?? editing.name} is now ${roleLabel(updated?.role ?? pick)}.`,
       );
     } catch (err) {
-      setError(getErrorMessage(err));
+      toast.error(getErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -181,13 +182,6 @@ export default function UserManagementPage() {
       </section>
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
-      {notice && (
-        <InlineAlert
-          tone="success"
-          message={notice}
-          onDismiss={() => setNotice(null)}
-        />
-      )}
 
       <section className="card overflow-hidden">
         {loading ? (
@@ -215,7 +209,15 @@ export default function UserManagementPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full table-fixed text-left text-xs">
+                <colgroup>
+                  <col className="w-[24%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[26%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[12%]" />
+                  <col />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
                     <th scope="col" className="px-4 py-2.5 font-semibold">Name</th>
@@ -242,7 +244,7 @@ export default function UserManagementPage() {
                       <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
                         {row.username ?? "—"}
                       </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
+                      <td className="truncate px-4 py-2.5 text-slate-600">
                         {row.email}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap">

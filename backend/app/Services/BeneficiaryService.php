@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Models\Beneficiary;
+use App\Models\TechnicianAssignment;
 use App\Models\User;
 use Database\Factories\BeneficiaryFactory;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -31,6 +33,11 @@ class BeneficiaryService
     /**
      * The same role scoping as a reusable query — MonitoringRecordService
      * applies it through the beneficiary relationship.
+     *
+     * A technician's visibility is their ACTIVE assignments (the
+     * beneficiaries.technician_id column, one active technician per
+     * beneficiary). History lives in the technician_assignments audit
+     * table and never grants access.
      */
     public function scopeQueryFor(User $user): Builder
     {
@@ -41,6 +48,61 @@ class BeneficiaryService
             'technician' => $query->where('technician_id', $user->id),
             default => $query->where('farmer_id', $user->id),
         };
+    }
+
+    /**
+     * Fetch ONE beneficiary with role-appropriate failure modes.
+     *
+     * admin/doctor/farmer: a record outside their scope is simply not found
+     * for them — 404, exactly as before. A TECHNICIAN pointing at a
+     * beneficiary they are not assigned to is a permissions boundary, not a
+     * missing row, so it answers 403 — a silent 404 there would read as a
+     * bug rather than an access rule.
+     *
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
+     * @throws AuthorizationException
+     */
+    public function findFor(User $user, int $beneficiaryId): Beneficiary
+    {
+        $beneficiary = $this->scopeQueryFor($user)->find($beneficiaryId);
+
+        if ($beneficiary) {
+            return $beneficiary;
+        }
+
+        if ($user->role === 'technician'
+            && Beneficiary::query()->whereKey($beneficiaryId)->exists()) {
+            throw new AuthorizationException('This farmer is not assigned to you.');
+        }
+
+        // Genuinely missing (or out of scope for a non-technician role).
+        abort(404);
+    }
+
+    /**
+     * Assign (or clear) the active technician on a beneficiary and append
+     * the change to the audit trail.
+     *
+     * The active assignment is the single source of truth for scoping (the
+     * beneficiaries.technician_id column); history rows in
+     * technician_assignments exist for accountability only and never grant
+     * access.
+     */
+    public function assignTechnician(Beneficiary $beneficiary, ?int $technicianId, User $actor): Beneficiary
+    {
+        $previous = $beneficiary->technician_id;
+
+        $beneficiary->update(['technician_id' => $technicianId]);
+
+        TechnicianAssignment::create([
+            'beneficiary_id' => $beneficiary->id,
+            'technician_id' => $technicianId,
+            'assigned_by' => $actor->id,
+            'assigned_at' => now(),
+            'previous_technician_id' => $previous,
+        ]);
+
+        return $beneficiary->refresh();
     }
 
     public function create(User $actor, array $data): Beneficiary
@@ -103,10 +165,5 @@ class BeneficiaryService
         return null;
     }
 
-    public function assignTechnician(Beneficiary $beneficiary, ?int $technicianId): Beneficiary
-    {
-        $beneficiary->update(['technician_id' => $technicianId]);
 
-        return $beneficiary->refresh();
-    }
 }

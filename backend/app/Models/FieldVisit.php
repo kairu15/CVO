@@ -6,6 +6,7 @@ use Database\Factories\FieldVisitFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * A technician's trip to a beneficiary's farm.
@@ -52,6 +53,23 @@ class FieldVisit extends Model
     public function technician(): BelongsTo
     {
         return $this->belongsTo(User::class, 'technician_id');
+    }
+
+    /**
+     * Geotagged photos captured during this visit (currently one — the
+     * latest retake wins).
+     */
+    public function photos(): HasMany
+    {
+        return $this->hasMany(FieldVisitPhoto::class);
+    }
+
+    /**
+     * Whether a geotagged photo has been attached.
+     */
+    public function hasPhoto(): bool
+    {
+        return $this->photos()->exists();
     }
 
     /**

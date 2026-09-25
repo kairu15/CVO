@@ -162,8 +162,16 @@ export default function DispersalMapPage({ roleKey }) {
       {beneficiaries.length === 0 && !loading && !error && (
         <section className="card">
           <EmptyState
-            title="Nothing to map yet"
-            description="Geo-tagged beneficiaries appear here as soon as coordinates are captured in the field."
+            title={
+              isTechnician
+                ? "No farmers assigned to you yet"
+                : "Nothing to map yet"
+            }
+            description={
+              isTechnician
+                ? "You haven't been assigned any farmers. Contact an administrator to be assigned households to map."
+                : "Geo-tagged beneficiaries appear here as soon as coordinates are captured in the field."
+            }
           />
         </section>
       )}

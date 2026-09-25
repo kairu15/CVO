@@ -241,7 +241,13 @@ export default function ReportsPage({ roleKey = "admin" }) {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full table-fixed text-sm">
+                  <colgroup>
+                    <col className="w-[25%]" />
+                    {Array.from({ length: 5 }, (_, i) => (
+                      <col key={i} />
+                    ))}
+                  </colgroup>
                   <thead>
                     <tr className="border-b border-slate-100 text-left text-[11px] tracking-wide text-slate-500 uppercase">
                       <th className="px-4 py-2.5 font-semibold">Barangay</th>

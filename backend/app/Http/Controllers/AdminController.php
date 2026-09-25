@@ -9,6 +9,7 @@ use App\Http\Resources\BeneficiaryResource;
 use App\Http\Resources\UserResource;
 use App\Models\Beneficiary;
 use App\Models\User;
+use App\Services\BeneficiaryService;
 use App\Services\MonitoringExcelService;
 use App\Services\UserRoleService;
 use Illuminate\Http\JsonResponse;
@@ -25,6 +26,7 @@ class AdminController extends Controller
     public function __construct(
         private readonly MonitoringExcelService $excel,
         private readonly UserRoleService $roles,
+        private readonly BeneficiaryService $beneficiaries,
     ) {}
 
     /**
@@ -73,9 +75,14 @@ class AdminController extends Controller
     {
         $beneficiary = Beneficiary::findOrFail($id);
 
-        $beneficiary->update([
-            'technician_id' => $request->validated('technician_id'),
-        ]);
+        // Delegates to the service so the change is appended to the
+        // technician_assignments audit trail (who assigned whom, when,
+        // and what it replaced).
+        $beneficiary = $this->beneficiaries->assignTechnician(
+            $beneficiary,
+            $request->validated('technician_id'),
+            $request->user(),
+        );
 
         return response()->json([
             'data' => [
@@ -95,13 +102,21 @@ class AdminController extends Controller
     {
         $validated = $request->validated();
 
-        $updated = Beneficiary::query()
-            ->whereIn('id', $validated['ids'])
-            ->update(['technician_id' => $validated['technician_id'] ?? null]);
+        $existing = Beneficiary::query()->whereIn('id', $validated['ids'])->get();
 
-        $existingIds = Beneficiary::query()
-            ->whereIn('id', $validated['ids'])
-            ->pluck('id');
+        // One audit row per actually-updated beneficiary, so the history
+        // reflects each assignment individually.
+        $updated = 0;
+        foreach ($existing as $beneficiary) {
+            $this->beneficiaries->assignTechnician(
+                $beneficiary,
+                $validated['technician_id'] ?? null,
+                $request->user(),
+            );
+            $updated++;
+        }
+
+        $existingIds = $existing->pluck('id');
 
         $failedIds = collect($validated['ids'])
             ->map(fn ($id) => (int) $id)

@@ -20,6 +20,11 @@ class StoreFieldVisitRequest extends FormRequest
      * Coordinates are optional everywhere: a GPS fix is not always available,
      * and a visit without one is still a real visit. They are validated as a
      * pair so a half-captured fix cannot be stored.
+     *
+     * A geotagged PHOTO is required for every NEW visit (per-product decision,
+     * 2026-09): field evidence is the point of the module. The photo itself
+     * is attached right after the visit is created (POST /field-visits/{id}/
+     * photo), so creation only asserts the client HAS one to upload.
      */
     public function rules(): array
     {
@@ -30,6 +35,9 @@ class StoreFieldVisitRequest extends FormRequest
             'latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:longitude'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:latitude'],
             'notes' => ['nullable', 'string', 'max:2000'],
+
+            // Field evidence is mandatory on new visits.
+            'has_photo' => ['required', 'accepted'],
         ];
     }
 }

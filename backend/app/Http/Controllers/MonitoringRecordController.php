@@ -76,4 +76,24 @@ class MonitoringRecordController extends Controller
 
         return response()->json([], Response::HTTP_NO_CONTENT);
     }
+
+    /**
+     * Admin accepts a registration-created record. The "New" highlight
+     * stays until the upcoming midnight; the scheduler then flips it to
+     * `old` (see ExpireRegistrationRecords).
+     *
+     * Authorization comes before scoping on purpose: the action is
+     * admin-only, so a non-admin gets 403 even for a row outside their
+     * scope, while an admin's scope is already everything.
+     */
+    public function accept(Request $request, int $id): MonitoringRecordResource
+    {
+        $record = MonitoringRecord::findOrFail($id);
+
+        $this->authorize('acceptRegistration', $record);
+
+        return new MonitoringRecordResource(
+            $this->records->accept($record)->load(['beneficiary', 'technician', 'beneficiary.technician']),
+        );
+    }
 }

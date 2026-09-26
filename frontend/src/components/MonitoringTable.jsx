@@ -3,6 +3,7 @@ import { EmptyState } from "./EmptyState";
 import { Icon } from "./Icons";
 import { SkeletonList } from "./Skeleton";
 import { PhotoLightbox } from "./PhotoLightbox";
+import { ButtonSpinner } from "./LoadingSpinner";
 
 /**
  * Table columns mirroring the CVO's Excel monitoring sheet, in order.
@@ -58,6 +59,35 @@ function captureTimestamp(photo) {
 }
 
 /**
+ * The registration lifecycle badge: green "New" while the flag is live
+ * (freshly registered, or accepted before its midnight expiry), muted gray
+ * "Old" once the flag has expired. `is_new` is computed server-side from
+ * the same rule, so the badge can never disagree with the highlight.
+ */
+function RegistrationBadge({ record }) {
+  if (record.is_new) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-pill bg-brand-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-brand-800 uppercase ring-1 ring-brand-500/30">
+        <Icon name="map-pin" className="h-2.5 w-2.5" />
+        New
+      </span>
+    );
+  }
+
+  if (record.registration_status === "old") {
+    return (
+      <span className="inline-flex items-center rounded-pill bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500 uppercase ring-1 ring-slate-200">
+        Old
+      </span>
+    );
+  }
+
+  // `none` (ordinary technician-logged record) and `accepted`-just-expired
+  // edge: no badge at all.
+  return null;
+}
+
+/**
  * Livestock monitoring table, shared by all four dashboards.
  *
  * Rows come role-scoped from the API; this component only renders. Rows are
@@ -69,8 +99,19 @@ function captureTimestamp(photo) {
  * @param {boolean} [props.loading]
  * @param {(record: object) => void} [props.onEdit] renders an actions column when given
  * @param {(record: object) => void} [props.onDelete] renders a Delete action beside Edit
+ * @param {(record: object) => Promise<void>} [props.onAccept] renders an Accept
+ *   action on rows flagged `new`; must reject on failure so the row keeps
+ *   its in-flight spinner state until the toast reports the outcome
+ * @param {number} [props.acceptingId] id of the record whose Accept is in flight
  */
-export function MonitoringTable({ records = [], loading = false, onEdit, onDelete }) {
+export function MonitoringTable({
+  records = [],
+  loading = false,
+  onEdit,
+  onDelete,
+  onAccept,
+  acceptingId = null,
+}) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [photoRecord, setPhotoRecord] = useState(null);
 
@@ -117,6 +158,12 @@ export function MonitoringTable({ records = [], loading = false, onEdit, onDelet
     <div className="divide-y divide-slate-100">
       {groups.map(([barangay, rows]) => {
         const isCollapsed = collapsed.has(barangay);
+        // Per-barangay "new" counter — the header is where an admin scans
+        // before expanding a group, so surface the actionable count there.
+        // Counts only un-accepted records: an accepted row keeps its green
+        // flag until midnight, but it is no longer waiting on anyone, so it
+        // stops counting the moment Accept is clicked.
+        const newCount = rows.filter((record) => record.registration_status === "new").length;
 
         return (
           <section key={barangay}>
@@ -137,6 +184,12 @@ export function MonitoringTable({ records = [], loading = false, onEdit, onDelet
               <span className="rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500 uppercase ring-1 ring-slate-200">
                 {rows.length} {rows.length === 1 ? "record" : "records"}
               </span>
+              {newCount > 0 && (
+                <span className="rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase ring-1 ring-red-200">
+                  <span className="font-bold text-red-600">{newCount}</span>
+                  <span className="ml-1 text-slate-500">new</span>
+                </span>
+              )}
             </button>
 
             {!isCollapsed && (
@@ -155,7 +208,7 @@ export function MonitoringTable({ records = [], loading = false, onEdit, onDelet
                     {COLUMNS.map((col) => (
                       <col key={col.key} />
                     ))}
-                    {(onEdit || onDelete) && <col />}
+                    {(onEdit || onDelete || onAccept) && <col />}
                   </colgroup>
                   <thead>
                     <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
@@ -164,7 +217,7 @@ export function MonitoringTable({ records = [], loading = false, onEdit, onDelet
                           {col.label}
                         </th>
                       ))}
-                      {(onEdit || onDelete) && (
+                      {(onEdit || onDelete || onAccept) && (
                         <th scope="col" className="px-4 py-2.5 text-right font-semibold">
                           <span className="sr-only">Actions</span>
                         </th>
@@ -172,9 +225,34 @@ export function MonitoringTable({ records = [], loading = false, onEdit, onDelet
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {rows.map((record) => (
-                      <tr key={record.id} className="transition hover:bg-brand-50/40">
+                    {rows.map((record) => {
+                      // Fresh registration: light brand-green tint (the
+                      // palette's own light green, not a new color). Stays
+                      // through `accepted` until the midnight expiry.
+                      const isNew = Boolean(record.is_new);
+
+                      return (
+                      <tr
+                        key={record.id}
+                        className={`transition hover:bg-brand-50/60 ${isNew ? "bg-brand-50" : ""}`}
+                      >
                         {COLUMNS.map((col) => {
+                          if (col.key === "name_of_farmer") {
+                            // The registration badge leads the farmer's name —
+                            // the first thing the eye lands on when scanning
+                            // for rows that need action.
+                            return (
+                              <td key={col.key} className="px-4 py-2.5 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-2">
+                                  <RegistrationBadge record={record} />
+                                  <span className="font-medium text-slate-900">
+                                    {cellValue(record, col.key)}
+                                  </span>
+                                </span>
+                              </td>
+                            );
+                          }
+
                           if (col.key === "assigned_technician") {
                             // Assigned via the admin's technician-farmer
                             // assignment — distinct from who logged the
@@ -237,8 +315,23 @@ export function MonitoringTable({ records = [], loading = false, onEdit, onDelet
                             </td>
                           );
                         })}
-                        {(onEdit || onDelete) && (
+                        {(onEdit || onDelete || onAccept) && (
                           <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                            {/* Only on an un-accepted new registration. Once
+                                accepted the button disappears — the row keeps
+                                its highlight and badge until midnight, but
+                                there is nothing left to accept. */}
+                            {onAccept && record.is_new && record.registration_status === "new" && (
+                              <button
+                                type="button"
+                                onClick={() => onAccept(record)}
+                                disabled={acceptingId !== null}
+                                className="mr-1 inline-flex items-center gap-1 rounded-pill bg-brand-100 px-3 py-1 text-[11px] font-bold text-brand-800 transition hover:bg-brand-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {acceptingId === record.id && <ButtonSpinner />}
+                                Accept
+                              </button>
+                            )}
                             {onEdit && (
                               <button
                                 type="button"
@@ -260,7 +353,8 @@ export function MonitoringTable({ records = [], loading = false, onEdit, onDelet
                           </td>
                         )}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

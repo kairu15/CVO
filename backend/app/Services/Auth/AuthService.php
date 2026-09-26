@@ -2,6 +2,7 @@
 
 namespace App\Services\Auth;
 
+use App\Models\MonitoringRecord;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -45,7 +46,7 @@ class AuthService
             ]);
 
             if ($dispersal !== null && array_filter($dispersal)) {
-                $user->beneficiaries()->create([
+                $beneficiary = $user->beneficiaries()->create([
                     'name_of_farmer' => ($dispersal['name_of_farmer'] ?? '') !== '' ? $dispersal['name_of_farmer'] : $name,
                     'address' => $dispersal['address'] ?? '',
                     'barangay_id' => $dispersal['barangay_id'] ?? null,
@@ -58,6 +59,20 @@ class AuthService
                     // (or a confirmed suggestion), or a manual dropdown
                     // choice. Staff use it to judge coordinate quality.
                     'location_source' => $dispersal['location_source'] ?? 'manual',
+                ]);
+
+                // The registration IS the first monitoring entry: the admin
+                // sees the new farmer on the Monitoring table immediately,
+                // flagged `new`, without waiting for a technician visit.
+                // Same transaction — a farmer account can never exist without
+                // its record, and a retried/partial registration can never
+                // create two. The countdown targets the upcoming midnight
+                // (app timezone): accepted or not, the flag clears next day.
+                $beneficiary->monitoringRecords()->create([
+                    'technician_id' => null,
+                    'registration_status' => MonitoringRecord::REGISTRATION_NEW,
+                    'registered_at' => now(),
+                    'status_expires_at' => now()->addDay()->startOfDay(),
                 ]);
             }
 

@@ -1,6 +1,6 @@
 import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MonitoringTable } from "../components/MonitoringTable";
 
 /**
@@ -35,6 +35,25 @@ const RECORD_UNASSIGNED_NO_PHOTO = {
   date_monitored: "2026-09-19",
   assigned_technician: null,
   latest_field_visit_photo: null,
+  registration_status: "none",
+  is_new: false,
+};
+
+const RECORD_NEW_REGISTRATION = {
+  ...RECORD_UNASSIGNED_NO_PHOTO,
+  id: 3,
+  name_of_farmer: "Brand New Farmer",
+  registration_status: "new",
+  is_new: true,
+  registered_at: "2026-09-26T08:00:00+08:00",
+};
+
+const RECORD_OLD_REGISTRATION = {
+  ...RECORD_UNASSIGNED_NO_PHOTO,
+  id: 4,
+  name_of_farmer: "Expired Flag Farmer",
+  registration_status: "old",
+  is_new: false,
 };
 
 function renderTable(records = [RECORD_ASSIGNED, RECORD_UNASSIGNED_NO_PHOTO]) {
@@ -103,6 +122,77 @@ describe("MonitoringTable technician + timestamp columns", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+  });
+
+  it("highlights a new registration in green with a New badge", async () => {
+    renderTable([RECORD_NEW_REGISTRATION]);
+
+    const row = (await screen.findByText("Brand New Farmer")).closest("tr");
+    expect(row?.className).toContain("bg-brand-50");
+    expect(within(row).getByText("New")).toBeInTheDocument();
+  });
+
+  it("shows a muted Old badge for an expired registration", async () => {
+    renderTable([RECORD_OLD_REGISTRATION]);
+
+    const row = (await screen.findByText("Expired Flag Farmer")).closest("tr");
+    // Not the literal highlight (hover:bg-brand-50/60 must not count).
+    expect(row?.className.split(/\s+/)).not.toContain("bg-brand-50");
+    expect(within(row).getByText("Old")).toBeInTheDocument();
+  });
+
+  it("shows no badge for ordinary records", async () => {
+    renderTable([RECORD_UNASSIGNED_NO_PHOTO]);
+
+    await screen.findByText("Doyle Walter");
+    expect(screen.queryByText("New")).not.toBeInTheDocument();
+    expect(screen.queryByText("Old")).not.toBeInTheDocument();
+  });
+
+  it("offers Accept only on un-accepted new registrations", async () => {
+    const onAccept = vi.fn();
+    const accepted = {
+      ...RECORD_NEW_REGISTRATION,
+      id: 5,
+      name_of_farmer: "Accepted Farmer",
+      registration_status: "accepted",
+      is_new: true, // highlight stays until midnight…
+    };
+
+    const { rerender } = render(
+      <MonitoringTable
+        records={[RECORD_NEW_REGISTRATION, RECORD_UNASSIGNED_NO_PHOTO, accepted]}
+        onAccept={onAccept}
+      />,
+    );
+
+    await screen.findByText("Brand New Farmer");
+    // The `new` row only — the accepted row keeps its badge but no button.
+    expect(screen.getAllByRole("button", { name: "Accept" })).toHaveLength(1);
+
+    // Without onAccept (non-admin), no Accept button renders at all.
+    rerender(<MonitoringTable records={[RECORD_NEW_REGISTRATION]} />);
+    expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+  });
+
+  it("renders the New badge before the farmer's name", async () => {
+    renderTable([RECORD_NEW_REGISTRATION]);
+
+    const nameCell = (await screen.findByText("Brand New Farmer")).closest("td");
+    // Badge and name share the first cell, badge leading.
+    expect(nameCell?.querySelector("span span")?.textContent).toBe("New");
+    expect(within(nameCell).getByText("New")).toBeInTheDocument();
+  });
+
+  it("calls onAccept with the record from the Accept button", async () => {
+    const onAccept = vi.fn();
+    render(<MonitoringTable records={[RECORD_NEW_REGISTRATION]} onAccept={onAccept} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Accept" }));
+
+    expect(onAccept).toHaveBeenCalledWith(
+      expect.objectContaining({ id: RECORD_NEW_REGISTRATION.id }),
+    );
   });
 
   it("closes the lightbox on Escape", async () => {

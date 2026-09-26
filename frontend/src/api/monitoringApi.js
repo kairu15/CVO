@@ -32,4 +32,10 @@ export const monitoringApi = {
     await ensureCsrfCookie();
     return unwrap(await api.delete(`/api/v1/monitoring-records/${id}`));
   },
+
+  /** Admin accepts a registration-created record (starts the midnight countdown). */
+  acceptRegistration: async (id) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.patch(`/api/v1/monitoring-records/${id}/accept`));
+  },
 };

@@ -71,6 +71,15 @@ class MonitoringRecordResource extends JsonResource
             'farmers_signature' => $this->farmers_signature,
             'remarks' => $this->remarks,
 
+            // Registration lifecycle (auto-created on farmer registration).
+            // `is_new` is computed server-side so the frontend can't drift
+            // from the midnight rule (see MonitoringRecord::isNewRegistration).
+            'registration_status' => $this->registration_status,
+            'registered_at' => $this->registered_at?->toIso8601String(),
+            'accepted_at' => $this->accepted_at?->toIso8601String(),
+            'status_expires_at' => $this->status_expires_at?->toIso8601String(),
+            'is_new' => $this->isNewRegistration(),
+
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

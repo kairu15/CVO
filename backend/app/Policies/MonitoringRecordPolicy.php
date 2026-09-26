@@ -49,4 +49,14 @@ class MonitoringRecordPolicy
         return $user->role === 'admin'
             || ($user->role === 'technician' && $record->technician_id === $user->id);
     }
+
+    /**
+     * Accepting a registration-created record is an admin-oversight action —
+     * it tracks onboarding, not a technician's visit entry.
+     */
+    public function acceptRegistration(User $user, MonitoringRecord $record): bool
+    {
+        return $user->role === 'admin'
+            && $record->registration_status !== MonitoringRecord::REGISTRATION_NONE;
+    }
 }

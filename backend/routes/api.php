@@ -98,6 +98,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
 
     Route::apiResource('monitoring-records', MonitoringRecordController::class);
 
+    // Admin accepts a registration-created monitoring record (starts the
+    // midnight countdown). Declared after the apiResource so its explicit
+    // path wins over the {monitoring_record} binding, same as the pattern
+    // used for field-visit photo routes.
+    Route::patch('monitoring-records/{id}/accept', [MonitoringRecordController::class, 'accept'])
+        ->name('api.monitoring-records.accept');
+
     // Clinical health records (veterinarian-authored).
     //
     // The options route MUST come before the apiResource: apiResource registers

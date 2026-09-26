@@ -149,6 +149,44 @@ class MonitoringRecordService
     }
 
     /**
+     * Accept a registration-created record: the admin has seen it. The
+     * green highlight and "New" badge stay until the upcoming midnight
+     * (app timezone), then the scheduler flips the row to `old`.
+     */
+    public function accept(MonitoringRecord $record): MonitoringRecord
+    {
+        $record->forceFill([
+            'registration_status' => MonitoringRecord::REGISTRATION_ACCEPTED,
+            'accepted_at' => now(),
+            'status_expires_at' => now()->addDay()->startOfDay(),
+        ])->save();
+
+        return $record->refresh();
+    }
+
+    /**
+     * Midnight expiry: everything whose countdown has passed becomes `old`.
+     * Covers both accepted records and `new` records nobody acted on — the
+     * admin chose auto-expiry so nothing stays green unattended.
+     *
+     * @return int rows flipped
+     */
+    public function expireDueRegistrations(): int
+    {
+        return MonitoringRecord::query()
+            ->whereIn('registration_status', [
+                MonitoringRecord::REGISTRATION_NEW,
+                MonitoringRecord::REGISTRATION_ACCEPTED,
+            ])
+            ->whereNotNull('status_expires_at')
+            ->where('status_expires_at', '<=', now())
+            ->update([
+                'registration_status' => MonitoringRecord::REGISTRATION_OLD,
+                'status_expires_at' => null,
+            ]);
+    }
+
+    /**
      * Beneficiaries a technician can log visits for right now — used to
      * populate the "Log a Visit" form picker.
      */

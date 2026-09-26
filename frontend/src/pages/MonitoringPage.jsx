@@ -35,6 +35,7 @@ export default function MonitoringPage({ roleKey }) {
   const [editingRecord, setEditingRecord] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [removing, setRemoving] = useState(false);
+  const [acceptingId, setAcceptingId] = useState(null);
   const toast = useToast();
 
   const isTechnician = viewerRole === "technician";
@@ -97,6 +98,21 @@ export default function MonitoringPage({ roleKey }) {
     setFormOpen(true);
   }
 
+  /** Admin accepts a registration-created record — keeps "New" until midnight. */
+  async function confirmAccept(record) {
+    setAcceptingId(record.id);
+
+    try {
+      await monitoringApi.acceptRegistration(record.id);
+      toast.success("Marked as accepted");
+      await load();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setAcceptingId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="card p-6">
@@ -148,6 +164,8 @@ export default function MonitoringPage({ roleKey }) {
           loading={loading}
           onEdit={canEdit ? openEdit : undefined}
           onDelete={canEdit ? (record) => setDeleting(record) : undefined}
+          onAccept={isAdmin ? (record) => confirmAccept(record) : undefined}
+          acceptingId={acceptingId}
         />
         </section>
       )}

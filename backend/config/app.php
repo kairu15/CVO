@@ -63,9 +63,13 @@ return [
     | will be used by the PHP date and date-time functions. The timezone
     | is set to "UTC" by default as it is suitable for most use cases.
     |
+    | Asia/Manila: this is a Philippine LGU system — "midnight" boundaries
+    | (e.g. the registration "New" flag expiry) must mean Philippine
+    | midnight, not UTC's 8 AM.
+    |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'Asia/Manila'),
 
     /*
     |--------------------------------------------------------------------------

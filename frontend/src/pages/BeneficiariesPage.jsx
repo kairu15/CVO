@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../api/adminApi";
+import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { Modal } from "../components/Modal";
 import { BeneficiaryDetailModal } from "../components/BeneficiaryDetailModal";
@@ -36,8 +37,8 @@ export default function BeneficiariesPage() {
   // The floating details window — the clicked row itself, so opening it
   // never fires another request (the list payload carries every field).
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
 
     try {
@@ -52,15 +53,18 @@ export default function BeneficiariesPage() {
       setBeneficiaries(beneficiariesRes ?? []);
       setTechnicians(usersRes ?? []);
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (!quiet) setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [debouncedSearch]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Quietly re-fetch so rows added elsewhere appear without a manual reload.
+  useAutoRefresh(load);
 
   const grouped = useMemo(() => {
     const map = new Map();

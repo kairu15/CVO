@@ -152,7 +152,9 @@ describe("RegisterForm location cascade", () => {
   // Success feedback → delayed redirect to sign-in with the identifier
   // -------------------------------------------------------------------------
 
-  it("shows the success banner and redirects to /login with the email prefilled", async () => {
+  // The redirect is deliberately delayed, and under parallel workers this
+  // can brush the default 5s budget — give it headroom.
+  it("shows the success banner and redirects to /login with the email prefilled", { timeout: 15000 }, async () => {
     renderFormWithLoginProbe();
 
     await fillAccountDetails();

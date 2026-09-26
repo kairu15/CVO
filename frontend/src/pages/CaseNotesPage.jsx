@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { caseNotesApi } from "../api/caseNotesApi";
+import { useAutoRefresh } from "../api/queries";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { getErrorMessage } from "../api/client";
 import { CaseNoteFormModal } from "../components/CaseNoteFormModal";
@@ -61,8 +62,8 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
   const canModify = (note) =>
     user?.role === "admin" || (user?.role === "doctor" && note.doctor_id === user?.id);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
 
     try {
@@ -74,15 +75,18 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
         setBeneficiaries((await beneficiariesApi.list({ per_page: 200 })) ?? []);
       }
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (!quiet) setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [canAuthor]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Quietly re-fetch so notes written elsewhere appear without a manual reload.
+  useAutoRefresh(load);
 
   async function confirmDelete() {
     if (!deleting) return;

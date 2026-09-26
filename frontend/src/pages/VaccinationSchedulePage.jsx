@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { vaccinationApi } from "../api/vaccinationApi";
+import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
@@ -71,8 +72,8 @@ export default function VaccinationSchedulePage({ roleKey = "doctor" }) {
   const [error, setError] = useState(null);
   const [status, setStatus] = useState("all");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
 
     try {
@@ -83,15 +84,18 @@ export default function VaccinationSchedulePage({ roleKey = "doctor" }) {
 
       setRows(result ?? []);
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (!quiet) setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [status]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Quietly re-fetch so the schedule tracks visits logged elsewhere.
+  useAutoRefresh(load);
 
   return (
     <div className="space-y-6">

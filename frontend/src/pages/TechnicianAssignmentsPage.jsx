@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../api/adminApi";
+import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { useToast } from "../context/ToastContext";
 import { Modal } from "../components/Modal";
@@ -27,8 +28,8 @@ export default function TechnicianAssignmentsPage() {
   const [pick, setPick] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
 
     try {
@@ -40,15 +41,19 @@ export default function TechnicianAssignmentsPage() {
       setTechnicians(usersRes ?? []);
       setBeneficiaries(beneficiariesRes ?? []);
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (!quiet) setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Quietly re-fetch so assignment changes made elsewhere appear without a
+  // manual reload.
+  useAutoRefresh(load);
 
   const byTechnician = useMemo(() => {
     const map = new Map();

@@ -125,12 +125,28 @@ export function DispersalMap({
     [beneficiaries],
   );
 
+  // Only rows carrying coordinates can be pinned. Without this guard a
+  // coordinate-less row (e.g. an import whose address named no covered
+  // barangay) would render at 0,0 in the ocean.
+  const pinnable = useMemo(
+    () =>
+      beneficiaries.filter(
+        (b) =>
+          Number.isFinite(Number(b.latitude)) &&
+          Number.isFinite(Number(b.longitude)) &&
+          b.latitude !== null &&
+          b.longitude !== null &&
+          !(Number(b.latitude) === 0 && Number(b.longitude) === 0),
+      ),
+    [beneficiaries],
+  );
+
   const visible = useMemo(
     () =>
       animalFilter === "all"
-        ? beneficiaries
-        : beneficiaries.filter((b) => b.animal_type === animalFilter),
-    [beneficiaries, animalFilter],
+        ? pinnable
+        : pinnable.filter((b) => b.animal_type === animalFilter),
+    [pinnable, animalFilter],
   );
 
   // Create the map once.
@@ -247,7 +263,7 @@ export function DispersalMap({
     return <InlineAlert message={error} />;
   }
 
-  if (!loading && beneficiaries.length === 0 && !onPick) {
+  if (!loading && pinnable.length === 0 && !onPick) {
     return (
       <div className="py-2">
         <InlineAlert

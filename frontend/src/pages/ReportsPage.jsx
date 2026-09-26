@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { reportsApi } from "../api/reportsApi";
+import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
@@ -42,8 +43,8 @@ export default function ReportsPage({ roleKey = "admin" }) {
   const [barangay, setBarangay] = useState("");
   const [from, setFrom] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
 
     try {
@@ -54,15 +55,18 @@ export default function ReportsPage({ roleKey = "admin" }) {
 
       setData(report);
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (!quiet) setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [barangay, from]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Quietly re-fetch so the figures track records logged elsewhere.
+  useAutoRefresh(load);
 
   const barangays = data?.scope?.barangays ?? [];
   const program = data?.program ?? {};

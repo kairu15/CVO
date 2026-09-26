@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fieldVisitsApi } from "../api/fieldVisitsApi";
 import { beneficiariesApi } from "../api/beneficiariesApi";
+import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { FieldVisitFormModal, purposeLabel } from "../components/FieldVisitFormModal";
 import { Modal } from "../components/Modal";
@@ -61,8 +62,8 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
     user?.role === "admin" ||
     (user?.role === "technician" && visit.technician_id === user?.id);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
 
     try {
@@ -79,15 +80,18 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
         setBeneficiaries((await beneficiariesApi.list({ per_page: 200 })) ?? []);
       }
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (!quiet) setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [canLog]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Quietly re-fetch so visits logged elsewhere appear without a manual reload.
+  useAutoRefresh(load);
 
   async function confirmDelete() {
     if (!deleting) return;

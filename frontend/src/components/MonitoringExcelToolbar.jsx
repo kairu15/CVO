@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { adminApi } from "../api/adminApi";
+import { useInvalidate } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { Icon } from "./Icons";
 
@@ -14,6 +15,7 @@ import { Icon } from "./Icons";
  */
 export function MonitoringExcelToolbar() {
   const fileInputRef = useRef(null);
+  const invalidate = useInvalidate();
   const [importing, setImporting] = useState(false);
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState(null);
@@ -31,6 +33,10 @@ export function MonitoringExcelToolbar() {
     try {
       const response = await adminApi.importMonitoringExcel(file);
       setSummary(response.data?.data ?? null);
+      // Push the imported rows into the table immediately — without this the
+      // records only appear on the next 20s poll (or a manual reload).
+      invalidate.monitoring();
+      invalidate.notifications();
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { healthRecordsApi } from "../api/healthRecordsApi";
+import { useAutoRefresh } from "../api/queries";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { getErrorMessage } from "../api/client";
 import { HealthRecordFormModal, outcomeLabel } from "../components/HealthRecordFormModal";
@@ -61,8 +62,8 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
     user?.role === "admin" ||
     (user?.role === "doctor" && record.doctor_id === user?.id);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
 
     try {
@@ -79,15 +80,18 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
         setBeneficiaries((await beneficiariesApi.list({ per_page: 200 })) ?? []);
       }
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (!quiet) setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [canAuthor]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Quietly re-fetch so records authored elsewhere appear without a manual reload.
+  useAutoRefresh(load);
 
   async function confirmDelete() {
     if (!deleting) return;

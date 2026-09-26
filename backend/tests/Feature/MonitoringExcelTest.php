@@ -269,4 +269,72 @@ class MonitoringExcelTest extends TestCase
 
         $this->assertSame(0, MonitoringRecord::count());
     }
+
+    public function test_import_pins_created_beneficiaries_at_their_barangay_center(): void
+    {
+        $path = $this->workbook([
+            ['Juan Dela Cruz', 'Ali-is', 'Cattle', 'M', 45979, null, null, null, null, null, 3, null, null],
+            ['Maria Santos', 'Poblacion', 'Carabao', 'F', 45980, null, null, null, null, null, 4, null, null],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/admin/monitoring-records/import', [
+                'file' => new UploadedFile($path, 'report.xlsx', null, null, true),
+            ])
+            ->assertOk();
+
+        $aliis = \App\Support\Barangays::centerFor('Ali-is');
+        $poblacion = \App\Support\Barangays::centerFor('Poblacion');
+
+        $juan = Beneficiary::where('name_of_farmer', 'Juan Dela Cruz')->first();
+        $this->assertNotNull($juan);
+        $this->assertSame($aliis[0], (float) $juan->latitude);
+        $this->assertSame($aliis[1], (float) $juan->longitude);
+        $this->assertSame('manual', $juan->location_source);
+
+        $maria = Beneficiary::where('name_of_farmer', 'Maria Santos')->first();
+        $this->assertNotNull($maria);
+        $this->assertSame($poblacion[0], (float) $maria->latitude);
+        $this->assertSame($poblacion[1], (float) $maria->longitude);
+    }
+
+    public function test_import_leaves_uncovered_addresses_unpinned_rather_than_misplaced(): void
+    {
+        $path = $this->workbook([
+            ['Juan Dela Cruz', 'Not A Barangay', 'Cattle', 'M', 45979, null, null, null, null, null, 3, null, null],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/admin/monitoring-records/import', [
+                'file' => new UploadedFile($path, 'report.xlsx', null, null, true),
+            ])
+            ->assertOk();
+
+        $juan = Beneficiary::where('name_of_farmer', 'Juan Dela Cruz')->first();
+        $this->assertNotNull($juan);
+        $this->assertNull($juan->latitude);
+        $this->assertNull($juan->longitude);
+    }
+
+    public function test_import_resolves_loose_barangay_spellings(): void
+    {
+        $path = $this->workbook([
+            ['Juan Dela Cruz', 'banay banay', 'Cattle', 'M', 45979, null, null, null, null, null, 3, null, null],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/admin/monitoring-records/import', [
+                'file' => new UploadedFile($path, 'report.xlsx', null, null, true),
+            ])
+            ->assertOk();
+
+        $juan = Beneficiary::where('name_of_farmer', 'Juan Dela Cruz')->first();
+        $this->assertNotNull($juan);
+
+        // "banay banay" normalizes onto the covered "Banaybanay" entry, so
+        // the pin still lands in the right barangay.
+        $center = \App\Support\Barangays::centerFor('Banaybanay');
+        $this->assertSame($center[0], (float) $juan->latitude);
+        $this->assertSame($center[1], (float) $juan->longitude);
+    }
 }

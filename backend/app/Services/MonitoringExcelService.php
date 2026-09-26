@@ -393,6 +393,17 @@ class MonitoringExcelService
         }
 
         $sex = strtoupper(trim((string) ($values['sex'] ?? '')));
+        $normalizedAddress = $address !== '' ? \App\Support\Barangays::normalize($address) : '';
+
+        // Pin the household on the dispersal map: sheet addresses are
+        // barangay names, so the authoritative barangay center resolves a
+        // pin for every covered row — offline and instantly. A live
+        // Nominatim lookup per row is deliberately avoided here: a bulk
+        // import must not hang on network timeouts, and the centroid is
+        // exactly where a covered-barangay lookup lands anyway. Rows whose
+        // address names no covered barangay ('Unlisted' or a typo) stay
+        // coordinate-less and simply don't render a marker.
+        $center = $normalizedAddress !== '' ? \App\Support\Barangays::centerFor($normalizedAddress) : null;
 
         $beneficiary = Beneficiary::create([
             'farmer_id' => $actor->id, // owned by the importer until reassigned
@@ -400,6 +411,15 @@ class MonitoringExcelService
             'address' => $address !== '' ? $address : 'Unlisted',
             'animal_type' => trim((string) ($values['animal_type'] ?? '')) ?: 'Unspecified',
             'sex' => in_array($sex, ['M', 'F'], true) ? $sex : null,
+            // Origin tag: lets the delete path clean these auto-created rows
+            // up (see MonitoringRecordService::delete) without ever touching
+            // households a farmer or staff member registered.
+            'source' => Beneficiary::SOURCE_IMPORT,
+            'latitude' => $center[0] ?? null,
+            'longitude' => $center[1] ?? null,
+            // location_source is NOT NULL (default 'manual'): rows whose
+            // address named no covered barangay keep the default — honest
+            // enough, since the sheet itself was the manual entry.
             'technician_id' => null,
         ]);
 

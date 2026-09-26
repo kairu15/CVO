@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useAutoRefresh } from "../api/queries";
 import { Link } from "react-router-dom";
 import { animalHealthApi } from "../api/animalHealthApi";
 import { getErrorMessage } from "../api/client";
@@ -50,8 +51,8 @@ export default function AnimalHealthPage({ roleKey = "doctor" }) {
   const [error, setError] = useState(null);
   const [attentionOnly, setAttentionOnly] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
 
     try {
@@ -62,15 +63,18 @@ export default function AnimalHealthPage({ roleKey = "doctor" }) {
 
       setRows(result ?? []);
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (!quiet) setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [attentionOnly]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Quietly re-fetch so rows added elsewhere appear without a manual reload.
+  useAutoRefresh(load);
 
   const flagged = rows.filter((row) => row.needs_attention).length;
 

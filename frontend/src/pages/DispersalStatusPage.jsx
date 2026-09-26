@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { dispersalApi } from "../api/dispersalApi";
+import { useAutoRefresh } from "../api/queries";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
@@ -49,8 +50,8 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
   // meaningless rather than helpful.
   const isFarmer = user?.role === "farmer";
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
 
     try {
@@ -62,15 +63,18 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
       setEvents(eventsRes ?? []);
       setMyIds(new Set((mineRes ?? []).map((b) => b.id)));
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (!quiet) setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [isFarmer]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Quietly re-fetch so dispersals recorded elsewhere appear without a manual reload.
+  useAutoRefresh(load);
 
   const received = events.filter((e) => myIds.has(e.beneficiary_id)).length;
   const passedOn = events.filter((e) => myIds.has(e.parent_beneficiary_id)).length;

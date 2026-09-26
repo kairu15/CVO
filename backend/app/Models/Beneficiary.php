@@ -14,6 +14,12 @@ class Beneficiary extends Model
     /** @use HasFactory<BeneficiaryFactory> */
     use HasFactory;
 
+    /** Row origin: a farmer signed up / staff registered the household. */
+    public const SOURCE_REGISTRATION = 'registration';
+
+    /** Row origin: auto-created by the admin's monitoring Excel import. */
+    public const SOURCE_IMPORT = 'import';
+
     protected $fillable = [
         'farmer_id',
         'name_of_farmer',
@@ -22,6 +28,7 @@ class Beneficiary extends Model
         'purok_id',
         'animal_type',
         'sex',
+        'source',
         'technician_id',
         'latitude',
         'longitude',
@@ -75,6 +82,15 @@ class Beneficiary extends Model
     public function monitoringRecords(): HasMany
     {
         return $this->hasMany(MonitoringRecord::class);
+    }
+
+    /**
+     * Field visits made to this beneficiary — used by the import-cleanup
+     * rule to see whether anything still references an imported household.
+     */
+    public function fieldVisits(): HasMany
+    {
+        return $this->hasMany(FieldVisit::class);
     }
 
     /**

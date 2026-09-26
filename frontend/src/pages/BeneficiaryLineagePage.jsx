@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useAutoRefresh } from "../api/queries";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
@@ -24,8 +25,8 @@ export default function BeneficiaryLineagePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
 
     try {
@@ -35,19 +36,24 @@ export default function BeneficiaryLineagePage() {
       // role — Laravel's bare 404 body carries no message, so axios's
       // default "Request failed with status code 404" would surface and
       // say nothing the reader can act on.
-      setError(
-        err.response?.status === 404
-          ? "This beneficiary could not be found. It may have been removed, or your account does not have access to it."
-          : getErrorMessage(err),
-      );
+      if (!quiet) {
+        setError(
+          err.response?.status === 404
+            ? "This beneficiary could not be found. It may have been removed, or your account does not have access to it."
+            : getErrorMessage(err),
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [id]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Quietly re-fetch so pass-on moves recorded elsewhere appear live.
+  useAutoRefresh(load);
 
   if (loading) {
     // Detail-shaped skeleton — medallion + text lines for the header card,

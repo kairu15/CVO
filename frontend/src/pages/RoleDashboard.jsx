@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { beneficiariesApi } from "../api/beneficiariesApi";
+import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icons";
@@ -34,30 +35,33 @@ export default function RoleDashboard({ roleKey }) {
   // the live dispersal map. Technician/farmer keep scaffold modules for now.
   const showMap = roleKey === "admin" || roleKey === "doctor";
 
+  const load = useCallback(
+    async (quiet = false) => {
+      if (!showMap) {
+        setLoading(false);
+        return;
+      }
+
+      if (!quiet) setLoading(true);
+      setError(null);
+
+      try {
+        setBeneficiaries((await beneficiariesApi.list({ per_page: 500 })) ?? []);
+      } catch (err) {
+        if (!quiet) setError(getErrorMessage(err));
+      } finally {
+        if (!quiet) setLoading(false);
+      }
+    },
+    [showMap],
+  );
+
   useEffect(() => {
-    if (!showMap) {
-      setLoading(false);
-      return;
-    }
+    load();
+  }, [load]);
 
-    let cancelled = false;
-
-    beneficiariesApi
-      .list({ per_page: 500 })
-      .then((rows) => {
-        if (!cancelled) setBeneficiaries(rows ?? []);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(getErrorMessage(err));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [showMap]);
+  // Quietly re-fetch so the dashboard map tracks registrations made elsewhere.
+  useAutoRefresh(load);
 
   if (!config) {
     return (

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { beneficiariesApi } from "../api/beneficiariesApi";
+import { useAutoRefresh } from "../api/queries";
 import { dispersalApi } from "../api/dispersalApi";
 import { getErrorMessage } from "../api/client";
 import { DispersalMap } from "../components/DispersalMap";
@@ -43,23 +44,27 @@ export default function DispersalMapPage({ roleKey }) {
 
   const isTechnician = user?.role === "technician" || roleKey === "technician";
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
 
     try {
       const rows = await beneficiariesApi.list({ per_page: 500 });
       setBeneficiaries(rows ?? []);
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (!quiet) setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Quietly re-fetch so re-dispersals registered elsewhere appear without a
+  // manual reload.
+  useAutoRefresh(load);
 
   function update(field) {
     return (event) => {

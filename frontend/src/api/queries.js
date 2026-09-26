@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notificationsApi } from "./notificationsApi";
 import { monitoringApi } from "./monitoringApi";
@@ -78,9 +79,7 @@ export function useAssignedBeneficiaries(enabled = true) {
     refetchInterval: POLL_INTERVALS.beneficiaries,
     enabled,
   });
-}
-
-/** Imperative helpers for post-mutation refreshes (accept, mark-read…). */
+}/** Imperative helpers for post-mutation refreshes (accept, mark-read…). */
 export function useInvalidate() {
   const client = useQueryClient();
 
@@ -93,3 +92,38 @@ export function useInvalidate() {
     },
   };
 }
+
+/** How often legacy (non-React-Query) pages quietly re-fetch in the background. */
+export const AUTO_REFRESH_INTERVAL = 30_000;
+
+/**
+ * Auto-refresh for the pages that still load data the plain way (local state
+ * + a `load()` callback) instead of through React Query. Re-runs `load(true)`
+ * on an interval and when the tab regains focus, so rows imported, accepted
+ * or logged by other users show up without a manual reload.
+ *
+ * `load` receives a `quiet` flag: pages use it to skip the skeleton flash and
+ * only clear errors when it is a background refresh (`load(false)` stays the
+ * loud, first/mutation refresh). Polling pauses while the tab is hidden, and
+ * `load` identity changes (filter/search edits) restart the timer.
+ */
+export function useAutoRefresh(load, { enabled = true } = {}) {
+  useEffect(() => {
+    if (!enabled) return undefined;
+
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === "visible") load(true);
+    }, AUTO_REFRESH_INTERVAL);
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load(true);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [load, enabled]);
+}
+

@@ -52,6 +52,28 @@ class AuthService
             ]);
 
             if ($dispersal !== null && array_filter($dispersal)) {
+                // Every registration address is a covered barangay (the
+                // dropdown is validated server-side), so a pin can ALWAYS be
+                // resolved: use the GPS/map-pin fix when the browser captured
+                // one, otherwise fall back to the barangay's authoritative
+                // center. Without this fallback a farmer who skipped the map
+                // step produced a coordinate-less row — invisible on the
+                // dispersal map, despite the address naming a real place.
+                $latitude = $dispersal['latitude'] ?? null;
+                $longitude = $dispersal['longitude'] ?? null;
+                $locationSource = $dispersal['location_source'] ?? 'manual';
+
+                if ($latitude === null || $longitude === null) {
+                    $center = \App\Support\Barangays::centerFor(
+                        \App\Support\Barangays::normalize((string) ($dispersal['address'] ?? '')),
+                    );
+
+                    if ($center !== null) {
+                        [$latitude, $longitude] = $center;
+                        $locationSource = 'manual';
+                    }
+                }
+
                 $beneficiary = $user->beneficiaries()->create([
                     'name_of_farmer' => ($dispersal['name_of_farmer'] ?? '') !== '' ? $dispersal['name_of_farmer'] : $name,
                     'address' => $dispersal['address'] ?? '',
@@ -59,12 +81,12 @@ class AuthService
                     'purok_id' => $dispersal['purok_id'] ?? null,
                     'animal_type' => $dispersal['animal_type'] ?? '',
                     'sex' => $dispersal['sex'] ?? 'F',
-                    'latitude' => $dispersal['latitude'] ?? null,
-                    'longitude' => $dispersal['longitude'] ?? null,
+                    'latitude' => $latitude,
+                    'longitude' => $longitude,
                     // How the location was captured — gps fix, moved map pin
                     // (or a confirmed suggestion), or a manual dropdown
                     // choice. Staff use it to judge coordinate quality.
-                    'location_source' => $dispersal['location_source'] ?? 'manual',
+                    'location_source' => $locationSource,
                 ]);
 
                 // The registration IS the first monitoring entry: the admin

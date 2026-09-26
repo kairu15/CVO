@@ -146,9 +146,46 @@ class MonitoringRecordService
         return $record->refresh();
     }
 
+    /**
+     * Delete a monitoring record — and, when it came from the Excel import,
+     * the auto-created beneficiary behind it.
+     *
+     * The import matches households on (name, address) and silently creates
+     * a beneficiary row for every new farmer it meets. If deleting the sheet
+     * row left that auto-row behind, a deleted import would keep resurfacing
+     * as a phantom household in Beneficiaries, the map and the technician
+     * pickers. So: when the beneficiary was IMPORT-CREATED and nothing else
+     * still references it — no other monitoring record, field visit, health
+     * record, case note or dispersal event — it is removed in the same
+     * transaction. Registered households (farmer signup, staff registration)
+     * are never touched, whatever the sheet says.
+     */
     public function delete(MonitoringRecord $record): void
     {
-        $record->delete();
+        \Illuminate\Support\Facades\DB::transaction(function () use ($record): void {
+            $beneficiary = $record->beneficiary;
+
+            $record->delete();
+
+            if (! $beneficiary instanceof Beneficiary
+                || $beneficiary->source !== Beneficiary::SOURCE_IMPORT) {
+                return;
+            }
+
+            $stillReferenced = $beneficiary->monitoringRecords()->exists()
+                || $beneficiary->fieldVisits()->exists()
+                || $beneficiary->healthRecords()->exists()
+                || $beneficiary->caseNotes()->exists()
+                || $beneficiary->dispersalEvents()->exists()
+                || \App\Models\DispersalEvent::query()
+                    ->where('parent_beneficiary_id', $beneficiary->id)
+                    ->orWhere('new_beneficiary_id', $beneficiary->id)
+                    ->exists();
+
+            if (! $stillReferenced) {
+                $beneficiary->delete();
+            }
+        });
     }
 
     /**

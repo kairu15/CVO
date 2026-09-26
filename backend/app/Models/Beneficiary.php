@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class Beneficiary extends Model
 {
@@ -74,6 +75,15 @@ class Beneficiary extends Model
     public function monitoringRecords(): HasMany
     {
         return $this->hasMany(MonitoringRecord::class);
+    }
+
+    /**
+     * Geotagged photos taken on any field visit to this beneficiary — the
+     * path MonitoringRecordResource walks to reach a photo from a record.
+     */
+    public function fieldVisitPhotos(): HasManyThrough
+    {
+        return $this->hasManyThrough(FieldVisitPhoto::class, FieldVisit::class);
     }
 
     /**

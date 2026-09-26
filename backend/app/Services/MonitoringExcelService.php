@@ -33,6 +33,11 @@ class MonitoringExcelService
         'Name of Farmer', 'Address', 'Type of Animal dispersed', 'Sex',
         'Date monitored', ' Date of Vits Supp.', 'Deworming ', 'Vaccination',
         'Date Breed', 'Date Calved', 'BCS', 'Farmers Signature', 'Remarks',
+        // Admin oversight columns, matching the on-screen Monitoring table:
+        // who is assigned to the farmer, and when the most recent geotagged
+        // field-visit photo was captured. Not part of the paper template —
+        // importers ignore unknown columns, so round-trips stay safe.
+        'Technician', 'Photo Timestamp',
     ];
 
     /**
@@ -166,10 +171,12 @@ class MonitoringExcelService
      * Build the monthly report workbook: one sheet per month that has records,
      * rows ordered by barangay then farmer, mirroring the CVO template.
      */
-    public function exportWorkbook(?string $month = null): Spreadsheet
+    public function exportWorkbook(?string $month = null, ?MonitoringRecordService $records = null): Spreadsheet
     {
-        $records = MonitoringRecord::query()
-            ->with('beneficiary')
+        $records ??= app(MonitoringRecordService::class);
+
+        $models = MonitoringRecord::query()
+            ->with(['beneficiary', 'beneficiary.technician'])
             ->when($month, function ($q, $month): void {
                 $q->whereYear('date_monitored', '=', substr($month, 0, 4))
                     ->whereMonth('date_monitored', '=', substr($month, 5, 2));
@@ -177,7 +184,12 @@ class MonitoringExcelService
             ->orderBy('date_monitored')
             ->get();
 
-        $byMonth = $records->groupBy(
+        // The same "most recent photo per beneficiary" ranking the monitoring
+        // table uses (capture date, then time, id as tie-break), so the sheet
+        // and the screen can never disagree.
+        $records->attachLatestPhotos($models);
+
+        $byMonth = $models->groupBy(
             fn (MonitoringRecord $r) => ($r->date_monitored ?? $r->created_at)?->format('Y-m') ?? 'unknown',
         );
 
@@ -193,15 +205,16 @@ class MonitoringExcelService
             $sheet = new Worksheet($spreadsheet, $label);
             $spreadsheet->addSheet($sheet);
 
-            // Title row, merged across the template width.
+            // Title row, merged across the template width (now O with the
+            // oversight columns).
             $sheet->setCellValue('A1', 'LIVESTOCK MONTHLY MONITORING REPORT');
-            $sheet->mergeCells('A1:M1');
+            $sheet->mergeCells('A1:O1');
             $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
             $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
             // Header row.
             $sheet->fromArray(self::EXPORT_HEADERS, null, 'A2');
-            $headerStyle = $sheet->getStyle('A2:M2');
+            $headerStyle = $sheet->getStyle('A2:O2');
             $headerStyle->getFont()->setBold(true);
             $headerStyle->getFill()->setFillType(Fill::FILL_SOLID)
                 ->getStartColor()->setRGB('DCE8D9');
@@ -215,6 +228,7 @@ class MonitoringExcelService
             $rowIndex = 3;
             foreach ($grouped as $record) {
                 $b = $record->beneficiary;
+                $photo = $b->latestFieldVisitPhoto;
                 $sheet->fromArray([
                     $b->name_of_farmer,
                     $b->address,
@@ -229,16 +243,18 @@ class MonitoringExcelService
                     $record->bcs,
                     $record->farmers_signature,
                     $record->remarks,
+                    $b->technician?->name ?? 'Unassigned',
+                    $photo ? $this->d($photo->capture_date).' '.substr((string) $photo->capture_time, 0, 5) : null,
                 ], null, 'A'.$rowIndex);
 
-                $sheet->getStyle('A'.$rowIndex.':M'.$rowIndex)
+                $sheet->getStyle('A'.$rowIndex.':O'.$rowIndex)
                     ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
 
                 $rowIndex++;
             }
 
-            foreach (range('A', 'M') as $col) {
-                $sheet->getColumnDimension($col)->setWidth($col === 'A' ? 24 : ($col === 'M' ? 30 : 14));
+            foreach (range('A', 'O') as $col) {
+                $sheet->getColumnDimension($col)->setWidth($col === 'A' ? 24 : (in_array($col, ['M', 'O'], true) ? 30 : 14));
             }
         }
 

@@ -30,6 +30,36 @@ class MonitoringRecordResource extends JsonResource
             'animal_type' => $this->beneficiary->animal_type,
             'sex' => $this->beneficiary->sex,
 
+            // The technician currently ASSIGNED to this beneficiary (admin's
+            // assignment feature) — distinct from `technician`, which is who
+            // happened to log this record. Null renders as "Unassigned".
+            'assigned_technician' => new UserResource(
+                $this->whenLoaded(
+                    'beneficiary',
+                    fn () => $this->beneficiary->relationLoaded('technician')
+                        ? $this->beneficiary->technician
+                        : null,
+                ),
+            ),
+
+            // The beneficiary's most recent field-visit photo, ranked in SQL
+            // by the service (capture date, then time, id as tie-break). The
+            // composited image already carries the timestamp/geotag panel, so
+            // the lightbox renders the image; the structured fields below are
+            // the machine-readable truth for captions and reporting.
+            'latest_field_visit_photo' => $this->whenLoaded(
+                'beneficiary',
+                fn () => $this->beneficiary->relationLoaded('latestFieldVisitPhoto')
+                    && $this->beneficiary->latestFieldVisitPhoto !== null
+                    ? new FieldVisitPhotoResource($this->beneficiary->latestFieldVisitPhoto)
+                    : null,
+            ),
+            'has_photo' => $this->whenLoaded(
+                'beneficiary',
+                fn () => $this->beneficiary->relationLoaded('latestFieldVisitPhoto')
+                    && $this->beneficiary->latestFieldVisitPhoto !== null,
+            ),
+
             // Visit fields.
             'date_monitored' => $this->date_monitored?->toDateString(),
             'date_vits_supp' => $this->date_vits_supp?->toDateString(),

@@ -7,6 +7,7 @@ use App\Models\MonitoringRecord;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -173,6 +174,76 @@ class MonitoringExcelTest extends TestCase
         $this->assertSame('2025-12-05', $sheet->getCell('E3')->getValue());
         $this->assertSame(4, $sheet->getCell('K3')->getValue());
         $this->assertSame('healthy', $sheet->getCell('M3')->getValue());
+
+        $spreadsheet->disconnectWorksheets();
+        @unlink($temporary);
+    }
+
+    public function test_export_includes_technician_and_photo_timestamp_columns(): void
+    {
+        Storage::fake('public');
+
+        $technician = User::factory()->create(['role' => 'technician', 'name' => 'Jun Tech']);
+        $assigned = Beneficiary::factory()->assignedTo($technician)->create([
+            'name_of_farmer' => 'Maria Santos',
+            'address' => 'Ali-is',
+        ]);
+        $unassigned = Beneficiary::factory()->create([
+            'name_of_farmer' => 'Unassigned Farmer',
+            'address' => 'Ali-is',
+        ]);
+
+        MonitoringRecord::factory()->by($technician)->for($assigned, 'beneficiary')->create([
+            'date_monitored' => '2025-12-05',
+        ]);
+        MonitoringRecord::factory()->by($technician)->for($unassigned, 'beneficiary')->create([
+            'date_monitored' => '2025-12-06',
+        ]);
+
+        $visit = \App\Models\FieldVisit::factory()->forBeneficiary($assigned)->by($technician)->create();
+        $this->actingAs($technician)
+            ->postJson("/api/v1/field-visits/{$visit->id}/photo", [
+                'image' => UploadedFile::fake()->image('shot.jpg'),
+                'capture_date' => '2025-12-04',
+                'capture_time' => '11:45:32',
+                'timezone_offset' => 'UTC+08:00',
+                'capture_year' => 2025,
+                'capture_month' => 12,
+                'capture_day' => 4,
+                'capture_hour' => 11,
+                'capture_minute' => 45,
+                'capture_second' => 32,
+                'location_source' => 'none',
+            ])->assertCreated();
+
+        $response = $this->actingAs($this->admin)
+            ->getJson('/api/v1/admin/monitoring-records/export');
+
+        $response->assertOk();
+
+        $temporary = tempnam(sys_get_temp_dir(), 'export');
+        file_put_contents($temporary, $response->streamedContent());
+
+        $spreadsheet = IOFactory::load($temporary);
+        $sheet = $spreadsheet->getSheet(0);
+
+        // The two oversight columns exist in the header…
+        $this->assertSame('Technician', $sheet->getCell('N2')->getValue());
+        $this->assertSame('Photo Timestamp', $sheet->getCell('O2')->getValue());
+
+        // …and carry the assigned technician + latest capture per row.
+        $rows = [];
+        foreach (range(3, $sheet->getHighestRow()) as $row) {
+            $rows[$sheet->getCell("A{$row}")->getValue()] = [
+                'technician' => $sheet->getCell("N{$row}")->getValue(),
+                'timestamp' => $sheet->getCell("O{$row}")->getValue(),
+            ];
+        }
+
+        $this->assertSame('Jun Tech', $rows['Maria Santos']['technician']);
+        $this->assertSame('2025-12-04 11:45', $rows['Maria Santos']['timestamp']);
+        $this->assertSame('Unassigned', $rows['Unassigned Farmer']['technician']);
+        $this->assertNull($rows['Unassigned Farmer']['timestamp']);
 
         $spreadsheet->disconnectWorksheets();
         @unlink($temporary);

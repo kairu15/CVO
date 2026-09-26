@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { DashboardHeader } from "../components/DashboardHeader";
 import { searchApi } from "../api/searchApi";
@@ -16,7 +17,11 @@ vi.mock("../api/searchApi", () => ({
 }));
 
 vi.mock("../api/notificationsApi", () => ({
-  notificationsApi: { list: vi.fn() },
+  notificationsApi: {
+    list: vi.fn(),
+    unreadCount: vi.fn(),
+    markAllRead: vi.fn(),
+  },
 }));
 
 const SEARCH_GROUPS = [
@@ -51,17 +56,29 @@ const ALERTS = [
 const USER = { id: 1, name: "Dr. Maria Santos", role: "doctor" };
 
 function renderHeader() {
+  // Fresh client per render: polling state must not leak between tests.
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+
   return render(
-    <MemoryRouter>
-      <DashboardHeader title="Doctor Dashboard" onOpenSidebar={vi.fn()} />
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <DashboardHeader title="Doctor Dashboard" onOpenSidebar={vi.fn()} />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
 describe("DashboardHeader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    notificationsApi.list.mockResolvedValue({ alerts: ALERTS, counts: { total: 1, urgent: 1 } });
+    notificationsApi.list.mockResolvedValue({
+      alerts: ALERTS,
+      counts: { total: 1, urgent: 1, unread_events: 2 },
+    });
+    notificationsApi.unreadCount.mockResolvedValue({ data: { unread: 2 } });
+    notificationsApi.markAllRead.mockResolvedValue({ data: { marked: 2 } });
     searchApi.search.mockResolvedValue({ groups: SEARCH_GROUPS, total: 1 });
   });
 
@@ -110,7 +127,7 @@ describe("DashboardHeader", () => {
     expect(screen.getByText(/records you can already open/)).toBeInTheDocument();
   });
 
-  it("shows the top of the live alert feed in the bell with a view-all link for farmers", async () => {
+  it("shows the top of the live alert feed in the bell with a view-all link to the role's page", async () => {
     const user = userEvent.setup();
     renderHeader();
 
@@ -119,8 +136,9 @@ describe("DashboardHeader", () => {
     expect(await screen.findByText("Vaccination overdue")).toBeInTheDocument();
     // The panel joins date and day-count in one line, so match the hint text.
     expect(screen.getByText(/34 days overdue/)).toBeInTheDocument();
-    // A doctor has no full notifications page yet, so no view-all link.
-    expect(screen.queryByText("View all notifications")).not.toBeInTheDocument();
+    // Every role has a full notifications page; the link targets this role's.
+    const viewAll = screen.getByRole("link", { name: /View all/ });
+    expect(viewAll).toHaveAttribute("href", "/dashboard/doctor/notifications");
   });
 
   it("hides the badge while the panel is open and shows it again after closing", async () => {
@@ -129,12 +147,23 @@ describe("DashboardHeader", () => {
 
     const bell = await screen.findByRole("button", { name: "Notifications" });
 
-    // One request for the badge, one for the panel — the badge hides only
-    // while the panel is open.
-    await vi.waitFor(() => expect(notificationsApi.list).toHaveBeenCalledTimes(1));
+    // The badge comes from the unread-count endpoint, polled live.
+    await vi.waitFor(() => expect(notificationsApi.unreadCount).toHaveBeenCalled());
+
+    // Unread events show a numbered badge…
+    expect(await screen.findByText("2")).toBeInTheDocument();
 
     await user.click(bell);
     expect(await screen.findByText("Vaccination overdue")).toBeInTheDocument();
+
+    // …hidden while the panel is open.
+    expect(screen.queryByText("2")).not.toBeInTheDocument();
+
+    // Mark all read: writes through and the badge count is refreshed
+    // immediately via invalidation, not on the next poll.
+    await user.click(screen.getByRole("button", { name: "Mark all read" }));
+    await vi.waitFor(() => expect(notificationsApi.markAllRead).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(notificationsApi.unreadCount).toHaveBeenCalledTimes(2));
 
     await user.click(screen.getByRole("button", { name: "Close notifications" }));
 

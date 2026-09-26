@@ -27,4 +27,18 @@ export const notificationsApi = {
       counts: response.data?.meta ?? {},
     };
   },
+
+  /** Unread stored-event count — the bell badge number. */
+  unreadCount: async () => {
+    const response = await api.get("/api/v1/notifications/unread-count");
+
+    return response.data;
+  },
+
+  /** Mark every stored event notification read for the caller. */
+  markAllRead: async () => {
+    const response = await api.post("/api/v1/notifications/read-all");
+
+    return response.data;
+  },
 };

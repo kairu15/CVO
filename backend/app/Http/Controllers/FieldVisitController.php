@@ -8,6 +8,9 @@ use App\Http\Resources\FieldVisitPhotoResource;
 use App\Http\Resources\FieldVisitResource;
 use App\Models\FieldVisit;
 use App\Models\FieldVisitPhoto;
+use App\Models\User;
+use App\Models\UserNotification;
+use App\Services\NotificationService;
 use App\Services\FieldVisitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,7 +21,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 class FieldVisitController extends Controller
 {
-    public function __construct(private readonly FieldVisitService $visits) {}
+    public function __construct(
+        private readonly FieldVisitService $visits,
+        private readonly NotificationService $notifications,
+    ) {}
 
     /**
      * Role-scoped field visits.
@@ -145,6 +151,23 @@ class FieldVisitController extends Controller
             'image_path' => $path,
             ...$validated,
         ]);
+
+        // Evidence was just submitted — tell the supervisors who review this
+        // household: admins for oversight, doctors because the photo carries
+        // the animal's condition they triage on. The technician's own visit
+        // needs no self-alert.
+        $supervisors = User::query()->whereIn('role', ['admin', 'doctor'])->get();
+
+        foreach ($supervisors as $admin) {
+            $this->notifications->create($admin, [
+                'type' => UserNotification::TYPE_FIELD_VISIT_PHOTO,
+                'actor_id' => $request->user()->id,
+                'beneficiary_id' => $visit->beneficiary_id,
+                'title' => 'Field visit photo submitted',
+                'message' => "{$request->user()->name} submitted a geotagged photo for {$visit->beneficiary->name_of_farmer} in {$visit->beneficiary->address}.",
+                'link' => '/dashboard/admin/monitoring',
+            ]);
+        }
 
         return (new FieldVisitPhotoResource($photo))
             ->response()

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { notificationsApi } from "../api/notificationsApi";
+import { useInvalidate, useNotificationsFeed } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
@@ -45,6 +46,14 @@ const BANDS = [
   { key: "activity", title: "Recent activity", urgencies: ["info"] },
 ];
 
+/** Per-role intro copy — the feed is the same endpoint, the framing differs. */
+const ROLE_COPY = {
+  admin: "New registrations, acceptances, field-visit photos and every dispersal or vaccination alert across the city, most needing action first.",
+  doctor: "Field-visit photo submissions and every vaccination or dispersal alert for the animals under veterinary care.",
+  technician: "Your assignments, plus dispersal and vaccination alerts for the households you monitor.",
+  farmer: "Dispersal, vaccination and re-dispersal alerts for the animals on your account, most needing action first.",
+};
+
 function formatDate(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -69,34 +78,23 @@ function dueHint(days) {
 
 export default function NotificationsPage({ roleKey = "farmer" }) {
   const config = getRole(roleKey);
+  const invalidate = useInvalidate();
 
-  const [alerts, setAlerts] = useState([]);
-  const [counts, setCounts] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { data, isLoading: loading, error: queryError } = useNotificationsFeed(50);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const { alerts: rows, counts: meta } = await notificationsApi.list({ limit: 50 });
-
-      setAlerts(rows);
-      setCounts(meta);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const alerts = data?.alerts ?? [];
+  const counts = data?.counts ?? {};
+  const error = queryError ? getErrorMessage(queryError) : null;
 
   const total = counts.total ?? alerts.length;
   const urgent = counts.urgent ?? 0;
+  const unreadEvents = counts.unread_events ?? 0;
+
+  /** Write read-all through, then refresh the polled feed + badge. */
+  async function markAllRead() {
+    await notificationsApi.markAllRead();
+    invalidate.notifications();
+  }
 
   return (
     <div className="space-y-6">
@@ -104,11 +102,9 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
         <p className="eyebrow">{config?.label ?? "Farmer / Beneficiary"}</p>
         <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl">
           Notifications
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm text-slate-600">
-          Dispersal, vaccination and re-dispersal alerts for the animals on your
-          account, most needing action first.
-        </p>
+        </h2>            <p className="mt-2 max-w-2xl text-sm text-slate-600">
+              {ROLE_COPY[roleKey] ?? ROLE_COPY.farmer}
+            </p>
 
         {!loading && total > 0 && (
           <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -121,6 +117,15 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
                 <Icon name="alert-circle" className="h-4 w-4" />
                 {urgent} needing action
               </span>
+            )}
+            {unreadEvents > 0 && (
+              <button
+                type="button"
+                onClick={markAllRead}
+                className="rounded-pill bg-brand-100 px-3.5 py-1.5 text-xs font-semibold text-brand-800 transition hover:bg-brand-500 hover:text-white"
+              >
+                Mark {unreadEvents} as read
+              </button>
             )}
           </div>
         )}

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Beneficiary;
 use App\Models\TechnicianAssignment;
 use App\Models\User;
+use App\Models\UserNotification;
 use Database\Factories\BeneficiaryFactory;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -101,6 +102,72 @@ class BeneficiaryService
             'assigned_at' => now(),
             'previous_technician_id' => $previous,
         ]);
+
+        // Notify the technician gaining (or losing) the household, and the
+        // farmer whose animal it is. A reassignment is one event with two
+        // sides: the new technician needs to know they are on, the old one
+        // that they are off.
+        //
+        // Resolved lazily: NotificationService depends on the vaccination /
+        // dispersal services, which depend on THIS service — a constructor
+        // injection here would be a resolution cycle. At call time the
+        // graph is already built, so the container hands it over fine.
+        $notifications = app(NotificationService::class);
+
+        $isReassignment = $previous !== null && $technicianId !== null && $previous !== $technicianId;
+        $type = $isReassignment
+            ? UserNotification::TYPE_TECHNICIAN_REASSIGNED
+            : UserNotification::TYPE_TECHNICIAN_ASSIGNED;
+        $household = "{$beneficiary->name_of_farmer} in {$beneficiary->address}";
+
+        if ($technicianId !== null) {
+            $technician = User::find($technicianId);
+
+            if ($technician) {
+                $notifications->create($technician, [
+                    'type' => $type,
+                    'actor_id' => $actor->id,
+                    'beneficiary_id' => $beneficiary->id,
+                    'title' => $isReassignment ? 'Farmer reassigned to you' : 'Farmer assigned to you',
+                    'message' => "{$actor->name} assigned {$household} to you.",
+                    'link' => '/dashboard/technician/monitoring',
+                ]);
+            }
+        }
+
+        // The outgoing technician only hears about it on a reassignment.
+        if ($isReassignment) {
+            $outgoing = User::find($previous);
+
+            if ($outgoing) {
+                $notifications->create($outgoing, [
+                    'type' => $type,
+                    'actor_id' => $actor->id,
+                    'beneficiary_id' => $beneficiary->id,
+                    'title' => 'Farmer reassigned away from you',
+                    'message' => "{$actor->name} reassigned {$household} to another technician.",
+                    'link' => '/dashboard/technician/monitoring',
+                ]);
+            }
+        }
+
+        if ($beneficiary->farmer_id !== null) {
+            $farmer = User::find($beneficiary->farmer_id);
+
+            if ($farmer && $technicianId !== null) {
+                $technician = User::find($technicianId);
+                $notifications->create($farmer, [
+                    'type' => $type,
+                    'actor_id' => $actor->id,
+                    'beneficiary_id' => $beneficiary->id,
+                    'title' => 'Your technician was updated',
+                    'message' => $technician
+                        ? "{$technician->name} is now the technician monitoring {$household}."
+                        : "A technician was assigned to {$household}.",
+                    'link' => '/dashboard/farmer/monitoring',
+                ]);
+            }
+        }
 
         return $beneficiary->refresh();
     }

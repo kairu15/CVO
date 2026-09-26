@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useInvalidate, useAssignedBeneficiaries, useMonitoringRecords } from "../api/queries";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { monitoringApi } from "../api/monitoringApi";
 import { getErrorMessage } from "../api/client";
@@ -20,16 +21,19 @@ import { Icon } from "../components/Icons";
  * technician: assigned beneficiaries, farmer: own animals); this page only
  * adapts which actions are offered.
  *
+ * Data arrives through the polled React Query hooks: the table refreshes
+ * itself every 20s and on tab focus, so new registrations, technician
+ * entries and acceptances from other users appear without a manual reload.
+ *
  * @param {string} roleKey dashboard this instance is rendered in (the signed-in
  *   admin sees the same page through the all-access switcher)
  */
 export default function MonitoringPage({ roleKey }) {
   const { user } = useAuth();
   const viewerRole = roleKey ?? user?.role;
+  const invalidate = useInvalidate();
 
-  const [records, setRecords] = useState([]);
   const [beneficiaries, setBeneficiaries] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState(null);
@@ -42,28 +46,31 @@ export default function MonitoringPage({ roleKey }) {
   const canEdit = ["admin", "doctor", "technician"].includes(viewerRole);
   const isAdmin = viewerRole === "admin";
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // Polled + refetched-on-focus. `loading` maps to the FIRST fetch only, so
+  // background refetches never blank the table into skeletons.
+  const recordsQuery = useMonitoringRecords();
+  const beneficiaryQuery = useAssignedBeneficiaries(isTechnician);
 
-    try {
-      const requests = [monitoringApi.list({ per_page: 100 })];
-      if (isTechnician) requests.push(beneficiariesApi.list({ per_page: 100 }));
-
-      const [recordsRes, beneficiariesRes] = await Promise.all(requests);
-
-      setRecords(recordsRes ?? []);
-      setBeneficiaries(beneficiariesRes ?? []);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [isTechnician]);
+  const records = recordsQuery.data ?? [];
+  const loading = recordsQuery.isPending;
+  const fetchError = recordsQuery.error ?? beneficiaryQuery.error;
 
   useEffect(() => {
-    load();
-  }, [load]);
+    setError(fetchError ? getErrorMessage(fetchError) : null);
+  }, [fetchError]);
+
+  // The technician's picker list — same data, separate hook (30s poll).
+  const beneficiaryList = beneficiaryQuery.data;
+
+  useEffect(() => {
+    setBeneficiaries(beneficiaryList ?? []);
+  }, [beneficiaryList]);
+
+  /** Manual refresh after a mutation, straight into the query cache. */
+  const load = useCallback(async () => {
+    invalidate.monitoring();
+    invalidate.notifications();
+  }, [invalidate]);
 
   const canLogVisit = useMemo(
     () => isTechnician && beneficiaries.length > 0,

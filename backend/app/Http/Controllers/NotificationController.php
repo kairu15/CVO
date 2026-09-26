@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\NotificationFeedRequest;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * The notification feed — read-only, derived from existing records.
@@ -33,6 +34,32 @@ class NotificationController extends Controller
         return response()->json([
             'data' => $feed['alerts'],
             'meta' => $feed['counts'],
+        ]);
+    }
+
+    /**
+     * Just the unread stored-event count — the bell badge number. A single
+     * cheap COUNT the frontend polls; separate from the feed endpoint so a
+     * badge tick never re-derives vaccination/dispersal alerts.
+     */
+    public function unreadCount(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => [
+                'unread' => $this->notifications->unreadCount($request->user()),
+            ],
+        ]);
+    }
+
+    /**
+     * Mark every stored event notification read for the caller.
+     */
+    public function markAllRead(Request $request): JsonResponse
+    {
+        $marked = $this->notifications->markAllRead($request->user());
+
+        return response()->json([
+            'data' => ['marked' => $marked],
         ]);
     }
 }

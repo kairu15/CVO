@@ -273,6 +273,32 @@ export default function AppRoutes() {
                 </RoleRoute>
               }
             />
+            {/* Notifications — one shared page for every role; the feed is
+                role-scoped server-side, so each dashboard sees its own. */}
+            <Route
+              path="/dashboard/admin/notifications"
+              element={
+                <RoleRoute dashboard="admin">
+                  <NotificationsPage roleKey="admin" />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/dashboard/doctor/notifications"
+              element={
+                <RoleRoute dashboard="doctor">
+                  <NotificationsPage roleKey="doctor" />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/dashboard/technician/notifications"
+              element={
+                <RoleRoute dashboard="technician">
+                  <NotificationsPage roleKey="technician" />
+                </RoleRoute>
+              }
+            />
             <Route
               path="/dashboard/farmer/notifications"
               element={

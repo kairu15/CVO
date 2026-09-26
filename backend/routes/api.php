@@ -142,9 +142,15 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::get('animal-health', [AnimalHealthController::class, 'index'])
         ->name('api.animal-health');
 
-    // Notification feed — derived, read-only, and always the caller's own.
+    // Notification feed — derived alerts + the caller's stored event
+    // notifications, always their own. unread-count backs the bell badge
+    // (cheap enough to poll); read-all marks every stored event read.
     Route::get('notifications', [NotificationController::class, 'index'])
         ->name('api.notifications');
+    Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount'])
+        ->name('api.notifications.unread-count');
+    Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])
+        ->name('api.notifications.read-all');
 
     // Global header search — read-only, role-scoped to the caller's own rows.
     Route::get('search', [SearchController::class, 'index'])

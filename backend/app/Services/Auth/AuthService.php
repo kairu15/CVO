@@ -4,6 +4,8 @@ namespace App\Services\Auth;
 
 use App\Models\MonitoringRecord;
 use App\Models\User;
+use App\Models\UserNotification;
+use App\Services\NotificationService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -13,6 +15,10 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthService
 {
+    public function __construct(private readonly NotificationService $notifications)
+    {
+    }
+
     /**
      * Register a new user and return them.
      *
@@ -68,12 +74,28 @@ class AuthService
                 // its record, and a retried/partial registration can never
                 // create two. The countdown targets the upcoming midnight
                 // (app timezone): accepted or not, the flag clears next day.
-                $beneficiary->monitoringRecords()->create([
+                $record = $beneficiary->monitoringRecords()->create([
                     'technician_id' => null,
                     'registration_status' => MonitoringRecord::REGISTRATION_NEW,
                     'registered_at' => now(),
                     'status_expires_at' => now()->addDay()->startOfDay(),
                 ]);
+
+                // Tell every admin a new farmer needs review — the event is
+                // the record they see flagged "New" on the monitoring table.
+                // Inside the transaction: an account, its record, and the
+                // admins' notifications all commit together or not at all.
+                User::query()->where('role', 'admin')->get()->each(
+                    fn (User $admin) => $this->notifications->create($admin, [
+                        'type' => UserNotification::TYPE_REGISTRATION_NEW,
+                        'actor_id' => $user->id,
+                        'beneficiary_id' => $beneficiary->id,
+                        'monitoring_record_id' => $record->id,
+                        'title' => 'New farmer registered',
+                        'message' => "{$beneficiary->name_of_farmer} in {$beneficiary->address} registered a new dispersal — awaiting review.",
+                        'link' => '/dashboard/admin/monitoring',
+                    ]),
+                );
             }
 
             return $user;

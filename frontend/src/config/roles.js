@@ -45,6 +45,7 @@ export const roles = {
       { label: "System Settings", icon: "sliders", to: "/dashboard/admin/settings" },
       { label: "Beneficiaries", icon: "clipboard", to: "/dashboard/admin/beneficiaries" },
       { label: "Technicians", icon: "map-pin", to: "/dashboard/admin/technicians" },
+      { label: "Notifications", icon: "bell", to: "/dashboard/admin/notifications" },
     ],
   },
   doctor: {
@@ -63,6 +64,7 @@ export const roles = {
       { label: "Vaccination Schedule", icon: "calendar", to: "/dashboard/doctor/vaccination-schedule" },
       { label: "Case Notes", icon: "file-text", to: "/dashboard/doctor/case-notes" },
       { label: "Animal Health Monitoring", icon: "activity", to: "/dashboard/doctor/animal-health" },
+      { label: "Notifications", icon: "bell", to: "/dashboard/doctor/notifications" },
     ],
   },
   technician: {
@@ -80,6 +82,7 @@ export const roles = {
       { label: "Dispersal Records", icon: "truck", to: "/dashboard/technician/map" },
       { label: "Field Visits", icon: "route", to: "/dashboard/technician/field-visits" },
       { label: "Re-Dispersal Tracking", icon: "refresh", to: "/dashboard/technician/map" },
+      { label: "Notifications", icon: "bell", to: "/dashboard/technician/notifications" },
     ],
   },
   farmer: {

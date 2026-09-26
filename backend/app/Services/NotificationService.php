@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Beneficiary;
 use App\Models\DispersalEvent;
 use App\Models\User;
+use App\Models\UserNotification;
 
 /**
  * Notifications — a derived, read-only feed.
@@ -89,7 +90,57 @@ class NotificationService
     ) {}
 
     /**
+     * Record an event notification for a user at the moment it happens.
+     *
+     * This is the stored half of the module: the derived feed (vaccination /
+     * dispersal) recomputes from records, but events like "a farmer
+     * registered" have no record to re-derive from — they must be written
+     * here, once, with read state, or they never existed.
+     */
+    public function create(User $recipient, array $attributes): UserNotification
+    {
+        return UserNotification::create([
+            'user_id' => $recipient->id,
+            'actor_id' => $attributes['actor_id'] ?? null,
+            'beneficiary_id' => $attributes['beneficiary_id'] ?? null,
+            'monitoring_record_id' => $attributes['monitoring_record_id'] ?? null,
+            'type' => $attributes['type'],
+            'title' => $attributes['title'],
+            'message' => $attributes['message'],
+            'link' => $attributes['link'] ?? null,
+        ]);
+    }
+
+    /**
+     * The recipient's unread stored-event count — the bell badge number.
+     * Deliberately a plain COUNT of unread rows: cheap enough to poll.
+     */
+    public function unreadCount(User $user): int
+    {
+        return UserNotification::query()
+            ->where('user_id', $user->id)
+            ->whereNull('read_at')
+            ->count();
+    }
+
+    /**
+     * Mark every unread stored notification read for this user — the bell
+     * panel's "mark all read". Returns how many rows changed.
+     */
+    public function markAllRead(User $user): int
+    {
+        return UserNotification::query()
+            ->where('user_id', $user->id)
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+    }
+
+    /**
      * The role-scoped feed, most needing action first.
+     *
+     * Stored event notifications (this module's write half) merge with the
+     * derived alerts (vaccination / dispersal): events lead — they are the
+     * newest facts — then the derived bands follow in urgency order.
      *
      * @return array{alerts: list<array<string, mixed>>, counts: array<string, mixed>}
      */
@@ -100,6 +151,7 @@ class NotificationService
         $this->truncated = false;
 
         $alerts = array_merge(
+            $this->storedAlerts($user),
             $this->vaccinationAlerts($user),
             $this->dispersalAlerts($user),
         );
@@ -111,6 +163,7 @@ class NotificationService
             self::URGENCY_URGENT => 0,
             self::URGENCY_WARNING => 0,
             self::URGENCY_INFO => 0,
+            'unread_events' => $this->unreadCount($user),
         ];
 
         foreach ($alerts as $alert) {
@@ -123,6 +176,37 @@ class NotificationService
             'alerts' => array_slice($alerts, 0, $limit),
             'counts' => $counts,
         ];
+    }
+
+    /**
+     * The recipient's stored event notifications, as feed alerts. Events are
+     * informational (they happened), never urgent — urgency in this module
+     * means "a date has arrived", and an event's date has already passed.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function storedAlerts(User $user): array
+    {
+        return UserNotification::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(self::SCAN_CAP)
+            ->get()
+            ->map(fn (UserNotification $notification): array => [
+                'id' => "event-{$notification->id}",
+                'type' => $notification->type,
+                'urgency' => self::URGENCY_INFO,
+                'title' => $notification->title,
+                'message' => $notification->message,
+                'date' => $notification->created_at->toIso8601String(),
+                'created_at' => $notification->created_at->toIso8601String(),
+                'read' => $notification->read_at !== null,
+                'beneficiary_id' => $notification->beneficiary_id,
+                'monitoring_record_id' => $notification->monitoring_record_id,
+                'link' => $notification->link ?? "/dashboard/{$user->role}/monitoring",
+            ])
+            ->all();
     }
 
     /**

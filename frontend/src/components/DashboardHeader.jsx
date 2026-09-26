@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { roleLabel } from "../config/roles";
 import { notificationsApi } from "../api/notificationsApi";
+import {
+  useInvalidate,
+  useNotificationsFeed,
+  useUnreadNotificationsCount,
+} from "../api/queries";
 import { searchApi } from "../api/searchApi";
 import { getErrorMessage } from "../api/client";
 import { Icon } from "./Icons";
@@ -358,68 +364,57 @@ function SearchPanel({ query, onNavigate }) {
   );
 }
 
-/** Badge dot driven by the live feed, hidden when nothing needs attention. */
+/**
+ * The unread-event count behind the bell: a polled number, not a one-shot
+ * dot. Hidden at 0 (no "0" badge), capped at "9+" so two digits never
+ * stretch the pill. Invisible while the panel is open — the panel itself
+ * shows the state, and the count refetches the moment events are read.
+ */
 function NotificationBadge({ active }) {
-  const [needsAttention, setNeedsAttention] = useState(0);
+  const { data: unread = 0 } = useUnreadNotificationsCount();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    notificationsApi
-      .list({ limit: 5 })
-      .then(({ counts }) => {
-        if (!cancelled) {
-          setNeedsAttention((counts.urgent ?? 0) + (counts.warning ?? 0));
-        }
-      })
-      .catch(() => {
-        // The bell stays quiet on failure: no badge is better than a lying
-        // one, and the panel shows the error when opened.
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (needsAttention === 0 || active) return null;
+  if (unread === 0 || active) return null;
 
   return (
-    <span className="absolute top-2 right-2.5 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white" />
+    <span className="absolute -top-1 -right-1 grid h-4.5 min-w-4.5 place-items-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white ring-2 ring-white">
+      {unread > 9 ? "9+" : unread}
+    </span>
   );
 }
 
 /**
  * The bell's dropdown: the top of the same feed the notifications page
  * renders in full, so the two surfaces cannot disagree about what happened.
+ *
+ * Fed by the polled query, so it keeps updating while open, and "Mark all
+ * read" writes through to the server and invalidates the badge query in the
+ * same tick — the badge decrements immediately, not on the next poll.
  */
 function NotificationPanel({ onNavigate }) {
   const { user } = useAuth();
-  const [state, setState] = useState({ status: "loading", alerts: [], counts: {}, error: null });
+  const invalidate = useInvalidate();
+  const [marking, setMarking] = useState(false);
+  const { data, isLoading, error } = useNotificationsFeed(10);
 
-  useEffect(() => {
-    let cancelled = false;
+  const alerts = data?.alerts ?? [];
+  const counts = data?.counts ?? {};
+  const attention = (counts.urgent ?? 0) + (counts.warning ?? 0);
+  const unreadEvents = counts.unread_events ?? 0;
 
-    notificationsApi
-      .list({ limit: 5 })
-      .then(({ alerts, counts }) => {
-        if (!cancelled) setState({ status: "done", alerts, counts, error: null });
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setState({ status: "done", alerts: [], counts: {}, error: getErrorMessage(err) });
-        }
-      });
+  // Every role has its own full notifications page now; the panel is the
+  // quick glance, the page the full history.
+  const allHref = user?.role ? `/dashboard/${user.role}/notifications` : null;
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  async function markAllRead() {
+    setMarking(true);
 
-  const attention = (state.counts.urgent ?? 0) + (state.counts.warning ?? 0);
-  // The full page exists so far only on the farmer dashboard; other roles read
-  // the feed here, which is why the panel carries the alerts itself.
-  const allHref = user?.role === "farmer" ? "/dashboard/farmer/notifications" : null;
+    try {
+      await notificationsApi.markAllRead();
+      invalidate.notifications();
+    } finally {
+      setMarking(false);
+    }
+  }
 
   return (
     <div className="card absolute right-0 z-20 mt-2 w-80 p-4">
@@ -432,13 +427,13 @@ function NotificationPanel({ onNavigate }) {
         )}
       </div>
 
-      {state.status === "loading" ? (
+      {isLoading ? (
         <div className="mt-3">
           <SkeletonList className="space-y-2" rows={2} rowClassName="h-12" />
         </div>
-      ) : state.error ? (
-        <p className="mt-2 text-xs text-red-600">{state.error}</p>
-      ) : state.alerts.length === 0 ? (
+      ) : error ? (
+        <p className="mt-2 text-xs text-red-600">{getErrorMessage(error)}</p>
+      ) : alerts.length === 0 ? (
         <p className="mt-2 text-xs text-slate-500">
           Nothing needs attention and no movements have been recorded yet.
           Alerts appear here when a dispersal is recorded or a vaccination
@@ -446,16 +441,19 @@ function NotificationPanel({ onNavigate }) {
         </p>
       ) : (
         <ul className="mt-2 space-y-1">
-          {state.alerts.map((alert) => {
+          {alerts.map((alert) => {
             const hint = dueHint(alert.days_until_due);
             const meta = [formatDate(alert.date), hint].filter(Boolean).join(" · ");
+            const isEvent = typeof alert.id === "string" && alert.id.startsWith("event-");
 
             return (
               <li key={alert.id}>
                 <Link
                   to={alert.link}
                   onClick={onNavigate}
-                  className="flex items-start gap-2.5 rounded-xl px-2 py-2 transition hover:bg-brand-50"
+                  className={`flex items-start gap-2.5 rounded-xl px-2 py-2 transition hover:bg-brand-50 ${
+                    isEvent && !alert.read ? "bg-brand-50/70" : ""
+                  }`}
                 >
                   <Icon
                     name={NOTIFICATION_ICONS[alert.type] ?? "bell"}
@@ -472,6 +470,9 @@ function NotificationPanel({ onNavigate }) {
                       <span className="mt-0.5 block text-[11px] text-slate-400">{meta}</span>
                     )}
                   </span>
+                  {isEvent && !alert.read && (
+                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand-500" />
+                  )}
                 </Link>
               </li>
             );
@@ -479,16 +480,30 @@ function NotificationPanel({ onNavigate }) {
         </ul>
       )}
 
-      {allHref && (
-        <Link
-          to={allHref}
-          onClick={onNavigate}
-          className="mt-3 flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-brand-300 hover:bg-brand-50"
-        >
-          View all notifications
-          <Icon name="arrow-right" className="h-3.5 w-3.5" />
-        </Link>
-      )}
+      <div className="mt-3 flex items-center gap-2">
+        {unreadEvents > 0 && (
+          <button
+            type="button"
+            onClick={markAllRead}
+            disabled={marking}
+            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-brand-300 hover:bg-brand-50 disabled:opacity-60"
+          >
+            {marking ? "Marking…" : "Mark all read"}
+          </button>
+        )}
+        {allHref && (
+          <Link
+            to={allHref}
+            onClick={onNavigate}
+            className={`flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-brand-300 hover:bg-brand-50 ${
+              unreadEvents > 0 ? "flex-1" : "w-full"
+            }`}
+          >
+            View all
+            <Icon name="arrow-right" className="h-3.5 w-3.5" />
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

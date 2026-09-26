@@ -6,13 +6,16 @@ use App\Models\Beneficiary;
 use App\Models\FieldVisitPhoto;
 use App\Models\MonitoringRecord;
 use App\Models\User;
+use App\Models\UserNotification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 class MonitoringRecordService
 {
-    public function __construct(private readonly BeneficiaryService $beneficiaries)
-    {
+    public function __construct(
+        private readonly BeneficiaryService $beneficiaries,
+        private readonly NotificationService $notifications,
+    ) {
     }
 
     /**
@@ -153,13 +156,41 @@ class MonitoringRecordService
      * green highlight and "New" badge stay until the upcoming midnight
      * (app timezone), then the scheduler flips the row to `old`.
      */
-    public function accept(MonitoringRecord $record): MonitoringRecord
+    public function accept(MonitoringRecord $record, User $acceptor): MonitoringRecord
     {
         $record->forceFill([
             'registration_status' => MonitoringRecord::REGISTRATION_ACCEPTED,
             'accepted_at' => now(),
             'status_expires_at' => now()->addDay()->startOfDay(),
         ])->save();
+
+        // Tell the farmer their registration was reviewed, and the other
+        // admins so nobody re-reviews an already-accepted row.
+        $farmerUser = $record->beneficiary?->farmer_id;
+
+        if ($farmerUser) {
+            $this->notifications->create($farmerUser instanceof User ? $farmerUser : User::find($farmerUser), [
+                'type' => UserNotification::TYPE_REGISTRATION_ACCEPTED,
+                'actor_id' => $acceptor->id,
+                'beneficiary_id' => $record->beneficiary_id,
+                'monitoring_record_id' => $record->id,
+                'title' => 'Registration accepted',
+                'message' => "The CVO accepted the dispersal registration for {$record->beneficiary->name_of_farmer}.",
+                'link' => '/dashboard/farmer/monitoring',
+            ]);
+        }
+
+        User::query()->where('role', 'admin')->where('id', '!=', $acceptor->id)->get()->each(
+            fn (User $admin) => $this->notifications->create($admin, [
+                'type' => UserNotification::TYPE_REGISTRATION_ACCEPTED,
+                'actor_id' => $acceptor->id,
+                'beneficiary_id' => $record->beneficiary_id,
+                'monitoring_record_id' => $record->id,
+                'title' => 'Registration accepted',
+                'message' => "{$acceptor->name} accepted the registration for {$record->beneficiary->name_of_farmer}.",
+                'link' => '/dashboard/admin/monitoring',
+            ]),
+        );
 
         return $record->refresh();
     }

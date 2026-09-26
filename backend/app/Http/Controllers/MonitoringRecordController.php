@@ -93,7 +93,7 @@ class MonitoringRecordController extends Controller
         $this->authorize('acceptRegistration', $record);
 
         return new MonitoringRecordResource(
-            $this->records->accept($record)->load(['beneficiary', 'technician', 'beneficiary.technician']),
+            $this->records->accept($record, $request->user())->load(['beneficiary', 'technician', 'beneficiary.technician']),
         );
     }
 }

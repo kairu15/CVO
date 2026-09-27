@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\AdminExcelExportRequest;
+use App\Http\Requests\AdminExcelImportRequest;
+use App\Http\Requests\AdminUsersRequest;
 use App\Http\Requests\AssignRoleRequest;
 use App\Http\Requests\AssignTechnicianRequest;
 use App\Http\Requests\BulkAssignTechnicianRequest;
@@ -12,6 +15,7 @@ use App\Models\User;
 use App\Services\BeneficiaryService;
 use App\Services\MonitoringExcelService;
 use App\Services\UserRoleService;
+use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -33,20 +37,19 @@ class AdminController extends Controller
      * List users, optionally filtered by role — e.g.
      * /api/v1/admin/users?role=technician for the Technicians screen.
      */
-    public function users(Request $request): AnonymousResourceCollection
+    public function users(AdminUsersRequest $request): AnonymousResourceCollection
     {
-        $validated = $request->validate([
-            'role' => ['sometimes', Rule::in(User::ROLES)],
-            'search' => ['sometimes', 'string', 'max:255'],
-        ]);
+        $validated = $request->validated();
 
         $users = User::query()
             ->when($validated['role'] ?? null, fn ($q, $role) => $q->where('role', $role))
             ->when($validated['search'] ?? null, function ($q, $search): void {
-                $q->where(function ($q) use ($search): void {
-                    $q->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%")
-                        ->orWhere('username', 'like', "%{$search}%");
+                $pattern = Like::contains($search);
+
+                $q->where(function ($q) use ($pattern): void {
+                    $q->where('name', 'like', $pattern)
+                        ->orWhere('email', 'like', $pattern)
+                        ->orWhere('username', 'like', $pattern);
                 });
             })
             ->orderBy('name')
@@ -141,9 +144,11 @@ class AdminController extends Controller
             ->with(['technician', 'farmer'])
             ->withCount('monitoringRecords')
             ->when($request->string('search')->toString(), function ($q, $search): void {
-                $q->where(function ($q) use ($search): void {
-                    $q->where('name_of_farmer', 'like', "%{$search}%")
-                        ->orWhere('address', 'like', "%{$search}%");
+                $pattern = Like::contains($search);
+
+                $q->where(function ($q) use ($pattern): void {
+                    $q->where('name_of_farmer', 'like', $pattern)
+                        ->orWhere('address', 'like', $pattern);
                 });
             })
             ->orderBy('address')
@@ -158,13 +163,9 @@ class AdminController extends Controller
      * either the consolidated monthly file or the per-barangay individual one.
      * Every sheet is parsed; rows become beneficiaries + monitoring records.
      */
-    public function importMonitoringExcel(Request $request): JsonResponse
+    public function importMonitoringExcel(AdminExcelImportRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:20480'],
-        ]);
-
-        $summary = $this->excel->import($validated['file'], $request->user());
+        $summary = $this->excel->import($request->file('file'), $request->user());
 
         return response()->json(['data' => $summary]);
     }
@@ -173,12 +174,8 @@ class AdminController extends Controller
      * Export monitoring records as the standard monthly report workbook —
      * one sheet per month, mirroring the CVO Excel template.
      */
-    public function exportMonitoringExcel(Request $request): StreamedResponse
+    public function exportMonitoringExcel(AdminExcelExportRequest $request): StreamedResponse
     {
-        $validated = $request->validate([
-            'month' => ['nullable', 'date_format:Y-m'],
-        ]);
-
-        return $this->excel->downloadResponse($validated['month'] ?? null);
+        return $this->excel->downloadResponse($request->validated('month') ?? null);
     }
 }

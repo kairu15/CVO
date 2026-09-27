@@ -47,6 +47,26 @@ return [
             'report' => false,
         ],
 
+        /*
+         * Secure uploads (item 8): user images live OUTSIDE the public
+         * webroot on this private disk. `serve => true` registers the
+         * framework's storage route for this disk — but with 'private'
+         * visibility, Illuminate\Filesystem\ServeFile only releases a file
+         * to a request carrying a valid SIGNED URL, so access is granted
+         * exclusively through short-lived signed URLs generated per request
+         * in the API resources. root is storage/app/private/secure — never
+         * linked into public/ by storage:link.
+         */
+        'secure' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/secure'),
+            'serve' => true,
+            'url' => rtrim(env('APP_URL', 'http://localhost:8005'), '/').'/secure-files',
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

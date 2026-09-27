@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Support\ImageSanitizer;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -105,16 +106,19 @@ class ProfileService
     }
 
     /**
-     * Replace the profile photo. Stored on the public disk like field-visit
-     * photos; the previous file (if any) is deleted so avatars don't
-     * accumulate — one account, one current photo.
+     * Replace the profile photo (item 8): EXIF stripped, stored under a
+     * server-generated name on the PRIVATE disk; the previous file (if any)
+     * is deleted so avatars don't accumulate — one account, one current
+     * photo. Served via short-lived signed URLs through the user resource.
      */
     public function updateAvatar(User $user, UploadedFile $file): array
     {
-        $path = $file->store("avatars/{$user->id}", 'public');
+        $sanitized = ImageSanitizer::sanitizeToUpload($file);
+
+        $path = ImageSanitizer::storeImage($sanitized, "avatars/{$user->id}");
 
         if ($user->avatar_path) {
-            Storage::disk('public')->delete($user->avatar_path);
+            Storage::disk('secure')->delete($user->avatar_path);
         }
 
         $user->fill(['avatar_path' => $path])->save();
@@ -125,7 +129,7 @@ class ProfileService
     public function deleteAvatar(User $user): array
     {
         if ($user->avatar_path) {
-            Storage::disk('public')->delete($user->avatar_path);
+            Storage::disk('secure')->delete($user->avatar_path);
             $user->fill(['avatar_path' => null])->save();
         }
 

@@ -9,8 +9,10 @@ use Illuminate\Database\Eloquent\Builder;
 
 class HealthRecordService
 {
-    public function __construct(private readonly BeneficiaryService $beneficiaries)
-    {
+    public function __construct(
+        private readonly BeneficiaryService $beneficiaries,
+        private readonly AuditLogger $audit,
+    ) {
     }
 
     /**
@@ -56,21 +58,29 @@ class HealthRecordService
      */
     public function create(User $doctor, array $data): HealthRecord
     {
-        return HealthRecord::create([
+        $record = HealthRecord::create([
             ...$data,
             'doctor_id' => $doctor->id,
         ]);
+
+        $this->audit->log($doctor, 'health_record_created', $record);
+
+        return $record;
     }
 
-    public function update(HealthRecord $record, array $data): HealthRecord
+    public function update(User $actor, HealthRecord $record, array $data): HealthRecord
     {
         $record->update($data);
+
+        $this->audit->log($actor, 'health_record_updated', $record);
 
         return $record->refresh();
     }
 
-    public function delete(HealthRecord $record): void
+    public function delete(User $actor, HealthRecord $record): void
     {
         $record->delete();
+
+        $this->audit->log($actor, 'health_record_deleted', $record);
     }
 }

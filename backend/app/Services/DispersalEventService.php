@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\DB;
 
 class DispersalEventService
 {
-    public function __construct(private readonly BeneficiaryService $beneficiaries) {}
+    public function __construct(
+        private readonly BeneficiaryService $beneficiaries,
+        private readonly AuditLogger $audit,
+    ) {}
 
     /**
      * Role-scoped dispersal events, newest first. Scoping mirrors the
@@ -76,7 +79,7 @@ class DispersalEventService
                 $recipientId = $recipient->id;
             }
 
-            return DispersalEvent::create([
+            $event = DispersalEvent::create([
                 'beneficiary_id' => $recipientId,
                 'parent_beneficiary_id' => $data['parent_beneficiary_id'] ?? null,
                 'new_beneficiary_id' => $recipientId,
@@ -84,6 +87,10 @@ class DispersalEventService
                 'date_dispersed' => $data['date_dispersed'] ?? null,
                 'remarks' => $data['remarks'] ?? null,
             ]);
+
+            $this->audit->log($actor, 'dispersal_created', $event);
+
+            return $event;
         });
     }
 

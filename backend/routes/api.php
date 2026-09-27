@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AnimalHealthController;
 use App\Http\Controllers\NotificationController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\DispersalEventController;
 use App\Http\Controllers\FieldVisitController;
 use App\Http\Controllers\HealthRecordController;
 use App\Http\Controllers\MonitoringRecordController;
+use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\PublicMapController;
@@ -36,6 +38,16 @@ Route::prefix('v1')->middleware('throttle:6,1')->group(function (): void {
     Route::post('/register', [AuthController::class, 'register'])->name('api.register');
     Route::post('/login', [AuthController::class, 'login'])->name('api.login');
     Route::post('/token-login', [AuthController::class, 'tokenLogin'])->name('api.token-login');
+
+    // Password recovery (item 3). Token-based via Laravel's Password broker:
+    // signed, single-use, time-limited (config auth.passwords.users.expire).
+    // Always answers 200 regardless of whether the email exists — no account
+    // enumeration. Inside the same 6/min throttle as login so reset cannot be
+    // used to spam or to probe accounts faster than login allows.
+    Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink'])
+        ->name('api.password.email');
+    Route::post('/reset-password', [PasswordResetController::class, 'reset'])
+        ->name('api.password.reset');
 
     // Location reference data for the public forms — the registration
     // form's barangay → purok cascade. Read-only and session-free: these
@@ -76,6 +88,7 @@ Route::prefix('v1')->middleware('throttle:6,1')->group(function (): void {
 Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::get('/user', [AuthController::class, 'user'])->name('api.user');
     Route::post('/logout', [AuthController::class, 'logout'])->name('api.logout');
+    Route::post('/logout-all', [AuthController::class, 'logoutAll'])->name('api.logout-all');
 
     // The authenticated user's own profile — no {id} anywhere: every route
     // is scoped to the caller by construction.
@@ -185,5 +198,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
             ->name('api.admin.settings');
         Route::patch('/settings', [SettingsController::class, 'update'])
             ->name('api.admin.settings.update');
+
+        // Security audit trail (item 7) — read-only, admin-only. The table
+        // endpoint is paginated and filterable; the actions endpoint feeds
+        // the UI's filter dropdown from the canonical vocabulary.
+        Route::get('/activity-logs', [ActivityLogController::class, 'index'])
+            ->name('api.admin.activity-logs');
+        Route::get('/activity-logs/actions', [ActivityLogController::class, 'actions'])
+            ->name('api.admin.activity-logs.actions');
     });
 });

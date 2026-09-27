@@ -25,7 +25,13 @@ class FieldVisitPhotoResource extends JsonResource
             'field_visit_id' => $this->field_visit_id,
             'technician_id' => $this->technician_id,
 
-            'image_url' => Storage::disk('public')->url($this->image_path),
+            // Item 8: photos live on the private `secure` disk, outside the
+            // public webroot. Access goes through a short-lived signed URL —
+            // knowing the path is not enough to fetch the file.
+            'image_url' => Storage::disk('secure')->temporaryUrl(
+                $this->image_path,
+                now()->addMinutes((int) config('security.signed_url_minutes', 30)),
+            ),
 
             // Wall-clock fields (device-local, as captured).
             'capture_date' => $this->capture_date?->toDateString(),

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreFieldVisitPhotoRequest;
 use App\Http\Requests\StoreFieldVisitRequest;
 use App\Http\Requests\UpdateFieldVisitRequest;
 use App\Http\Resources\FieldVisitPhotoResource;
@@ -11,11 +12,12 @@ use App\Models\FieldVisitPhoto;
 use App\Models\User;
 use App\Models\UserNotification;
 use App\Services\NotificationService;
+use App\Services\AuditLogger;
 use App\Services\FieldVisitService;
+use App\Support\ImageSanitizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -24,6 +26,7 @@ class FieldVisitController extends Controller
     public function __construct(
         private readonly FieldVisitService $visits,
         private readonly NotificationService $notifications,
+        private readonly AuditLogger $audit,
     ) {}
 
     /**
@@ -70,7 +73,7 @@ class FieldVisitController extends Controller
         $this->authorize('update', $visit);
 
         return new FieldVisitResource(
-            $this->visits->update($visit, $request->validated())->load(['beneficiary', 'technician']),
+            $this->visits->update($request->user(), $visit, $request->validated())->load(['beneficiary', 'technician']),
         );
     }
 
@@ -80,7 +83,7 @@ class FieldVisitController extends Controller
 
         $this->authorize('delete', $visit);
 
-        $this->visits->delete($visit);
+        $this->visits->delete($request->user(), $visit);
 
         return response()->json([], Response::HTTP_NO_CONTENT);
     }
@@ -109,48 +112,38 @@ class FieldVisitController extends Controller
      * A retake replaces the previous photo (and deletes its file) rather
      * than appending a second one.
      */
-    public function storePhoto(Request $request, int $id): JsonResponse
+    public function storePhoto(StoreFieldVisitPhotoRequest $request, int $id): JsonResponse
     {
+        // Authorization + every image/metadata rule live on the FormRequest
+        // (items 5 and 8): content-sniffed MIME, extension allow-list, size
+        // cap, bounded metadata fields.
         $visit = FieldVisit::findOrFail($id);
 
-        $this->authorize('update', $visit);
+        $validated = $request->validated();
 
-        $validated = $request->validate([
-            'image' => ['required', 'image', 'mimes:jpeg,jpg', 'max:8192'], // 8 MB hard cap
-            'capture_date' => ['required', 'date'],
-            'capture_time' => ['required', 'date_format:H:i:s'],
-            'timezone_offset' => ['required', 'string', 'max:10'],
-            'capture_year' => ['required', 'integer', 'digits:4'],
-            'capture_month' => ['required', 'integer', 'between:1,12'],
-            'capture_day' => ['required', 'integer', 'between:1,31'],
-            'capture_hour' => ['required', 'integer', 'between:0,23'],
-            'capture_minute' => ['required', 'integer', 'between:0,59'],
-            'capture_second' => ['required', 'integer', 'between:0,59'],
-            'capture_millisecond' => ['nullable', 'integer', 'between:0,999'],
-            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
-            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'accuracy_m' => ['nullable', 'numeric', 'min:0', 'max:100000'],
-            'altitude_m' => ['nullable', 'numeric', 'min:-1000', 'max:10000'],
-            'speed_kmh' => ['nullable', 'numeric', 'min:0', 'max:500'],
-            'heading_deg' => ['nullable', 'integer', 'between:0,359'],
-            'location_source' => ['nullable', Rule::in(['gps', 'network', 'wifi', 'none'])],
-            'address' => ['nullable', 'string', 'max:500'],
-        ]);
-
-        $path = $request->file('image')->store("field-visits/{$visit->id}", 'public');
+        // Item 8: strip EXIF (device serials, embedded thumbnails, accidental
+        // GPS in the bytes — the structured columns below carry the intended
+        // geotag) via GD re-encode, then store under a server-generated
+        // random name on the PRIVATE disk. The client's filename is never
+        // used. A file that passes validation but cannot be decoded answers
+        // 422 (ValidationException from the sanitizer).
+        $sanitized = ImageSanitizer::sanitizeToUpload($request->file('image'));
+        $sanitizedPath = ImageSanitizer::storeImage($sanitized, "field-visits/{$visit->id}");
 
         // A retake replaces: the old row goes and its file with it.
         $previous = $visit->photos()->latest('id')->first();
         if ($previous) {
-            Storage::disk('public')->delete($previous->image_path);
+            Storage::disk('secure')->delete($previous->image_path);
             $previous->delete();
         }
 
         $photo = $visit->photos()->create([
             'technician_id' => $request->user()->id,
-            'image_path' => $path,
+            'image_path' => $sanitizedPath,
             ...$validated,
         ]);
+
+        $this->audit->log($request->user(), 'field_visit_photo_uploaded', $photo);
 
         // Evidence was just submitted — tell the supervisors who review this
         // household: admins for oversight, doctors because the photo carries
@@ -186,8 +179,10 @@ class FieldVisitController extends Controller
         $photo = $visit->photos()->latest('id')->first();
 
         if ($photo) {
-            Storage::disk('public')->delete($photo->image_path);
+            Storage::disk('secure')->delete($photo->image_path);
             $photo->delete();
+
+            $this->audit->log($request->user(), 'field_visit_photo_deleted', $photo);
         }
 
         return response()->noContent();

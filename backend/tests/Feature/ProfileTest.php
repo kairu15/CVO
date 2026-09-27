@@ -184,7 +184,7 @@ class ProfileTest extends TestCase
 
     public function test_avatar_upload_is_validated_server_side_and_scoped_to_the_caller(): void
     {
-        Storage::fake('public');
+        Storage::fake('public'); Storage::fake('secure');
         $user = User::factory()->create();
         $other = User::factory()->create();
 
@@ -199,13 +199,14 @@ class ProfileTest extends TestCase
 
         $this->assertNotNull($user->refresh()->avatar_path);
         $this->assertNull($other->refresh()->avatar_path); // untouched — upload is caller-scoped
-        Storage::disk('public')->assertExists($user->refresh()->avatar_path);
+        // Item 8: avatars live on the private `secure` disk.
+        Storage::disk('secure')->assertExists($user->refresh()->avatar_path);
 
         // Removing the photo deletes the stored file and clears the column.
         $path = $user->refresh()->avatar_path;
         $this->actingAs($user)->deleteJson('/api/v1/profile/avatar')->assertOk();
         $this->assertNull($user->refresh()->avatar_path);
-        Storage::disk('public')->assertMissing($path);
+        Storage::disk('secure')->assertMissing($path);
     }
 
     public function test_profile_requires_authentication(): void

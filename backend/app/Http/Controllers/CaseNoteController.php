@@ -60,7 +60,7 @@ class CaseNoteController extends Controller
         $this->authorize('update', $note);
 
         return new CaseNoteResource(
-            $this->notes->update($note, $request->validated())->load(['beneficiary', 'doctor']),
+            $this->notes->update($request->user(), $note, $request->validated())->load(['beneficiary', 'doctor']),
         );
     }
 
@@ -70,7 +70,7 @@ class CaseNoteController extends Controller
 
         $this->authorize('delete', $note);
 
-        $this->notes->delete($note);
+        $this->notes->delete($request->user(), $note);
 
         return response()->json([], Response::HTTP_NO_CONTENT);
     }

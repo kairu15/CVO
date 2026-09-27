@@ -60,7 +60,7 @@ class HealthRecordController extends Controller
         $this->authorize('update', $record);
 
         return new HealthRecordResource(
-            $this->records->update($record, $request->validated())->load(['beneficiary', 'doctor']),
+            $this->records->update($request->user(), $record, $request->validated())->load(['beneficiary', 'doctor']),
         );
     }
 
@@ -70,7 +70,7 @@ class HealthRecordController extends Controller
 
         $this->authorize('delete', $record);
 
-        $this->records->delete($record);
+        $this->records->delete($request->user(), $record);
 
         return response()->json([], Response::HTTP_NO_CONTENT);
     }

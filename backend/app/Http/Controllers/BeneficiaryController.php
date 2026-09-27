@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\GeocodeRequest;
 use App\Http\Requests\StoreBeneficiaryRequest;
+use App\Http\Requests\UpdateBeneficiaryRequest;
 use App\Http\Resources\BeneficiaryResource;
+use App\Services\AuditLogger;
 use App\Services\BeneficiaryService;
 use App\Support\Barangays;
 use Illuminate\Http\JsonResponse;
@@ -14,7 +17,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 class BeneficiaryController extends Controller
 {
-    public function __construct(private readonly BeneficiaryService $beneficiaries) {}
+    public function __construct(
+        private readonly BeneficiaryService $beneficiaries,
+        private readonly AuditLogger $audit,
+    ) {}
 
     /**
      * Role-scoped beneficiary list.
@@ -44,13 +50,9 @@ class BeneficiaryController extends Controller
      * users only (it proxies an external service), results cached
      * server-side.
      */
-    public function geocode(Request $request): JsonResponse
+    public function geocode(GeocodeRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'address' => ['required', 'string', 'max:255'],
-        ]);
-
-        $geo = $this->beneficiaries->geocodeFor($validated['address']);
+        $geo = $this->beneficiaries->geocodeFor($request->validated('address'));
 
         return response()->json(['data' => $geo]);
     }
@@ -72,32 +74,13 @@ class BeneficiaryController extends Controller
     /**
      * Admin reassigns technicians; farmers may correct their own details.
      */
-    public function update(Request $request, int $id): BeneficiaryResource
+    public function update(UpdateBeneficiaryRequest $request, int $id): BeneficiaryResource
     {
         $beneficiary = $this->beneficiaries->findFor($request->user(), $id);
 
         $this->authorize('update', $beneficiary);
 
-        $validated = $request->validate([
-            'name_of_farmer' => ['sometimes', 'string', 'max:255'],
-            'address' => [
-                'sometimes',
-                'string',
-                'max:255',
-                function (string $attribute, mixed $value, \Closure $fail): void {
-                    if (! Barangays::isCovered((string) $value)) {
-                        $fail('Choose a barangay covered by the program: '.implode(', ', Barangays::all()).'.');
-                    }
-                },
-            ],
-            'animal_type' => ['sometimes', 'string', 'max:255'],
-            'sex' => ['sometimes', 'in:M,F'],
-            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
-            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'technician_id' => $request->user()->role === 'admin'
-                ? ['nullable', 'exists:users,id,role,technician']
-                : ['prohibited'],
-        ]);
+        $validated = $request->validated();
 
         // Address changed without an explicit new pin? Re-resolve the
         // coordinates so the map marker follows the corrected barangay.
@@ -113,6 +96,8 @@ class BeneficiaryController extends Controller
 
         $beneficiary->update($validated);
 
+        $this->audit->log($request->user(), 'beneficiary_updated', $beneficiary);
+
         return new BeneficiaryResource($beneficiary->refresh());
     }
 
@@ -123,6 +108,8 @@ class BeneficiaryController extends Controller
         $this->authorize('delete', $beneficiary);
 
         $beneficiary->delete();
+
+        $this->audit->log($request->user(), 'beneficiary_deleted', $beneficiary);
 
         return response()->json([], Response::HTTP_NO_CONTENT);
     }

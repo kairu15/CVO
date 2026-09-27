@@ -15,6 +15,7 @@ class MonitoringRecordService
     public function __construct(
         private readonly BeneficiaryService $beneficiaries,
         private readonly NotificationService $notifications,
+        private readonly AuditLogger $audit,
     ) {
     }
 
@@ -133,15 +134,21 @@ class MonitoringRecordService
      */
     public function create(User $technician, array $data): MonitoringRecord
     {
-        return MonitoringRecord::create([
+        $record = MonitoringRecord::create([
             ...$data,
             'technician_id' => $technician->id,
         ]);
+
+        $this->audit->log($technician, 'monitoring_created', $record);
+
+        return $record;
     }
 
-    public function update(MonitoringRecord $record, array $data): MonitoringRecord
+    public function update(User $actor, MonitoringRecord $record, array $data): MonitoringRecord
     {
         $record->update($data);
+
+        $this->audit->log($actor, 'monitoring_updated', $record);
 
         return $record->refresh();
     }
@@ -160,9 +167,9 @@ class MonitoringRecordService
      * transaction. Registered households (farmer signup, staff registration)
      * are never touched, whatever the sheet says.
      */
-    public function delete(MonitoringRecord $record): void
+    public function delete(User $actor, MonitoringRecord $record): void
     {
-        \Illuminate\Support\Facades\DB::transaction(function () use ($record): void {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($record, $actor): void {
             $beneficiary = $record->beneficiary;
 
             $record->delete();
@@ -186,6 +193,8 @@ class MonitoringRecordService
                 $beneficiary->delete();
             }
         });
+
+        $this->audit->log($actor, 'monitoring_deleted', $record);
     }
 
     /**
@@ -200,6 +209,8 @@ class MonitoringRecordService
             'accepted_at' => now(),
             'status_expires_at' => now()->addDay()->startOfDay(),
         ])->save();
+
+        $this->audit->log($acceptor, 'monitoring_accepted', $record);
 
         // Tell the farmer their registration was reviewed, and the other
         // admins so nobody re-reviews an already-accepted row.

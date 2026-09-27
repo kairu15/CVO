@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\NearestBarangayRequest;
 use App\Models\Barangay;
 use App\Support\Geo;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 /**
  * Public location reference data — the registration cascade's source.
@@ -54,12 +54,9 @@ class BarangayController extends Controller
      * silent assignment. `distance_km` lets the client show how far the
      * fix sat from the matched center, a hint at how much to trust it.
      */
-    public function nearest(Request $request): JsonResponse
+    public function nearest(NearestBarangayRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'latitude' => ['required', 'numeric', 'between:-90,90'],
-            'longitude' => ['required', 'numeric', 'between:-180,180'],
-        ]);
+        $validated = $request->validated();
 
         $match = Geo::nearestBarangay(
             (float) $validated['latitude'],
@@ -77,12 +74,9 @@ class BarangayController extends Controller
      * to the barangay so a pin can never suggest a purok from a neighbouring
      * one. Same nearest-centroid caveat as `nearest` above.
      */
-    public function nearestPurok(Request $request, Barangay $barangay): JsonResponse
+    public function nearestPurok(NearestBarangayRequest $request, Barangay $barangay): JsonResponse
     {
-        $validated = $request->validate([
-            'latitude' => ['required', 'numeric', 'between:-90,90'],
-            'longitude' => ['required', 'numeric', 'between:-180,180'],
-        ]);
+        $validated = $request->validated();
 
         $match = Geo::nearestPurok(
             (float) $validated['latitude'],

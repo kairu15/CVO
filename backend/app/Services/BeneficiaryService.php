@@ -13,7 +13,10 @@ use Illuminate\Database\Eloquent\Builder;
 
 class BeneficiaryService
 {
-    public function __construct(private readonly GeocodingService $geocoder) {}
+    public function __construct(
+        private readonly GeocodingService $geocoder,
+        private readonly AuditLogger $audit,
+    ) {}
 
     /**
      * Role-scoped beneficiary list.
@@ -100,6 +103,11 @@ class BeneficiaryService
             'technician_id' => $technicianId,
             'assigned_by' => $actor->id,
             'assigned_at' => now(),
+            'previous_technician_id' => $previous,
+        ]);
+
+        $this->audit->log($actor, 'technician_assigned', $beneficiary, [
+            'technician_id' => $technicianId,
             'previous_technician_id' => $previous,
         ]);
 
@@ -193,10 +201,14 @@ class BeneficiaryService
             $data['longitude'] = $geo['lng'] ?? null;
         }
 
-        return Beneficiary::create([
+        $beneficiary = Beneficiary::create([
             ...$data,
             'farmer_id' => $farmerId,
         ]);
+
+        $this->audit->log($actor, 'beneficiary_created', $beneficiary);
+
+        return $beneficiary;
     }
 
     /**

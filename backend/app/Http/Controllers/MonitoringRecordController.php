@@ -62,7 +62,7 @@ class MonitoringRecordController extends Controller
         $this->authorize('update', $record);
 
         return new MonitoringRecordResource(
-            $this->records->update($record, $request->validated())->load('beneficiary', 'technician'),
+            $this->records->update($request->user(), $record, $request->validated())->load('beneficiary', 'technician'),
         );
     }
 
@@ -72,7 +72,7 @@ class MonitoringRecordController extends Controller
 
         $this->authorize('delete', $record);
 
-        $this->records->delete($record);
+        $this->records->delete($request->user(), $record);
 
         return response()->json([], Response::HTTP_NO_CONTENT);
     }

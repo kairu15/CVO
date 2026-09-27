@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Beneficiary;
 use App\Models\MonitoringRecord;
 use App\Models\User;
+use App\Support\Like;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -73,11 +74,13 @@ class SearchService
      */
     private function beneficiaryGroup(User $user, string $term): array
     {
+        $pattern = Like::contains($term);
+
         $rows = $this->beneficiaries->scopeQueryFor($user)
-            ->where(function ($q) use ($term): void {
-                $q->whereRaw('LOWER(name_of_farmer) LIKE ?', ["%{$term}%"])
-                    ->orWhereRaw('LOWER(address) LIKE ?', ["%{$term}%"])
-                    ->orWhereRaw('LOWER(animal_type) LIKE ?', ["%{$term}%"]);
+            ->where(function ($q) use ($pattern): void {
+                $q->whereRaw('LOWER(name_of_farmer) LIKE ?', [$pattern])
+                    ->orWhereRaw('LOWER(address) LIKE ?', [$pattern])
+                    ->orWhereRaw('LOWER(animal_type) LIKE ?', [$pattern]);
             })
             ->limit(self::PER_GROUP_LIMIT)
             ->get(['id', 'name_of_farmer', 'address', 'animal_type', 'sex']);
@@ -112,13 +115,15 @@ class SearchService
     {
         $beneficiaryIds = $this->beneficiaries->scopeQueryFor($user)->select('id');
 
+        $pattern = Like::contains($term);
+
         $rows = MonitoringRecord::query()
             ->whereIn('beneficiary_id', $beneficiaryIds)
-            ->where(function ($q) use ($term): void {
-                $q->whereRaw('LOWER(remarks) LIKE ?', ["%{$term}%"])
-                    ->orWhereHas('beneficiary', function ($bq) use ($term): void {
-                        $bq->whereRaw('LOWER(name_of_farmer) LIKE ?', ["%{$term}%"])
-                            ->orWhereRaw('LOWER(address) LIKE ?', ["%{$term}%"]);
+            ->where(function ($q) use ($pattern): void {
+                $q->whereRaw('LOWER(remarks) LIKE ?', [$pattern])
+                    ->orWhereHas('beneficiary', function ($bq) use ($pattern): void {
+                        $bq->whereRaw('LOWER(name_of_farmer) LIKE ?', [$pattern])
+                            ->orWhereRaw('LOWER(address) LIKE ?', [$pattern]);
                     });
             })
             ->with('beneficiary:id,name_of_farmer,address,animal_type,sex')
@@ -153,12 +158,14 @@ class SearchService
             return null;
         }
 
+        $pattern = Like::contains($term);
+
         $rows = User::query()
             ->where('id', '!=', $user->id)
-            ->where(function ($q) use ($term): void {
-                $q->whereRaw('LOWER(name) LIKE ?', ["%{$term}%"])
-                    ->orWhereRaw('LOWER(email) LIKE ?', ["%{$term}%"])
-                    ->orWhereRaw('LOWER(username) LIKE ?', ["%{$term}%"]);
+            ->where(function ($q) use ($pattern): void {
+                $q->whereRaw('LOWER(name) LIKE ?', [$pattern])
+                    ->orWhereRaw('LOWER(email) LIKE ?', [$pattern])
+                    ->orWhereRaw('LOWER(username) LIKE ?', [$pattern]);
             })
             ->limit(self::PER_GROUP_LIMIT)
             ->get(['id', 'name', 'email', 'role']);

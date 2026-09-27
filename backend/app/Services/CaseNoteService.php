@@ -9,7 +9,10 @@ use Illuminate\Database\Eloquent\Builder;
 
 class CaseNoteService
 {
-    public function __construct(private readonly BeneficiaryService $beneficiaries) {}
+    public function __construct(
+        private readonly BeneficiaryService $beneficiaries,
+        private readonly AuditLogger $audit,
+    ) {}
 
     /**
      * Role-scoped notes, newest first.
@@ -54,21 +57,29 @@ class CaseNoteService
      */
     public function create(User $doctor, array $data): CaseNote
     {
-        return CaseNote::create([
+        $note = CaseNote::create([
             ...$data,
             'doctor_id' => $doctor->id,
         ]);
+
+        $this->audit->log($doctor, 'case_note_created', $note);
+
+        return $note;
     }
 
-    public function update(CaseNote $note, array $data): CaseNote
+    public function update(User $actor, CaseNote $note, array $data): CaseNote
     {
         $note->update($data);
+
+        $this->audit->log($actor, 'case_note_updated', $note);
 
         return $note->refresh();
     }
 
-    public function delete(CaseNote $note): void
+    public function delete(User $actor, CaseNote $note): void
     {
         $note->delete();
+
+        $this->audit->log($actor, 'case_note_deleted', $note);
     }
 }

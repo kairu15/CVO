@@ -74,14 +74,20 @@ class User extends Authenticatable
     }
 
     /**
-     * Public URL of the profile photo, or null when the account has none
-     * (the UI falls back to initials).
+     * URL of the profile photo, or null when the account has none (the UI
+     * falls back to initials).
+     *
+     * Item 8: avatars live on the private `secure` disk and are served
+     * through short-lived signed URLs, not a guessable public path.
      */
     protected function avatarUrl(): \Illuminate\Database\Eloquent\Casts\Attribute
     {
         return \Illuminate\Database\Eloquent\Casts\Attribute::get(
             fn () => $this->avatar_path !== null
-                ? \Illuminate\Support\Facades\Storage::disk('public')->url($this->avatar_path)
+                ? \Illuminate\Support\Facades\Storage::disk('secure')->temporaryUrl(
+                    $this->avatar_path,
+                    now()->addMinutes((int) config('security.signed_url_minutes', 30)),
+                )
                 : null,
         );
     }
@@ -92,6 +98,16 @@ class User extends Authenticatable
     public function beneficiaries(): HasMany
     {
         return $this->hasMany(Beneficiary::class, 'farmer_id');
+    }
+
+    /**
+     * Password reset links point at the SPA's reset page, which completes
+     * the flow via POST /api/v1/reset-password (item 3). The emailed URL
+     * carries the raw token once; the broker stores only its hash.
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new \Illuminate\Auth\Notifications\ResetPassword($token));
     }
 
     /**

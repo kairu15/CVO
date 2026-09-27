@@ -56,7 +56,7 @@ class FieldVisitPhotoTest extends TestCase
 
     public function test_upload_stores_the_image_and_every_metadata_field(): void
     {
-        Storage::fake('public');
+        Storage::fake('public'); Storage::fake('secure');
         $visit = $this->visit();
 
         $response = $this->actingAs($visit->technician)
@@ -68,7 +68,9 @@ class FieldVisitPhotoTest extends TestCase
 
         $photo = $visit->photos()->first();
         $this->assertNotNull($photo);
-        Storage::disk('public')->assertExists($photo->image_path);
+        // Item 8: photos live on the private `secure` disk, outside the
+        // public webroot.
+        Storage::disk('secure')->assertExists($photo->image_path);
 
         // Structured data as real columns — every field from the reference table.
         $this->assertSame('2026-09-25', $photo->capture_date->toDateString());
@@ -120,7 +122,7 @@ class FieldVisitPhotoTest extends TestCase
 
     public function test_a_retake_replaces_the_previous_photo_and_file(): void
     {
-        Storage::fake('public');
+        Storage::fake('public'); Storage::fake('secure');
         $visit = $this->visit();
 
         $this->actingAs($visit->technician)
@@ -129,7 +131,7 @@ class FieldVisitPhotoTest extends TestCase
             ])->assertCreated();
 
         $first = $visit->photos()->first();
-        Storage::disk('public')->assertExists($first->image_path);
+        Storage::disk('secure')->assertExists($first->image_path);
 
         $this->actingAs($visit->technician)
             ->postJson("/api/v1/field-visits/{$visit->id}/photo", array_merge($this->meta(), [
@@ -139,7 +141,7 @@ class FieldVisitPhotoTest extends TestCase
 
         // One row, one file — the first was deleted along with its disk file.
         $this->assertSame(1, $visit->photos()->count());
-        Storage::disk('public')->assertMissing($first->image_path);
+        Storage::disk('secure')->assertMissing($first->image_path);
         $this->assertSame(59, $visit->photos()->first()->capture_second);
     }
 
@@ -222,7 +224,7 @@ class FieldVisitPhotoTest extends TestCase
 
     public function test_delete_removes_the_row_and_the_file(): void
     {
-        Storage::fake('public');
+        Storage::fake('public'); Storage::fake('secure');
         $visit = $this->visit();
 
         $this->actingAs($visit->technician)
@@ -236,7 +238,7 @@ class FieldVisitPhotoTest extends TestCase
             ->deleteJson("/api/v1/field-visits/{$visit->id}/photo")
             ->assertNoContent();
 
-        Storage::disk('public')->assertMissing($photo->image_path);
+        Storage::disk('secure')->assertMissing($photo->image_path);
         $this->assertSame(0, $visit->photos()->count());
     }
 }

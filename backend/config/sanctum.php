@@ -1,9 +1,17 @@
 <?php
 
+use App\Services\Auth\IdleExpiringGuard;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Laravel\Sanctum\Http\Middleware\AuthenticateSession;
 use Laravel\Sanctum\Sanctum;
+
+// Idle expiry for personal access tokens (security.php 'token_idle'): every
+// bearer-token authentication runs through this callback after Sanctum's own
+// checks. See App\Services\Auth\IdleExpiringGuard for the mechanism.
+Sanctum::authenticateAccessTokensUsing(
+    fn ($accessToken, $isValid) => IdleExpiringGuard::checkIdle($accessToken, $isValid),
+);
 
 return [
 
@@ -47,6 +55,11 @@ return [
     | This value controls the number of minutes until an issued token will be
     | considered expired. This will override any values set in the token's
     | "expires_at" attribute, but first-party sessions are not affected.
+    |
+    | Left null: absolute token lifetime is enforced per-token via expires_at
+    | (set at issuance in AuthService::issueToken from security.php), and the
+    | idle window is enforced by IdleExpiringGuard above. A single global
+    | expiration here would override per-token expires_at values.
     |
     */
 

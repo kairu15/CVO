@@ -6,17 +6,23 @@ use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Http\Requests\TokenLoginRequest;
 use App\Http\Resources\UserResource;
+use App\Models\User;
+use App\Services\Auth\AccountLockout;
 use App\Services\Auth\AuthService;
+use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
-    public function __construct(private readonly AuthService $auth)
-    {
-    }
+    public function __construct(
+        private readonly AuthService $auth,
+        private readonly AccountLockout $lockout,
+        private readonly AuditLogger $audit,
+    ) {}
 
     /**
      * Register a new user and start a cookie session (SPA).
@@ -37,6 +43,12 @@ class AuthController extends Controller
             Auth::guard('web')->login($user);
 
             $request->session()->regenerate();
+
+            // Item 1: stamp the login time for AbsoluteSessionExpiry — the
+            // ABSOLUTE ceiling on the session (the regenerated session id
+            // guarantees the stamp belongs to this authentication, and the
+            // idle lifetime governed by SESSION_LIFETIME starts fresh too).
+            $request->session()->put(\App\Http\Middleware\AbsoluteSessionExpiry::LOGIN_AT, now()->toIso8601String());
         }
 
         return (new UserResource($user))->response()->setStatusCode(Response::HTTP_CREATED);
@@ -45,8 +57,12 @@ class AuthController extends Controller
     /**
      * Log in and start a cookie session (SPA).
      */
-    public function login(LoginRequest $request): UserResource
+    public function login(LoginRequest $request): UserResource|JsonResponse
     {
+        if ($locked = $this->rejectIfLocked($request)) {
+            return $locked;
+        }
+
         $user = $this->auth->login(
             identifier: $request->string('identifier')->toString(),
             password: $request->string('password')->toString(),
@@ -56,6 +72,9 @@ class AuthController extends Controller
             Auth::guard('web')->login($user);
 
             $request->session()->regenerate();
+
+            // Item 1: same stamp as register — see the comment there.
+            $request->session()->put(\App\Http\Middleware\AbsoluteSessionExpiry::LOGIN_AT, now()->toIso8601String());
         }
 
         return new UserResource($user);
@@ -66,6 +85,10 @@ class AuthController extends Controller
      */
     public function tokenLogin(TokenLoginRequest $request): JsonResponse
     {
+        if ($locked = $this->rejectIfLocked($request)) {
+            return $locked;
+        }
+
         $user = $this->auth->login(
             identifier: $request->string('email')->toString(),
             password: $request->string('password')->toString(),
@@ -76,6 +99,46 @@ class AuthController extends Controller
         return response()->json([
             'user' => new UserResource($user),
             'token' => $token,
+        ]);
+    }
+
+    /**
+     * Pre-flight lockout check shared by both login endpoints.
+     *
+     * Runs BEFORE credential validation so a brute-forcing client burns its
+     * request budget on 423s rather than on password guesses. Adds a
+     * Retry-After header so a legitimate user's client can show a countdown.
+     */
+    private function rejectIfLocked(Request $request): ?JsonResponse
+    {
+        $identifier = Str::lower(trim(
+            (string) ($request->input('identifier') ?? $request->input('email') ?? ''),
+        ));
+
+        if ($identifier === '') {
+            return null;
+        }
+
+        $user = User::query()
+            ->where('email', $identifier)
+            ->orWhere('username', $identifier)
+            ->first();
+
+        if (! $user || ! $this->lockout->isLocked($user)) {
+            return null;
+        }
+
+        $this->audit->log($user, 'failed_login', User::class, [
+            'reason' => 'attempt_while_locked',
+        ]);
+
+        return response()->json([
+            'message' => __('Too many failed attempts. Try again later.'),
+            'errors' => [
+                'identifier' => [__('Too many failed attempts. Try again later.')],
+            ],
+        ], 423)->withHeaders([
+            'Retry-After' => (string) $this->lockout->lockedForSeconds($user),
         ]);
     }
 
@@ -92,6 +155,29 @@ class AuthController extends Controller
         }
 
         return response()->json(['message' => 'Logged out successfully.']);
+    }
+
+    /**
+     * "Log out of all devices" (item 1): revoke every bearer token and kill
+     * every cookie session the account holds. Works for both client types;
+     * after this call the caller must re-authenticate like everyone else.
+     */
+    public function logoutAll(Request $request): JsonResponse
+    {
+        $revoked = $this->auth->logoutEverywhere($request->user());
+
+        // The CURRENT session/token is among the revoked ones, so the caller
+        // is fully signed out too — that is the point of the button.
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
+        $this->audit->log($request->user(), 'logout_all', User::class, [
+            'tokens_revoked' => $revoked,
+        ]);
+
+        return response()->json(['message' => 'Logged out of all devices.', 'meta' => ['tokens_revoked' => $revoked]]);
     }
 
     /**

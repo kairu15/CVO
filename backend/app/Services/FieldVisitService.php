@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 
 class FieldVisitService
 {
+    public function __construct(private readonly AuditLogger $audit) {}
     /**
      * Role-scoped visits, newest first.
      *
@@ -60,22 +61,30 @@ class FieldVisitService
      */
     public function create(User $technician, array $data): FieldVisit
     {
-        return FieldVisit::create([
+        $visit = FieldVisit::create([
             ...$data,
             'technician_id' => $technician->id,
         ]);
+
+        $this->audit->log($technician, 'field_visit_created', $visit);
+
+        return $visit;
     }
 
-    public function update(FieldVisit $visit, array $data): FieldVisit
+    public function update(User $actor, FieldVisit $visit, array $data): FieldVisit
     {
         $visit->update($data);
+
+        $this->audit->log($actor, 'field_visit_updated', $visit);
 
         return $visit->refresh();
     }
 
-    public function delete(FieldVisit $visit): void
+    public function delete(User $actor, FieldVisit $visit): void
     {
         $visit->delete();
+
+        $this->audit->log($actor, 'field_visit_deleted', $visit);
     }
 
     /**

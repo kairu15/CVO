@@ -99,9 +99,15 @@ export default function ReportsPage({ roleKey = "admin" }) {
           </div>
 
           <div className="flex flex-wrap items-end gap-3">
-            <label className="block text-xs font-semibold text-slate-600">
-              Barangay
+            <div>
+              <label
+                htmlFor="reports-barangay"
+                className="block text-xs font-semibold text-slate-600"
+              >
+                Barangay
+              </label>
               <select
+                id="reports-barangay"
                 value={barangay}
                 onChange={(event) => setBarangay(event.target.value)}
                 className="field mt-1 w-44 text-xs"
@@ -113,17 +119,23 @@ export default function ReportsPage({ roleKey = "admin" }) {
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
 
-            <label className="block text-xs font-semibold text-slate-600">
-              Dispersals since
+            <div>
+              <label
+                htmlFor="reports-from"
+                className="block text-xs font-semibold text-slate-600"
+              >
+                Dispersals since
+              </label>
               <input
+                id="reports-from"
                 type="date"
                 value={from}
                 onChange={(event) => setFrom(event.target.value)}
                 className="field mt-1 w-40 text-xs"
               />
-            </label>
+            </div>
           </div>
         </div>
 

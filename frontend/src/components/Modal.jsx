@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "./Icons";
 
 /**
@@ -8,13 +9,21 @@ import { Icon } from "./Icons";
  * while open. Content is a plain function of props so callers keep full
  * control of the interior layout.
  *
+ * The dialog is portalled to document.body: an ancestor with `backdrop-filter`
+ * or `transform` (the sticky header's blur, for one) becomes the containing
+ * block for `position: fixed` descendants, which would clip and misplace the
+ * overlay. Portalling keeps the dialog pinned to the viewport no matter where
+ * in the tree it is mounted.
+ *
  * @param {object} props
  * @param {boolean} props.open
  * @param {string} props.title
  * @param {() => void} props.onClose
+ * @param {string} [props.contentClassName] width override for the dialog card
+ * @param {string} [props.titleClassName] size override for the title
  * @param {import("react").ReactNode} props.children
  */
-export function Modal({ open, title, onClose, children }) {
+export function Modal({ open, title, onClose, contentClassName, titleClassName, children }) {
   useEffect(() => {
     if (!open) return undefined;
 
@@ -33,7 +42,7 @@ export function Modal({ open, title, onClose, children }) {
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         aria-hidden="true"
@@ -44,10 +53,10 @@ export function Modal({ open, title, onClose, children }) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="card relative z-10 max-h-[90vh] w-full max-w-2xl overflow-y-auto p-6"
+        className={`card relative z-10 max-h-[90vh] w-full max-w-2xl overflow-y-auto p-6 ${contentClassName ?? ""}`}
       >
         <div className="flex items-start justify-between gap-4">
-          <h3 className="font-display text-lg font-bold text-slate-900">
+          <h3 className={`font-display text-lg font-bold text-slate-900 ${titleClassName ?? ""}`}>
             {title}
           </h3>
           <button
@@ -61,6 +70,7 @@ export function Modal({ open, title, onClose, children }) {
         </div>
         <div className="mt-4">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

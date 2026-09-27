@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { roleLabel } from "../config/roles";
@@ -13,6 +13,7 @@ import { searchApi } from "../api/searchApi";
 import { getErrorMessage } from "../api/client";
 import { Icon } from "./Icons";
 import { SkeletonList } from "./Skeleton";
+import { LogoutConfirmDialog } from "./LogoutConfirmDialog";
 
 /** Up to two initials for the avatar chip. */
 function initialsOf(name) {
@@ -55,18 +56,12 @@ function formatDate(value) {
 }
 
 export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const [panel, setPanel] = useState(null); // "search" | "notifications" | "profile" | null
   const [query, setQuery] = useState("");
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   const close = () => setPanel(null);
-
-  async function handleLogout() {
-    close();
-    await logout();
-    navigate("/login", { replace: true });
-  }
 
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/85 px-4 backdrop-blur sm:px-6">
@@ -225,7 +220,10 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
               </Link>
               <button
                 type="button"
-                onClick={handleLogout}
+                onClick={() => {
+                  close();
+                  setConfirmingLogout(true);
+                }}
                 className="mt-2 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
               >
                 <Icon name="logout" className="h-4 w-4" />
@@ -235,6 +233,11 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
           </>
         )}
       </div>
+
+      <LogoutConfirmDialog
+        open={confirmingLogout}
+        onClose={() => setConfirmingLogout(false)}
+      />
     </header>
   );
 }

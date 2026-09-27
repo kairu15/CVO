@@ -60,6 +60,9 @@ export function FieldVisitFormModal({
   const [capturing, setCapturing] = useState(false); // GPS + composition
   const [capture, setCapture] = useState(null); // { meta, photo } | null
   const [captureNote, setCaptureNote] = useState(null); // farmer-readable outcome
+  // A visit whose photo upload failed stays logged — remembered so resubmitting
+  // retries the upload on this visit instead of logging a duplicate trip.
+  const [createdVisit, setCreatedVisit] = useState(null);
 
   const beneficiary = useMemo(
     () =>
@@ -94,6 +97,7 @@ export function FieldVisitFormModal({
     setErrors({});
     setCapture(null);
     setCaptureNote(null);
+    setCreatedVisit(null);
   }, [open, visit, beneficiaries]);
 
   function update(field) {
@@ -197,35 +201,73 @@ export function FieldVisitFormModal({
 
     setSaving(true);
     try {
+      // The photo carries its own GPS fix taken at the shutter moment; when
+      // the technician didn't separately capture a position, that fix is the
+      // on-site location.
+      const photoCoords =
+        capture?.meta?.latitude != null && capture?.meta?.longitude != null
+          ? [capture.meta.latitude, capture.meta.longitude]
+          : null;
+      const fix = coords ?? photoCoords;
+
       // Sent as a pair or not at all — the API rejects a half-captured fix.
       const payload = {
         visited_on: form.visited_on,
         purpose: form.purpose,
         notes: form.notes.trim() || null,
-        latitude: coords?.[0] ?? null,
-        longitude: coords?.[1] ?? null,
+        latitude: fix?.[0] ?? null,
+        longitude: fix?.[1] ?? null,
       };
 
       if (editing) {
         await fieldVisitsApi.update(visit.id, payload);
+
+        // A capture taken while editing attaches (or replaces) the photo —
+        // also the recovery path for a visit whose original upload failed.
+        if (capture) {
+          await fieldVisitsApi.uploadPhoto(visit.id, capture.photo.blob, {
+            ...capture.meta,
+            gps_timestamp: undefined, // derived server-side from the columns
+          });
+        }
+
+        toast.success("Field visit updated.");
+        onSaved?.();
+        onClose();
       } else {
-        const created = await fieldVisitsApi.create({
-          ...payload,
-          beneficiary_id: Number(beneficiaryId),
-          has_photo: true,
-        });
+        const target = createdVisit
+          ? null // upload retry — the visit already exists
+          : await fieldVisitsApi.create({
+              ...payload,
+              beneficiary_id: Number(beneficiaryId),
+              has_photo: true,
+            });
 
-        // The structured metadata uploads with the composited image — the
-        // backend stores it as real columns, queryable without OCR.
-        await fieldVisitsApi.uploadPhoto(created.id, capture.photo.blob, {
-          ...capture.meta,
-          gps_timestamp: undefined, // derived server-side from the columns
-        });
+        if (target) setCreatedVisit(target);
+
+        try {
+          // The structured metadata uploads with the composited image — the
+          // backend stores it as real columns, queryable without OCR.
+          await fieldVisitsApi.uploadPhoto(
+            (target ?? createdVisit).id,
+            capture.photo.blob,
+            {
+              ...capture.meta,
+              gps_timestamp: undefined, // derived server-side from the columns
+            },
+          );
+        } catch (uploadError) {
+          toast.error(
+            'The visit was logged, but the photo upload failed — press "Log field visit" again to retry.',
+          );
+          onSaved?.();
+          return;
+        }
+
+        toast.success("Field visit recorded.");
+        onSaved?.();
+        onClose();
       }
-
-      toast.success(editing ? "Field visit updated." : "Field visit recorded.");
-      onSaved?.();
-      onClose();
     } catch (error) {
       const fields = getFieldErrors(error);
       if (fields) setErrors(fields);
@@ -370,8 +412,8 @@ export function FieldVisitFormModal({
             </p>
           ) : (
             <p className="mt-2 text-xs text-slate-500">
-              Capture where the visit actually happened, or leave it blank and log
-              the trip anyway.
+              Capture where the visit actually happened — taking the photo below
+              records your position here too.
             </p>
           )}
 
@@ -407,7 +449,13 @@ export function FieldVisitFormModal({
               disabled={capturing}
             >
               <Icon name="map-pin" className="h-4 w-4" />
-              {capturing ? "Processing…" : capture ? "Retake photo" : "Take photo"}
+              {capturing
+                ? "Processing…"
+                : capture
+                  ? "Retake photo"
+                  : editing && visit?.has_photo
+                    ? "Replace photo"
+                    : "Take photo"}
             </button>
             {capture && (
               <button
@@ -462,9 +510,12 @@ export function FieldVisitFormModal({
             </p>
           ) : (
             <p className="mt-2 text-xs text-slate-500">
-              The photo gets a timestamp and GPS panel burned into its left side.
+              The photo gets a timestamp and GPS panel burned into its left side;
+              its fix and clock fill the visit's location and timestamp.
               {editing
-                ? " Editing a visit never requires a new photo."
+                ? visit?.has_photo
+                  ? " Taking one replaces the current photo."
+                  : " This visit has no photo yet — take one to attach it."
                 : " Every new visit needs one."}
             </p>
           )}

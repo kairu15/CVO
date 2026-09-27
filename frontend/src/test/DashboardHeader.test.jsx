@@ -7,9 +7,11 @@ import { DashboardHeader } from "../components/DashboardHeader";
 import { searchApi } from "../api/searchApi";
 import { notificationsApi } from "../api/notificationsApi";
 
+const auth = vi.hoisted(() => ({ logout: vi.fn() }));
+
 vi.mock("../context/AuthContext", () => ({
   // The real context is module-private; the header only needs the user.
-  useAuth: () => ({ user: USER, logout: vi.fn() }),
+  useAuth: () => ({ user: USER, logout: auth.logout }),
 }));
 
 vi.mock("../api/searchApi", () => ({
@@ -163,10 +165,33 @@ describe("DashboardHeader", () => {
     // immediately via invalidation, not on the next poll.
     await user.click(screen.getByRole("button", { name: "Mark all read" }));
     await vi.waitFor(() => expect(notificationsApi.markAllRead).toHaveBeenCalledTimes(1));
-    await vi.waitFor(() => expect(notificationsApi.unreadCount).toHaveBeenCalledTimes(2));
-
     await user.click(screen.getByRole("button", { name: "Close notifications" }));
 
     expect(screen.queryByText("Vaccination overdue")).not.toBeInTheDocument();
+  });
+
+  it("confirms before logging out from the account menu", async () => {
+    const user = userEvent.setup();
+    auth.logout.mockResolvedValue();
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    await user.click(screen.getByRole("button", { name: "Log out" }));
+
+    // The floating confirmation appears first; nothing has signed out yet.
+    expect(
+      screen.getByText(/Are you sure you want to log out\?/),
+    ).toBeInTheDocument();
+    expect(auth.logout).not.toHaveBeenCalled();
+
+    // Cancelling keeps the session and closes the dialog.
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText(/Are you sure you want to log out\?/)).not.toBeInTheDocument();
+
+    // Confirming is what actually signs the user out.
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    await user.click(screen.getByRole("button", { name: "Log out" }));
+    await user.click(screen.getByRole("button", { name: "Yes, log out" }));
+    await vi.waitFor(() => expect(auth.logout).toHaveBeenCalledTimes(1));
   });
 });

@@ -1,8 +1,9 @@
-import { NavLink, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useState } from "react";
+import { NavLink } from "react-router-dom";
 import { dashboardsFor, getRole, roleLabel } from "../config/roles";
 import { Brand } from "./Brand";
 import { Icon } from "./Icons";
+import { LogoutConfirmDialog } from "./LogoutConfirmDialog";
 
 /**
  * Dashboard sidebar.
@@ -25,16 +26,10 @@ export function DashboardSidebar({
   onNavigate,
   onClose,
 }) {
-  const { logout } = useAuth();
-  const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
 
   const config = getRole(activeRole);
   const switchable = dashboardsFor(userRole);
-
-  async function handleLogout() {
-    await logout();
-    navigate("/login", { replace: true });
-  }
 
   return (
     <div className="flex h-full flex-col bg-white">
@@ -148,13 +143,15 @@ export function DashboardSidebar({
       <div className="shrink-0 border-t border-slate-100 p-3">
         <button
           type="button"
-          onClick={handleLogout}
+          onClick={() => setConfirming(true)}
           className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
         >
           <Icon name="logout" className="h-5 w-5 shrink-0" />
           Log out
         </button>
       </div>
+
+      <LogoutConfirmDialog open={confirming} onClose={() => setConfirming(false)} />
     </div>
   );
 }

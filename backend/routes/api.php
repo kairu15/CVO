@@ -109,6 +109,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::get('beneficiaries/{id}/lineage', [DispersalEventController::class, 'lineage'])
         ->name('api.beneficiaries.lineage');
 
+    // The month/year tab list for the monitoring table — must be declared
+    // BEFORE the apiResource, whose {monitoring_record} binding would
+    // otherwise swallow "months" as a record id (same pattern as
+    // health-records/options below).
+    Route::get('monitoring-records/months', [MonitoringRecordController::class, 'months'])
+        ->name('api.monitoring-records.months');
+
     Route::apiResource('monitoring-records', MonitoringRecordController::class);
 
     // Admin accepts a registration-created monitoring record (starts the

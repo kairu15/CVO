@@ -193,6 +193,16 @@ class MonitoringExcelService
             fn (MonitoringRecord $r) => ($r->date_monitored ?? $r->created_at)?->format('Y-m') ?? 'unknown',
         );
 
+        // Sheets in chronological order, oldest → newest — the same bucket
+        // keys the monitoring page's month tabs use, so the workbook and the
+        // screen can never disagree about which months exist. "Unlisted"
+        // (records with no usable date) sorts last.
+        $byMonth = $byMonth->sortKeys();
+        if ($byMonth->has('unknown')) {
+            $unknown = $byMonth->pull('unknown');
+            $byMonth->put('unknown', $unknown);
+        }
+
         $spreadsheet = new Spreadsheet;
         $spreadsheet->removeSheetByIndex(0);
 

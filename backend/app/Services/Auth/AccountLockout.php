@@ -47,12 +47,22 @@ class AccountLockout
     /**
      * Seconds until the lock lifts (0 when not locked) — surfaced to the
      * client so the UI can show a countdown instead of a bare refusal.
+     *
+     * The lock is stored as a UNIX TIMESTAMP INT, not a Carbon object: cache
+     * stores unserialize with an allowed-classes allow-list (Laravel 11+), so
+     * an object round-tripped through the database/redis/file store comes
+     * back as __PHP_Incomplete_Class and explodes on use. Primitives are
+     * safe on every store.
      */
     public function lockedForSeconds(User $user): int
     {
         $expiresAt = Cache::get(self::lockKey($user->id));
 
-        return $expiresAt ? max(0, now()->diffInSeconds($expiresAt, false)) : 0;
+        if (! is_numeric($expiresAt)) {
+            return 0;
+        }
+
+        return max(0, ((int) $expiresAt) - now()->getTimestamp());
     }
 
     /**
@@ -88,7 +98,12 @@ class AccountLockout
         if ($attempts >= $max && ! $this->isLocked($user)) {
             $minutes = max(1, (int) config('security.lockout.lockout_minutes', 15));
 
-            Cache::put(self::lockKey($user->id), now()->addMinutes($minutes), now()->addMinutes($minutes));
+            // Timestamp INT, not a Carbon object — see lockedForSeconds().
+            Cache::put(
+                self::lockKey($user->id),
+                now()->addMinutes($minutes)->getTimestamp(),
+                now()->addMinutes($minutes),
+            );
 
             // Lockouts are exactly what the audit trail exists for.
             $this->audit->log($user, 'account_locked', null, [

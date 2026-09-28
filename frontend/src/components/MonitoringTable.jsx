@@ -103,6 +103,9 @@ function RegistrationBadge({ record }) {
  *   action on rows flagged `new`; must reject on failure so the row keeps
  *   its in-flight spinner state until the toast reports the outcome
  * @param {number} [props.acceptingId] id of the record whose Accept is in flight
+ * @param {{title: string, description: string}} [props.emptyState] replaces the
+ *   default "no records yet" empty state when the caller knows a more specific
+ *   reason the table is empty (e.g. a month tab with no records)
  */
 export function MonitoringTable({
   records = [],
@@ -111,6 +114,7 @@ export function MonitoringTable({
   onDelete,
   onAccept,
   acceptingId = null,
+  emptyState,
 }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [photoRecord, setPhotoRecord] = useState(null);
@@ -148,8 +152,11 @@ export function MonitoringTable({
   if (records.length === 0) {
     return (
       <EmptyState
-        title="No monitoring records yet"
-        description="Once technicians log field visits, the monthly monitoring table will appear here — grouped per barangay like the CVO's Excel sheets."
+        title={emptyState?.title ?? "No monitoring records yet"}
+        description={
+          emptyState?.description ??
+          "Once technicians log field visits, the monthly monitoring table will appear here — grouped per barangay like the CVO's Excel sheets."
+        }
       />
     );
   }

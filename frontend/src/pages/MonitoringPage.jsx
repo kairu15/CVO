@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useInvalidate, useAssignedBeneficiaries, useMonitoringRecords } from "../api/queries";
+import {
+  useInvalidate,
+  useAssignedBeneficiaries,
+  useMonitoringMonths,
+  useMonitoringRecords,
+} from "../api/queries";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { monitoringApi } from "../api/monitoringApi";
 import { getErrorMessage } from "../api/client";
@@ -7,6 +12,7 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { MonitoringTable } from "../components/MonitoringTable";
 import { MonitoringExcelToolbar } from "../components/MonitoringExcelToolbar";
+import { MonthYearTabs } from "../components/MonthYearTabs";
 import { VisitFormModal } from "../components/VisitFormModal";
 import { EmptyState } from "../components/EmptyState";
 import { Modal } from "../components/Modal";
@@ -40,6 +46,10 @@ export default function MonitoringPage({ roleKey }) {
   const [deleting, setDeleting] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [acceptingId, setAcceptingId] = useState(null);
+  // The month/year tab selection — a "YYYY-MM" bucket of `date_monitored`,
+  // or null to see every record regardless of month.
+  const [selectedMonth, setSelectedMonth] = useState(null);
+  const [page, setPage] = useState(1);
   const toast = useToast();
 
   const isTechnician = viewerRole === "technician";
@@ -47,13 +57,19 @@ export default function MonitoringPage({ roleKey }) {
   const isAdmin = viewerRole === "admin";
 
   // Polled + refetched-on-focus. `loading` maps to the FIRST fetch only, so
-  // background refetches never blank the table into skeletons.
-  const recordsQuery = useMonitoringRecords();
+  // background refetches never blank the table into skeletons. The month and
+  // page ride in the query key: switching a tab fetches that month from the
+  // server (the filter lives in the database query, before pagination), so a
+  // month shows ALL of its records — not a slice of an unfiltered page.
+  const recordsQuery = useMonitoringRecords(selectedMonth, page);
+  const monthsQuery = useMonitoringMonths();
   const beneficiaryQuery = useAssignedBeneficiaries(isTechnician);
 
-  const records = recordsQuery.data ?? [];
+  const records = recordsQuery.data?.data ?? [];
+  const meta = recordsQuery.data?.meta ?? null;
+  const months = monthsQuery.data ?? [];
   const loading = recordsQuery.isPending;
-  const fetchError = recordsQuery.error ?? beneficiaryQuery.error;
+  const fetchError = recordsQuery.error ?? monthsQuery.error ?? beneficiaryQuery.error;
 
   useEffect(() => {
     setError(fetchError ? getErrorMessage(fetchError) : null);
@@ -76,6 +92,12 @@ export default function MonitoringPage({ roleKey }) {
     () => isTechnician && beneficiaries.length > 0,
     [isTechnician, beneficiaries],
   );
+
+  /** Tab click: swap the month bucket and reset to the first page. */
+  const selectMonth = useCallback((month) => {
+    setSelectedMonth(month);
+    setPage(1);
+  }, []);
 
   function openCreate() {
     setEditingRecord(null);
@@ -155,6 +177,19 @@ export default function MonitoringPage({ roleKey }) {
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
 
+      {/* Month/year tabs — the same months the Excel export emits one sheet
+          for. Only months with records appear, oldest → newest, and the
+          filter runs server-side so a tab shows the WHOLE month. */}
+      {!loading && months.length > 0 && (
+        <section className="card px-4 py-3">
+          <MonthYearTabs
+            months={months}
+            selected={selectedMonth}
+            onSelect={selectMonth}
+          />
+        </section>
+      )}
+
       {/* A technician with zero assignments sees an explicit boundary message,
           not a generic "no records" — the two mean different things. */}
       {isTechnician && !loading && !error && beneficiaries.length === 0 ? (
@@ -173,7 +208,49 @@ export default function MonitoringPage({ roleKey }) {
           onDelete={canEdit ? (record) => setDeleting(record) : undefined}
           onAccept={isAdmin ? (record) => confirmAccept(record) : undefined}
           acceptingId={acceptingId}
+          emptyState={
+            selectedMonth
+              ? {
+                  title: "No records this month",
+                  description:
+                    "No monitoring visits are recorded for this month. Choose another month or view all months.",
+                }
+              : undefined
+          }
         />
+
+        {meta && meta.last_page > 1 && (
+          <div className="flex items-center justify-between gap-4 border-t border-slate-100 px-4 py-3 text-xs text-slate-600">
+            <span>
+              Showing {records.length} of {meta.total} record
+              {meta.total === 1 ? "" : "s"}
+              {selectedMonth ? " in this month" : ""}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page <= 1}
+                className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Icon name="chevron-down" className="h-3.5 w-3.5 -rotate-90" />
+                Prev
+              </button>
+              <span className="tabular-nums">
+                Page {meta.current_page} of {meta.last_page}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(meta.last_page, current + 1))}
+                disabled={page >= meta.last_page}
+                className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+                <Icon name="chevron-down" className="h-3.5 w-3.5 rotate-90" />
+              </button>
+            </div>
+          </div>
+        )}
         </section>
       )}
 

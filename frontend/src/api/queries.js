@@ -61,11 +61,36 @@ export function useNotificationsFeed(limit = 20) {
   });
 }
 
-/** Role-scoped monitoring records, polled. */
-export function useMonitoringRecords(enabled = true) {
+/**
+ * Role-scoped monitoring records, polled, optionally bucketed to one month.
+ *
+ * The month filter is a SERVER-side query parameter — filtering an already
+ * paginated fetch client-side is how a month tab ends up showing a slice of
+ * a month instead of the whole month. `month` is "YYYY-MM" or null (all
+ * records); `page` paginates within the current selection.
+ */
+export function useMonitoringRecords(month = null, page = 1, enabled = true) {
   return useQuery({
-    queryKey: ["monitoring-records"],
-    queryFn: () => monitoringApi.list({ per_page: 100 }),
+    queryKey: ["monitoring-records", { month, page }],
+    queryFn: () =>
+      monitoringApi.list({
+        per_page: 100,
+        ...(month ? { month } : {}),
+        page,
+      }),
+    refetchInterval: POLL_INTERVALS.monitoring,
+    enabled,
+    // Switching months paginates through different row sets; without this
+    // React Query would render the previous month's rows for one tick.
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** The distinct months with records, oldest → newest — the tab list. */
+export function useMonitoringMonths(enabled = true) {
+  return useQuery({
+    queryKey: ["monitoring-records", "months"],
+    queryFn: () => monitoringApi.months(),
     refetchInterval: POLL_INTERVALS.monitoring,
     enabled,
   });

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\IndexMonitoringRecordsRequest;
 use App\Http\Requests\StoreMonitoringRecordRequest;
 use App\Http\Requests\UpdateMonitoringRecordRequest;
 use App\Http\Resources\MonitoringRecordResource;
@@ -19,13 +20,36 @@ class MonitoringRecordController extends Controller
     }
 
     /**
-     * Role-scoped monitoring records.
+     * Role-scoped monitoring records, optionally bucketed to one month.
+     *
+     * The month/year tab filter runs here, server-side: `month=YYYY-MM`
+     * filters the database query on `date_monitored` (the field the CVO
+     * report is organized by) BEFORE pagination, so `meta.total` is the
+     * month's real row count — not a page-sized slice of a pre-filtered
+     * fetch. `per_page` lets the UI raise the page size; `page` paginates.
      */
-    public function index(Request $request): AnonymousResourceCollection
+    public function index(IndexMonitoringRecordsRequest $request): AnonymousResourceCollection
     {
-        return MonitoringRecordResource::collection(
-            $this->records->listFor($request->user()),
+        $paginator = $this->records->listFor(
+            $request->user(),
+            $request->validated('month'),
+            (int) $request->validated('per_page'),
         );
+
+        return MonitoringRecordResource::collection($paginator);
+    }
+
+    /**
+     * The months that actually have monitoring records, scoped to the
+     * caller — the month/year tab list. Only months with data appear and
+     * they arrive oldest → newest, one cheap query over the indexed
+     * `date_monitored` column.
+     */
+    public function months(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->records->availableMonthsFor($request->user()),
+        ]);
     }
 
     /**

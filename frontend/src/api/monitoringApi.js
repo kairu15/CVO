@@ -11,8 +11,30 @@ import { api, ensureCsrfCookie, unwrap } from "./client";
  */
 
 export const monitoringApi = {
-  /** Role-scoped list — scoping is enforced server-side. Always an array. */
-  list: async (params = {}) => unwrap.list(await api.get("/api/v1/monitoring-records", { params })),
+  /**
+   * Role-scoped list — scoping is enforced server-side. Resolves to the
+   * full paginated envelope ({ data, meta }) so the month filter's real
+   * total and page controls survive the unwrap; use `list`'s rows via
+   * `envelope.data`.
+   */
+  list: async (params = {}) => {
+    const response = await api.get("/api/v1/monitoring-records", { params });
+    const body = response?.data;
+
+    return {
+      data: Array.isArray(body?.data) ? body.data : [],
+      meta: body?.meta ?? null,
+    };
+  },
+
+  /**
+   * The months that actually have records ("YYYY-MM" strings), scoped to
+   * the caller and sorted oldest → newest — the month/year tab list.
+   */
+  months: async () => {
+    const response = await api.get("/api/v1/monitoring-records/months");
+    return Array.isArray(response?.data?.data) ? response.data.data : [];
+  },
 
   get: async (id) => unwrap(await api.get(`/api/v1/monitoring-records/${id}`)),
 

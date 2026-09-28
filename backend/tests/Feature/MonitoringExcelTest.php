@@ -249,6 +249,38 @@ class MonitoringExcelTest extends TestCase
         @unlink($temporary);
     }
 
+    public function test_export_orders_sheets_chronologically(): void
+    {
+        $technician = User::factory()->create(['role' => 'technician']);
+        $beneficiary = Beneficiary::factory()->assignedTo($technician)->create();
+
+        // Seeded deliberately out of order: the sheet tabs must come out
+        // oldest → newest regardless of insertion order — the same
+        // chronological rule the monitoring page's month tabs follow.
+        foreach (['2026-02-01', '2025-01-15', '2026-01-20', '2025-12-05'] as $date) {
+            MonitoringRecord::factory()->by($technician)->for($beneficiary, 'beneficiary')
+                ->create(['date_monitored' => $date]);
+        }
+
+        $response = $this->actingAs($this->admin)
+            ->getJson('/api/v1/admin/monitoring-records/export');
+
+        $response->assertOk();
+
+        $temporary = tempnam(sys_get_temp_dir(), 'export');
+        file_put_contents($temporary, $response->streamedContent());
+
+        $spreadsheet = IOFactory::load($temporary);
+
+        $this->assertSame(
+            ['Jan 2025', 'Dec 2025', 'Jan 2026', 'Feb 2026'],
+            $spreadsheet->getSheetNames(),
+        );
+
+        $spreadsheet->disconnectWorksheets();
+        @unlink($temporary);
+    }
+
     public function test_non_admin_cannot_import_or_export(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);

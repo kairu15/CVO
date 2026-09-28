@@ -24,18 +24,61 @@ class MonitoringRecordService
      *
      * Scoping rides on the beneficiary scoping: a technician only ever
      * receives rows whose beneficiary is assigned to them, server-side.
+     *
+     * `$month` ("YYYY-MM") filters on `date_monitored` — the field the CVO
+     * report is organized by, not the row's creation timestamp. The filter
+     * runs INSIDE the database query and before pagination, so the total
+     * count for the month is the real total, never a page-sized slice.
      */
-    public function listFor(User $user): LengthAwarePaginator
+    public function listFor(User $user, ?string $month = null, int $perPage = 15): LengthAwarePaginator
     {
         $page = $this->scopeFor($user)
             ->with(['beneficiary', 'technician', 'beneficiary.technician'])
+            ->when($month !== null, fn (\Illuminate\Database\Eloquent\Builder $q) => $this->applyMonthFilter($q, $month))
             ->latest('date_monitored')
             ->latest('id')
-            ->paginate(15);
+            ->paginate($perPage);
 
         $this->attachLatestPhotos($page->getCollection());
 
         return $page;
+    }
+
+    /**
+     * The "YYYY-MM" bucket a record belongs to, by `date_monitored`.
+     * Null (import rows can carry no date) buckets as null — callers decide
+     * how to surface that; the export groups them under "Unlisted".
+     */
+    public static function monthKey(MonitoringRecord $record): ?string
+    {
+        return $record->date_monitored?->format('Y-m');
+    }
+
+    /**
+     * The distinct months that actually have records, oldest first, scoped
+     * to the caller. This is the month-tab list — only months with data
+     * appear, exactly like the Excel export only emits sheets with data.
+     *
+     * One query over the indexed `date_monitored` column; the "YYYY-MM"
+     * prefix sorts chronologically as a plain string on MySQL and SQLite
+     * alike (the test harness runs the latter).
+     */
+    public function availableMonthsFor(User $user): array
+    {
+        return $this->scopeFor($user)
+            ->whereNotNull('date_monitored')
+            ->toBase()
+            ->selectRaw('distinct substr(date_monitored, 1, 7) as month')
+            ->orderBy('month')
+            ->pluck('month')
+            ->all();
+    }
+
+    /** Constrain a query to one "YYYY-MM" bucket of `date_monitored`. */
+    private function applyMonthFilter(\Illuminate\Database\Eloquent\Builder $query, string $month): void
+    {
+        $query->whereYear('date_monitored', '=', (int) substr($month, 0, 4))
+            ->whereMonth('date_monitored', '=', (int) substr($month, 5, 2));
     }
 
     /**

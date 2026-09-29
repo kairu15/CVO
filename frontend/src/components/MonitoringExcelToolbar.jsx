@@ -50,8 +50,11 @@ export function MonitoringExcelToolbar() {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
+    // `display: contents` lets the page lay the buttons and feedback out as
+    // direct children of the filter row: buttons sit beside the month
+    // dropdown, and any import feedback wraps full width beneath the row.
+    <div className="contents">
+      <div className="flex flex-wrap items-center gap-3 sm:ml-auto">
         <input
           ref={fileInputRef}
           type="file"
@@ -78,13 +81,16 @@ export function MonitoringExcelToolbar() {
       </div>
 
       {error && (
-        <div role="alert" className="card border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div
+          role="alert"
+          className="card w-full border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        >
           {error}
         </div>
       )}
 
       {summary && (
-        <div className="card border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">
+        <div className="card w-full border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">
           <p className="font-semibold">Import complete</p>
           <ul className="mt-1.5 space-y-0.5 text-xs">
             <li>{summary.sheets} sheet(s) read, {summary.rows_read} row(s) processed</li>

@@ -126,7 +126,14 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
       </section>
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
-      {notice && <InlineAlert tone="success" message={notice} onDismiss={() => setNotice(null)} />}
+      {notice && (
+        <InlineAlert
+          tone="success"
+          message={notice}
+          onDismiss={() => setNotice(null)}
+          autoDismiss={5000}
+        />
+      )}
 
       {loading ? (
         <section className="card overflow-hidden">

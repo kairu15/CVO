@@ -151,7 +151,12 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
       {notice && (
-        <InlineAlert tone="success" message={notice} onDismiss={() => setNotice(null)} />
+        <InlineAlert
+          tone="success"
+          message={notice}
+          onDismiss={() => setNotice(null)}
+          autoDismiss={5000}
+        />
       )}
 
       <section className="card overflow-hidden">
@@ -262,7 +267,14 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
         beneficiaries={beneficiaries}
         outcomes={outcomes}
         record={editing}
-        onSaved={() => setNotice(editing ? "Health record updated." : "Health record saved.")}
+        onSaved={async () => {
+          // Re-fetch immediately after a save: waiting for the 30s
+          // auto-refresh tick is why a freshly created record looked like it
+          // never appeared. Quiet, so the table updates in place instead of
+          // flashing back to a skeleton.
+          await load(true);
+          setNotice(editing ? "Health record updated." : "Health record saved.");
+        }}
       />
 
       <Modal

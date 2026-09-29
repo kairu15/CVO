@@ -22,10 +22,11 @@ class MonitoringRecordController extends Controller
     /**
      * Role-scoped monitoring records, optionally bucketed to one month.
      *
-     * The month/year tab filter runs here, server-side: `month=YYYY-MM`
-     * filters the database query on `date_monitored` (the field the CVO
-     * report is organized by) BEFORE pagination, so `meta.total` is the
-     * month's real row count — not a page-sized slice of a pre-filtered
+     * The month/year filter and the farmer-name search both run here,
+     * server-side: `month=YYYY-MM` bucketed on `date_monitored` (the field
+     * the CVO report is organized by) and `search` matched against the
+     * beneficiary's name — each BEFORE pagination, so `meta.total` is the
+     * filter's real row count, not a page-sized slice of a pre-filtered
      * fetch. `per_page` lets the UI raise the page size; `page` paginates.
      */
     public function index(IndexMonitoringRecordsRequest $request): AnonymousResourceCollection
@@ -33,6 +34,7 @@ class MonitoringRecordController extends Controller
         $paginator = $this->records->listFor(
             $request->user(),
             $request->validated('month'),
+            $request->validated('search'),
             (int) $request->validated('per_page'),
         );
 

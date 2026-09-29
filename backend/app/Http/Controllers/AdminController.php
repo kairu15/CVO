@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\AdminBeneficiariesRequest;
 use App\Http\Requests\AdminExcelExportRequest;
 use App\Http\Requests\AdminExcelImportRequest;
 use App\Http\Requests\AdminUsersRequest;
@@ -17,7 +18,6 @@ use App\Services\MonitoringExcelService;
 use App\Services\UserRoleService;
 use App\Support\Like;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -136,14 +136,18 @@ class AdminController extends Controller
 
     /**
      * Beneficiaries grouped for bulk assignment: every beneficiary with its
-     * current technician, paginated.
+     * current technician, paginated. `per_page` is honoured (capped at 500 by
+     * the request) so the directory can show the whole set the monitoring
+     * table reports on rather than a fixed 15-row slice.
      */
-    public function beneficiaries(Request $request): AnonymousResourceCollection
+    public function beneficiaries(AdminBeneficiariesRequest $request): AnonymousResourceCollection
     {
+        $validated = $request->validated();
+
         $beneficiaries = Beneficiary::query()
             ->with(['technician', 'farmer'])
             ->withCount('monitoringRecords')
-            ->when($request->string('search')->toString(), function ($q, $search): void {
+            ->when($validated['search'] ?? null, function ($q, $search): void {
                 $pattern = Like::contains($search);
 
                 $q->where(function ($q) use ($pattern): void {
@@ -153,7 +157,7 @@ class AdminController extends Controller
             })
             ->orderBy('address')
             ->orderBy('name_of_farmer')
-            ->paginate(15);
+            ->paginate($validated['per_page'] ?? 15);
 
         return BeneficiaryResource::collection($beneficiaries);
     }

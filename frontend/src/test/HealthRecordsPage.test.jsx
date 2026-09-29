@@ -145,6 +145,39 @@ describe("HealthRecordsPage", () => {
     });
   });
 
+  it("shows a new record immediately instead of waiting for the auto-refresh tick", async () => {
+    const saved = {
+      ...RECORDS[0],
+      id: 5,
+      diagnosis: "Mastitis",
+    };
+    healthRecordsApi.create.mockResolvedValue(saved);
+    // First load: the two existing rows. The post-save refresh returns the
+    // new row — the page must re-fetch itself rather than wait for the 30s
+    // poll, which is what made a saved record look like it never appeared.
+    healthRecordsApi.list
+      .mockResolvedValueOnce(RECORDS)
+      .mockResolvedValue([...RECORDS, saved]);
+
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "New record" }));
+    });
+    await act(async () => {
+      await userEvent.selectOptions(screen.getByLabelText("Beneficiary"), "11");
+    });
+    await act(async () => {
+      await userEvent.type(screen.getByLabelText("Diagnosis"), "Mastitis");
+    });
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Save record" }));
+    });
+
+    expect(await screen.findByText("Mastitis")).toBeInTheDocument();
+  });
+
   it("will not save without a diagnosis", async () => {
     renderPage();
     await screen.findByText("Aling Nena");

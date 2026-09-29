@@ -201,3 +201,21 @@ describe("BeneficiariesPage bulk assignment", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Network error");
   });
 });
+
+describe("BeneficiariesPage directory scope", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockList();
+  });
+
+  // The server used to hard-code paginate(15) and ignore per_page, so the
+  // directory showed 15 households while the monitoring table reported on
+  // hundreds. The page must keep asking for the whole set.
+  it("requests the full directory rather than the server's default page", async () => {
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    const params = adminApi.listBeneficiaries.mock.calls[0]?.[0];
+    expect(params?.per_page).toBe(200);
+  });
+});

@@ -138,7 +138,12 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
       {notice && (
-        <InlineAlert tone="success" message={notice} onDismiss={() => setNotice(null)} />
+        <InlineAlert
+          tone="success"
+          message={notice}
+          onDismiss={() => setNotice(null)}
+          autoDismiss={5000}
+        />
       )}
 
       {loading ? (
@@ -218,7 +223,14 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
         onClose={() => setFormOpen(false)}
         beneficiaries={beneficiaries}
         note={editing}
-        onSaved={() => setNotice(editing ? "Case note updated." : "Case note saved.")}
+        onSaved={async () => {
+          // Re-fetch immediately after a save: waiting for the 30s
+          // auto-refresh tick is why a freshly written note looked like it
+          // never appeared. Quiet, so the list updates in place instead of
+          // flashing back to a skeleton.
+          await load(true);
+          setNotice(editing ? "Case note updated." : "Case note saved.");
+        }}
       />
 
       <Modal

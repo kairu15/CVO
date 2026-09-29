@@ -80,21 +80,41 @@ class Barangays
     }
 
     /**
-     * Match an address against the list ignoring case and inner spaces, so
-     * "Banaybanay" and "banay banay" both hit "Banaybanay". Returns the
-     * input unchanged when it names no covered barangay.
+     * Match an address against the list ignoring case, inner spaces, hyphens
+     * and any parenthetical qualifier, so "Banaybanay", "banay banay",
+     * "Manduao" and "Mandu-ao" all hit their canonical entry, and a bare
+     * "Villasol"/"Ubos" hits "Villasol (Bato)"/"Ubos (Poblacion)". Returns
+     * the input unchanged when it names no covered barangay.
      */
     public static function normalize(string $address): string
     {
-        $folded = str_replace(' ', '', mb_strtolower(trim($address)));
+        $key = self::matchKey($address);
+
+        if ($key === '') {
+            return trim($address);
+        }
 
         foreach (self::all() as $barangay) {
-            if ($folded === str_replace(' ', '', mb_strtolower($barangay))) {
+            if ($key === self::matchKey($barangay)) {
                 return $barangay;
             }
         }
 
         return trim($address);
+    }
+
+    /**
+     * Fold a barangay name to a comparison key: lowercase letters and digits
+     * only, with any parenthetical qualifier dropped. So "Mandu-ao",
+     * "Manduao" and "MANDU AO" all fold to "manduao", and "Villasol (Bato)"
+     * folds to "villasol" — which is why a report sheet that writes the short
+     * form still resolves to a pin.
+     */
+    protected static function matchKey(string $name): string
+    {
+        $withoutQualifier = (string) preg_replace('/\([^)]*\)/', '', $name);
+
+        return (string) preg_replace('/[^a-z0-9]/', '', mb_strtolower($withoutQualifier));
     }
 
     /**

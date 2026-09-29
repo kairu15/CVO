@@ -9,6 +9,7 @@ import {
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Icon } from "./Icons";
 import { InlineAlert } from "./InlineAlert";
+import { spreadPositions } from "../lib/mapPositions";
 
 /**
  * Geo-tagged beneficiaries on a MapLibre GL map with OpenStreetMap tiles.
@@ -149,6 +150,11 @@ export function DispersalMap({
     [pinnable, animalFilter],
   );
 
+  // Households in the directory that cannot be placed — an address naming no
+  // covered barangay ('Unlisted', a typo). Surfaced explicitly so the pin
+  // count never silently disagrees with the monitoring table's farmer count.
+  const unpinned = beneficiaries.length - pinnable.length;
+
   // Create the map once.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -192,6 +198,9 @@ export function DispersalMap({
     const map = mapRef.current;
     if (!map || !mapReady || onPick) return;
 
+    // Households sharing a barangay centre would otherwise stack into one dot;
+    // see spreadPositions for why the ring is presentational only.
+    const positions = spreadPositions(visible);
     const byId = new Map(visible.map((beneficiary) => [String(beneficiary.id), beneficiary]));
     const seen = new Set();
 
@@ -200,7 +209,7 @@ export function DispersalMap({
       if (!beneficiary) continue;
 
       seen.add(entry.key);
-      const position = [Number(beneficiary.longitude), Number(beneficiary.latitude)];
+      const position = positions.get(entry.key);
       const color = colorFor(beneficiary);
 
       if (entry.color !== color || entry.position !== `${position[0]},${position[1]}`) {
@@ -213,7 +222,7 @@ export function DispersalMap({
 
     for (const [key, beneficiary] of byId) {
       if (seen.has(key)) continue;
-      const position = [Number(beneficiary.longitude), Number(beneficiary.latitude)];
+      const position = positions.get(key);
       const color = colorFor(beneficiary);
       markersRef.current.push({
         key,
@@ -258,6 +267,36 @@ export function DispersalMap({
     const [lat, lng] = centerKey.split(",").map(Number);
     map.jumpTo({ center: [lng, lat] });
   }, [mapReady, centerKey]);
+
+  // Open framed on the pins themselves. The fixed default view sits on the
+  // city centre at zoom 12 while the covered barangays span roughly 35 km, so
+  // most of them start off-screen — which reads as "most farmers have no pin"
+  // even though they are all drawn. Re-fits when the visible set changes
+  // (e.g. an animal-type filter); picker mode passes center/selected and is
+  // left alone.
+  const pinKey = visible.map((beneficiary) => beneficiary.id).join(",");
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || onPick || center || selected) return;
+
+    const positions = [...spreadPositions(visible).values()];
+    if (positions.length === 0) return;
+
+    const lngs = positions.map(([lng]) => lng);
+    const lats = positions.map(([, lat]) => lat);
+    const southWest = [Math.min(...lngs), Math.min(...lats)];
+    const northEast = [Math.max(...lngs), Math.max(...lats)];
+
+    // A single distinct spot has no extent to fit — MapLibre would collapse
+    // the zoom; step in deliberately instead.
+    if (southWest[0] === northEast[0] && southWest[1] === northEast[1]) {
+      map.jumpTo({ center: southWest, zoom: 13 });
+      return;
+    }
+
+    map.fitBounds([southWest, northEast], { padding: 48, maxZoom: 13, duration: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pinKey stands in for `visible`'s identity so a refetch of the same rows never yanks the camera
+  }, [mapReady, pinKey, onPick, center, selected]);
 
   if (error) {
     return <InlineAlert message={error} />;
@@ -334,6 +373,13 @@ export function DispersalMap({
             Table view of the map above
           </span>
         </div>
+        {unpinned > 0 && (
+          <p className="border-b border-slate-100 bg-amber-50/60 px-4 py-2 text-xs text-amber-800">
+            {unpinned} of {beneficiaries.length} households have no coordinates
+            yet, so they have no pin. A covered barangay address places them on
+            the map.
+          </p>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <colgroup>
@@ -374,10 +420,11 @@ export function DispersalMap({
 function makeMarker(map, position, color, html) {
   const el = document.createElement("div");
   el.setAttribute("aria-hidden", "true");
-  el.style.cssText =
-    "width:18px;height:18px;border-radius:9999px;" +
-    `background:${color};border:3px solid #fff;` +
-    "box-shadow:0 1px 4px rgb(15 23 42 / 0.45);cursor:pointer";
+
+  // Shape and the pulsing glow ring live in index.css (.cvo-map-pin); only
+  // the animal-type colour is per-marker, and the ::after ring inherits it.
+  el.className = "cvo-map-pin";
+  el.style.background = color;
 
   const marker = new Marker({ element: el })
     .setLngLat(position)

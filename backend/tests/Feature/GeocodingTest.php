@@ -246,4 +246,27 @@ class GeocodingTest extends TestCase
         $this->assertSame('Dawis', Barangays::normalize('dawis'));
         $this->assertSame('Nowhere XYZ', Barangays::normalize('Nowhere XYZ'));
     }
+
+    /**
+     * Report sheets write the barangay however the encoder did: "Manduao" for
+     * "Mandu-ao", "Villasol" for "Villasol (Bato)". Both have to resolve, or
+     * the household is imported without coordinates and never gets a map pin
+     * even though its address names a covered barangay.
+     */
+    public function test_normalize_matches_hyphenated_and_qualified_barangay_names(): void
+    {
+        $this->assertSame('Mandu-ao', Barangays::normalize('Manduao'));
+        $this->assertSame('Mandu-ao', Barangays::normalize('mandu ao'));
+        $this->assertSame('Villasol (Bato)', Barangays::normalize('Villasol'));
+        $this->assertSame('Villasol (Bato)', Barangays::normalize('villasol (bato)'));
+        $this->assertSame('Ubos (Poblacion)', Barangays::normalize('Ubos'));
+
+        // Dropping the qualifier must not merge a qualified entry into the
+        // plain one — "Poblacion" is its own barangay.
+        $this->assertSame('Poblacion', Barangays::normalize('Poblacion'));
+        $this->assertSame('Suba (Poblacion)', Barangays::normalize('Suba'));
+
+        $this->assertTrue(Barangays::isCovered('Manduao'));
+        $this->assertTrue(Barangays::isCovered('Villasol'));
+    }
 }

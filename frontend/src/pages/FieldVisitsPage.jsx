@@ -148,7 +148,12 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
       {notice && (
-        <InlineAlert tone="success" message={notice} onDismiss={() => setNotice(null)} />
+        <InlineAlert
+          tone="success"
+          message={notice}
+          onDismiss={() => setNotice(null)}
+          autoDismiss={5000}
+        />
       )}
 
       <section className="card overflow-hidden">
@@ -308,7 +313,14 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
         beneficiaries={beneficiaries}
         purposes={purposes}
         visit={editing}
-        onSaved={() => setNotice(editing ? "Field visit updated." : "Field visit logged.")}
+        onSaved={async () => {
+          // Re-fetch immediately after a save: waiting for the 30s
+          // auto-refresh tick is why a freshly logged visit looked like it
+          // never appeared. Quiet, so the table updates in place instead of
+          // flashing back to a skeleton.
+          await load(true);
+          setNotice(editing ? "Field visit updated." : "Field visit logged.");
+        }}
       />
 
       <Modal open={deleting !== null} title="Delete field visit" onClose={() => setDeleting(null)}>

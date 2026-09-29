@@ -62,20 +62,23 @@ export function useNotificationsFeed(limit = 20) {
 }
 
 /**
- * Role-scoped monitoring records, polled, optionally bucketed to one month.
+ * Role-scoped monitoring records, polled, optionally bucketed to one month
+ * and/or narrowed to a farmer name.
  *
- * The month filter is a SERVER-side query parameter — filtering an already
- * paginated fetch client-side is how a month tab ends up showing a slice of
- * a month instead of the whole month. `month` is "YYYY-MM" or null (all
- * records); `page` paginates within the current selection.
+ * The month filter and the name search are SERVER-side query parameters —
+ * filtering an already paginated fetch client-side is how a month tab ends
+ * up showing a slice of a month (or a search hiding every match on a later
+ * page). `month` is "YYYY-MM" or null (all records); `search` is the raw
+ * farmer-name term or ""; `page` paginates within the current selection.
  */
-export function useMonitoringRecords(month = null, page = 1, enabled = true) {
+export function useMonitoringRecords(month = null, page = 1, search = "", enabled = true) {
   return useQuery({
-    queryKey: ["monitoring-records", { month, page }],
+    queryKey: ["monitoring-records", { month, page, search }],
     queryFn: () =>
       monitoringApi.list({
         per_page: 100,
         ...(month ? { month } : {}),
+        ...(search ? { search } : {}),
         page,
       }),
     refetchInterval: POLL_INTERVALS.monitoring,

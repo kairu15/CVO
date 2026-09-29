@@ -134,6 +134,33 @@ describe("CaseNotesPage", () => {
     });
   });
 
+  it("shows a new note immediately instead of waiting for the auto-refresh tick", async () => {
+    const saved = { ...NOTES[0], id: 5, body: "Follow-up: the limp has cleared." };
+    caseNotesApi.create.mockResolvedValue(saved);
+    // First load: the two existing notes. The post-save refresh returns the
+    // new note — the page must re-fetch itself rather than wait for the 30s
+    // poll, which is what made a written note look like it never appeared.
+    caseNotesApi.list.mockResolvedValueOnce(NOTES).mockResolvedValue([...NOTES, saved]);
+
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "New note" }));
+    });
+    await act(async () => {
+      await userEvent.selectOptions(screen.getByLabelText("Beneficiary"), "11");
+    });
+    await act(async () => {
+      await userEvent.type(screen.getByLabelText("Note"), "Follow-up: the limp has cleared.");
+    });
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Save note" }));
+    });
+
+    expect(await screen.findByText("Follow-up: the limp has cleared.")).toBeInTheDocument();
+  });
+
   it("will not save an empty note", async () => {
     renderPage();
     await screen.findByText("Aling Nena");

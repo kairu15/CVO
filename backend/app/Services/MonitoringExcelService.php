@@ -121,6 +121,14 @@ class MonitoringExcelService
                     continue;
                 }
 
+                // The sheet's footer/signature block — skip it too. Those rows
+                // used to be imported as farmers, producing phantom
+                // beneficiaries that could never be pinned and that inflated
+                // every count.
+                if ($this->isFooterRow($values, $name)) {
+                    continue;
+                }
+
                 $summary['rows_read']++;
 
                 try {
@@ -323,6 +331,60 @@ class MonitoringExcelService
     private function normalizeHeader(string $value): string
     {
         return strtolower((string) preg_replace('/[^a-z0-9]/i', '', $value));
+    }
+
+    /**
+     * Template words that only ever appear in the footer/signature block.
+     *
+     * @var list<string>
+     */
+    private const FOOTER_KEYWORDS = [
+        'prepared', 'noted', 'approved', 'inspected', 'attested',
+        'certified', 'verified', 'signature', 'livestock', 'inspector',
+        'agriculturist', 'monitoring report',
+    ];
+
+    /**
+     * True when a row belongs to the workbook's footer/signature block rather
+     * than to a farmer.
+     *
+     * Real CVO sheets close with a "Prepared by:" label, the signatory's name
+     * and their title ("LIVESTOCK INSPECTOR II") — text that lands in the
+     * Name-of-Farmer column. Importing it created phantom beneficiaries:
+     * households that can never be pinned (their address names no barangay)
+     * and that inflated the farmer count, the monitoring total and the export.
+     *
+     * Deliberately conservative: a row is skipped ONLY when it carries no
+     * farmer data at all AND its name is label-shaped, so a sparse but genuine
+     * farmer row is still imported.
+     */
+    private function isFooterRow(array $values, string $name): bool
+    {
+        foreach (['animal_type', 'sex', 'bcs', 'farmers_signature', 'remarks', ...self::DATE_FIELDS] as $field) {
+            if (trim((string) ($values[$field] ?? '')) !== '') {
+                return false;
+            }
+        }
+
+        $folded = mb_strtolower($name);
+
+        // "Prepared by:" — a label, never a person.
+        if (str_ends_with($folded, ':')) {
+            return true;
+        }
+
+        // Titles and signatories are shouted in upper case; names are not.
+        if (preg_match('/[A-Z]/', $name) === 1 && $name === mb_strtoupper($name)) {
+            return true;
+        }
+
+        foreach (self::FOOTER_KEYWORDS as $keyword) {
+            if (str_contains($folded, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Pull a data row into field => value form using the header map. */

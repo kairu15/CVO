@@ -29,6 +29,11 @@ class IndexMonitoringRecordsRequest extends FormRequest
             // organizing field), never on created_at.
             'month' => ['sometimes', 'nullable', 'date_format:Y-m'],
 
+            // Farmer-name search for the filter row. Applied server-side,
+            // like `month`, so a match outside the current page is still
+            // found (see MonitoringRecordService::listFor).
+            'search' => ['sometimes', 'nullable', 'string', 'max:100'],
+
             // Same bounds as the other list endpoints (ActivityLogRequest).
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
 

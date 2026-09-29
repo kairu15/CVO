@@ -369,4 +369,86 @@ class MonitoringExcelTest extends TestCase
         $this->assertSame($center[0], (float) $juan->latitude);
         $this->assertSame($center[1], (float) $juan->longitude);
     }
+
+    /**
+     * Regression: real sheets close with a prepared-by/signature block whose
+     * text lands in the Name-of-Farmer column. Importing it created phantom
+     * beneficiaries — unpinnable rows that inflated the farmer count, the
+     * monitoring total and the workbook export.
+     */
+    public function test_import_skips_the_footer_and_signature_block(): void
+    {
+        $path = $this->workbook([
+            ['Juan Dela Cruz', 'Ali-is', 'Cattle', 'M', 45979, null, null, null, null, null, 3, null, null],
+            ['Prepared by:', 'Rolando T. Magbanua Jr', null, null, null, null, null, null, null, null, null, null, null],
+            ['LIVESTOCK MONITORING REPORT', null, null, null, null, null, null, null, null, null, null, null, null],
+            ['LIVESTOCK INSPECTOR II', null, null, null, null, null, null, null, null, null, null, null, null],
+            ['ROLANDO T. MAGBANUA JR.', null, null, null, null, null, null, null, null, null, null, null, null],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/admin/monitoring-records/import', [
+                'file' => new UploadedFile($path, 'report.xlsx', null, null, true),
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.rows_read', 1)
+            ->assertJsonPath('data.beneficiaries_created', 1)
+            ->assertJsonPath('data.records_created', 1);
+
+        $this->assertSame(1, Beneficiary::count());
+        $this->assertSame(1, MonitoringRecord::count());
+    }
+
+    /**
+     * The skip rule must not swallow a sparse-but-real farmer row: a name in
+     * ordinary case with only an animal type recorded is still a household.
+     */
+    public function test_import_keeps_a_sparse_but_genuine_farmer_row(): void
+    {
+        $path = $this->workbook([
+            ['Nena Reyes', null, 'Goat', null, null, null, null, null, null, null, null, null, null],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/admin/monitoring-records/import', [
+                'file' => new UploadedFile($path, 'report.xlsx', null, null, true),
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.beneficiaries_created', 1);
+
+        $this->assertDatabaseHas('beneficiaries', ['name_of_farmer' => 'Nena Reyes']);
+    }
+
+    /**
+     * Regression: a sheet spelling the barangay without its hyphen or
+     * parenthetical qualifier used to import the household with NO coordinates,
+     * which is why the dispersal map showed a handful of pins while the
+     * monitoring table showed hundreds of records.
+     */
+    public function test_import_pins_hyphenated_and_short_barangay_spellings(): void
+    {
+        $path = $this->workbook([
+            ['Juan Dela Cruz', 'Manduao', 'Cattle', 'M', 45979, null, null, null, null, null, 3, null, null],
+            ['Maria Santos', 'Villasol', 'Carabao', 'F', 45980, null, null, null, null, null, 4, null, null],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/admin/monitoring-records/import', [
+                'file' => new UploadedFile($path, 'report.xlsx', null, null, true),
+            ])
+            ->assertOk();
+
+        $manduao = \App\Support\Barangays::centerFor('Mandu-ao');
+        $villasol = \App\Support\Barangays::centerFor('Villasol (Bato)');
+
+        $juan = Beneficiary::where('name_of_farmer', 'Juan Dela Cruz')->first();
+        $this->assertNotNull($juan);
+        $this->assertSame($manduao[0], (float) $juan->latitude);
+        $this->assertSame($manduao[1], (float) $juan->longitude);
+
+        $maria = Beneficiary::where('name_of_farmer', 'Maria Santos')->first();
+        $this->assertNotNull($maria);
+        $this->assertSame($villasol[0], (float) $maria->latitude);
+        $this->assertSame($villasol[1], (float) $maria->longitude);
+    }
 }

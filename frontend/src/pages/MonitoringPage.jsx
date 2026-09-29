@@ -12,13 +12,14 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { MonitoringTable } from "../components/MonitoringTable";
 import { MonitoringExcelToolbar } from "../components/MonitoringExcelToolbar";
-import { MonthYearTabs } from "../components/MonthYearTabs";
+import { MonthYearDropdown } from "../components/MonthYearDropdown";
 import { VisitFormModal } from "../components/VisitFormModal";
 import { EmptyState } from "../components/EmptyState";
 import { Modal } from "../components/Modal";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 /**
  * Livestock Monthly Monitoring — one shared page for all four dashboards.
@@ -46,9 +47,13 @@ export default function MonitoringPage({ roleKey }) {
   const [deleting, setDeleting] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [acceptingId, setAcceptingId] = useState(null);
-  // The month/year tab selection — a "YYYY-MM" bucket of `date_monitored`,
-  // or null to see every record regardless of month.
+  // The month/year dropdown selection — a "YYYY-MM" bucket of
+  // `date_monitored`, or null to see every record regardless of month.
   const [selectedMonth, setSelectedMonth] = useState(null);
+  // Farmer-name search. Debounced (300ms) so typing does not fire a request
+  // per keystroke, and applied server-side like the month filter.
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
   const toast = useToast();
 
@@ -57,11 +62,12 @@ export default function MonitoringPage({ roleKey }) {
   const isAdmin = viewerRole === "admin";
 
   // Polled + refetched-on-focus. `loading` maps to the FIRST fetch only, so
-  // background refetches never blank the table into skeletons. The month and
-  // page ride in the query key: switching a tab fetches that month from the
-  // server (the filter lives in the database query, before pagination), so a
-  // month shows ALL of its records — not a slice of an unfiltered page.
-  const recordsQuery = useMonitoringRecords(selectedMonth, page);
+  // background refetches never blank the table into skeletons. The month,
+  // search and page ride in the query key: changing any of them fetches from
+  // the server (the filters live in the database query, before pagination),
+  // so a month shows ALL of its records and a search finds every match — not
+  // a slice of an unfiltered page.
+  const recordsQuery = useMonitoringRecords(selectedMonth, page, debouncedSearch);
   const monthsQuery = useMonitoringMonths();
   const beneficiaryQuery = useAssignedBeneficiaries(isTechnician);
 
@@ -93,7 +99,7 @@ export default function MonitoringPage({ roleKey }) {
     [isTechnician, beneficiaries],
   );
 
-  /** Tab click: swap the month bucket and reset to the first page. */
+  /** Dropdown pick: swap the month bucket and reset to the first page. */
   const selectMonth = useCallback((month) => {
     setSelectedMonth(month);
     setPage(1);
@@ -167,26 +173,49 @@ export default function MonitoringPage({ roleKey }) {
             </button>
           )}
         </div>
-
-        {isAdmin && (
-          <div className="mt-5 border-t border-slate-100 pt-5">
-            <MonitoringExcelToolbar />
-          </div>
-        )}
       </section>
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
 
-      {/* Month/year tabs — the same months the Excel export emits one sheet
-          for. Only months with records appear, oldest → newest, and the
-          filter runs server-side so a tab shows the WHOLE month. */}
-      {!loading && months.length > 0 && (
+      {/* Filter row — the month dropdown with the admin Excel import/export
+          buttons beside it (admin only; the toolbar contributes nothing for
+          other roles). Months with records appear grouped by year, and the
+          filter runs server-side so a selection shows the WHOLE month. */}
+      {(months.length > 0 || isAdmin) && !loading && (
         <section className="card px-4 py-3">
-          <MonthYearTabs
-            months={months}
-            selected={selectedMonth}
-            onSelect={selectMonth}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            {months.length > 0 && (
+              <>
+                <MonthYearDropdown
+                  months={months}
+                  selected={selectedMonth}
+                  onSelect={selectMonth}
+                />
+
+                {/* Search as you type: every keystroke updates the field,
+                    the 300ms debounce decides when the request fires, and
+                    the page resets so results always start on page 1. */}
+                <div className="relative w-full sm:w-72">
+                  <Icon
+                    name="search"
+                    className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400"
+                  />
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Search farmer name…"
+                    className="field pl-9"
+                    aria-label="Search monitoring records by farmer name"
+                  />
+                </div>
+              </>
+            )}
+            {isAdmin && <MonitoringExcelToolbar />}
+          </div>
         </section>
       )}
 
@@ -209,13 +238,18 @@ export default function MonitoringPage({ roleKey }) {
           onAccept={isAdmin ? (record) => confirmAccept(record) : undefined}
           acceptingId={acceptingId}
           emptyState={
-            selectedMonth
+            debouncedSearch
               ? {
-                  title: "No records this month",
-                  description:
-                    "No monitoring visits are recorded for this month. Choose another month or view all months.",
+                  title: "No matching farmers",
+                  description: `No monitoring records match “${debouncedSearch}”. Try a different name or clear the search.`,
                 }
-              : undefined
+              : selectedMonth
+                ? {
+                    title: "No records this month",
+                    description:
+                      "No monitoring visits are recorded for this month. Choose another month or view all months.",
+                  }
+                : undefined
           }
         />
 
@@ -225,6 +259,7 @@ export default function MonitoringPage({ roleKey }) {
               Showing {records.length} of {meta.total} record
               {meta.total === 1 ? "" : "s"}
               {selectedMonth ? " in this month" : ""}
+              {debouncedSearch ? " matching your search" : ""}
             </span>
             <div className="flex items-center gap-2">
               <button

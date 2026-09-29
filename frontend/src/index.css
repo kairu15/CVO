@@ -157,3 +157,58 @@
 .toast-exit {
   animation: toast-out 200ms var(--ease-panel) both;
 }
+
+/* ---------------------------------------------------------------------------
+   Dispersal map pins (element built in components/DispersalMap.jsx)
+   --------------------------------------------------------------------------- */
+
+.cvo-map-pin {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  border: 3px solid #fff;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 0.45);
+  cursor: pointer;
+}
+
+/*
+ * The glow: a copy of the pin that expands outward and fades. Kept in CSS
+ * (rather than an inline shadow toggled from JS) so all ~250 markers share
+ * one GPU-composited animation. `background: inherit` picks up the
+ * animal-type colour the marker element sets inline, so a re-dispersal pin
+ * glows its own dark green without a second colour being passed around.
+ */
+.cvo-map-pin::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  pointer-events: none;
+  animation: cvo-pin-glow 2s ease-out infinite;
+}
+
+@keyframes cvo-pin-glow {
+  0% {
+    opacity: 0.65;
+    transform: scale(1);
+  }
+  70% {
+    opacity: 0.1;
+    transform: scale(2.8);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(3.2);
+  }
+}
+
+/* A steady halo instead of a pulse for anyone who asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .cvo-map-pin::after {
+    animation: none;
+    opacity: 0.35;
+    transform: scale(2);
+  }
+}

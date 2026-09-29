@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Beneficiary;
+use App\Support\Barangays;
 use Database\Factories\BeneficiaryFactory;
 use Illuminate\Database\Seeder;
 
@@ -14,6 +15,12 @@ use Illuminate\Database\Seeder;
  *   php artisan db:seed --class=BeneficiaryGeoBackfillSeeder
  *
  * Idempotent — only fills rows whose latitude/longitude are still null.
+ *
+ * NOTE: this is demo/population data — an address naming no covered barangay
+ * is deliberately dropped near the city centre so a seeded map still looks
+ * populated. For a REAL database use
+ * `php artisan beneficiaries:backfill-coordinates`, which only pins
+ * households whose address genuinely matches a covered barangay.
  */
 class BeneficiaryGeoBackfillSeeder extends Seeder
 {
@@ -27,7 +34,10 @@ class BeneficiaryGeoBackfillSeeder extends Seeder
             ->get();
 
         foreach ($pending as $beneficiary) {
-            $known = $coords[$beneficiary->address] ?? null;
+            // Through the tolerant matcher, so a sheet spelling like
+            // "Manduao"/"Villasol" still lands on "Mandu-ao"/"Villasol (Bato)"
+            // instead of the near-centre fallback below.
+            $known = $coords[Barangays::normalize((string) $beneficiary->address)] ?? null;
 
             if ($known) {
                 [$lat, $lng] = $known;

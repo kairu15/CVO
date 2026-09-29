@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\GeocodeRequest;
+use App\Http\Requests\IndexBeneficiariesRequest;
 use App\Http\Requests\StoreBeneficiaryRequest;
 use App\Http\Requests\UpdateBeneficiaryRequest;
 use App\Http\Resources\BeneficiaryResource;
@@ -23,12 +24,17 @@ class BeneficiaryController extends Controller
     ) {}
 
     /**
-     * Role-scoped beneficiary list.
+     * Role-scoped beneficiary list. `per_page` is honoured (capped at 500 by
+     * the request) so map/dashboard/picker callers see every household the
+     * monitoring table reports on, not just the first 15.
      */
-    public function index(Request $request): AnonymousResourceCollection
+    public function index(IndexBeneficiariesRequest $request): AnonymousResourceCollection
     {
         return BeneficiaryResource::collection(
-            $this->beneficiaries->listFor($request->user()),
+            $this->beneficiaries->listFor(
+                $request->user(),
+                $request->integer('per_page', 15),
+            ),
         );
     }
 

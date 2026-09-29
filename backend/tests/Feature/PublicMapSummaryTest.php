@@ -16,7 +16,13 @@ class PublicMapSummaryTest extends TestCase
 
     public function test_summary_is_public(): void
     {
-        Beneficiary::factory()->count(3)->create();
+        // Three DISTINCT barangays on purpose: the factory picks a random
+        // covered barangay per row, and this assertion counts the emitted
+        // barangay groups — three random draws collide often enough (birthday
+        // problem over 28 barangays) to make the test intermittently red.
+        Beneficiary::factory()->create(['address' => 'Dawis']);
+        Beneficiary::factory()->create(['address' => 'Tayawan']);
+        Beneficiary::factory()->create(['address' => 'Nangka']);
 
         // No actingAs: the landing page has no session.
         $this->getJson('/api/v1/public/map-summary')

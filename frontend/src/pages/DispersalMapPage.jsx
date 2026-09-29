@@ -159,7 +159,12 @@ export default function DispersalMapPage({ roleKey }) {
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
       {!error && notice && (
-        <InlineAlert tone="success" message={notice} onDismiss={() => setNotice(null)} />
+        <InlineAlert
+          tone="success"
+          message={notice}
+          onDismiss={() => setNotice(null)}
+          autoDismiss={5000}
+        />
       )}
 
       <DispersalMap beneficiaries={beneficiaries} loading={loading} error={null} />

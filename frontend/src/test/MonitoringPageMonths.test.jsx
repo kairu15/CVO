@@ -11,10 +11,10 @@ import { AuthProvider } from "../context/AuthContext";
 import { ToastProvider } from "../context/ToastContext";
 
 /**
- * The month/year tab strip on the monitoring page: labels ("MMM YYYY"),
- * chronological order, the active-tab highlight, the server-side month
- * filter, and the sparse-month edge (a month with exactly one record must
- * render as one row of data — not as "no data" or a truncation).
+ * The month/year dropdown on the monitoring page: labels ("MMM YYYY"),
+ * year grouping, the active-option highlight, the server-side month filter,
+ * and the sparse-month edge (a month with exactly one record must render as
+ * one row of data — not as "no data" or a truncation).
  */
 
 vi.mock("../api/monitoringApi", () => ({
@@ -117,11 +117,15 @@ function renderPage() {
   );
 }
 
-async function tabstrip() {
-  return within(await screen.findByRole("tablist", { name: /filter monitoring records by month/i }));
+async function openDropdown() {
+  await userEvent.setup().click(
+    await screen.findByRole("combobox", { name: /filter monitoring records by month/i }),
+  );
+
+  return screen.getByRole("listbox", { name: /filter monitoring records by month/i });
 }
 
-describe("MonitoringPage month/year tabs", () => {
+describe("MonitoringPage month/year dropdown", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authApi.fetchUser.mockResolvedValue({ id: 1, name: "Admin", role: "admin" });
@@ -130,38 +134,40 @@ describe("MonitoringPage month/year tabs", () => {
     monitoringApi.list.mockResolvedValue(envelope([...RECORDS_SEP_2026, RECORD_JUN_2024]));
   });
 
-  it("labels every tab as MMM YYYY and shows an All months tab", async () => {
+  it("shows an All months option and labels every month as MMM YYYY", async () => {
     renderPage();
 
-    const strip = await tabstrip();
-    expect(strip.getByRole("tab", { name: "All months" })).toBeInTheDocument();
-    expect(strip.getByRole("tab", { name: "Jun 2024" })).toBeInTheDocument();
-    expect(strip.getByRole("tab", { name: "Jan 2025" })).toBeInTheDocument();
-    expect(strip.getByRole("tab", { name: "Sep 2026" })).toBeInTheDocument();
+    const listbox = await openDropdown();
+    expect(within(listbox).getByRole("option", { name: "All months" })).toBeInTheDocument();
+    expect(within(listbox).getByRole("option", { name: "Jun 2024" })).toBeInTheDocument();
+    expect(within(listbox).getByRole("option", { name: "Jan 2025" })).toBeInTheDocument();
+    expect(within(listbox).getByRole("option", { name: "Sep 2026" })).toBeInTheDocument();
   });
 
-  it("renders the tabs in chronological order regardless of input order", async () => {
+  it("groups options by year, newest year first, months in calendar order", async () => {
     // The backend delivers oldest → newest; a locally unsorted list must
-    // not be able to un-sort the strip (the export's non-chronological
-    // sheet order was the visible symptom of exactly this class of bug).
-    monitoringApi.months.mockResolvedValue(["2026-09", "2024-06", "2025-01"]);
+    // not be able to un-sort the option order (the export's non-
+    // chronological sheet order was the visible symptom of exactly this
+    // class of bug).
+    monitoringApi.months.mockResolvedValue(["2026-09", "2026-01", "2024-06", "2025-01"]);
 
     renderPage();
 
-    const labels = (await tabstrip())
-      .getAllByRole("tab")
-      .map((tab) => tab.textContent)
+    const listbox = await openDropdown();
+    const labels = within(listbox)
+      .getAllByRole("option")
+      .map((option) => option.textContent)
       .filter((text) => text !== "All months");
 
-    expect(labels).toEqual(["Jun 2024", "Jan 2025", "Sep 2026"]);
+    expect(labels).toEqual(["Jan 2026", "Sep 2026", "Jan 2025", "Jun 2024"]);
   });
 
-  it("fetches the clicked month server-side and resets to page 1", async () => {
+  it("fetches the picked month server-side and resets to page 1", async () => {
     const user = userEvent.setup();
     renderPage();
 
-    const strip = await tabstrip();
-    await user.click(strip.getByRole("tab", { name: "Jun 2024" }));
+    await openDropdown();
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Jun 2024" }));
 
     await vi.waitFor(() =>
       expect(monitoringApi.list).toHaveBeenLastCalledWith(
@@ -175,19 +181,20 @@ describe("MonitoringPage month/year tabs", () => {
     expect(screen.queryByText("No records this month")).not.toBeInTheDocument();
   });
 
-  it("returns to all months when the All months tab is clicked", async () => {
+  it("returns to all months when the All months option is picked", async () => {
     const user = userEvent.setup();
     renderPage();
 
-    const strip = await tabstrip();
-    await user.click(strip.getByRole("tab", { name: "Jun 2024" }));
+    await openDropdown();
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Jun 2024" }));
     await vi.waitFor(() =>
       expect(monitoringApi.list).toHaveBeenLastCalledWith(
         expect.objectContaining({ month: "2024-06" }),
       ),
     );
 
-    await user.click(strip.getByRole("tab", { name: "All months" }));
+    await openDropdown();
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "All months" }));
 
     await vi.waitFor(() =>
       expect(monitoringApi.list).toHaveBeenLastCalledWith(
@@ -196,45 +203,49 @@ describe("MonitoringPage month/year tabs", () => {
     );
   });
 
-  it("marks the active tab clearly", async () => {
+  it("marks the picked option clearly and reflects it on the trigger", async () => {
     const user = userEvent.setup();
     renderPage();
 
-    const strip = await tabstrip();
-    const junTab = strip.getByRole("tab", { name: "Jun 2024" });
-    expect(junTab).toHaveAttribute("aria-selected", "false");
+    await openDropdown();
+    const listbox = screen.getByRole("listbox");
+    const junOption = within(listbox).getByRole("option", { name: "Jun 2024" });
+    expect(junOption).toHaveAttribute("aria-selected", "false");
 
-    await user.click(junTab);
+    await user.click(junOption);
 
     await vi.waitFor(() =>
-      expect(strip.getByRole("tab", { name: "Jun 2024" })).toHaveAttribute(
-        "aria-selected",
-        "true",
-      ),
+      expect(screen.getByRole("combobox")).toHaveTextContent("Jun 2024"),
     );
-    // Exactly one active tab at a time.
-    const selected = strip.getAllByRole("tab", { selected: true });
-    expect(selected).toHaveLength(1);
+
+    // Exactly one active option at a time; picking keeps the filter across
+    // background refetches (the selection lives in page state, not the
+    // dropdown).
+    await openDropdown();
+    expect(within(screen.getByRole("listbox")).getAllByRole("option", { selected: true }))
+      .toHaveLength(1);
   });
 
   it("shows the month empty state when a selected month has zero records", async () => {
     monitoringApi.list.mockResolvedValue(envelope([], 0));
 
     renderPage();
-    const strip = await tabstrip();
-    await userEvent.setup().click(strip.getByRole("tab", { name: "Jun 2024" }));
+    await openDropdown();
+    await userEvent.setup().click(
+      within(screen.getByRole("listbox")).getByRole("option", { name: "Jun 2024" }),
+    );
 
     expect(await screen.findByText("No records this month")).toBeInTheDocument();
   });
 
-  it("hides the tab strip entirely when no months have records", async () => {
+  it("hides the dropdown entirely when no months have records", async () => {
     monitoringApi.months.mockResolvedValue([]);
 
     renderPage();
 
     expect(await screen.findByText("Aling Nena")).toBeInTheDocument();
 
-    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
   it("passes the per-month total through from the server meta", async () => {
@@ -247,8 +258,10 @@ describe("MonitoringPage month/year tabs", () => {
     });
 
     renderPage();
-    const strip = await tabstrip();
-    await userEvent.setup().click(strip.getByRole("tab", { name: "Sep 2026" }));
+    await openDropdown();
+    await userEvent.setup().click(
+      within(screen.getByRole("listbox")).getByRole("option", { name: "Sep 2026" }),
+    );
 
     expect(await screen.findByText(/Showing 2 of 37 records in this month/)).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();

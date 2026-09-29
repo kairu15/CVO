@@ -140,6 +140,37 @@ class BeneficiaryTest extends TestCase
         $response->assertOk()->assertJsonCount(3, 'data');
     }
 
+    /**
+     * Regression: the endpoint ignored `per_page` and always answered with 15
+     * rows, so the dispersal map could only ever draw 15 households no matter
+     * how many the monitoring table reported on.
+     */
+    public function test_the_list_honours_per_page_and_still_defaults_to_fifteen(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        Beneficiary::factory()->count(20)->create();
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/beneficiaries?per_page=500')
+            ->assertOk()
+            ->assertJsonCount(20, 'data');
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/beneficiaries')
+            ->assertOk()
+            ->assertJsonCount(15, 'data');
+    }
+
+    public function test_the_list_rejects_an_out_of_range_per_page(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/beneficiaries?per_page=5000')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['per_page']);
+    }
+
     public function test_farmer_registration_can_create_a_beneficiary(): void
     {
         $response = $this->postJson('/api/v1/register', [

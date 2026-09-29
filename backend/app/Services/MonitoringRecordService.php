@@ -7,7 +7,9 @@ use App\Models\FieldVisitPhoto;
 use App\Models\MonitoringRecord;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Support\Like;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 class MonitoringRecordService
@@ -29,12 +31,35 @@ class MonitoringRecordService
      * report is organized by, not the row's creation timestamp. The filter
      * runs INSIDE the database query and before pagination, so the total
      * count for the month is the real total, never a page-sized slice.
+     *
+     * `$search` matches the farmer's name on the joined beneficiary — the
+     * identity column the monitoring sheet is keyed by — and for the same
+     * reason runs before pagination: filtering the fetched page client-side
+     * would hide matches that happen to sort onto a later page.
      */
-    public function listFor(User $user, ?string $month = null, int $perPage = 15): LengthAwarePaginator
-    {
+    public function listFor(
+        User $user,
+        ?string $month = null,
+        ?string $search = null,
+        int $perPage = 15,
+    ): LengthAwarePaginator {
         $page = $this->scopeFor($user)
             ->with(['beneficiary', 'technician', 'beneficiary.technician'])
-            ->when($month !== null, fn (\Illuminate\Database\Eloquent\Builder $q) => $this->applyMonthFilter($q, $month))
+            ->when($month !== null, fn (Builder $q) => $this->applyMonthFilter($q, $month))
+            ->when(
+                $search !== null && trim($search) !== '',
+                function (Builder $q) use ($search): void {
+                    // `Like::contains` neutralizes LIKE wildcards and
+                    // lowercases, so the match is case-insensitive on SQLite
+                    // (tests) and MySQL alike.
+                    $pattern = Like::contains($search);
+
+                    $q->whereHas(
+                        'beneficiary',
+                        fn (Builder $bq) => $bq->whereRaw('LOWER(name_of_farmer) LIKE ?', [$pattern]),
+                    );
+                },
+            )
             ->latest('date_monitored')
             ->latest('id')
             ->paginate($perPage);
@@ -75,7 +100,7 @@ class MonitoringRecordService
     }
 
     /** Constrain a query to one "YYYY-MM" bucket of `date_monitored`. */
-    private function applyMonthFilter(\Illuminate\Database\Eloquent\Builder $query, string $month): void
+    private function applyMonthFilter(Builder $query, string $month): void
     {
         $query->whereYear('date_monitored', '=', (int) substr($month, 0, 4))
             ->whereMonth('date_monitored', '=', (int) substr($month, 5, 2));

@@ -24,14 +24,19 @@ class BeneficiaryService
      * admin/doctor: everything. technician: only assigned beneficiaries.
      * farmer: only their own. The scoping is applied at the query level so
      * the API can never leak rows the client merely failed to filter.
+     *
+     * `$perPage` is caller-controlled (validated and capped by
+     * IndexBeneficiariesRequest) because the whole-map views need the complete
+     * household set, not one page of it. The 15-row default stays for the
+     * plain paginated callers.
      */
-    public function listFor(User $user): LengthAwarePaginator
+    public function listFor(User $user, int $perPage = 15): LengthAwarePaginator
     {
         return $this->scopeQueryFor($user)
             ->with(['technician', 'farmer'])
             ->withCount('monitoringRecords')
             ->latest()
-            ->paginate(15);
+            ->paginate($perPage);
     }
 
     /**

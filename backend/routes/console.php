@@ -19,3 +19,14 @@ Artisan::command('inspire', function () {
  * command is run manually: php artisan monitoring:expire-registrations.
  */
 Schedule::command('monitoring:expire-registrations')->dailyAt('00:00');
+
+/*
+ * Smart Alerts (on-system, rule-based).
+ *
+ * Runs after the midnight-expiry job so the day's registration state is
+ * settled first. Plain SQL aggregation over existing records — no external
+ * API, no model, no API key. Same scheduler dependency as above: this only
+ * fires when the host runs `php artisan schedule:run` every minute. Run it by
+ * hand with `php artisan alerts:compute-smart`.
+ */
+Schedule::command('alerts:compute-smart')->dailyAt('00:30');

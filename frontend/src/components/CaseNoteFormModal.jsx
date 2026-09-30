@@ -6,6 +6,8 @@ import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
 import { Icon } from "./Icons";
+import { HealthConcernHints } from "./HealthConcernHints";
+import { VoiceInputButton } from "./VoiceInputButton";
 
 const EMPTY_FORM = {
   date_noted: "",
@@ -198,7 +200,26 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
               Health Records instead.
             </p>
           )}
+
+          {/* Voice dictation appends to the note; it never saves the note. */}
+          <VoiceInputButton
+            hintId="note-body-voice-hint"
+            onTranscript={(text) =>
+              setForm((prev) => ({
+                ...prev,
+                body: prev.body ? `${prev.body.trim()} ${text}` : text,
+              }))
+            }
+          />
         </div>
+
+        {/* Rule-based, client-side keyword match over the note — decision
+            support, never a diagnosis. */}
+        <HealthConcernHints
+          className="mt-3"
+          text={form.body}
+          animalType={beneficiary?.animal_type}
+        />
 
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="btn-secondary">

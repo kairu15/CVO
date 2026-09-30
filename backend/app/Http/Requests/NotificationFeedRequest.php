@@ -28,6 +28,13 @@ class NotificationFeedRequest extends FormRequest
                 'integer',
                 'between:1,'.NotificationService::SCAN_CAP,
             ],
+            // `smart` narrows the feed to the daily rule-based flags, which
+            // the UI renders as its own "Flagged" tab.
+            'filter' => [
+                'sometimes',
+                'string',
+                'in:'.implode(',', NotificationService::FILTERS),
+            ],
         ];
     }
 }

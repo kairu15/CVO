@@ -1,11 +1,13 @@
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import CaseNotesPage from "../pages/CaseNotesPage";
 import { caseNotesApi } from "../api/caseNotesApi";
 import { ToastProvider } from "../context/ToastContext";
 import { beneficiariesApi } from "../api/beneficiariesApi";
+import { symptomRulesApi } from "../api/symptomRulesApi";
 
 vi.mock("../api/caseNotesApi", () => ({
   caseNotesApi: {
@@ -18,6 +20,10 @@ vi.mock("../api/caseNotesApi", () => ({
 
 vi.mock("../api/beneficiariesApi", () => ({
   beneficiariesApi: { list: vi.fn() },
+}));
+
+vi.mock("../api/symptomRulesApi", () => ({
+  symptomRulesApi: { active: vi.fn(), list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
 }));
 
 const auth = { user: { id: 10, name: "Dr. Maria Santos", role: "doctor" } };
@@ -53,12 +59,16 @@ const NOTES = [
 ];
 
 function renderPage() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+
   return render(
-    <MemoryRouter>
-      <ToastProvider>
-        <CaseNotesPage roleKey="doctor" />
-      </ToastProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <ToastProvider>
+          <CaseNotesPage roleKey="doctor" />
+        </ToastProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -67,6 +77,7 @@ describe("CaseNotesPage", () => {
     vi.clearAllMocks();
     auth.user = { id: 10, name: "Dr. Maria Santos", role: "doctor" };
     caseNotesApi.list.mockResolvedValue(NOTES);
+    symptomRulesApi.active.mockResolvedValue([]);
     beneficiariesApi.list.mockResolvedValue([
       { id: 11, name_of_farmer: "Aling Nena", address: "Banay Banay", animal_type: "Carabao", sex: "F" },
     ]);

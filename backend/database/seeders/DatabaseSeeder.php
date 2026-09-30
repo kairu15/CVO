@@ -47,6 +47,9 @@ class DatabaseSeeder extends Seeder
             BeneficiaryGeoBackfillSeeder::class,
             // Needs beneficiaries to exist first, so it runs last.
             HealthRecordSeeder::class,
+
+            // Admin-editable health concern hint rules (starter rows).
+            SymptomRuleSeeder::class,
         ]);
 
         $farmer = $users['farmer'];

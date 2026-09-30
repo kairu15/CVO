@@ -37,6 +37,11 @@ const NOTIFICATION_ICONS = {
   "vaccination-due-soon": "calendar",
   dispersal: "truck",
   "re-dispersal": "refresh",
+  // Smart Alerts — same glyphs as the notifications page's Flagged tab.
+  "smart-vaccination-overdue": "alert-circle",
+  "smart-bcs-out-of-range": "medical-cross",
+  "smart-no-recent-visit": "map-pin",
+  "smart-barangay-flag": "chart",
 };
 
 const MIN_QUERY = 2;

@@ -3,15 +3,15 @@
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AnimalHealthController;
-use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BarangayController;
-use App\Http\Controllers\CaseNoteController;
 use App\Http\Controllers\BeneficiaryController;
+use App\Http\Controllers\CaseNoteController;
 use App\Http\Controllers\DispersalEventController;
 use App\Http\Controllers\FieldVisitController;
 use App\Http\Controllers\HealthRecordController;
 use App\Http\Controllers\MonitoringRecordController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
@@ -19,6 +19,7 @@ use App\Http\Controllers\PublicMapController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SymptomRuleController;
 use App\Http\Controllers\VaccinationScheduleController;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use Illuminate\Support\Facades\Route;
@@ -137,6 +138,12 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     // Freeform veterinary case notes (veterinarian-authored).
     Route::apiResource('case-notes', CaseNoteController::class);
 
+    // Rule-Based Health Concern Hints — the active rule table the case-note /
+    // health-record forms match against, CLIENT-side. Read-only here; the
+    // admin editor's CRUD lives under the admin group below.
+    Route::get('symptom-rules', [SymptomRuleController::class, 'active'])
+        ->name('api.symptom-rules');
+
     // Technician field visits — the trip, with an optional on-site GPS fix.
     // The options route is declared first so apiResource cannot bind
     // "options" as a visit id.
@@ -205,6 +212,18 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
             ->name('api.admin.settings');
         Route::patch('/settings', [SettingsController::class, 'update'])
             ->name('api.admin.settings.update');
+
+        // Health concern hint rules — the admin-editable half of the
+        // Rule-Based Health Concern Hints (the read-only half is
+        // `GET /symptom-rules` above).
+        Route::get('/symptom-rules', [SymptomRuleController::class, 'index'])
+            ->name('api.admin.symptom-rules');
+        Route::post('/symptom-rules', [SymptomRuleController::class, 'store'])
+            ->name('api.admin.symptom-rules.store');
+        Route::patch('/symptom-rules/{symptomRule}', [SymptomRuleController::class, 'update'])
+            ->name('api.admin.symptom-rules.update');
+        Route::delete('/symptom-rules/{symptomRule}', [SymptomRuleController::class, 'destroy'])
+            ->name('api.admin.symptom-rules.destroy');
 
         // Security audit trail (item 7) — read-only, admin-only. The table
         // endpoint is paginated and filterable; the actions endpoint feeds

@@ -1,11 +1,13 @@
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import HealthRecordsPage from "../pages/HealthRecordsPage";
 import { healthRecordsApi } from "../api/healthRecordsApi";
 import { ToastProvider } from "../context/ToastContext";
 import { beneficiariesApi } from "../api/beneficiariesApi";
+import { symptomRulesApi } from "../api/symptomRulesApi";
 
 vi.mock("../api/healthRecordsApi", () => ({
   healthRecordsApi: {
@@ -19,6 +21,10 @@ vi.mock("../api/healthRecordsApi", () => ({
 
 vi.mock("../api/beneficiariesApi", () => ({
   beneficiariesApi: { list: vi.fn() },
+}));
+
+vi.mock("../api/symptomRulesApi", () => ({
+  symptomRulesApi: { active: vi.fn(), list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
 }));
 
 // Signed-in account; each test can override the role before rendering.
@@ -61,12 +67,16 @@ const RECORDS = [
 ];
 
 function renderPage() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+
   return render(
-    <MemoryRouter>
-      <ToastProvider>
-        <HealthRecordsPage roleKey="doctor" />
-      </ToastProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <ToastProvider>
+          <HealthRecordsPage roleKey="doctor" />
+        </ToastProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -76,6 +86,7 @@ describe("HealthRecordsPage", () => {
     auth.user = { id: 10, name: "Dr. Maria Santos", role: "doctor" };
     healthRecordsApi.list.mockResolvedValue(RECORDS);
     healthRecordsApi.options.mockResolvedValue({ outcomes: OUTCOMES });
+    symptomRulesApi.active.mockResolvedValue([]);
     beneficiariesApi.list.mockResolvedValue([
       { id: 11, name_of_farmer: "Aling Nena", address: "Banay Banay", animal_type: "Carabao", sex: "F" },
     ]);
@@ -250,5 +261,28 @@ describe("HealthRecordsPage", () => {
     renderPage();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Can't reach the server.");
+  });
+
+  it("offers voice dictation on the treatment and remarks fields when supported", async () => {
+    // jsdom has no Web Speech API, so the mic is only present once we stand
+    // one up — which is also the browser-support check in action.
+    window.SpeechRecognition = class {
+      start() {}
+      stop() {}
+      abort() {}
+    };
+
+    try {
+      renderPage();
+      await screen.findByText("Aling Nena");
+
+      await act(async () => {
+        await userEvent.click(screen.getByRole("button", { name: "New record" }));
+      });
+
+      expect(screen.getAllByRole("button", { name: "Dictate note" })).toHaveLength(2);
+    } finally {
+      delete window.SpeechRecognition;
+    }
   });
 });

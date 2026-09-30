@@ -4,6 +4,7 @@ import { getErrorMessage, getFieldErrors } from "../api/client";
 import { InlineAlert } from "../components/InlineAlert";
 import { SkeletonList } from "../components/Skeleton";
 import { Icon } from "../components/Icons";
+import { SymptomRulesEditor } from "../components/SymptomRulesEditor";
 import { getRole } from "../config/roles";
 
 /**
@@ -256,6 +257,13 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
           </section>
         </>
       )}
+
+      {/*
+       * Writable, and deliberately not part of the failed-settings guard
+       * above: the hint rules are their own table with their own load, so a
+       * settings fetch failure should not hide the clinical rule editor.
+       */}
+      <SymptomRulesEditor />
     </div>
   );
 }

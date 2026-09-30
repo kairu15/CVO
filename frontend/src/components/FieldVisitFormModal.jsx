@@ -7,6 +7,7 @@ import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
 import { Icon } from "./Icons";
+import { VoiceInputButton } from "./VoiceInputButton";
 
 /** `routine-monitoring` → `Routine monitoring`. */
 export const purposeLabel = (value) =>
@@ -542,6 +543,17 @@ export function FieldVisitFormModal({
             What happened on the trip. Animal condition belongs in a monitoring
             record.
           </p>
+
+          {/* Voice dictation appends to the note; it never saves the visit. */}
+          <VoiceInputButton
+            hintId="visit-notes-voice-hint"
+            onTranscript={(text) =>
+              setForm((prev) => ({
+                ...prev,
+                notes: prev.notes ? `${prev.notes.trim()} ${text}` : text,
+              }))
+            }
+          />
         </div>
 
         <div className="mt-5 flex justify-end gap-2">

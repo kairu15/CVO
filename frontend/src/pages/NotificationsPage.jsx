@@ -26,6 +26,11 @@ const TYPE_ICONS = {
   "vaccination-due-soon": "calendar",
   dispersal: "truck",
   "re-dispersal": "refresh",
+  // Smart Alerts — the daily rule-based flags, in their own tab.
+  "smart-vaccination-overdue": "alert-circle",
+  "smart-bcs-out-of-range": "medical-cross",
+  "smart-no-recent-visit": "map-pin",
+  "smart-barangay-flag": "chart",
 };
 
 const URGENCY_TONES = {
@@ -80,7 +85,13 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
   const config = getRole(roleKey);
   const invalidate = useInvalidate();
 
-  const { data, isLoading: loading, error: queryError } = useNotificationsFeed(50);
+  // Smart Alerts are written for admins and technicians only (plus the
+  // assigned technician for household-level flags), so the tab is hidden
+  // where it could never have anything in it.
+  const canSeeSmart = roleKey === "admin" || roleKey === "technician";
+  const [tab, setTab] = useState("all");
+
+  const { data, isLoading: loading, error: queryError } = useNotificationsFeed(50, tab);
 
   const alerts = data?.alerts ?? [];
   const counts = data?.counts ?? {};
@@ -89,6 +100,7 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
   const total = counts.total ?? alerts.length;
   const urgent = counts.urgent ?? 0;
   const unreadEvents = counts.unread_events ?? 0;
+  const smartCount = counts.smart ?? 0;
 
   /** Write read-all through, then refresh the polled feed + badge. */
   async function markAllRead() {
@@ -105,6 +117,40 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
         </h2>            <p className="mt-2 max-w-2xl text-sm text-slate-600">
               {ROLE_COPY[roleKey] ?? ROLE_COPY.farmer}
             </p>
+
+        {canSeeSmart && (
+          <div className="mt-5 inline-flex rounded-pill border border-slate-200 bg-slate-50 p-1">
+            <button
+              type="button"
+              onClick={() => setTab("all")}
+              aria-pressed={tab === "all"}
+              className={`rounded-pill px-3.5 py-1.5 text-xs font-semibold transition ${
+                tab === "all"
+                  ? "bg-white text-brand-800 shadow-sm"
+                  : "text-slate-600 hover:text-brand-800"
+              }`}
+            >
+              All alerts
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("smart")}
+              aria-pressed={tab === "smart"}
+              className={`inline-flex items-center gap-2 rounded-pill px-3.5 py-1.5 text-xs font-semibold transition ${
+                tab === "smart"
+                  ? "bg-white text-brand-800 shadow-sm"
+                  : "text-slate-600 hover:text-brand-800"
+              }`}
+            >
+              Smart alerts
+              {smartCount > 0 && (
+                <span className="rounded-pill bg-amber-100 px-1.5 text-[10px] font-bold text-amber-800">
+                  {smartCount}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
 
         {!loading && total > 0 && (
           <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -131,16 +177,17 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
         )}
 
         {/* Says why there is no dismiss control, instead of leaving its absence
-            to be guessed at. */}
+            to be guessed at. The Smart Alerts tab gives the extra context: a
+            flag is a rule match on existing records, not a diagnosis. */}
         <p className="mt-4 inline-flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-xs text-slate-600">
           <Icon name="info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Alerts come from your dispersal and vaccination records, so they clear
-          once the visit or movement is recorded — there is nothing to mark as
-          read here.
+          {tab === "smart"
+            ? "Smart Alerts are rule-based flags computed from records already in the system — not a diagnosis. A flag clears itself once the underlying record is updated."
+            : "Alerts come from your dispersal and vaccination records, so they clear once the visit or movement is recorded — there is nothing to mark as read here."}
         </p>
       </section>
 
-      {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
+      {error && <InlineAlert message={error} />}
 
       {loading ? (
         <section className="card overflow-hidden">
@@ -149,8 +196,12 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
       ) : alerts.length === 0 ? (
         <section className="card">
           <EmptyState
-            title="No notifications"
-            description="Nothing needs your attention and no movements have been recorded for your animals yet. Alerts appear here when the City Veterinary Office records a dispersal or a vaccination falls due."
+            title={tab === "smart" ? "No Smart Alerts" : "No notifications"}
+            description={
+              tab === "smart"
+                ? "No rule-based flag currently matches your records. The scan runs daily and flags clear themselves once the record behind them is updated."
+                : "Nothing needs your attention and no movements have been recorded for your animals yet. Alerts appear here when the City Veterinary Office records a dispersal or a vaccination falls due."
+            }
           />
         </section>
       ) : (
@@ -173,6 +224,7 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
               <ul className="divide-y divide-slate-100">
                 {rows.map((alert) => {
                   const hint = dueHint(alert.days_until_due);
+                  const isSmart = alert.is_smart === true;
 
                   return (
                     <li
@@ -195,7 +247,7 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
                               URGENCY_TONES[alert.urgency] ?? URGENCY_TONES.info
                             }`}
                           >
-                            {URGENCY_LABELS[alert.urgency] ?? alert.urgency}
+                            {isSmart ? "Flagged" : URGENCY_LABELS[alert.urgency] ?? alert.urgency}
                           </span>
                         </div>
 

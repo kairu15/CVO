@@ -26,6 +26,7 @@ class NotificationController extends Controller
         $feed = $this->notifications->feed(
             $request->user(),
             (int) ($validated['limit'] ?? NotificationService::DEFAULT_LIMIT),
+            $validated['filter'] ?? NotificationService::FILTER_ALL,
         );
 
         // `meta` carries the counts so the header bell can show a badge from

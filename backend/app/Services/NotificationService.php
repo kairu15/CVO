@@ -70,6 +70,18 @@ class NotificationService
 
     public const URGENCY_INFO = 'info';
 
+    /** The whole feed: derived alerts + every stored event. */
+    public const FILTER_ALL = 'all';
+
+    /**
+     * Just the Smart Alerts — the daily rule-based flags, in their own tab so
+     * they are visually separable from routine events (registration,
+     * assignment, photo).
+     */
+    public const FILTER_SMART = 'smart';
+
+    public const FILTERS = [self::FILTER_ALL, self::FILTER_SMART];
+
     public const DEFAULT_LIMIT = 20;
 
     /**
@@ -144,17 +156,22 @@ class NotificationService
      *
      * @return array{alerts: list<array<string, mixed>>, counts: array<string, mixed>}
      */
-    public function feed(User $user, int $limit = self::DEFAULT_LIMIT): array
+    public function feed(User $user, int $limit = self::DEFAULT_LIMIT, string $filter = self::FILTER_ALL): array
     {
         // Reset per call: the flag is set while scanning, and a service
         // instance reused across calls must not inherit the previous answer.
         $this->truncated = false;
 
-        $alerts = array_merge(
-            $this->storedAlerts($user),
-            $this->vaccinationAlerts($user),
-            $this->dispersalAlerts($user),
-        );
+        // The Smart Alerts tab is stored rows only — the derived vaccination
+        // and dispersal bands are a different classification, and mixing them
+        // in would make "flagged" mean two things at once.
+        $alerts = $filter === self::FILTER_SMART
+            ? $this->storedAlerts($user, smartOnly: true)
+            : array_merge(
+                $this->storedAlerts($user),
+                $this->vaccinationAlerts($user),
+                $this->dispersalAlerts($user),
+            );
 
         $alerts = $this->orderByUrgency($alerts);
 
@@ -164,6 +181,9 @@ class NotificationService
             self::URGENCY_WARNING => 0,
             self::URGENCY_INFO => 0,
             'unread_events' => $this->unreadCount($user),
+            // The tab badge, independent of the active filter — one cheap
+            // COUNT so the count is always the true number of open flags.
+            'smart' => $this->smartCount($user),
         ];
 
         foreach ($alerts as $alert) {
@@ -179,34 +199,61 @@ class NotificationService
     }
 
     /**
-     * The recipient's stored event notifications, as feed alerts. Events are
-     * informational (they happened), never urgent — urgency in this module
-     * means "a date has arrived", and an event's date has already passed.
+     * The recipient's stored notifications, as feed alerts.
+     *
+     * Ordinary events are informational (they happened); Smart Alerts are
+     * flags to look at and sit in the attention band. `$smartOnly` narrows to
+     * the Smart Alert types for the dedicated tab.
      *
      * @return list<array<string, mixed>>
      */
-    private function storedAlerts(User $user): array
+    private function storedAlerts(User $user, bool $smartOnly = false): array
     {
-        return UserNotification::query()
+        $query = UserNotification::query()
             ->where('user_id', $user->id)
             ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(self::SCAN_CAP)
-            ->get()
-            ->map(fn (UserNotification $notification): array => [
-                'id' => "event-{$notification->id}",
-                'type' => $notification->type,
-                'urgency' => self::URGENCY_INFO,
-                'title' => $notification->title,
-                'message' => $notification->message,
-                'date' => $notification->created_at->toIso8601String(),
-                'created_at' => $notification->created_at->toIso8601String(),
-                'read' => $notification->read_at !== null,
-                'beneficiary_id' => $notification->beneficiary_id,
-                'monitoring_record_id' => $notification->monitoring_record_id,
-                'link' => $notification->link ?? "/dashboard/{$user->role}/monitoring",
-            ])
+            ->limit(self::SCAN_CAP);
+
+        if ($smartOnly) {
+            $query->whereIn('type', UserNotification::SMART_TYPES);
+        }
+
+        return $query->get()
+            ->map(function (UserNotification $notification) use ($user): array {
+                $isSmart = in_array($notification->type, UserNotification::SMART_TYPES, true);
+
+                return [
+                    'id' => "event-{$notification->id}",
+                    'type' => $notification->type,
+                    'is_smart' => $isSmart,
+                    // A flag is something to look at, so it sits in the
+                    // attention band; an event has already happened and is
+                    // informational. That is also what makes the two visually
+                    // separable on the main feed, before the tab splits them.
+                    'urgency' => $isSmart ? self::URGENCY_WARNING : self::URGENCY_INFO,
+                    'title' => $notification->title,
+                    'message' => $notification->message,
+                    'date' => $notification->created_at->toIso8601String(),
+                    'created_at' => $notification->created_at->toIso8601String(),
+                    'read' => $notification->read_at !== null,
+                    'beneficiary_id' => $notification->beneficiary_id,
+                    'monitoring_record_id' => $notification->monitoring_record_id,
+                    'link' => $notification->link ?? "/dashboard/{$user->role}/monitoring",
+                ];
+            })
             ->all();
+    }
+
+    /**
+     * How many Smart Alerts this user currently holds — the tab badge.
+     */
+    public function smartCount(User $user): int
+    {
+        return UserNotification::query()
+            ->where('user_id', $user->id)
+            ->whereIn('type', UserNotification::SMART_TYPES)
+            ->count();
     }
 
     /**

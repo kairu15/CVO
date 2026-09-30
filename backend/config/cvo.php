@@ -100,4 +100,73 @@ return [
         'hours' => 'Monday to Friday, 8:00 AM – 5:00 PM',
         'address' => 'City Veterinary Office, City Hall Compound, Bayawan City, Negros Oriental 6221',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Smart Alerts — thresholds for the daily rule-based scan
+    |--------------------------------------------------------------------------
+    |
+    | Inputs for `php artisan alerts:compute-smart`, which scans the existing
+    | records and writes admin/technician alert rows. There is no model and no
+    | training data here: every rule is a plain SQL aggregation and a threshold
+    | comparison. Every number below is a DECISION, not a discovered fact, and
+    | the ones marked UNCONFIRMED are conservative placeholders the CVO must
+    | sign off on before they are treated as clinical truth.
+    |
+    | - Overdue vaccination deliberately reuses `vaccination_interval_days`
+    |   above instead of adding a second number, so the alert and the
+    |   Vaccination Schedule screen can never disagree about which animals are
+    |   late.
+    |
+    | - BCS normal ranges decide whether a recorded Body Condition Score is a
+    |   concern. `bcs_normal_range` is the GENERAL band applied to every animal
+    |   type; `bcs_normal_ranges` maps an animal type to a [min, max] override for
+    |   species that need a different band. A species with neither stays
+    |   unflagged.
+    |
+    |   CONFIRMED by the CVO (2026-09-30): general band 2–4 on the system's 1–5
+    |   scale. Change it only on a veterinarian's instruction; `bcs_normal_ranges`
+    |   is where a per-species exception goes, e.g. ['Swine' => [2, 3]]. Setting
+    |   BOTH to empty DISABLES the rule.
+    |
+    | - `no_recent_visit_days` fires for a household created at least this many
+    |   days ago whose latest field visit is older than this — or that has no
+    |   recorded visit at all. The age guard keeps newly registered households
+    |   (which have had no chance to be visited yet) out of the flag.
+    |
+    | - Barangay flag rate compares this month's share of "concern" remarks in
+    |   a barangay against the city-wide share. UNCONFIRMED: `remarks` is free
+    |   text, so the keyword list is a heuristic the CVO should review, and the
+    |   minimum-sample / multiplier guards keep a single bad record in a tiny
+    |   barangay from flagging the whole area.
+    |
+    */
+    'smart_alerts' => [
+        // General band, confirmed by the CVO on 2026-09-30.
+        'bcs_normal_range' => [2, 4],
+        // Per-species overrides; empty means the general band applies.
+        'bcs_normal_ranges' => [],
+
+        'no_recent_visit_days' => 30,
+
+        'concern_remarks' => [
+            'sick',
+            'disease',
+            'diseased',
+            'illness',
+            'injured',
+            'injury',
+            'wound',
+            'wounded',
+            'mortality',
+            'deceased',
+            'underweight',
+            'malnourished',
+            'weak',
+            'emergency',
+        ],
+
+        'barangay_flag_min_records' => 5,
+        'barangay_flag_ratio_multiplier' => 1.5,
+    ],
 ];

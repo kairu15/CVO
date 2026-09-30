@@ -6,6 +6,8 @@ import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
 import { Icon } from "./Icons";
+import { HealthConcernHints } from "./HealthConcernHints";
+import { VoiceInputButton } from "./VoiceInputButton";
 
 /** `ongoing` → `Ongoing`. */
 export const outcomeLabel = (value) =>
@@ -243,6 +245,14 @@ export function HealthRecordFormModal({
           />
         </div>
 
+        {/* Rule-based, client-side keyword match over the diagnosis and
+            remarks — decision support, never a diagnosis of its own. */}
+        <HealthConcernHints
+          className="mt-3"
+          text={`${form.diagnosis} ${form.remarks}`}
+          animalType={beneficiary?.animal_type}
+        />
+
         <div className="mt-3">
           <label htmlFor="health-treatment" className="block text-sm font-medium text-slate-700">
             Treatment
@@ -258,6 +268,17 @@ export function HealthRecordFormModal({
           {errors.treatment && (
             <p className="mt-1.5 text-xs font-medium text-red-600">{errors.treatment}</p>
           )}
+
+          {/* Voice dictation appends to the field; it never saves the record. */}
+          <VoiceInputButton
+            hintId="health-treatment-voice-hint"
+            onTranscript={(text) =>
+              setForm((prev) => ({
+                ...prev,
+                treatment: prev.treatment ? `${prev.treatment.trim()} ${text}` : text,
+              }))
+            }
+          />
         </div>
 
         <div className="mt-3">
@@ -275,6 +296,16 @@ export function HealthRecordFormModal({
           {errors.remarks && (
             <p className="mt-1.5 text-xs font-medium text-red-600">{errors.remarks}</p>
           )}
+
+          <VoiceInputButton
+            hintId="health-remarks-voice-hint"
+            onTranscript={(text) =>
+              setForm((prev) => ({
+                ...prev,
+                remarks: prev.remarks ? `${prev.remarks.trim()} ${text}` : text,
+              }))
+            }
+          />
         </div>
 
         <div className="mt-5 flex justify-end gap-2">

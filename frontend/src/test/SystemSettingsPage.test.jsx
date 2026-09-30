@@ -4,12 +4,18 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import SystemSettingsPage from "../pages/SystemSettingsPage";
 import { settingsApi } from "../api/settingsApi";
+import { symptomRulesApi } from "../api/symptomRulesApi";
 
 vi.mock("../api/settingsApi", () => ({
   settingsApi: {
     get: vi.fn(),
     saveProfile: vi.fn(),
   },
+}));
+
+// The page now also renders the editable health-concern rule table.
+vi.mock("../api/symptomRulesApi", () => ({
+  symptomRulesApi: { active: vi.fn(), list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
 }));
 
 const SETTINGS = {
@@ -39,6 +45,7 @@ describe("SystemSettingsPage", () => {
     vi.clearAllMocks();
     settingsApi.get.mockResolvedValue(SETTINGS);
     settingsApi.saveProfile.mockResolvedValue(SETTINGS);
+    symptomRulesApi.list.mockResolvedValue([]);
   });
 
   it("shows the editable contact profile with the server's current values", async () => {

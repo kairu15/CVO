@@ -3,6 +3,7 @@ import { QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notificationsApi } from "./notificationsApi";
 import { monitoringApi } from "./monitoringApi";
 import { beneficiariesApi } from "./beneficiariesApi";
+import { symptomRulesApi } from "./symptomRulesApi";
 
 /**
  * Live data, the polling way.
@@ -52,11 +53,21 @@ export function useUnreadNotificationsCount(enabled = true) {
   });
 }
 
-/** The full feed (stored events + derived alerts), polled. */
-export function useNotificationsFeed(limit = 20) {
+/**
+ * The notification feed, polled.
+ *
+ * `filter` is "all" (stored events + derived alerts) or "smart" (the daily
+ * rule-based flags only). The filter is a SERVER-side query parameter so a
+ * capped page still reports the true counts for the selected set.
+ */
+export function useNotificationsFeed(limit = 20, filter = "all") {
   return useQuery({
-    queryKey: ["notifications", "feed", limit],
-    queryFn: () => notificationsApi.list({ limit }),
+    queryKey: ["notifications", "feed", limit, filter],
+    queryFn: () =>
+      notificationsApi.list({
+        limit,
+        ...(filter !== "all" ? { filter } : {}),
+      }),
     refetchInterval: POLL_INTERVALS.notifications,
   });
 }
@@ -95,6 +106,20 @@ export function useMonitoringMonths(enabled = true) {
     queryKey: ["monitoring-records", "months"],
     queryFn: () => monitoringApi.months(),
     refetchInterval: POLL_INTERVALS.monitoring,
+    enabled,
+  });
+}
+
+/**
+ * The active health-concern hint rules — matched in the browser while a
+ * doctor types, so this is NOT polled: the table is small reference data an
+ * admin edits rarely, and the form only needs it once per open.
+ */
+export function useSymptomRules(enabled = true) {
+  return useQuery({
+    queryKey: ["symptom-rules", "active"],
+    queryFn: () => symptomRulesApi.active(),
+    staleTime: 5 * 60_000,
     enabled,
   });
 }

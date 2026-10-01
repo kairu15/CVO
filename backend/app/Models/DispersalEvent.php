@@ -6,11 +6,12 @@ use Database\Factories\DispersalEventFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class DispersalEvent extends Model
 {
     /** @use HasFactory<DispersalEventFactory> */
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     public const TYPE_INITIAL = 'initial';
 

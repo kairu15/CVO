@@ -68,8 +68,39 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
 
   const close = () => setPanel(null);
 
+  const headerRef = useRef(null);
+
+  /**
+   * Click outside → close.
+   *
+   * The panels also render a `fixed inset-0` backdrop, but the header's
+   * `backdrop-blur` makes it the containing block for fixed descendants, so
+   * that backdrop only ever covers the 64px header strip — clicking the page
+   * below the header left the menu open. This document-level listener closes
+   * the open panel wherever the click lands; clicks inside the header are
+   * still handled by the backdrop.
+   */
+  useEffect(() => {
+    if (!panel) return undefined;
+
+    function onPointerDown(event) {
+      if (!headerRef.current?.contains(event.target)) setPanel(null);
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [panel]);
+
   return (
-    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/85 px-4 backdrop-blur sm:px-6">
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/85 px-4 backdrop-blur sm:px-6"
+    >
       <button
         type="button"
         onClick={onOpenSidebar}

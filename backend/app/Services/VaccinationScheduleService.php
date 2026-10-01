@@ -146,7 +146,8 @@ class VaccinationScheduleService
     public static function lastVaccinationSql(): string
     {
         return '(select date(max(mr.vaccination_date)) from monitoring_records mr'
-            .' where mr.beneficiary_id = beneficiaries.id and mr.vaccination_date is not null)';
+            .' where mr.beneficiary_id = beneficiaries.id and mr.deleted_at is null'
+            .' and mr.vaccination_date is not null)';
     }
 
     /**

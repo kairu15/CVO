@@ -5,11 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class MonitoringRecord extends Model
 {
     /** @use HasFactory<\Database\Factories\MonitoringRecordFactory> */
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     /** Registration lifecycle states (see the 2026_09_26 migration). */
     public const REGISTRATION_NONE = 'none';

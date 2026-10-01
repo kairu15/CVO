@@ -50,8 +50,8 @@ class MonitoringImportCleanupTest extends TestCase
             ->deleteJson("/api/v1/monitoring-records/{$record->id}")
             ->assertNoContent();
 
-        $this->assertDatabaseMissing('monitoring_records', ['id' => $record->id]);
-        $this->assertDatabaseMissing('beneficiaries', ['id' => $beneficiary->id]);
+        $this->assertSoftDeleted('monitoring_records', ['id' => $record->id]);
+        $this->assertSoftDeleted('beneficiaries', ['id' => $beneficiary->id]);
     }
 
     public function test_import_beneficiary_with_multiple_records_survives_one_delete(): void
@@ -79,7 +79,7 @@ class MonitoringImportCleanupTest extends TestCase
             ->deleteJson("/api/v1/monitoring-records/{$record->id}")
             ->assertNoContent();
 
-        $this->assertDatabaseMissing('monitoring_records', ['id' => $record->id]);
+        $this->assertSoftDeleted('monitoring_records', ['id' => $record->id]);
         $this->assertDatabaseHas('beneficiaries', ['id' => $beneficiary->id]);
     }
 
@@ -140,7 +140,7 @@ class MonitoringImportCleanupTest extends TestCase
             ->deleteJson("/api/v1/monitoring-records/{$record->id}")
             ->assertNoContent();
 
-        $this->assertDatabaseMissing('monitoring_records', ['id' => $record->id]);
+        $this->assertSoftDeleted('monitoring_records', ['id' => $record->id]);
         $this->assertDatabaseHas('beneficiaries', ['id' => $beneficiary->id]);
     }
 
@@ -157,7 +157,7 @@ class MonitoringImportCleanupTest extends TestCase
             ->deleteJson("/api/v1/monitoring-records/{$record->id}")
             ->assertNoContent();
 
-        $this->assertDatabaseMissing('beneficiaries', ['name_of_farmer' => 'Juan Dela Cruz']);
+        $this->assertSoftDeleted('beneficiaries', ['name_of_farmer' => 'Juan Dela Cruz']);
 
         // Re-importing the same workbook recreates everything cleanly.
         $this->importWorkbooks([[$row]]);

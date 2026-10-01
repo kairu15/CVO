@@ -92,6 +92,10 @@ export default function MonitoringPage({ roleKey }) {
   const load = useCallback(async () => {
     invalidate.monitoring();
     invalidate.notifications();
+    // A farmer delete also removes them from the assigned-farmer picker and
+    // every other beneficiary-derived view, so refresh those immediately
+    // rather than waiting for the next poll.
+    invalidate.beneficiaries();
   }, [invalidate]);
 
   const canLogVisit = useMemo(
@@ -110,6 +114,14 @@ export default function MonitoringPage({ roleKey }) {
     setFormOpen(true);
   }
 
+  // A registration row IS the farmer's registration: the backend soft-deletes
+  // the whole farmer (household, account, history) behind it, so the modal and
+  // the toast must say so instead of pretending only one row goes away.
+  const deletingFarmer =
+    deleting !== null &&
+    deleting.registration_status !== undefined &&
+    deleting.registration_status !== "none";
+
   /** Delete the technician's own record (admin may delete any) — policy mirrors FieldVisit. */
   async function confirmDelete() {
     if (!deleting) return;
@@ -118,7 +130,11 @@ export default function MonitoringPage({ roleKey }) {
 
     try {
       await monitoringApi.remove(deleting.id);
-      toast.success("Monitoring record deleted.");
+      toast.success(
+        deletingFarmer
+          ? `${deleting.name_of_farmer} removed from the system.`
+          : "Monitoring record deleted.",
+      );
       setDeleting(null);
       await load();
     } catch (err) {
@@ -297,12 +313,32 @@ export default function MonitoringPage({ roleKey }) {
         onSaved={load}
       />
 
-      <Modal open={deleting !== null} title="Delete monitoring record" onClose={() => setDeleting(null)}>
-        <p className="text-sm text-slate-600">
-          Delete the {deleting?.date_monitored ?? ""} monitoring entry for{" "}
-          <strong>{deleting?.name_of_farmer}</strong>? This removes it from the
-          monitoring sheet and cannot be undone.
-        </p>
+      <Modal
+        open={deleting !== null}
+        title={deletingFarmer ? "Remove farmer" : "Delete monitoring record"}
+        onClose={() => setDeleting(null)}
+      >
+        {deletingFarmer ? (
+          <div className="space-y-3 text-sm text-slate-600">
+            <p>
+              This removes <strong>{deleting?.name_of_farmer}</strong> and all
+              associated records — monitoring history, health records, case
+              notes, field visits, visit photos, technician assignments and
+              notifications.
+            </p>
+            <p>
+              The farmer will disappear from every list, report and alert. The
+              records are archived (not erased) for the office's audit and
+              retention, and can only be restored by a database administrator.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-600">
+            Delete the {deleting?.date_monitored ?? ""} monitoring entry for{" "}
+            <strong>{deleting?.name_of_farmer}</strong>? This removes it from the
+            monitoring sheet and cannot be undone.
+          </p>
+        )}
 
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={() => setDeleting(null)}>
@@ -312,8 +348,10 @@ export default function MonitoringPage({ roleKey }) {
             {removing ? (
               <>
                 <ButtonSpinner />
-                Deleting…
+                {deletingFarmer ? "Removing…" : "Deleting…"}
               </>
+            ) : deletingFarmer ? (
+              "Remove farmer"
             ) : (
               "Delete record"
             )}

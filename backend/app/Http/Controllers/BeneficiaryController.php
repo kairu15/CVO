@@ -113,9 +113,13 @@ class BeneficiaryController extends Controller
 
         $this->authorize('delete', $beneficiary);
 
-        $beneficiary->delete();
-
-        $this->audit->log($request->user(), 'beneficiary_deleted', $beneficiary);
+        // Soft-deletes the household AND its whole history (visits, clinical
+        // records, monitoring rows, assignments, notifications) plus the
+        // farmer account when it has no other households — all in one
+        // transaction. A bare $beneficiary->delete() left every related row
+        // orphaned (and failed outright on any monitoring record, whose FK
+        // carries no cascade).
+        $this->beneficiaries->deleteFarmer($request->user(), $beneficiary);
 
         return response()->json([], Response::HTTP_NO_CONTENT);
     }

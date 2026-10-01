@@ -43,6 +43,7 @@ class AnimalHealthService
         // An open case is a clinical record with no outcome yet, or an outcome
         // that still means "being worked on".
         $openCases = "(select count(*) from health_records hr where hr.beneficiary_id = beneficiaries.id"
+            ." and hr.deleted_at is null"
             ." and (hr.outcome is null or hr.outcome in ({$openPlaceholders})))";
 
         $query = $this->beneficiaries->scopeQueryFor($user)
@@ -55,21 +56,21 @@ class AnimalHealthService
             // VaccinationScheduleService::lastVaccinationSql().
             ->selectRaw(
                 '(select date(max(mr.date_monitored)) from monitoring_records mr'
-                .' where mr.beneficiary_id = beneficiaries.id) as last_visit_date',
+                .' where mr.beneficiary_id = beneficiaries.id and mr.deleted_at is null) as last_visit_date',
             )
             ->selectRaw("{$openCases} as open_cases", $openOutcomes)
             ->selectRaw(
-                '(select count(*) from case_notes cn where cn.beneficiary_id = beneficiaries.id) as notes_count',
+                '(select count(*) from case_notes cn where cn.beneficiary_id = beneficiaries.id and cn.deleted_at is null) as notes_count',
             )
             ->selectRaw(
-                '(select date(max(cn.date_noted)) from case_notes cn where cn.beneficiary_id = beneficiaries.id) as last_note_date',
+                '(select date(max(cn.date_noted)) from case_notes cn where cn.beneficiary_id = beneficiaries.id and cn.deleted_at is null) as last_note_date',
             )
             ->selectRaw(
-                '(select hr.diagnosis from health_records hr where hr.beneficiary_id = beneficiaries.id'
+                '(select hr.diagnosis from health_records hr where hr.beneficiary_id = beneficiaries.id and hr.deleted_at is null'
                 .' order by hr.date_recorded desc, hr.id desc limit 1) as latest_diagnosis',
             )
             ->selectRaw(
-                '(select hr.outcome from health_records hr where hr.beneficiary_id = beneficiaries.id'
+                '(select hr.outcome from health_records hr where hr.beneficiary_id = beneficiaries.id and hr.deleted_at is null'
                 .' order by hr.date_recorded desc, hr.id desc limit 1) as latest_outcome',
             )
             ->orderByRaw("{$lastVaccination} is null desc")

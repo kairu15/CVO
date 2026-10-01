@@ -221,7 +221,8 @@ class SmartAlertService
         }
 
         $latestBcs = '(select mr.bcs from monitoring_records mr'
-            .' where mr.beneficiary_id = beneficiaries.id and mr.bcs is not null'
+            .' where mr.beneficiary_id = beneficiaries.id and mr.deleted_at is null'
+            .' and mr.bcs is not null'
             .' order by mr.date_monitored desc, mr.id desc limit 1)';
 
         $animals = Beneficiary::query()
@@ -286,7 +287,7 @@ class SmartAlertService
     {
         $days = (int) config('cvo.smart_alerts.no_recent_visit_days');
         $cutoff = CarbonImmutable::now()->startOfDay()->subDays($days)->toDateString();
-        $lastVisit = '(select max(fv.visited_on) from field_visits fv where fv.beneficiary_id = beneficiaries.id)';
+        $lastVisit = '(select max(fv.visited_on) from field_visits fv where fv.beneficiary_id = beneficiaries.id and fv.deleted_at is null)';
 
         $animals = Beneficiary::query()
             ->with('technician')
@@ -358,6 +359,7 @@ class SmartAlertService
         // boundary trap VaccinationScheduleService documents).
         $rows = MonitoringRecord::query()
             ->join('beneficiaries', 'beneficiaries.id', '=', 'monitoring_records.beneficiary_id')
+            ->whereNull('beneficiaries.deleted_at')
             ->whereRaw('date(monitoring_records.date_monitored) >= ?', [$start])
             ->whereRaw('date(monitoring_records.date_monitored) <= ?', [$end])
             ->whereNotNull('beneficiaries.barangay_id')

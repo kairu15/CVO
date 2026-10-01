@@ -175,7 +175,7 @@ class HealthRecordTest extends TestCase
             ->deleteJson("/api/v1/health-records/{$record->id}")
             ->assertNoContent();
 
-        $this->assertDatabaseMissing('health_records', ['id' => $record->id]);
+        $this->assertSoftDeleted('health_records', ['id' => $record->id]);
     }
 
     public function test_a_farmer_sees_only_records_for_their_own_animals(): void

@@ -179,7 +179,7 @@ class CaseNoteTest extends TestCase
             ->deleteJson("/api/v1/case-notes/{$note->id}")
             ->assertNoContent();
 
-        $this->assertDatabaseMissing('case_notes', ['id' => $note->id]);
+        $this->assertSoftDeleted('case_notes', ['id' => $note->id]);
     }
 
     public function test_a_farmer_sees_only_notes_for_their_own_animals(): void

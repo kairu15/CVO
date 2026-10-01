@@ -142,6 +142,9 @@ class MonitoringRecordService
 
         $photoByBeneficiary = FieldVisitPhoto::query()
             ->join('field_visits', 'field_visits.id', '=', 'field_visit_photos.field_visit_id')
+            // The joined visits are outside FieldVisitPhoto's own SoftDeletes
+            // scope, so filter them explicitly alongside the photos.
+            ->whereNull('field_visits.deleted_at')
             ->whereIn('field_visits.beneficiary_id', $beneficiaries->modelKeys())
             // field_visit_photos.* carries no beneficiary_id, so the joined
             // column can ride along under the same name without colliding —
@@ -222,23 +225,37 @@ class MonitoringRecordService
     }
 
     /**
-     * Delete a monitoring record — and, when it came from the Excel import,
-     * the auto-created beneficiary behind it.
+     * Delete a monitoring record.
      *
-     * The import matches households on (name, address) and silently creates
-     * a beneficiary row for every new farmer it meets. If deleting the sheet
-     * row left that auto-row behind, a deleted import would keep resurfacing
-     * as a phantom household in Beneficiaries, the map and the technician
-     * pickers. So: when the beneficiary was IMPORT-CREATED and nothing else
-     * still references it — no other monitoring record, field visit, health
-     * record, case note or dispersal event — it is removed in the same
-     * transaction. Registered households (farmer signup, staff registration)
-     * are never touched, whatever the sheet says.
+     * Three cases, all inside ONE transaction so the delete is all-or-nothing:
+     *
+     *  1. A REGISTRATION-created row (registration_status != none) IS the
+     *     farmer's registration. An admin deleting it is deleting the farmer,
+     *     so the household, its whole history and its account are soft-deleted
+     *     together — see BeneficiaryService::deleteFarmer(). This is what
+     *     fixes the orphaned-records bug: the row used to disappear while the
+     *     account, assignment, visits and notifications stayed behind.
+     *
+     *  2. An IMPORT-created record (source = import): deleting the sheet row
+     *     also removes its auto-created beneficiary when nothing else still
+     *     references it, so a deleted import stops resurfacing as a phantom
+     *     household in Beneficiaries, the map and the technician pickers.
+     *
+     *  3. An ordinary visit row (registration_status = none) on a registered
+     *     household: record-only delete. A technician clearing a bad entry
+     *     must not wipe the farmer.
      */
     public function delete(User $actor, MonitoringRecord $record): void
     {
         \Illuminate\Support\Facades\DB::transaction(function () use ($record, $actor): void {
             $beneficiary = $record->beneficiary;
+
+            if ($record->registration_status !== MonitoringRecord::REGISTRATION_NONE
+                && $beneficiary instanceof Beneficiary) {
+                $this->beneficiaries->deleteFarmer($actor, $beneficiary);
+
+                return;
+            }
 
             $record->delete();
 

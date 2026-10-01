@@ -206,7 +206,7 @@ class FieldVisitTest extends TestCase
             ->deleteJson("/api/v1/field-visits/{$visit->id}")
             ->assertNoContent();
 
-        $this->assertDatabaseMissing('field_visits', ['id' => $visit->id]);
+        $this->assertSoftDeleted('field_visits', ['id' => $visit->id]);
     }
 
     /**

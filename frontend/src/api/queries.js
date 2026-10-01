@@ -143,6 +143,12 @@ export function useInvalidate() {
     monitoring: () => {
       client.invalidateQueries({ queryKey: ["monitoring-records"] });
     },
+    // The technician's assigned-farmer picker and every beneficiary-derived
+    // view. Needed after a farmer delete, which removes them everywhere —
+    // not only from the monitoring table the admin clicked in.
+    beneficiaries: () => {
+      client.invalidateQueries({ queryKey: ["beneficiaries"] });
+    },
   };
 }
 

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * A geotagged photo captured on a field visit.
@@ -38,6 +39,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class FieldVisitPhoto extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'field_visit_id',
         'technician_id',

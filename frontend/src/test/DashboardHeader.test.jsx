@@ -194,4 +194,20 @@ describe("DashboardHeader", () => {
     await user.click(screen.getByRole("button", { name: "Yes, log out" }));
     await vi.waitFor(() => expect(auth.logout).toHaveBeenCalledTimes(1));
   });
+
+  it("closes the account menu when clicking outside the header", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(await screen.findByRole("button", { name: "Account menu" }));
+    expect(screen.getByRole("link", { name: /My Profile/ })).toBeInTheDocument();
+
+    // Clicking the page below the header must dismiss the menu. The `fixed`
+    // backdrops cannot reach there: the header's backdrop-blur makes it the
+    // containing block for fixed descendants, so they only cover the header
+    // strip. A document-level listener covers the rest of the page.
+    await user.click(document.body);
+
+    expect(screen.queryByRole("link", { name: /My Profile/ })).not.toBeInTheDocument();
+  });
 });

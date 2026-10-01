@@ -3,6 +3,12 @@
 namespace App\Services;
 
 use App\Models\Beneficiary;
+use App\Models\CaseNote;
+use App\Models\DispersalEvent;
+use App\Models\FieldVisit;
+use App\Models\FieldVisitPhoto;
+use App\Models\HealthRecord;
+use App\Models\MonitoringRecord;
 use App\Models\TechnicianAssignment;
 use App\Models\User;
 use App\Models\UserNotification;
@@ -10,6 +16,7 @@ use Database\Factories\BeneficiaryFactory;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 class BeneficiaryService
 {
@@ -249,5 +256,94 @@ class BeneficiaryService
         return null;
     }
 
+    /**
+     * Remove a registered farmer completely — the household, its whole
+     * clinical/visit/assignment history, and the account behind it — inside
+     * one transaction.
+     *
+     * Everything is SOFT-deleted (the tables carry `deleted_at`), so the rows
+     * vanish from every normal list, report and alert while remaining in the
+     * database for LGU audit/retention. Eloquent's SoftDeletes global scope
+     * hides them automatically; the raw correlated subqueries in the report /
+     * schedule / smart-alert services carry an explicit `deleted_at is null`
+     * filter for the same reason.
+     *
+     * The account is only removed when it has no other households left: a
+     * farmer who registered several animals keeps their login, while a
+     * freshly-registered one (the case the monitoring-table delete fixes) is
+     * fully removed.
+     *
+     * Notifications are the one exception: `user_notifications.dedupe_key` is
+     * UNIQUE and the daily Smart Alerts scan re-creates rows by that key, so
+     * they cannot be soft-deleted without a re-insert collision. They are
+     * transient events and are deleted outright.
+     */
+    public function deleteFarmer(User $actor, Beneficiary $beneficiary): void
+    {
+        DB::transaction(function () use ($actor, $beneficiary): void {
+            $beneficiaryId = $beneficiary->id;
+            $farmerId = $beneficiary->farmer_id;
 
+            // Collect the ids first: once the rows are soft-deleted the
+            // default scope can no longer see them.
+            $recordIds = MonitoringRecord::query()
+                ->where('beneficiary_id', $beneficiaryId)
+                ->pluck('id');
+
+            $visitIds = FieldVisit::query()
+                ->where('beneficiary_id', $beneficiaryId)
+                ->pluck('id');
+
+            // Photos hang off a VISIT, not off the beneficiary.
+            if ($visitIds->isNotEmpty()) {
+                FieldVisitPhoto::query()->whereIn('field_visit_id', $visitIds)->delete();
+            }
+
+            FieldVisit::query()->where('beneficiary_id', $beneficiaryId)->delete();
+            HealthRecord::query()->where('beneficiary_id', $beneficiaryId)->delete();
+            CaseNote::query()->where('beneficiary_id', $beneficiaryId)->delete();
+
+            // A dispersal event can touch this household as the recipient, as
+            // the parent whose animal produced the offspring, or as the
+            // inline-registered recipient — all belong to its chain.
+            DispersalEvent::query()
+                ->where(function (Builder $q) use ($beneficiaryId): void {
+                    $q->where('beneficiary_id', $beneficiaryId)
+                        ->orWhere('parent_beneficiary_id', $beneficiaryId)
+                        ->orWhere('new_beneficiary_id', $beneficiaryId);
+                })
+                ->delete();
+
+            // The household's whole monitoring history, including the
+            // registration row whose delete triggered this.
+            MonitoringRecord::query()->where('beneficiary_id', $beneficiaryId)->delete();
+
+            TechnicianAssignment::query()->where('beneficiary_id', $beneficiaryId)->delete();
+
+            UserNotification::query()
+                ->where(function (Builder $q) use ($beneficiaryId, $farmerId, $recordIds): void {
+                    $q->where('beneficiary_id', $beneficiaryId)
+                        ->orWhereIn('monitoring_record_id', $recordIds);
+
+                    if ($farmerId !== null) {
+                        $q->orWhere('user_id', $farmerId);
+                    }
+                })
+                ->delete();
+
+            $beneficiary->delete();
+
+            $farmer = $farmerId !== null ? User::find($farmerId) : null;
+
+            if ($farmer !== null && $farmer->beneficiaries()->count() === 0) {
+                UserNotification::query()->where('user_id', $farmer->id)->delete();
+                $farmer->delete();
+            }
+
+            $this->audit->log($actor, 'beneficiary_deleted', $beneficiary, [
+                'farmer_id' => $farmerId,
+                'farmer_account_removed' => $farmer !== null && $farmer->trashed(),
+            ]);
+        });
+    }
 }

@@ -9,6 +9,11 @@ vendor/
 # Environment files (never commit secrets)
 .env
 .env.*.local
+# Docker compose env files: examples are committed, real files are not.
+.env.production
+backend/.env
+backend/.env.docker
+frontend/.env
 frontend/.env.production
 frontend/.env.ngrok
 

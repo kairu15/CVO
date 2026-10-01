@@ -1,0 +1,131 @@
+# =============================================================================
+# CVO — production stack (single-origin)
+#
+#   cp .env.production.example .env.production
+#   # fill in DB_PASSWORD, DB_ROOT_PASSWORD and a generated APP_KEY
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#
+# Topology
+#   frontend (nginx, published :8080) ──serves the SPA──┐
+#        └── reverse-proxies /api, /sanctum, /storage ──▶ backend (nginx+php-fpm)
+#                                                            └──▶ db (mysql)
+#
+# Everything the browser calls is on ONE origin, so Sanctum's cookies are
+# first-party and CORS never applies. Only the frontend port is published; the
+# API and the database stay on the internal compose network.
+#
+# Differences from docker-compose.yml:
+#   * images are built to the `production` target (nginx + php-fpm, no artisan serve)
+#   * RUN_SEEDERS defaults to false  (demo accounts are never seeded by accident)
+#   * APP_DEBUG=false, APP_ENV=production  => entrypoint caches config/routes/views
+#   * no bind mounts — code is baked into the images
+# =============================================================================
+
+name: cvo-prod
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:?set DB_DATABASE in .env.production}
+      MYSQL_USER: ${DB_USERNAME:?set DB_USERNAME in .env.production}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env.production}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env.production}
+    volumes:
+      - db_data:/var/lib/mysql
+    # No published port: the database is reachable only from the compose network.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - cvo
+
+  backend:
+    build:
+      context: ./backend
+      target: production
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      # Required. Generate with `php artisan key:generate --show` and put the
+      # result in .env.production. The entrypoint refuses to start without it.
+      APP_KEY: ${APP_KEY:?set APP_KEY (php artisan key:generate --show)}
+      APP_URL: ${APP_URL:?set APP_URL to the public origin}
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_DATABASE: ${DB_DATABASE:?set DB_DATABASE}
+      DB_USERNAME: ${DB_USERNAME:?set DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      SESSION_DRIVER: database
+      # Empty is fine for single-origin (host-only cookie). Set it to the
+      # public domain if you terminate TLS behind a proxy that rewrites Host.
+      SESSION_DOMAIN: ${SESSION_DOMAIN:-}
+      # Behind HTTPS set this to true so the cookie is only sent over TLS.
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
+      # Strictly the public origin (host:port, no scheme) — single-origin means
+      # this is the frontend's own host.
+      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:?set SANCTUM_STATEFUL_DOMAINS}
+      # Only needed if something calls the API cross-origin; harmless otherwise.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      # Never seed demo accounts in production unless explicitly asked.
+      RUN_SEEDERS: ${RUN_SEEDERS:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Internal only; the frontend proxies to it.
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/up || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+    networks:
+      - cvo
+
+  frontend:
+    build:
+      context: ./frontend
+      target: production
+      args:
+        # Empty => the built bundle calls the API on its own origin. The
+        # bundled nginx proxies /api, /sanctum and /storage to `backend`.
+        # Only set an absolute URL for a split-origin deployment.
+        VITE_API_URL: ${VITE_API_URL:-}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      # The single public entry point. Put TLS in front of this (Caddy, an
+      # upstream LB, or an nginx TLS proxy) in a real deployment.
+      - "${WEB_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - cvo
+
+volumes:
+  db_data:
+
+networks:
+  cvo:
+    driver: bridge

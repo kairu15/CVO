@@ -1,0 +1,199 @@
+# =============================================================================
+# CVO — development stack
+#
+#   cp .env.example .env          # then edit if needed
+#   docker compose up --build
+#
+#   Frontend  http://localhost:5173
+#   API       http://localhost:8005
+#
+# Optional add-ons:
+#   docker compose --profile tools up -d     # phpMyAdmin on :8081
+#   docker compose --profile e2e run --rm e2e
+#
+# Production is a separate file: docker-compose.prod.yml.
+# =============================================================================
+
+name: cvo
+
+services:
+  # ---------------------------------------------------------------------------
+  # MySQL 8.4
+  # ---------------------------------------------------------------------------
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    # Match the collation the project's migrations/README assume. Set at server
+    # level so tables inherit it even if a migration omits it.
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-cvo_api}
+      MYSQL_USER: ${DB_USERNAME:-cvo}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootsecret}
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      # Host port 3307 by default so a local XAMPP/standalone MySQL already on
+      # 3306 keeps working. Change DB_HOST_PORT in .env if 3307 is taken.
+      - "${DB_HOST_PORT:-3307}:3306"
+    healthcheck:
+      # -h 127.0.0.1 forces TCP (a socket ping can succeed before the server is
+      # ready to accept network connections).
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - cvo
+
+  # ---------------------------------------------------------------------------
+  # Laravel API — dev target: bind-mounted source, `php artisan serve`
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      target: dev
+    restart: unless-stopped
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      # Browser/mobile reach the API on the host, so this is a host URL.
+      APP_URL: ${API_URL:-http://localhost:8005}
+      DB_CONNECTION: mysql
+      # Service name, NOT 127.0.0.1 — inside the compose network the database
+      # lives on a different container.
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_DATABASE: ${DB_DATABASE:-cvo_api}
+      DB_USERNAME: ${DB_USERNAME:-cvo}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      SESSION_DRIVER: database
+      # Empty => host-only cookie, which works for both localhost and
+      # 127.0.0.1 origins during development.
+      SESSION_DOMAIN: ${SESSION_DOMAIN:-}
+      # Sanctum/CSRF trust list. Must mirror the Vite dev origin exactly
+      # (host:port, no scheme for Sanctum; scheme+host+port for CORS).
+      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost:5173,127.0.0.1:5173}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      # Seeds the four demo accounts. Explicit opt-in flag shared with prod so
+      # the entrypoint behaviour is identical.
+      RUN_SEEDERS: ${RUN_SEEDERS:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8005}:8005"
+    volumes:
+      # Live source editing.
+      - ./backend:/var/www/html
+      # Named volume keeps the container's vendor/ (installed at build time)
+      # from being clobbered by the host's backend/vendor.
+      - backend_vendor:/var/www/html/vendor
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8005/up || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      # Migrations + (dev) seeding run before the server accepts traffic.
+      start_period: 90s
+    networks:
+      - cvo
+
+  # ---------------------------------------------------------------------------
+  # React/Vite frontend — dev target: Vite dev server with HMR
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    restart: unless-stopped
+    environment:
+      # Host-reachable URL: the browser makes this call, not the container.
+      # `http://backend:8005` would be unreachable from the Browser.
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8005}
+      # Bind mounts on Docker Desktop (Windows/macOS) do not always deliver
+      # inotify events into the container; polling makes HMR reliable.
+      CHOKIDAR_USEPOLLING: "true"
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      # Keep the container's node_modules (npm ci at build time) separate from
+      # the host's.
+      - frontend_node_modules:/app/node_modules
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:5173/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - cvo
+
+  # ---------------------------------------------------------------------------
+  # phpMyAdmin — optional, `--profile tools`
+  # ---------------------------------------------------------------------------
+  phpmyadmin:
+    image: phpmyadmin:5.2
+    restart: unless-stopped
+    profiles:
+      - tools
+    environment:
+      PMA_HOST: db
+      PMA_PORT: "3306"
+      UPLOAD_LIMIT: 64M
+    ports:
+      - "${PMA_PORT:-8081}:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - cvo
+
+  # ---------------------------------------------------------------------------
+  # E2E runner — optional, `--profile e2e`
+  #
+  # The e2e scripts use puppeteer-core and currently point at a host Chrome
+  # path, so this service is a convenience shell: install deps and run a script
+  # against the dev stack. Point the scripts' `CHROME` path at the container's
+  # browser (apk add chromium) before expecting them to pass here.
+  # ---------------------------------------------------------------------------
+  e2e:
+    image: node:20-alpine
+    profiles:
+      - e2e
+    working_dir: /e2e
+    environment:
+      E2E_BASE_URL: ${E2E_BASE_URL:-http://frontend:5173}
+    volumes:
+      - ./e2e:/e2e
+      - e2e_node_modules:/e2e/node_modules
+    depends_on:
+      frontend:
+        condition: service_started
+    # Override the command to run a specific suite, e.g.:
+    #   docker compose run --rm e2e node e2e.mjs
+    command: sh -lc "npm ci --no-audit --no-fund && node smoke.mjs"
+    networks:
+      - cvo
+
+volumes:
+  db_data:
+  backend_vendor:
+  frontend_node_modules:
+  e2e_node_modules:
+
+networks:
+  cvo:
+    driver: bridge

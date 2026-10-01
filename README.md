@@ -85,7 +85,7 @@ docker compose up --build
 
 Then open **http://localhost:5173**. The API is on **http://localhost:8005**.
 
-On first boot the backend container waits for MySQL, runs `php artisan migrate --force`, and — because `RUN_SEEDERS=true` in `.env` — seeds the demo data.
+On first boot the backend container waits for MySQL and runs `php artisan migrate --force`. Startup seeding is **off** (`RUN_SEEDERS=false`), so no demo beneficiaries, users or sample data are recreated on restart. To seed once, set `RUN_SEEDERS=true` in `.env` or run `docker compose exec backend php artisan db:seed --force`.
 
 **Demo accounts** (password: `password`):
 

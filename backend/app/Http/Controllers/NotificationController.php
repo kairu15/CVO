@@ -63,4 +63,16 @@ class NotificationController extends Controller
             'data' => ['marked' => $marked],
         ]);
     }
+
+    /**
+     * Mark one stored event read — what opening that notification writes.
+     * The service scopes it to the caller's own rows, so an id that is not
+     * theirs reports false instead of reading someone else's notification.
+     */
+    public function markRead(Request $request, int $id): JsonResponse
+    {
+        return response()->json([
+            'data' => ['marked' => $this->notifications->markRead($request->user(), $id)],
+        ]);
+    }
 }

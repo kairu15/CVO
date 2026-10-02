@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
-import { roleLabel } from "../config/roles";
+import { dashboardPathFor, roleLabel } from "../config/roles";
 import { notificationsApi } from "../api/notificationsApi";
 import {
   useInvalidate,
@@ -102,6 +102,8 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
       ref={headerRef}
       className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/85 px-4 backdrop-blur sm:px-6"
     >
+      <BackButton />
+
       <button
         type="button"
         onClick={onOpenSidebar}
@@ -283,6 +285,46 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
 }
 
 /**
+ * In-app back button — returns to the page you came from, so navigating the
+ * SPA does not depend on the browser's own back control.
+ *
+ * React Router keys the first entry of a session "default": there is nothing
+ * behind it, so the button falls back to the role's dashboard rather than
+ * leaving the app (or doing nothing after a refresh on a deep link). It is
+ * hidden on the dashboard root only, where both routes lead to the same page.
+ */
+function BackButton() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+
+  const dashboardPath = dashboardPathFor(user?.role);
+  const hasHistory = location.key !== "default";
+
+  if (!hasHistory && location.pathname === dashboardPath) return null;
+
+  function goBack() {
+    if (hasHistory) {
+      navigate(-1);
+    } else if (dashboardPath) {
+      navigate(dashboardPath);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={goBack}
+      aria-label="Go back"
+      title="Go back"
+      className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700"
+    >
+      <Icon name="arrow-left" />
+    </button>
+  );
+}
+
+/**
  * The debounced search results panel.
  *
  * Lives outside the header's own state so typing re-renders only this panel
@@ -459,6 +501,24 @@ function NotificationPanel({ onNavigate }) {
     }
   }
 
+  /**
+   * Opening an event clears just that one from the badge; a derived alert has
+   * no read state to write. Navigation is never blocked on the write — the
+   * invalidated poll catches up either way.
+   */
+  function openAlert(alert) {
+    if (typeof alert.id === "string" && alert.id.startsWith("event-") && !alert.read) {
+      const id = Number(alert.id.slice("event-".length));
+
+      notificationsApi
+        .markRead(id)
+        .then(() => invalidate.notifications())
+        .catch(() => {});
+    }
+
+    onNavigate();
+  }
+
   return (
     <div className="card absolute right-0 z-20 mt-2 w-80 p-4">
       <div className="flex items-center justify-between">
@@ -493,7 +553,7 @@ function NotificationPanel({ onNavigate }) {
               <li key={alert.id}>
                 <Link
                   to={alert.link}
-                  onClick={onNavigate}
+                  onClick={() => openAlert(alert)}
                   className={`flex items-start gap-2.5 rounded-xl px-2 py-2 transition hover:bg-brand-50 ${
                     isEvent && !alert.read ? "bg-brand-50/70" : ""
                   }`}

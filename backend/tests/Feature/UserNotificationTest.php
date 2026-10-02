@@ -239,6 +239,7 @@ class UserNotificationTest extends TestCase
     public function test_read_all_requires_authentication_and_events_carry_read_state(): void
     {
         $this->postJson('/api/v1/notifications/read-all')->assertUnauthorized();
+        $this->postJson('/api/v1/notifications/1/read')->assertUnauthorized();
         $this->getJson('/api/v1/notifications/unread-count')->assertUnauthorized();
 
         $admin = $this->admin();
@@ -277,5 +278,53 @@ class UserNotificationTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('meta.unread_events', 2);
+    }
+
+    public function test_opening_one_notification_marks_only_that_one_read(): void
+    {
+        $admin = $this->admin();
+        $other = $this->admin(); // exists before the events, so it receives them too
+
+        foreach (range(1, 2) as $ignored) {
+            $this->postJson('/api/v1/register', [
+                'name' => 'Farmer '.$ignored,
+                'username' => 'r'.$ignored.uniqid(),
+                'email' => 'r'.$ignored.uniqid().'@test.dev',
+                'password' => 'Sup3r-Secret!',
+                'password_confirmation' => 'Sup3r-Secret!',
+                'address' => 'Ali-is',
+                'animal_type' => 'Goat',
+                'sex' => 'F',
+            ])->assertCreated();
+        }
+
+        $events = $this->events($admin->fresh());
+        $this->assertCount(2, $events);
+
+        $id = (int) str_replace('event-', '', $events[0]['id']);
+
+        $this->actingAs($admin)->postJson("/api/v1/notifications/{$id}/read")
+            ->assertOk()
+            ->assertJsonPath('data.marked', true);
+
+        // Opening one leaves the other unread — the badge counts the remainder,
+        // it does not clear wholesale.
+        $this->actingAs($admin)->getJson('/api/v1/notifications/unread-count')
+            ->assertOk()
+            ->assertJsonPath('data.unread', 1);
+
+        // ...and the read flag is written on the row the reader opened.
+        $opened = collect($this->events($admin))->firstWhere('id', $events[0]['id']);
+        $this->assertTrue($opened['read']);
+
+        // Scoped to its owner: the same id changes nothing for another user,
+        // who still has both of their own unread.
+        $this->actingAs($other)->postJson("/api/v1/notifications/{$id}/read")
+            ->assertOk()
+            ->assertJsonPath('data.marked', false);
+
+        $this->actingAs($other)->getJson('/api/v1/notifications/unread-count')
+            ->assertOk()
+            ->assertJsonPath('data.unread', 2);
     }
 }

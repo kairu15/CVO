@@ -1,9 +1,13 @@
 import { api, unwrap } from "./client";
 
 /**
- * Notifications — a read-only feed derived from dispersal and vaccination
- * records. There is nothing to create, update or mark as read: an alert
- * disappears when the record it describes is recorded.
+ * Notifications — a feed of derived alerts (dispersal / vaccination) plus the
+ * caller's stored event notifications.
+ *
+ * Derived alerts have no read state: one disappears when the record it
+ * describes is recorded. Stored events carry read state, which is what the
+ * bell badge counts — opening an event marks just that one read, and
+ * read-all clears the rest.
  *
  * The endpoint answers with the alerts *and* the counts across the whole feed,
  * so a capped page still reports how much sits behind it. Both are returned
@@ -38,6 +42,18 @@ export const notificationsApi = {
   /** Mark every stored event notification read for the caller. */
   markAllRead: async () => {
     const response = await api.post("/api/v1/notifications/read-all");
+
+    return response.data;
+  },
+
+  /**
+   * Mark one stored event notification read — fired when its row is opened.
+   *
+   * @param {number} id the notification's numeric id (the feed exposes it as
+   *   `event-{id}`)
+   */
+  markRead: async (id) => {
+    const response = await api.post(`/api/v1/notifications/${id}/read`);
 
     return response.data;
   },

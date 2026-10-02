@@ -39,6 +39,7 @@ const ICONS = {
       <rect x="13.5" y="13.5" width="7" height="7" rx="1.8" />
     </>
   ),
+  "arrow-left": <path d="M19.5 12h-14M11 6.5 5.5 12l5.5 5.5" />,
   "arrow-right": <path d="M4.5 12h14M13 6.5l5.5 5.5-5.5 5.5" />,
   check: <path d="m5 12.5 4.5 4.5L19 7" />,
   logout: (

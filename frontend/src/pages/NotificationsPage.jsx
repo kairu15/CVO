@@ -108,6 +108,22 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
     invalidate.notifications();
   }
 
+  /**
+   * Opening an event marks just that one read, so the badge decrements by one
+   * rather than clearing wholesale; a derived alert has no read state to
+   * write. The write races the navigation but never blocks it.
+   */
+  function openAlert(alert) {
+    if (typeof alert.id === "string" && alert.id.startsWith("event-") && !alert.read) {
+      const id = Number(alert.id.slice("event-".length));
+
+      notificationsApi
+        .markRead(id)
+        .then(() => invalidate.notifications())
+        .catch(() => {});
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="card p-6">
@@ -261,6 +277,7 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
 
                       <Link
                         to={alert.link}
+                        onClick={() => openAlert(alert)}
                         className="shrink-0 rounded-pill px-3 py-1 text-[11px] font-semibold text-brand-800 transition hover:bg-brand-100"
                       >
                         View

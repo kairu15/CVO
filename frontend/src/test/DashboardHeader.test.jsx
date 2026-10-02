@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { DashboardHeader } from "../components/DashboardHeader";
@@ -23,6 +23,7 @@ vi.mock("../api/notificationsApi", () => ({
     list: vi.fn(),
     unreadCount: vi.fn(),
     markAllRead: vi.fn(),
+    markRead: vi.fn(),
   },
 }));
 
@@ -72,6 +73,37 @@ function renderHeader() {
   );
 }
 
+/** Shows the active path so navigation can be asserted. */
+function LocationProbe() {
+  const location = useLocation();
+  return <p data-testid="path">{location.pathname}</p>;
+}
+
+/** Renders the header inside a router with a real history stack. */
+function renderHeaderAt(entries, index) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={entries} initialIndex={index}>
+        <Routes>
+          <Route
+            path="*"
+            element={
+              <>
+                <DashboardHeader title="Doctor Dashboard" onOpenSidebar={vi.fn()} />
+                <LocationProbe />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 describe("DashboardHeader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -81,6 +113,7 @@ describe("DashboardHeader", () => {
     });
     notificationsApi.unreadCount.mockResolvedValue({ data: { unread: 2 } });
     notificationsApi.markAllRead.mockResolvedValue({ data: { marked: 2 } });
+    notificationsApi.markRead.mockResolvedValue({ data: { marked: true } });
     searchApi.search.mockResolvedValue({ groups: SEARCH_GROUPS, total: 1 });
   });
 
@@ -168,6 +201,63 @@ describe("DashboardHeader", () => {
     await user.click(screen.getByRole("button", { name: "Close notifications" }));
 
     expect(screen.queryByText("Vaccination overdue")).not.toBeInTheDocument();
+  });
+
+  it("returns to the page you came from with the in-app back button", async () => {
+    const user = userEvent.setup();
+    renderHeaderAt(["/dashboard/doctor", "/dashboard/doctor/monitoring"], 1);
+
+    await screen.findByRole("button", { name: "Notifications" });
+    expect(screen.getByTestId("path").textContent).toBe("/dashboard/doctor/monitoring");
+
+    await user.click(screen.getByRole("button", { name: "Go back" }));
+
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("path").textContent).toBe("/dashboard/doctor"),
+    );
+  });
+
+  it("falls back to the role dashboard on a deep link with no history", async () => {
+    const user = userEvent.setup();
+    // A single entry is the session's first — there is no in-app page behind it.
+    renderHeaderAt(["/dashboard/doctor/monitoring"], 0);
+
+    await screen.findByRole("button", { name: "Notifications" });
+    await user.click(screen.getByRole("button", { name: "Go back" }));
+
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("path").textContent).toBe("/dashboard/doctor"),
+    );
+  });
+
+  it("marks only the notification the user opens, not the derived alerts", async () => {
+    const user = userEvent.setup();
+    notificationsApi.list.mockResolvedValue({
+      alerts: [
+        {
+          id: "event-42",
+          type: "registration-new",
+          urgency: "info",
+          title: "New farmer registered",
+          message: "Opened this one.",
+          date: "2026-09-26T08:00:00+08:00",
+          read: false,
+          link: "/dashboard/doctor/monitoring",
+        },
+        ALERTS[0],
+      ],
+      counts: { total: 2, urgent: 1, unread_events: 1 },
+    });
+
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+    await user.click(await screen.findByRole("link", { name: /New farmer registered/ }));
+
+    // The stored event is written read; a derived alert has no row to write.
+    await vi.waitFor(() => expect(notificationsApi.markRead).toHaveBeenCalledWith(42));
+    expect(notificationsApi.markRead).toHaveBeenCalledTimes(1);
+    expect(notificationsApi.markAllRead).not.toHaveBeenCalled();
   });
 
   it("confirms before logging out from the account menu", async () => {

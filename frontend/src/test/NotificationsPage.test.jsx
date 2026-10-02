@@ -11,6 +11,7 @@ vi.mock("../api/notificationsApi", () => ({
     list: vi.fn(),
     unreadCount: vi.fn(),
     markAllRead: vi.fn(),
+    markRead: vi.fn(),
   },
 }));
 
@@ -86,6 +87,7 @@ describe("NotificationsPage", () => {
     notificationsApi.list.mockResolvedValue({ alerts: ALERTS, counts: COUNTS });
     notificationsApi.unreadCount.mockResolvedValue({ data: { unread: 1 } });
     notificationsApi.markAllRead.mockResolvedValue({ data: { marked: 1 } });
+    notificationsApi.markRead.mockResolvedValue({ data: { marked: true } });
   });
 
   it("splits the feed into what needs action and what happened", async () => {
@@ -166,6 +168,24 @@ describe("NotificationsPage", () => {
     await screen.findByText("Animal dispersed");
 
     expect(screen.queryByRole("button", { name: /Mark .* as read/ })).not.toBeInTheDocument();
+  });
+
+  it("marks an opened stored event read without touching derived alerts", async () => {
+    renderPage();
+    await screen.findByText("New farmer registered");
+
+    // The event row's own View link is what "opening" it means.
+    const row = screen.getByText("New farmer registered").closest("li");
+    await userEvent.click(within(row).getByRole("link", { name: "View" }));
+
+    await vi.waitFor(() => expect(notificationsApi.markRead).toHaveBeenCalledWith(21));
+    expect(notificationsApi.markRead).toHaveBeenCalledTimes(1);
+
+    // Opening the movement alerts writes nothing — they are derived.
+    const derived = screen.getByText("Animal dispersed").closest("li");
+    await userEvent.click(within(derived).getByRole("link", { name: "View" }));
+
+    expect(notificationsApi.markRead).toHaveBeenCalledTimes(1);
   });
 
   it("explains an empty feed without implying a failure", async () => {

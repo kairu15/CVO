@@ -148,6 +148,30 @@ class NotificationService
     }
 
     /**
+     * Mark one stored notification read for this user — the per-row
+     * counterpart to markAllRead, written when the reader opens that specific
+     * event.
+     *
+     * Scoped to the caller's own rows: an id that belongs to someone else (or
+     * does not exist) changes nothing and reports false, so the endpoint never
+     * reveals that another user's notification exists.
+     */
+    public function markRead(User $user, int $id): bool
+    {
+        $notification = UserNotification::query()
+            ->where('user_id', $user->id)
+            ->find($id);
+
+        if ($notification === null) {
+            return false;
+        }
+
+        $notification->markRead();
+
+        return true;
+    }
+
+    /**
      * The role-scoped feed, most needing action first.
      *
      * Stored event notifications (this module's write half) merge with the

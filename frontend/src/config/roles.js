@@ -45,7 +45,7 @@ export const roles = {
       { label: "System Settings", icon: "sliders", to: "/dashboard/admin/settings" },
       { label: "Beneficiaries", icon: "clipboard", to: "/dashboard/admin/beneficiaries" },
       { label: "Technicians", icon: "map-pin", to: "/dashboard/admin/technicians" },
-      { label: "Notifications", icon: "bell", to: "/dashboard/admin/notifications" },
+      { label: "Notifications", icon: "bell", to: "/dashboard/admin/notifications", badge: "notifications" },
     ],
   },
   doctor: {
@@ -64,7 +64,7 @@ export const roles = {
       { label: "Vaccination Schedule", icon: "calendar", to: "/dashboard/doctor/vaccination-schedule" },
       { label: "Case Notes", icon: "file-text", to: "/dashboard/doctor/case-notes" },
       { label: "Animal Health Monitoring", icon: "activity", to: "/dashboard/doctor/animal-health" },
-      { label: "Notifications", icon: "bell", to: "/dashboard/doctor/notifications" },
+      { label: "Notifications", icon: "bell", to: "/dashboard/doctor/notifications", badge: "notifications" },
     ],
   },
   technician: {
@@ -82,7 +82,7 @@ export const roles = {
       { label: "Dispersal Records", icon: "truck", to: "/dashboard/technician/map" },
       { label: "Field Visits", icon: "route", to: "/dashboard/technician/field-visits" },
       { label: "Re-Dispersal Tracking", icon: "refresh", to: "/dashboard/technician/map" },
-      { label: "Notifications", icon: "bell", to: "/dashboard/technician/notifications" },
+      { label: "Notifications", icon: "bell", to: "/dashboard/technician/notifications", badge: "notifications" },
     ],
   },
   farmer: {
@@ -97,7 +97,7 @@ export const roles = {
       { label: "Overview", icon: "grid", to: "/dashboard/farmer" },
       { label: "My Animals", icon: "livestock", to: "/dashboard/farmer/monitoring" },
       { label: "Dispersal Status", icon: "clipboard-check", to: "/dashboard/farmer/dispersal-status" },
-      { label: "Notifications", icon: "bell", to: "/dashboard/farmer/notifications" },
+      { label: "Notifications", icon: "bell", to: "/dashboard/farmer/notifications", badge: "notifications" },
       { label: "Support / Contact CVO", icon: "life-buoy", to: "/dashboard/farmer/support" },
     ],
   },

@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\Project;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 
@@ -11,11 +10,15 @@ class DatabaseSeeder extends Seeder
     /**
      * Seed the application's database.
      *
-     * One demo account per role so each dashboard shell can be opened without
-     * hand-editing the users table. Password is "password".
+     * Only the four demonstration accounts (one per role) and the reference
+     * data the app needs to function — the official barangay coverage and the
+     * starter health-concern hint rules. No demo beneficiaries, monitoring
+     * history, dispersal chains, clinical records or projects are created;
+     * those are added through the UI.
      *
      * The accounts use updateOrCreate, so re-seeding an existing database
      * resets them instead of failing on the unique email constraint.
+     * Password for every account is "password".
      */
     public function run(): void
     {
@@ -26,40 +29,21 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Aling Nena Farmer', 'username' => 'farmer', 'email' => 'farmer@example.com', 'role' => 'farmer'],
         ];
 
-        $users = [];
-
         foreach ($accounts as $account) {
-            $users[$account['role']] = User::updateOrCreate(
+            User::updateOrCreate(
                 ['email' => $account['email']],
                 [...$account, 'password' => bcrypt('password')],
             );
         }
 
         $this->call([
-            // Location reference data first — beneficiaries point at it via
-            // barangay_id/purok_id and the registration cascade serves it.
+            // Official Bayawan City barangay coverage — the app's address
+            // validation, geocoding fallback and `GET /api/v1/barangays` all
+            // read this reference table.
             BarangaySeeder::class,
-            PurokSeeder::class,
-
-            ProjectSeeder::class,
-            BeneficiarySeeder::class,
-            DispersalChainSeeder::class,
-            BeneficiaryGeoBackfillSeeder::class,
-            // Needs beneficiaries to exist first, so it runs last.
-            HealthRecordSeeder::class,
 
             // Admin-editable health concern hint rules (starter rows).
             SymptomRuleSeeder::class,
         ]);
-
-        $farmer = $users['farmer'];
-
-        // Only populate the demo projects once, so repeated seeding does not
-        // keep piling up rows.
-        if ($farmer->projects()->doesntExist()) {
-            $farmer->projects()->createMany(
-                Project::factory()->count(3)->make()->each(fn ($p) => $p->setAttribute('user_id', $farmer->id))->toArray(),
-            );
-        }
     }
 }

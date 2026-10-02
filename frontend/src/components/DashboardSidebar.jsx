@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { dashboardsFor, getRole, roleLabel } from "../config/roles";
+import { useUnreadNotificationsCount } from "../api/queries";
 import { Brand } from "./Brand";
 import { Icon } from "./Icons";
 import { LogoutConfirmDialog } from "./LogoutConfirmDialog";
@@ -12,6 +13,11 @@ import { LogoutConfirmDialog } from "./LogoutConfirmDialog";
  * component and differ only in their role config. Items without a `to` value
  * are modules that have not been built yet — they render as inert rows with a
  * "Soon" tag rather than as links that lead nowhere.
+ *
+ * An item may declare a `badge` source (e.g. `badge: "notifications"`); when
+ * that source has a live count above zero the row shows a small red count
+ * pill, the same signal the header bell carries. The badge is hidden while the
+ * item is the current page — the page itself shows the state.
  *
  * `userRole` is the signed-in identity (shown under the logo); `activeRole` is
  * the dashboard currently being viewed. They are the same for ordinary users,
@@ -30,6 +36,11 @@ export function DashboardSidebar({
 
   const config = getRole(activeRole);
   const switchable = dashboardsFor(userRole);
+
+  // Shared with the header bell via the same query key, so the sidebar adds no
+  // extra polling — it just mirrors the count as a badge.
+  const { data: unreadNotifications = 0 } = useUnreadNotificationsCount();
+  const badgeCounts = { notifications: unreadNotifications };
 
   return (
     <div className="flex h-full flex-col bg-white">
@@ -91,8 +102,10 @@ export function DashboardSidebar({
         )}
 
         <nav aria-label="Dashboard" className="space-y-1">
-          {config?.nav.map((item) =>
-            item.to ? (
+          {config?.nav.map((item) => {
+            const badgeCount = item.badge ? badgeCounts[item.badge] ?? 0 : 0;
+
+            return item.to ? (
               <NavLink
                 key={item.label}
                 to={item.to}
@@ -119,7 +132,18 @@ export function DashboardSidebar({
                         isActive ? "text-brand-700" : "text-slate-400"
                       }`}
                     />
-                    {item.label}
+                    <span className="truncate">{item.label}</span>
+                    {badgeCount > 0 && !isActive && (
+                      <>
+                        <span
+                          aria-hidden="true"
+                          className="ml-auto grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white"
+                        >
+                          {badgeCount > 9 ? "9+" : badgeCount}
+                        </span>
+                        <span className="sr-only">{badgeCount} unread</span>
+                      </>
+                    )}
                   </>
                 )}
               </NavLink>
@@ -135,8 +159,8 @@ export function DashboardSidebar({
                   Soon
                 </span>
               </span>
-            ),
-          )}
+            );
+          })}
         </nav>
       </div>
 

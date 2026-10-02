@@ -12,6 +12,7 @@ import {
 import { searchApi } from "../api/searchApi";
 import { getErrorMessage } from "../api/client";
 import { Icon } from "./Icons";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 import { SkeletonList } from "./Skeleton";
 import { LogoutConfirmDialog } from "./LogoutConfirmDialog";
 
@@ -158,6 +159,9 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
           </>
         )}
       </div>
+
+      {/* Language — English / Filipino / Cebuano, persisted in localStorage. */}
+      <LanguageSwitcher className="hidden md:inline-flex" />
 
       {/* Notifications — the live alert feed (same endpoint the farmer
           notifications page reads), with a badge only when something needs

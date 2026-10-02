@@ -77,7 +77,8 @@ export const beneficiariesApi = {
 
   /**
    * The pass-on chain for one beneficiary: where the animal came from
-   * (chain, oldest first) and where its offspring went (descendant_events).
+   * (chain, oldest first) and where its offspring went, both as a flat list
+   * (descendant_events) and as a multi-generation tree (descendant_tree).
    */
   lineage: async (id) => unwrap(await api.get(`/api/v1/beneficiaries/${id}/lineage`)),
 };

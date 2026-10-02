@@ -68,7 +68,10 @@ class DispersalEventController extends Controller
             'data' => [
                 'beneficiary' => new BeneficiaryResource($lineage['current']),
                 'chain' => $lineage['chain'],
+                // Direct offspring (one level) kept for existing callers.
                 'descendant_events' => $lineage['descendant_events'],
+                // The full multi-generation offspring tree for the genealogy view.
+                'descendant_tree' => $lineage['descendant_tree'],
             ],
         ]);
     }

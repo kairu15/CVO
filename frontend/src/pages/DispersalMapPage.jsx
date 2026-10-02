@@ -8,6 +8,7 @@ import { EmptyState } from "../components/EmptyState";
 import { InlineAlert } from "../components/InlineAlert";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { Modal } from "../components/Modal";
+import { SignaturePad } from "../components/SignaturePad";
 import { TextField } from "../components/TextField";
 import { useAuth } from "../context/AuthContext";
 import { useBarangays } from "../hooks/useBarangays";
@@ -41,6 +42,10 @@ export default function DispersalMapPage({ roleKey }) {
   });
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  // E-signature of the dispersal agreement (item 7): the recipient signs the
+  // pad; the PNG data URL travels with the record. Required in the UI — a
+  // dispersal without a captured agreement is not a complete record.
+  const [signature, setSignature] = useState(null);
 
   const isTechnician = user?.role === "technician" || roleKey === "technician";
 
@@ -74,6 +79,11 @@ export default function DispersalMapPage({ roleKey }) {
     };
   }
 
+  function handleSignature(dataUrl) {
+    setSignature(dataUrl);
+    setFormErrors((prev) => ({ ...prev, signature: undefined }));
+  }
+
   async function submitReDispersal(event) {
     event.preventDefault();
     setFormErrors({});
@@ -84,6 +94,9 @@ export default function DispersalMapPage({ roleKey }) {
     if (!form.new_name_of_farmer.trim()) next.new_name_of_farmer = "Enter the recipient's name.";
     if (!form.new_address.trim()) next.new_address = "Select the recipient's barangay.";
     if (!form.new_animal_type) next.new_animal_type = "Select the animal type.";
+    if (!signature) {
+      next.signature = "Capture the recipient's signature to complete the agreement.";
+    }
     if (Object.keys(next).length > 0) {
       setFormErrors(next);
       return;
@@ -102,9 +115,12 @@ export default function DispersalMapPage({ roleKey }) {
         new_address: form.new_address.trim(),
         new_animal_type: form.new_animal_type,
         new_sex: form.new_sex,
+        signature,
+        signature_captured_at: new Date().toISOString(),
       });
       setRecordOpen(false);
       setSource("");
+      setSignature(null);
       setForm({
         new_name_of_farmer: "",
         new_address: "",
@@ -302,9 +318,19 @@ export default function DispersalMapPage({ roleKey }) {
             error={formErrors.remarks}
           />
 
+          <SignaturePad
+            id="redispersal-signature"
+            label="Recipient's signature (agreement)"
+            hint="Signature of the recipient household accepting the animal."
+            onChange={handleSignature}
+            error={formErrors.signature}
+          />
+
           <p className="text-xs text-slate-500">
             The recipient household is registered with the animal type above;
-            its map pin is placed automatically from the chosen barangay.
+            its map pin is placed automatically from the chosen barangay. The
+            signature is stored with the agreement and cannot be edited
+            afterwards — record a new re-dispersal to correct a mistake.
           </p>
 
           <div className="flex justify-end gap-2 pt-2">

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -29,6 +30,7 @@ const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
  *   shares the page with this one on desktop, so ids must not collide.
  */
 export function RegisterForm({ idPrefix = "register" }) {
+  const { t } = useTranslation();
   const { register } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
@@ -86,20 +88,20 @@ export function RegisterForm({ idPrefix = "register" }) {
   function validate() {
     const next = {};
 
-    if (!form.name.trim()) next.name = "Enter your full name.";
+    if (!form.name.trim()) next.name = t("register.errors.name");
 
-    if (!form.email.trim()) next.email = "Enter your email address.";
+    if (!form.email.trim()) next.email = t("register.errors.emailRequired");
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
-      next.email = "Enter a valid email address.";
+      next.email = t("register.errors.emailInvalid");
 
     const username = form.username.trim();
-    if (!username) next.username = "Choose a username.";
+    if (!username) next.username = t("register.errors.usernameRequired");
     else if (username.length < 3 || username.length > 30)
-      next.username = "Use between 3 and 30 characters.";
+      next.username = t("register.errors.usernameLength");
     else if (!USERNAME_PATTERN.test(username))
-      next.username = "Use lowercase letters, numbers, dashes or underscores only.";
+      next.username = t("register.errors.usernameFormat");
 
-    if (!form.password) next.password = "Choose a password.";
+    if (!form.password) next.password = t("register.errors.passwordRequired");
     else if (
       form.password.length < 8 ||
       !/[a-z]/.test(form.password) ||
@@ -107,13 +109,12 @@ export function RegisterForm({ idPrefix = "register" }) {
       !/[0-9]/.test(form.password) ||
       !/[^A-Za-z0-9]/.test(form.password)
     )
-      next.password =
-        "Use at least 8 characters with upper and lower case, a number and a symbol.";
+      next.password = t("register.errors.passwordWeak");
 
     if (!form.password_confirmation)
-      next.password_confirmation = "Re-enter your password.";
+      next.password_confirmation = t("register.errors.passwordConfirmationRequired");
     else if (form.password_confirmation !== form.password)
-      next.password_confirmation = "Passwords do not match.";
+      next.password_confirmation = t("register.errors.passwordMismatch");
 
     return next;
   }
@@ -143,7 +144,7 @@ export function RegisterForm({ idPrefix = "register" }) {
       // 2xx received — success is real, never optimistic. The toast is
       // global, so it stays visible across the redirect to sign-in.
       setSucceeded(true);
-      toast.success("Account created successfully. Redirecting you to sign in…");
+      toast.success(t("register.success"));
       redirectTimer.current = window.setTimeout(() => {
         // Hand the identifier to the sign-in form via route state so the
         // farmer doesn't retype it. /login's GuestRoute renders LoginForm,
@@ -173,19 +174,19 @@ export function RegisterForm({ idPrefix = "register" }) {
   return (
     <form onSubmit={handleSubmit} noValidate className="w-full">
       <h2 className="font-display text-2xl font-bold text-slate-900">
-        Create your account
+        {t("register.heading")}
       </h2>
       <p className="mt-1.5 text-sm text-slate-500">
-        For farmers and beneficiaries of the {site.office} dispersal program.
+        {t("register.subtitle", { office: site.office })}
       </p>
 
       <div className="mt-5 space-y-3">
         <TextField
           id={`${idPrefix}-name`}
-          label="Full name"
+          label={t("register.fullNameLabel")}
           type="text"
           autoComplete="name"
-          placeholder="Enter your full name"
+          placeholder={t("register.fullNamePlaceholder")}
           value={form.name}
           onChange={update("name")}
           error={errors.name}
@@ -193,10 +194,10 @@ export function RegisterForm({ idPrefix = "register" }) {
 
         <TextField
           id={`${idPrefix}-email`}
-          label="Email address"
+          label={t("register.emailLabel")}
           type="email"
           autoComplete="email"
-          placeholder="Enter your email address"
+          placeholder={t("register.emailPlaceholder")}
           value={form.email}
           onChange={update("email")}
           error={errors.email}
@@ -204,26 +205,26 @@ export function RegisterForm({ idPrefix = "register" }) {
 
         <TextField
           id={`${idPrefix}-username`}
-          label="Username"
+          label={t("register.usernameLabel")}
           type="text"
           autoComplete="username"
-          placeholder="Enter your username"
+          placeholder={t("register.usernamePlaceholder")}
           value={form.username}
           onChange={update("username")}
           error={errors.username}
-          hint="Lowercase letters, numbers, dashes or underscores."
+          hint={t("register.usernameHint")}
         />
 
         <TextField
           id={`${idPrefix}-password`}
-          label="Password"
+          label={t("register.passwordLabel")}
           type={showPassword ? "text" : "password"}
           autoComplete="new-password"
-          placeholder="Enter your password"
+          placeholder={t("register.passwordPlaceholder")}
           value={form.password}
           onChange={update("password")}
           error={errors.password}
-          hint="At least 8 characters with upper and lower case, a number and a symbol."
+          hint={t("register.passwordHint")}
           trailing={
             <PasswordToggle
               shown={showPassword}
@@ -234,10 +235,10 @@ export function RegisterForm({ idPrefix = "register" }) {
 
         <TextField
           id={`${idPrefix}-password_confirmation`}
-          label="Confirm password"
+          label={t("register.confirmPasswordLabel")}
           type={showPassword ? "text" : "password"}
           autoComplete="new-password"
-          placeholder="Re-enter your password"
+          placeholder={t("register.confirmPasswordPlaceholder")}
           value={form.password_confirmation}
           onChange={update("password_confirmation")}
           error={errors.password_confirmation}
@@ -248,7 +249,7 @@ export function RegisterForm({ idPrefix = "register" }) {
             htmlFor={`${idPrefix}-role`}
             className="block text-sm font-medium text-slate-700"
           >
-            Role
+            {t("register.roleLabel")}
           </label>
           <select
             id={`${idPrefix}-role`}
@@ -257,30 +258,28 @@ export function RegisterForm({ idPrefix = "register" }) {
             disabled
             className="field mt-1.5"
           >
-            <option value="farmer">Farmer / Beneficiary</option>
+            <option value="farmer">{t("register.roleFarmer")}</option>
           </select>
           <p className="mt-1.5 text-xs text-slate-500">
-            Staff accounts (Administrator, Veterinarian, Field Technician) are
-            created by the CVO administrator.
+            {t("register.roleNote")}
           </p>
         </div>
       </div>
 
       <fieldset className="mt-5 rounded-xl border border-brand-200 bg-brand-50/50 p-4">
         <legend className="px-1.5 text-xs font-semibold tracking-wide text-brand-800 uppercase">
-          Dispersal details (optional)
+          {t("register.dispersalLegend")}
         </legend>
         <p className="mb-3 text-xs text-slate-500">
-          Register the animal you received. These details pre-fill every
-          monitoring form and are captured only here.
+          {t("register.dispersalNote")}
         </p>
 
         <div className="space-y-3">
           <TextField
             id={`${idPrefix}-name_of_farmer`}
-            label="Name of farmer"
+            label={t("register.farmerNameLabel")}
             type="text"
-            placeholder="Leave empty to use your full name"
+            placeholder={t("register.farmerNamePlaceholder")}
             value={form.name_of_farmer}
             onChange={update("name_of_farmer")}
             error={errors.name_of_farmer}
@@ -291,7 +290,7 @@ export function RegisterForm({ idPrefix = "register" }) {
               htmlFor={`${idPrefix}-address`}
               className="block text-sm font-medium text-slate-700"
             >
-              Barangay
+              {t("register.barangayLabel")}
             </label>
             {barangaysStatus === "loading" ? (
               // Skeleton while the coverage list is being fetched — mirrors
@@ -305,7 +304,7 @@ export function RegisterForm({ idPrefix = "register" }) {
                 value={form.address}
                 onChange={update("address")}
               >
-                <option value="">Select barangay…</option>
+                <option value="">{t("register.barangayPlaceholder")}</option>
                 {barangays.map((barangay) => (
                   <option key={barangay.id ?? barangay.name} value={barangay.name}>
                     {barangay.name}
@@ -319,7 +318,7 @@ export function RegisterForm({ idPrefix = "register" }) {
               </p>
             ) : (
               <p className="mt-1.5 text-xs text-slate-500">
-                Select the barangay where the farm is located.
+                {t("register.barangayHint")}
               </p>
             )}
           </div>
@@ -330,7 +329,7 @@ export function RegisterForm({ idPrefix = "register" }) {
                 htmlFor={`${idPrefix}-animal_type`}
                 className="block text-sm font-medium text-slate-700"
               >
-                Type of animal dispersed
+                {t("register.animalTypeLabel")}
               </label>
               <select
                 id={`${idPrefix}-animal_type`}
@@ -338,7 +337,7 @@ export function RegisterForm({ idPrefix = "register" }) {
                 value={form.animal_type}
                 onChange={update("animal_type")}
               >
-                <option value="">Select animal…</option>
+                <option value="">{t("register.animalTypePlaceholder")}</option>
                 <option>Carabao</option>
                 <option>Cattle</option>
                 <option>Goat</option>
@@ -355,7 +354,7 @@ export function RegisterForm({ idPrefix = "register" }) {
                 htmlFor={`${idPrefix}-sex`}
                 className="block text-sm font-medium text-slate-700"
               >
-                Sex of animal
+                {t("register.sexLabel")}
               </label>
               <select
                 id={`${idPrefix}-sex`}
@@ -363,8 +362,8 @@ export function RegisterForm({ idPrefix = "register" }) {
                 value={form.sex}
                 onChange={update("sex")}
               >
-                <option value="F">Female (F)</option>
-                <option value="M">Male (M)</option>
+                <option value="F">{t("register.sexFemale")}</option>
+                <option value="M">{t("register.sexMale")}</option>
               </select>
             </div>
           </div>
@@ -379,10 +378,10 @@ export function RegisterForm({ idPrefix = "register" }) {
         {submitting ? (
           <>
             <ButtonSpinner />
-            Creating your account…
+            {t("register.submitting")}
           </>
         ) : (
-          "Create account"
+          t("register.submit")
         )}
       </button>
     </form>

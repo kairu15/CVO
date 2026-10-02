@@ -8,9 +8,14 @@ use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class DispersalEventService
 {
+    /** Must match StoreDispersalEventRequest::SIGNATURE_PREFIX. */
+    private const SIGNATURE_PREFIX = 'data:image/png;base64,';
+
     public function __construct(
         private readonly BeneficiaryService $beneficiaries,
         private readonly AuditLogger $audit,
@@ -88,10 +93,48 @@ class DispersalEventService
                 'remarks' => $data['remarks'] ?? null,
             ]);
 
+            // The signature is captured at the same moment as the dispersal
+            // and is part of the same atomic action: either the agreement and
+            // its event both exist, or neither does. "Who" is always the
+            // authenticated actor — never a client-supplied id.
+            if (! empty($data['signature'])) {
+                $event->update([
+                    'signature_path' => $this->storeSignature($data['signature']),
+                    'signature_captured_by' => $actor->id,
+                    'signature_captured_at' => $data['signature_captured_at'] ?? now(),
+                ]);
+            }
+
             $this->audit->log($actor, 'dispersal_created', $event);
 
             return $event;
         });
+    }
+
+    /**
+     * Decode a PNG data-URL signature and store it on the private `secure`
+     * disk under a server-generated name — the client's name is never used,
+     * mirroring ImageSanitizer for uploaded photos.
+     *
+     * Validation (StoreDispersalEventRequest) has already proven the payload
+     * is a base64 PNG, so a malformed value here can only come from a caller
+     * bypassing the request — guard anyway rather than write a broken file.
+     */
+    private function storeSignature(string $dataUrl): string
+    {
+        $binary = base64_decode(substr($dataUrl, strlen(self::SIGNATURE_PREFIX)), true);
+
+        if ($binary === false) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'signature' => 'The signature image could not be read. Please sign again.',
+            ]);
+        }
+
+        $path = 'dispersal-signatures/'.strtolower(Str::random(40)).'.png';
+
+        Storage::disk('secure')->put($path, $binary);
+
+        return $path;
     }
 
     /**
@@ -111,7 +154,7 @@ class DispersalEventService
      * empty chain so the client can show its "no dispersal recorded"
      * empty state instead of an error.
      *
-     * @return array{chain: list<array<string, mixed>>, events: list<DispersalEvent>, descendant_events: list<array<string, mixed>>, current: Beneficiary}|null
+     * @return array{chain: list<array<string, mixed>>, events: list<DispersalEvent>, descendant_events: list<array<string, mixed>>, descendant_tree: list<array<string, mixed>>, current: Beneficiary}|null
      */
     public function lineageFor(User $user, int $beneficiaryId): ?array
     {
@@ -125,6 +168,11 @@ class DispersalEventService
 
         // The event that delivered an animal to this beneficiary: an initial
         // dispersal, or a re-dispersal that received the offspring.
+        // The offspring subtree is independent of how this household received
+        // its animal, so it is built first: a household registered by import
+        // can still have passed offspring on without a recorded delivery.
+        $descendantTree = $this->descendantTreeFor($beneficiaryId);
+
         $entry = $this->deliveryEventFor($beneficiaryId);
 
         if (! $entry) {
@@ -134,6 +182,7 @@ class DispersalEventService
                 'chain' => [],
                 'events' => [],
                 'descendant_events' => [],
+                'descendant_tree' => $descendantTree,
                 'current' => $current,
             ];
         }
@@ -207,8 +256,82 @@ class DispersalEventService
             'chain' => $chain,
             'events' => $events->all(),
             'descendant_events' => $descendants,
+            'descendant_tree' => $descendantTree,
             'current' => $current,
         ];
+    }
+
+    /**
+     * The multi-generation offspring tree rooted at one beneficiary.
+     *
+     * Each node is an offspring household (a re-dispersal whose parent is the
+     * node above it), so the shape mirrors the pass-on programme: the original
+     * household at the root, its offspring below it, and their offspring below
+     * those. This is what walks past the one-level `descendant_events` list.
+     *
+     * Like `chain` and `descendant_events`, this is chain-wide: authorization
+     * is decided by whether the caller can view the ANCHOR beneficiary (see
+     * lineageFor), after which the animal's whole recorded line — including
+     * households outside the caller's own scope — is shown. That is the point
+     * of a lineage view (a farmer seeing where their animal's offspring went),
+     * so the tree deliberately does not re-scope per node. A visited set and a
+     * depth cap protect against corrupted data (a cycle would otherwise
+     * recurse forever).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function descendantTreeFor(int $rootId): array
+    {
+        return $this->descendantsOf($rootId, [$rootId => true], 1);
+    }
+
+    /**
+     * One generation's children, recursing into each child's own offspring.
+     *
+     * @param  array<int, bool>  $visited  beneficiary ids already placed (cycle guard)
+     * @return list<array<string, mixed>>
+     */
+    private function descendantsOf(int $parentId, array $visited, int $generation): array
+    {
+        if ($generation > 25) {
+            return []; // depth cap: corrupted data must not recurse forever
+        }
+
+        $events = DispersalEvent::query()
+            ->where('dispersal_type', DispersalEvent::TYPE_RE_DISPERSAL)
+            ->where('parent_beneficiary_id', $parentId)
+            ->with('beneficiary')
+            ->orderBy('date_dispersed')
+            ->orderBy('id')
+            ->get();
+
+        $nodes = [];
+
+        foreach ($events as $event) {
+            $childId = $event->beneficiary_id;
+
+            if (isset($visited[$childId])) {
+                continue; // already placed on this branch (corrupted data)
+            }
+
+            $visited[$childId] = true;
+
+            $nodes[] = [
+                'event_id' => $event->id,
+                'beneficiary_id' => $childId,
+                'parent_beneficiary_id' => $event->parent_beneficiary_id,
+                'name_of_farmer' => $event->beneficiary->name_of_farmer,
+                'address' => $event->beneficiary->address,
+                'animal_type' => $event->beneficiary->animal_type,
+                'sex' => $event->beneficiary->sex,
+                'date_dispersed' => $event->date_dispersed?->toDateString(),
+                'remarks' => $event->remarks,
+                'generation' => $generation,
+                'children' => $this->descendantsOf($childId, $visited, $generation + 1),
+            ];
+        }
+
+        return $nodes;
     }
 
     /**

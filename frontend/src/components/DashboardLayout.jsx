@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { getRole, roleFromPath, roleLabel } from "../config/roles";
 import { DashboardHeader } from "./DashboardHeader";
 import { DashboardSidebar } from "./DashboardSidebar";
+import { OfflineBanner } from "./OfflineBanner";
 import { Icon } from "./Icons";
 
 /**
@@ -70,6 +71,7 @@ export function DashboardLayout() {
           onOpenSidebar={() => setDrawerPath(location.pathname)}
         />
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          <OfflineBanner />
           {viewingOtherRole && (
             <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-xs font-medium text-brand-900">
               <span className="inline-flex items-center gap-1.5 rounded-pill bg-white px-2.5 py-1 font-semibold text-brand-800">

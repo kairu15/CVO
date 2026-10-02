@@ -21,7 +21,7 @@ export const dispersalApi = {
     return unwrap(await api.post("/api/v1/dispersal-events", payload));
   },
 
-  /** The pass-on chain for one beneficiary (chain + descendant_events). */
+  /** The pass-on chain for one beneficiary (chain + descendant_tree). */
   lineage: async (beneficiaryId) =>
     unwrap(await api.get(`/api/v1/beneficiaries/${beneficiaryId}/lineage`)),
 };

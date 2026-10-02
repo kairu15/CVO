@@ -16,6 +16,7 @@ use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\PublicMapController;
+use App\Http\Controllers\PublicTransparencyController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SettingsController;
@@ -83,6 +84,15 @@ Route::prefix('v1')->middleware('throttle:6,1')->group(function (): void {
     Route::get('/public/map-summary', [PublicMapController::class, 'summary'])
         ->middleware('throttle:30,1')
         ->name('api.public.map-summary');
+
+    // Public transparency dashboard — aggregate program statistics only
+    // (city totals, per-barangay counts, a monthly reach trend, vaccination
+    // compliance). No names, no household/animal ids, no farm coordinates.
+    // Session-free like the map summary; cached server-side so anonymous
+    // traffic cannot become a query amplifier.
+    Route::get('/public/transparency', [PublicTransparencyController::class, 'index'])
+        ->middleware('throttle:30,1')
+        ->name('api.public.transparency');
 });
 
 // Authenticated routes

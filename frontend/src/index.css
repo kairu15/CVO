@@ -212,3 +212,34 @@
     transform: scale(2);
   }
 }
+
+/*
+ * Ear-tag printing.
+ *
+ * Printing a dashboard page would otherwise output the sidebar, header and
+ * every card. Hiding everything and re-showing only `.print-area` leaves just
+ * the tag card on the page (element visibility, not display, so layout still
+ * resolves). `.no-print` hides controls that make no sense on paper.
+ */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+
+  .print-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    margin: 0;
+    box-shadow: none;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

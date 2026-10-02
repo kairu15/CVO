@@ -77,13 +77,22 @@ export function BeneficiaryDetailModal({ beneficiary, onClose, technicianName })
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
         {beneficiary.id ? (
-          <Link
-            to={`/dashboard/admin/beneficiaries/${beneficiary.id}/lineage`}
-            className="btn-secondary !px-3.5 !py-1.5 text-xs"
-          >
-            <Icon name="route" className="h-3.5 w-3.5" />
-            View dispersal lineage
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to={`/dashboard/admin/beneficiaries/${beneficiary.id}/lineage`}
+              className="btn-secondary !px-3.5 !py-1.5 text-xs"
+            >
+              <Icon name="route" className="h-3.5 w-3.5" />
+              View dispersal lineage
+            </Link>
+            <Link
+              to={`/dashboard/admin/beneficiaries/${beneficiary.id}/tag`}
+              className="btn-secondary !px-3.5 !py-1.5 text-xs"
+            >
+              <Icon name="printer" className="h-3.5 w-3.5" />
+              Print ear tag
+            </Link>
+          </div>
         ) : (
           <span />
         )}

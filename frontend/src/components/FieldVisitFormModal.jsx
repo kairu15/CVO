@@ -3,6 +3,7 @@ import { fieldVisitsApi } from "../api/fieldVisitsApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { useToast } from "../context/ToastContext";
 import { captureGeotag } from "../lib/geotagPhoto";
+import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
@@ -18,6 +19,10 @@ const EMPTY_FORM = {
   purpose: "",
   notes: "",
 };
+
+/** Coarse connectivity check — see useOnlineStatus. */
+const isOnline = () =>
+  typeof navigator === "undefined" ? true : navigator.onLine !== false;
 
 /**
  * Technician's "Log a Visit" form.
@@ -179,6 +184,26 @@ export function FieldVisitFormModal({
     );
   }
 
+  /**
+   * Keep the submission on the device instead of sending it. Used when the
+   * device is offline, or when the request never reached the server. The
+   * composited photo blob rides along in IndexedDB so the evidence is not lost.
+   */
+  async function queueVisit(createPayload) {
+    await enqueue({
+      kind: "field-visit",
+      label: `Field visit — ${beneficiary?.name_of_farmer ?? "beneficiary"}`,
+      payload: createPayload,
+      photo: capture
+        ? { blob: capture.photo.blob, meta: { ...capture.meta, gps_timestamp: undefined } }
+        : null,
+    });
+
+    toast.success("Saved on this device — it will sync when you're back online.");
+    onSaved?.();
+    onClose();
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
 
@@ -236,28 +261,65 @@ export function FieldVisitFormModal({
         onSaved?.();
         onClose();
       } else {
-        const target = createdVisit
-          ? null // upload retry — the visit already exists
-          : await fieldVisitsApi.create({
-              ...payload,
-              beneficiary_id: Number(beneficiaryId),
-              has_photo: true,
-            });
+        const createPayload = {
+          ...payload,
+          beneficiary_id: Number(beneficiaryId),
+          has_photo: true,
+        };
+
+        // No connection: save the whole submission (data + photo) on the
+        // device and let the queue replay it on reconnect.
+        if (!isOnline()) {
+          await queueVisit(createPayload);
+          return;
+        }
+
+        let target = null;
+        try {
+          target = createdVisit
+            ? null // upload retry — the visit already exists
+            : await fieldVisitsApi.create(createPayload);
+        } catch (createError) {
+          // The request never reached the server (offline, API down): queue it
+          // rather than surfacing a dead-end error.
+          if (isNetworkError(createError)) {
+            await queueVisit(createPayload);
+            return;
+          }
+          throw createError;
+        }
 
         if (target) setCreatedVisit(target);
+
+        const visitId = (target ?? createdVisit).id;
 
         try {
           // The structured metadata uploads with the composited image — the
           // backend stores it as real columns, queryable without OCR.
-          await fieldVisitsApi.uploadPhoto(
-            (target ?? createdVisit).id,
-            capture.photo.blob,
-            {
-              ...capture.meta,
-              gps_timestamp: undefined, // derived server-side from the columns
-            },
-          );
+          await fieldVisitsApi.uploadPhoto(visitId, capture.photo.blob, {
+            ...capture.meta,
+            gps_timestamp: undefined, // derived server-side from the columns
+          });
         } catch (uploadError) {
+          // The visit already exists — queue only the photo, so the retry
+          // reuses this visit instead of logging a duplicate trip.
+          if (isNetworkError(uploadError)) {
+            await enqueue({
+              kind: "field-visit",
+              label: `Photo — ${beneficiary?.name_of_farmer ?? "field visit"}`,
+              payload: null,
+              serverId: visitId,
+              photo: {
+                blob: capture.photo.blob,
+                meta: { ...capture.meta, gps_timestamp: undefined },
+              },
+            });
+            toast.success("Visit logged; the photo will upload when you're back online.");
+            onSaved?.();
+            onClose();
+            return;
+          }
+
           toast.error(
             'The visit was logged, but the photo upload failed — press "Log field visit" again to retry.',
           );

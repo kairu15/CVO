@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 import { Icon } from "../components/Icons";
 import { site } from "../config/site";
@@ -28,29 +29,30 @@ function initialsOf(name) {
 
 export default function SupportPage() {
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   const details = [
     {
       icon: "map-pin",
-      label: "Office",
+      label: t("support.office"),
       value: site.address,
       href: null,
     },
     {
       icon: "mail",
-      label: "Email",
+      label: t("support.email"),
       value: site.email,
       href: `mailto:${site.email}`,
     },
     {
       icon: "phone",
-      label: "Telephone",
+      label: t("support.telephone"),
       value: site.phone,
       href: `tel:${site.phone.replace(/[^\d+]/g, "")}`,
     },
     {
       icon: "clock",
-      label: "Office hours",
+      label: t("support.officeHours"),
       value: site.hours,
       href: null,
     },
@@ -59,20 +61,19 @@ export default function SupportPage() {
   return (
     <div className="space-y-6">
       <section className="card p-6">
-        <p className="eyebrow">Support</p>
+        <p className="eyebrow">{t("support.eyebrow")}</p>
         <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl">
-          Support / Contact CVO
+          {t("support.title")}
         </h2>
         <p className="mt-2 max-w-2xl text-sm text-slate-600">
-          Questions about your animals, your dispersal records, or your account
-          — reach the {site.office} directly.
+          {t("support.intro", { office: site.office })}
         </p>
       </section>
 
       <div className="grid gap-5 lg:grid-cols-3">
         <section className="card p-6 lg:col-span-2">
           <h3 className="font-display text-sm font-semibold text-slate-900">
-            Contact details
+            {t("support.contactDetails")}
           </h3>
 
           <ul className="mt-4 divide-y divide-slate-100">
@@ -103,7 +104,7 @@ export default function SupportPage() {
 
         <section className="card p-6">
           <h3 className="font-display text-sm font-semibold text-slate-900">
-            Your account
+            {t("support.yourAccount")}
           </h3>
 
           <div className="mt-4 flex items-center gap-3">
@@ -124,14 +125,14 @@ export default function SupportPage() {
           {/* The same policy the sign-in form states, kept in one place so
               the two screens cannot contradict each other. */}
           <p className="mt-4 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-3 text-xs text-brand-900">
-            {site.passwordResetPolicy}
+            {t("common.passwordResetPolicy", { email: site.email, phone: site.phone })}
           </p>
         </section>
       </div>
 
       {site.social?.length > 0 && (
         <section className="card p-6">
-          <h3 className="font-display text-sm font-semibold text-slate-900">Online</h3>
+          <h3 className="font-display text-sm font-semibold text-slate-900">{t("support.online")}</h3>
           <ul className="mt-4 flex flex-wrap gap-3">
             {site.social.map((item) => (
               <li key={item.label}>

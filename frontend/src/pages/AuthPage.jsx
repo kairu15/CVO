@@ -1,6 +1,8 @@
+import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icons";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { LoginForm } from "../components/LoginForm";
 import { RegisterForm } from "../components/RegisterForm";
 import { site } from "../config/site";
@@ -22,6 +24,7 @@ import { useIsDesktop } from "../hooks/useMediaQuery";
 const SLIDE = "transition-transform duration-[600ms] ease-[var(--ease-panel)]";
 
 export default function AuthPage({ mode = "login" }) {
+  const { t } = useTranslation();
   const isDesktop = useIsDesktop();
   const isRegister = mode === "register";
 
@@ -44,13 +47,16 @@ export default function AuthPage({ mode = "login" }) {
             <Brand subtitle={`${site.city}, ${site.province}`} />
           </Link>
 
-          <Link
-            to="/"
-            className="inline-flex shrink-0 items-center gap-2 rounded-pill px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-white hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-          >
-            <Icon name="arrow-right" className="h-4 w-4 rotate-180" />
-            <span className="hidden sm:inline">Back to home</span>
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <LanguageSwitcher />
+            <Link
+              to="/"
+              className="inline-flex shrink-0 items-center gap-2 rounded-pill px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-white hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+            >
+              <Icon name="arrow-right" className="h-4 w-4 rotate-180" />
+              <span className="hidden sm:inline">{t("common.backToHome")}</span>
+            </Link>
+          </div>
         </header>
 
         <main className="flex flex-1 items-center justify-center py-8">
@@ -62,9 +68,7 @@ export default function AuthPage({ mode = "login" }) {
         </main>
 
         <p className="shrink-0 text-center text-xs text-slate-400">
-          Demonstration accounts: admin@example.com, doctor@example.com,
-          technician@example.com, farmer@example.com — password:{" "}
-          <span className="font-medium">password</span>
+          {t("authPage.demoNote")}
         </p>
       </div>
     </div>
@@ -74,6 +78,7 @@ export default function AuthPage({ mode = "login" }) {
 /* -------------------------------------------------------------------------- */
 
 function SlidingPanel({ isRegister }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const toggle = () => navigate(isRegister ? "/login" : "/register");
 
@@ -131,13 +136,13 @@ function SlidingPanel({ isRegister }) {
               <Icon name="livestock" className="h-6 w-6 text-white" />
             </div>
             <h2 className="mt-5 font-display text-3xl font-bold text-white">
-              Already registered?
+              {t("authPage.alreadyRegisteredTitle")}
             </h2>
             <p className="mt-3 max-w-xs text-sm text-white/90">
-              Sign in to follow your dispersals and re-dispersals.
+              {t("authPage.alreadyRegisteredBody")}
             </p>
             <button type="button" onClick={toggle} className="btn-on-brand mt-8">
-              Sign in
+              {t("common.signIn")}
             </button>
           </OverlayPanel>
 
@@ -146,14 +151,13 @@ function SlidingPanel({ isRegister }) {
               <Icon name="sprout" className="h-6 w-6 text-white" />
             </div>
             <h2 className="mt-5 font-display text-3xl font-bold text-white">
-              New to the program?
+              {t("authPage.newToProgramTitle")}
             </h2>
             <p className="mt-3 max-w-xs text-sm text-white/90">
-              Create a farmer account to follow the animals you receive from
-              the dispersal program.
+              {t("authPage.newToProgramBody")}
             </p>
             <button type="button" onClick={toggle} className="btn-on-brand mt-8">
-              Register
+              {t("common.register")}
             </button>
           </OverlayPanel>
         </div>
@@ -187,20 +191,21 @@ function OverlayPanel({ side, visible, children }) {
 /* -------------------------------------------------------------------------- */
 
 function StackedTabs({ isRegister }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   return (
     <div className="w-full max-w-md">
       <div
         role="tablist"
-        aria-label="Account access"
+        aria-label={t("authPage.tabsLabel")}
         className="grid grid-cols-2 gap-1 rounded-pill border border-slate-200 bg-white p-1 shadow-card"
       >
         <TabButton active={!isRegister} onClick={() => navigate("/login")}>
-          Sign in
+          {t("common.signIn")}
         </TabButton>
         <TabButton active={isRegister} onClick={() => navigate("/register")}>
-          Register
+          {t("common.register")}
         </TabButton>
       </div>
 

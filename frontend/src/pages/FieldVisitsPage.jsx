@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { fieldVisitsApi } from "../api/fieldVisitsApi";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { useAutoRefresh } from "../api/queries";
@@ -9,9 +10,11 @@ import { ButtonSpinner } from "../components/LoadingSpinner";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
+import { QrScanner } from "../components/QrScanner";
 import { Icon } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import { getRole } from "../config/roles";
+import { lookupScannedAnimal } from "../lib/scanLookup";
 
 /**
  * Technician "Field Visits" screen.
@@ -40,6 +43,7 @@ function formatDate(value) {
 
 export default function FieldVisitsPage({ roleKey = "technician" }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const config = getRole(roleKey);
 
   const [visits, setVisits] = useState([]);
@@ -50,12 +54,17 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
   const [notice, setNotice] = useState(null);
 
   const [formOpen, setFormOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [removing, setRemoving] = useState(false);
 
   // Mirrors FieldVisitPolicy::create — only a field technician logs a trip.
   const canLog = user?.role === "technician";
+
+  // Staff who may scan an animal to open its record. The lookup is still
+  // scoped server-side, so this only decides whether to show the button.
+  const canScan = ["admin", "doctor", "technician"].includes(user?.role);
 
   // Mirrors FieldVisitPolicy::update — the technician who went, or an admin.
   const canModify = (visit) =>
@@ -114,6 +123,43 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
     }
   }
 
+  /**
+   * Resolve a scanned (or typed) tag to an animal and open its history. The
+   * lookup is policy-scoped, so an unassigned animal is refused here exactly
+   * as browsing to it would be.
+   */
+  async function handleScan(rawValue) {
+    setScanOpen(false);
+    setNotice(null);
+    setError(null);
+
+    const result = await lookupScannedAnimal(rawValue);
+
+    if (result.status === "ok") {
+      navigate(`/dashboard/${roleKey}/beneficiaries/${result.id}/lineage`);
+      return;
+    }
+
+    if (result.status === "forbidden") {
+      setError(
+        "That animal belongs to a farmer who isn't assigned to you, so its record can't be opened.",
+      );
+      return;
+    }
+
+    if (result.status === "notfound") {
+      setError("No animal matches that code.");
+      return;
+    }
+
+    if (result.status === "invalid") {
+      setError("That QR code isn't a CVO animal tag.");
+      return;
+    }
+
+    setError(result.message ?? "Could not look up that animal.");
+  }
+
   return (
     <div className="space-y-6">
       <section className="card p-6">
@@ -130,19 +176,32 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
             </p>
           </div>
 
-          {canLog && (
-            <button
-              type="button"
-              onClick={() => {
-                setEditing(null);
-                setFormOpen(true);
-              }}
-              className="btn-primary"
-            >
-              <Icon name="route" className="h-4 w-4" />
-              Log a Field Visit
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {canScan && (
+              <button
+                type="button"
+                onClick={() => setScanOpen(true)}
+                className="btn-secondary"
+              >
+                <Icon name="qr" className="h-4 w-4" />
+                Scan ear tag
+              </button>
+            )}
+
+            {canLog && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(null);
+                  setFormOpen(true);
+                }}
+                className="btn-primary"
+              >
+                <Icon name="route" className="h-4 w-4" />
+                Log a Field Visit
+              </button>
+            )}
+          </div>
         </div>
       </section>
 
@@ -346,6 +405,12 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
           </button>
         </div>
       </Modal>
+
+      <QrScanner
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onResult={handleScan}
+      />
     </div>
   );
 }

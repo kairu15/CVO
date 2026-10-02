@@ -162,6 +162,23 @@ const ICONS = {
     </>
   ),
 
+  /* Codes & printing */
+  qr: (
+    <>
+      <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.3" />
+      <rect x="14" y="3.5" width="6.5" height="6.5" rx="1.3" />
+      <rect x="3.5" y="14" width="6.5" height="6.5" rx="1.3" />
+      <path d="M14 14h3M20.5 14v3M14 20.5h3M17.5 17.5h.01M20.5 20.5h.01" />
+    </>
+  ),
+  printer: (
+    <>
+      <path d="M7 9V4h10v5" />
+      <rect x="3.5" y="9" width="17" height="8" rx="2" />
+      <path d="M7 14h10v6H7z" />
+    </>
+  ),
+
   /* Records & administration */
   chart: (
     <>

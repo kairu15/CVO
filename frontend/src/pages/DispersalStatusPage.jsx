@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { dispersalApi } from "../api/dispersalApi";
 import { useAutoRefresh } from "../api/queries";
@@ -25,11 +26,6 @@ import { getRole } from "../config/roles";
  * every role rather than guessing an "incoming/outgoing" direction.
  */
 
-const TYPE_LABELS = {
-  initial: "Initial dispersal",
-  "re-dispersal": "Re-dispersal",
-};
-
 function formatDate(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -38,7 +34,13 @@ function formatDate(value) {
 
 export default function DispersalStatusPage({ roleKey = "farmer" }) {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const config = getRole(roleKey);
+
+  const typeLabels = {
+    initial: t("dispersalStatus.typeInitial"),
+    "re-dispersal": t("dispersalStatus.typeReDispersal"),
+  };
 
   const [events, setEvents] = useState([]);
   const [myIds, setMyIds] = useState(() => new Set());
@@ -88,7 +90,7 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
         {beneficiary.name_of_farmer}
         {isFarmer && myIds.has(beneficiary.id) && (
           <span className="ml-1.5 rounded-pill bg-brand-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-brand-800 uppercase">
-            You
+            {t("dispersalStatus.you")}
           </span>
         )}
         <span className="block text-[11px] text-slate-500">{beneficiary.address}</span>
@@ -108,23 +110,21 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
       <section className="card p-6">
         <p className="eyebrow">{config?.label ?? "Farmer / Beneficiary"}</p>
         <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl">
-          Dispersal Status
+          {t("dispersalStatus.title")}
         </h2>
         <p className="mt-2 max-w-2xl text-sm text-slate-600">
-          The animals dispersed to you, and where the offspring of your animals
-          went on to. Each line is one movement, from the household that
-          released the animal to the one that received it.
+          {t("dispersalStatus.intro")}
         </p>
 
         {isFarmer && !loading && (
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <span className="inline-flex items-center gap-2 rounded-pill bg-brand-50 px-3.5 py-1.5 text-xs font-semibold text-brand-800">
               <Icon name="livestock" className="h-4 w-4" />
-              {received} received
+              {t("dispersalStatus.received", { count: received })}
             </span>
             <span className="inline-flex items-center gap-2 rounded-pill bg-slate-100 px-3.5 py-1.5 text-xs font-semibold text-slate-700">
               <Icon name="refresh" className="h-4 w-4" />
-              {passedOn} passed on to the next farmer
+              {t("dispersalStatus.passedOn", { count: passedOn })}
             </span>
           </div>
         )}
@@ -137,8 +137,8 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
           <SkeletonList rows={4} rowClassName="h-12" />
         ) : events.length === 0 ? (
           <EmptyState
-            title="No dispersal records yet"
-            description="Dispersals appear here once the City Veterinary Office records the animal released to you, or the offspring your animal passed on."
+            title={t("dispersalStatus.emptyTitle")}
+            description={t("dispersalStatus.emptyDescription")}
           />
         ) : (
           <div className="overflow-x-auto">
@@ -153,13 +153,13 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
               </colgroup>
               <thead>
                 <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
-                  <th scope="col" className="px-4 py-2.5 font-semibold">Date</th>
-                  <th scope="col" className="px-4 py-2.5 font-semibold">Type</th>
-                  <th scope="col" className="px-4 py-2.5 font-semibold">Animal</th>
-                  <th scope="col" className="px-4 py-2.5 font-semibold">From</th>
-                  <th scope="col" className="px-4 py-2.5 font-semibold">To</th>
+                  <th scope="col" className="px-4 py-2.5 font-semibold">{t("dispersalStatus.date")}</th>
+                  <th scope="col" className="px-4 py-2.5 font-semibold">{t("dispersalStatus.type")}</th>
+                  <th scope="col" className="px-4 py-2.5 font-semibold">{t("dispersalStatus.animal")}</th>
+                  <th scope="col" className="px-4 py-2.5 font-semibold">{t("dispersalStatus.from")}</th>
+                  <th scope="col" className="px-4 py-2.5 font-semibold">{t("dispersalStatus.to")}</th>
                   <th scope="col" className="px-4 py-2.5 font-semibold">
-                    <span className="sr-only">Lineage</span>
+                    <span className="sr-only">{t("dispersalStatus.lineage")}</span>
                   </th>
                 </tr>
               </thead>
@@ -180,7 +180,7 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
                               : "bg-amber-50 text-amber-800"
                           }`}
                         >
-                          {TYPE_LABELS[event.dispersal_type] ?? event.dispersal_type}
+                          {typeLabels[event.dispersal_type] ?? event.dispersal_type}
                         </span>
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
@@ -188,7 +188,7 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
                         {event.beneficiary?.sex ? ` (${event.beneficiary.sex})` : ""}
                       </td>
                       <td className="px-4 py-2.5">
-                        {household(event.parent_beneficiary, "City Veterinary Office")}
+                        {household(event.parent_beneficiary, t("dispersalStatus.cityVeterinaryOffice"))}
                       </td>
                       <td className="px-4 py-2.5">{household(event.beneficiary, "—")}</td>
                       <td className="px-4 py-2.5 text-right whitespace-nowrap">
@@ -197,7 +197,7 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
                             to={`/dashboard/${roleKey}/beneficiaries/${ownerId}/lineage`}
                             className="rounded-pill px-3 py-1 text-[11px] font-semibold text-brand-800 transition hover:bg-brand-100"
                           >
-                            Lineage
+                            {t("dispersalStatus.lineage")}
                           </Link>
                         ) : (
                           <span className="text-[11px] text-slate-400">—</span>

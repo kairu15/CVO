@@ -55,6 +55,12 @@ export default function LandingPage() {
                 {link.label}
               </a>
             ))}
+            <Link
+              to="/transparency"
+              className="rounded-pill px-3.5 py-2 text-sm font-medium text-slate-600 transition hover:bg-brand-50 hover:text-brand-800"
+            >
+              Transparency
+            </Link>
           </nav>
 
           <div className="flex shrink-0 items-center gap-2">
@@ -90,6 +96,13 @@ export default function LandingPage() {
                 {link.label}
               </a>
             ))}
+            <Link
+              to="/transparency"
+              onClick={() => setMenuOpen(false)}
+              className="block rounded-xl px-3 py-3 text-sm font-medium text-slate-700 transition hover:bg-brand-50 hover:text-brand-800"
+            >
+              Transparency
+            </Link>
             <Link
               to="/register"
               onClick={() => setMenuOpen(false)}
@@ -388,6 +401,11 @@ export default function LandingPage() {
                   </a>
                 </li>
               ))}
+              <li>
+                <Link to="/transparency" className="text-slate-600 hover:text-brand-800">
+                  Transparency dashboard
+                </Link>
+              </li>
               <li>
                 <Link to="/login" className="text-slate-600 hover:text-brand-800">
                   Sign in

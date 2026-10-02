@@ -9,6 +9,7 @@ import { EmptyState } from "../components/EmptyState";
 import { dashboardPathFor } from "../config/roles";
 import AuthPage from "../pages/AuthPage";
 import LandingPage from "../pages/LandingPage";
+import TransparencyPage from "../pages/TransparencyPage";
 import RoleDashboard from "../pages/RoleDashboard";
 import MonitoringPage from "../pages/MonitoringPage";
 import TechnicianAssignmentsPage from "../pages/TechnicianAssignmentsPage";
@@ -30,6 +31,7 @@ import SupportPage from "../pages/SupportPage";
 // The map bundle (MapLibre GL) is heavy — load it only when a map page opens.
 const DispersalMapPage = lazy(() => import("../pages/DispersalMapPage"));
 const BeneficiaryLineagePage = lazy(() => import("../pages/BeneficiaryLineagePage"));
+const AnimalTagPage = lazy(() => import("../pages/AnimalTagPage"));
 
 /**
  * `/dashboard` is a convenience entry point: it forwards each user to the
@@ -59,6 +61,7 @@ export default function AppRoutes() {
         <RouteProgress />
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/transparency" element={<TransparencyPage />} />
 
           <Route
             path="/login"
@@ -346,6 +349,12 @@ export default function AppRoutes() {
                   </Suspense>
                 </RoleRoute>
               }
+            />
+
+            {/* Printable ear-tag card for one beneficiary */}
+            <Route
+              path="/dashboard/:role/beneficiaries/:id/tag"
+              element={<AnimalTagPage />}
             />
 
             {/* Re-dispersal lineage for one beneficiary */}

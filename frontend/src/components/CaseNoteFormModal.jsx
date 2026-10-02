@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { caseNotesApi } from "../api/caseNotesApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
+import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { useToast } from "../context/ToastContext";
 import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
@@ -13,6 +14,10 @@ const EMPTY_FORM = {
   date_noted: "",
   body: "",
 };
+
+/** Coarse connectivity check — see useOnlineStatus. */
+const isOnline = () =>
+  typeof navigator === "undefined" ? true : navigator.onLine !== false;
 
 /**
  * Veterinarian's case note form.
@@ -67,6 +72,23 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
     };
   }
 
+  /**
+   * Keep the note on the device instead of sending it, so a vet writing up a
+   * case in the field never loses it to a dropped connection. The queue
+   * replays it when the API is reachable again.
+   */
+  async function queueNote(createPayload) {
+    await enqueue({
+      kind: "case-note",
+      label: `Case note — ${beneficiary?.name_of_farmer ?? "beneficiary"}`,
+      payload: createPayload,
+    });
+
+    toast.success("Saved on this device — it will sync when you're back online.");
+    onSaved?.();
+    onClose();
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
 
@@ -93,7 +115,25 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
       if (editing) {
         await caseNotesApi.update(note.id, payload);
       } else {
-        await caseNotesApi.create({ ...payload, beneficiary_id: Number(beneficiaryId) });
+        const createPayload = { ...payload, beneficiary_id: Number(beneficiaryId) };
+
+        // No connection: queue the note for later instead of failing.
+        if (!isOnline()) {
+          await queueNote(createPayload);
+          return;
+        }
+
+        try {
+          await caseNotesApi.create(createPayload);
+        } catch (createError) {
+          // The request never reached the server — queue it rather than
+          // surfacing a dead-end error.
+          if (isNetworkError(createError)) {
+            await queueNote(createPayload);
+            return;
+          }
+          throw createError;
+        }
       }
 
       toast.success(editing ? "Case note updated." : "Case note created.");

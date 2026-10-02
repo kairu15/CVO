@@ -302,4 +302,79 @@ class DispersalEventTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.latitude', 9.4);
     }
+
+    public function test_lineage_returns_a_multi_generation_descendant_tree(): void
+    {
+        $root = Beneficiary::factory()->create(['name_of_farmer' => 'Root Farmer']);
+        $mid = Beneficiary::factory()->create(['name_of_farmer' => 'Mid Farmer']);
+        $leaf = Beneficiary::factory()->create(['name_of_farmer' => 'Leaf Farmer']);
+
+        DispersalEvent::factory()->initial($root)->create();
+        DispersalEvent::factory()->reDispersal($mid, $root)->create();
+        DispersalEvent::factory()->reDispersal($leaf, $mid)->create();
+
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($admin)
+            ->getJson("/api/v1/beneficiaries/{$root->id}/lineage")
+            ->assertOk();
+
+        $tree = $response->json('data.descendant_tree');
+
+        // Generation 1: the immediate offspring of the root household.
+        $this->assertCount(1, $tree);
+        $this->assertSame('Mid Farmer', $tree[0]['name_of_farmer']);
+        $this->assertSame(1, $tree[0]['generation']);
+
+        // Generation 2 nests under generation 1 — the whole point of the tree
+        // over the flat descendant_events list.
+        $this->assertCount(1, $tree[0]['children']);
+        $this->assertSame('Leaf Farmer', $tree[0]['children'][0]['name_of_farmer']);
+        $this->assertSame(2, $tree[0]['children'][0]['generation']);
+        $this->assertSame([], $tree[0]['children'][0]['children']);
+    }
+
+    public function test_lineage_tree_branches_when_a_household_passes_on_to_several(): void
+    {
+        $root = Beneficiary::factory()->create(['name_of_farmer' => 'Root Farmer']);
+        $first = Beneficiary::factory()->create(['name_of_farmer' => 'First Offspring']);
+        $second = Beneficiary::factory()->create(['name_of_farmer' => 'Second Offspring']);
+
+        // Explicit dates: the tree is ordered chronologically, and the factory's
+        // random date_dispersed would otherwise make the order a coin flip.
+        DispersalEvent::factory()->initial($root)->create();
+        DispersalEvent::factory()->reDispersal($first, $root)
+            ->create(['date_dispersed' => now()->subDays(2)]);
+        DispersalEvent::factory()->reDispersal($second, $root)
+            ->create(['date_dispersed' => now()->subDay()]);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $tree = $this->actingAs($admin)
+            ->getJson("/api/v1/beneficiaries/{$root->id}/lineage")
+            ->assertOk()
+            ->json('data.descendant_tree');
+
+        $this->assertCount(2, $tree);
+        $this->assertSame(
+            ['First Offspring', 'Second Offspring'],
+            array_column($tree, 'name_of_farmer'),
+        );
+        $this->assertSame([], $tree[0]['children']);
+        $this->assertSame([], $tree[1]['children']);
+    }
+
+    public function test_lineage_tree_is_empty_for_a_household_with_no_offspring(): void
+    {
+        $beneficiary = Beneficiary::factory()->create();
+        DispersalEvent::factory()->initial($beneficiary)->create();
+
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($admin)
+            ->getJson("/api/v1/beneficiaries/{$beneficiary->id}/lineage")
+            ->assertOk();
+
+        $this->assertSame([], $response->json('data.descendant_tree'));
+    }
 }

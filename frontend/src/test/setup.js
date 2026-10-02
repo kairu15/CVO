@@ -1,5 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 
+// Initialise i18next so components using useTranslation resolve English
+// strings in tests, exactly as the app does on a fresh visit.
+import "../i18n";
+
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 

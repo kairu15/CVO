@@ -1,0 +1,24 @@
+{
+  "name": "CVO Geo-Tagging — Livestock & Poultry Dispersal Tracking",
+  "short_name": "CVO Geo-Tagging",
+  "description": "City Veterinary Office system for geo-tagging livestock and poultry dispersal and re-dispersal in Bayawan City, Negros Oriental.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8fafc",
+  "theme_color": "#8bc34a",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

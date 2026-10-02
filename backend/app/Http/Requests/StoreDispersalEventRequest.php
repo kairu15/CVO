@@ -11,6 +11,9 @@ use Illuminate\Validation\Rule;
 
 class StoreDispersalEventRequest extends FormRequest
 {
+    /** The exact data-URL prefix a canvas PNG signature arrives with. */
+    public const SIGNATURE_PREFIX = 'data:image/png;base64,';
+
     public function authorize(): bool
     {
         return $this->user()->can('create', DispersalEvent::class);
@@ -65,6 +68,30 @@ class StoreDispersalEventRequest extends FormRequest
             ],
             'date_dispersed' => ['nullable', 'date'],
             'remarks' => ['nullable', 'string', 'max:2000'],
+
+            // E-signature of the dispersal agreement (item 7): a PNG data URL
+            // produced by the client's signature pad. The signature is an
+            // audit record, so the rules are strict — only a real PNG may be
+            // stored, and it is capped well below the generic upload limit.
+            'signature' => [
+                'nullable',
+                'string',
+                'max:3000000',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! is_string($value) || ! str_starts_with($value, self::SIGNATURE_PREFIX)) {
+                        $fail('The signature must be a PNG captured from the signature pad.');
+
+                        return;
+                    }
+
+                    $binary = base64_decode(substr($value, strlen(self::SIGNATURE_PREFIX)), true);
+
+                    if ($binary === false || strncmp($binary, "\x89PNG\r\n\x1a\n", 8) !== 0) {
+                        $fail('The signature image could not be read. Please sign again.');
+                    }
+                },
+            ],
+            'signature_captured_at' => ['nullable', 'date'],
 
             // Inline registration of a brand new recipient household. The
             // recipient's location is a covered barangay name — the same rule

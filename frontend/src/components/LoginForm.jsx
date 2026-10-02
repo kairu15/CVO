@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -13,6 +14,7 @@ import { PasswordToggle, TextField } from "./TextField";
  *   shares the page with this one on desktop, so ids must not collide.
  */
 export function LoginForm({ idPrefix = "login" }) {
+  const { t } = useTranslation();
   const { login } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
@@ -41,10 +43,10 @@ export function LoginForm({ idPrefix = "login" }) {
   function validate() {
     const next = {};
     if (!form.identifier.trim()) {
-      next.identifier = "Enter your username or email address.";
+      next.identifier = t("login.errors.identifier");
     }
     if (!form.password) {
-      next.password = "Enter your password.";
+      next.password = t("login.errors.password");
     }
     return next;
   }
@@ -63,7 +65,7 @@ export function LoginForm({ idPrefix = "login" }) {
       await login(form.identifier.trim(), form.password);
       // Global toast survives the navigation, so the confirmation is still
       // on screen when the dashboard renders.
-      toast.success("Signed in successfully.");
+      toast.success(t("login.success"));
       // /dashboard resolves to the signed-in user's own role dashboard.
       navigate(location.state?.from?.pathname ?? "/dashboard", { replace: true });
     } catch (error) {
@@ -78,19 +80,19 @@ export function LoginForm({ idPrefix = "login" }) {
   return (
     <form onSubmit={handleSubmit} noValidate className="w-full">
       <h2 className="font-display text-2xl font-bold text-slate-900">
-        Sign in
+        {t("login.heading")}
       </h2>
       <p className="mt-1.5 text-sm text-slate-500">
-        Use the account issued by the {site.office}.
+        {t("login.subtitle", { office: site.office })}
       </p>
 
       <div className="mt-6 space-y-4">
         <TextField
           id={`${idPrefix}-identifier`}
-          label="Username or email"
+          label={t("login.identifierLabel")}
           type="text"
           autoComplete="username"
-          placeholder="Enter your username or email"
+          placeholder={t("login.identifierPlaceholder")}
           value={form.identifier}
           onChange={update("identifier")}
           error={errors.identifier}
@@ -98,10 +100,10 @@ export function LoginForm({ idPrefix = "login" }) {
 
         <TextField
           id={`${idPrefix}-password`}
-          label="Password"
+          label={t("login.passwordLabel")}
           type={showPassword ? "text" : "password"}
           autoComplete="current-password"
-          placeholder="Enter your password"
+          placeholder={t("login.passwordPlaceholder")}
           value={form.password}
           onChange={update("password")}
           error={errors.password}
@@ -120,13 +122,13 @@ export function LoginForm({ idPrefix = "login" }) {
           onClick={() => setShowResetNote((shown) => !shown)}
           className="text-xs font-semibold text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
         >
-          Forgot password?
+          {t("login.forgot")}
         </button>
       </div>
 
       {showResetNote && (
         <p className="mt-3 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-2.5 text-xs text-brand-900">
-          {site.passwordResetPolicy}
+          {t("common.passwordResetPolicy", { email: site.email, phone: site.phone })}
         </p>
       )}
 
@@ -134,10 +136,10 @@ export function LoginForm({ idPrefix = "login" }) {
         {submitting ? (
           <>
             <ButtonSpinner />
-            Signing in…
+            {t("login.submitting")}
           </>
         ) : (
-          "Sign in"
+          t("login.heading")
         )}
       </button>
     </form>

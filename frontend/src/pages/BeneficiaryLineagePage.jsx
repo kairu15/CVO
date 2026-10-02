@@ -6,6 +6,7 @@ import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { InlineAlert } from "../components/InlineAlert";
 import { SkeletonDetail, SkeletonList } from "../components/Skeleton";
+import { GenealogyTree } from "../components/GenealogyTree";
 import { Icon } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import { dashboardPathFor } from "../config/roles";
@@ -13,13 +14,16 @@ import { dashboardPathFor } from "../config/roles";
 /**
  * Beneficiary lineage — the re-dispersal (pass-on) chain.
  *
- * The chain lists each household the animal line passed through, oldest
- * first: the original program dispersal at the top, the household being
- * viewed highlighted, and any offspring hops listed below. Data comes from
- * `GET /api/v1/beneficiaries/{id}/lineage`.
+ * Two readings of one animal's line:
+ *  - "Pass-on chain" walks backwards: where the animal came from, oldest first.
+ *  - "Offspring genealogy" walks forwards as a tree: every generation its
+ *    offspring were passed on to, branching where a household passed to more
+ *    than one recipient.
+ *
+ * Data comes from `GET /api/v1/beneficiaries/{id}/lineage`.
  */
 export default function BeneficiaryLineagePage() {
-  const { id } = useParams();
+  const { id, role } = useParams();
   const { user } = useAuth();
   const [lineage, setLineage] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -84,12 +88,21 @@ export default function BeneficiaryLineagePage() {
     );
   }
 
-  const { beneficiary, chain, descendant_events: descendants } = lineage;
+  const { beneficiary, chain, descendant_tree: descendantTree = [] } = lineage;
 
   return (
     <div className="space-y-6">
       <section className="card p-6">
-        <p className="eyebrow">Dispersal Lineage</p>
+        <div className="no-print flex flex-wrap items-center justify-between gap-2">
+          <p className="eyebrow">Dispersal Lineage</p>
+          <Link
+            to={`/dashboard/${role}/beneficiaries/${beneficiary.id}/tag`}
+            className="btn-secondary !px-3.5 !py-1.5 text-xs"
+          >
+            <Icon name="printer" className="h-3.5 w-3.5" />
+            Print ear tag
+          </Link>
+        </div>
         <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl">
           {beneficiary.name_of_farmer}
         </h2>
@@ -99,7 +112,7 @@ export default function BeneficiaryLineagePage() {
         </p>
       </section>
 
-      {chain.length === 0 && descendants.length === 0 ? (
+      {chain.length === 0 && descendantTree.length === 0 ? (
         <section className="card">
           <EmptyState
             title="No dispersal recorded"
@@ -175,29 +188,18 @@ export default function BeneficiaryLineagePage() {
             ))}
           </ol>
 
-          {descendants.length > 0 && (
+          {descendantTree.length > 0 && (
             <div className="mt-6 border-t border-slate-100 pt-5">
               <h3 className="font-display text-sm font-semibold text-slate-900">
-                Offspring passed on to
+                Offspring genealogy
               </h3>
-              <ul className="mt-3 space-y-2">
-                {descendants.map((hop) => (
-                  <li
-                    key={hop.event_id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 px-4 py-3"
-                  >
-                    <span className="text-sm font-medium text-slate-900">
-                      {hop.name_of_farmer}
-                      <span className="ml-2 text-xs font-normal text-slate-500">
-                        {hop.address} · {hop.animal_type}
-                      </span>
-                    </span>
-                    <span className="text-xs text-slate-500">
-                      {hop.date_dispersed ?? "Date not recorded"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <p className="mt-1 text-xs text-slate-500">
+                Every generation this animal's line was passed on to. Each step down
+                is an offspring re-dispersed from the household above it.
+              </p>
+              <div className="mt-4">
+                <GenealogyTree nodes={descendantTree} />
+              </div>
             </div>
           )}
         </section>

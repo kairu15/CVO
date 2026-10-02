@@ -23,6 +23,15 @@
     "passwordLabel": "Password",
     "passwordPlaceholder": "Isulod ang imong password",
     "forgot": "Nakalimtan ang password?",
+    "remember": "Hinumdumi ako niini nga device",
+    "resetTitle": "I-reset ang imong password",
+    "resetIntro": "Isulod ang email sa imong account ug padalhan ka namo og reset link.",
+    "resetEmailLabel": "Email address",
+    "resetEmailRequired": "Isulod ang imong email address.",
+    "resetSubmit": "Ipadala ang reset link",
+    "resetSubmitting": "Nagpadala…",
+    "resetSent": "Kung naa sa among records ang maong email, naay gipadalang reset link. Tan-awa ang imong inbox.",
+    "resetCancel": "Kanselahon",
     "submitting": "Nag-sign in…",
     "success": "Malampuson nga naka-sign in.",
     "errors": {
@@ -75,6 +84,23 @@
       "passwordConfirmationRequired": "Isulod pag-usab ang imong password.",
       "passwordMismatch": "Wala magtugma ang mga password."
     }
+  },
+  "session": {
+    "expired": "Ni-expire na ang imong session — palihog pag-sign in pag-usab.",
+    "inactivity": "Gi-sign out ka tungod sa walay kalihokan."
+  },
+  "resetPassword": {
+    "eyebrow": "Pagbawi sa account",
+    "title": "Pagpili og bag-ong password",
+    "intro": "Pagbutang og bag-ong password para sa {{email}}. Gamiton nimo kini sa mosunod nga pag-sign in.",
+    "passwordLabel": "Bag-ong password",
+    "confirmLabel": "Kumpirmaha ang bag-ong password",
+    "submit": "I-reset ang password",
+    "submitting": "Nag-reset…",
+    "success": "Na-reset na ang imong password. Dad-on ka sa sign in…",
+    "invalidLinkTitle": "Dili magamit ang reset link",
+    "invalidLinkBody": "Kuwang ang token sa link o na-expire na kini. Pangayo og bag-ong reset link gikan sa sign-in page.",
+    "backToLogin": "Balik sa sign in"
   },
   "support": {
     "eyebrow": "Suporta",

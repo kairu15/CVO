@@ -18,6 +18,11 @@ use Symfony\Component\HttpFoundation\Response;
  *   content (clickjacking).
  * - Strict-Transport-Security: production only — sending it over localhost
  *   HTTP would make the browser refuse the app.
+ * - Cache-Control: no-store on every API response. The SPA's back/forward
+ *   cache would otherwise resurrect a protected dashboard out of history
+ *   after a logout, and an HTTP-cached 200 could survive a session the
+ *   server has already invalidated. Nothing under /api is safely cacheable
+ *   by the browser, so no-store is the honest default.
  *
  * Values live in config/security.php (env-overridable) so deployment can
  * tune them without a code change.
@@ -30,6 +35,13 @@ class SecurityHeaders
 
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', (string) config('security.headers.x_frame_options', 'DENY'));
+
+        if ($request->is('api/*')) {
+            // `private` keeps any intermediate proxy from sharing the row with
+            // another user; `no-store` is what defeats the bfcache/history.
+            $response->headers->set('Cache-Control', 'no-store, private');
+            $response->headers->set('Pragma', 'no-cache');
+        }
 
         if ($this->shouldSendHsts()) {
             $response->headers->set(

@@ -1,4 +1,4 @@
-import { api, unwrap } from "./client";
+import { api, ensureCsrfCookie, unwrap } from "./client";
 
 /**
  * Notifications — a feed of derived alerts (dispersal / vaccination) plus the
@@ -41,6 +41,7 @@ export const notificationsApi = {
 
   /** Mark every stored event notification read for the caller. */
   markAllRead: async () => {
+    await ensureCsrfCookie();
     const response = await api.post("/api/v1/notifications/read-all");
 
     return response.data;
@@ -53,6 +54,7 @@ export const notificationsApi = {
    *   `event-{id}`)
    */
   markRead: async (id) => {
+    await ensureCsrfCookie();
     const response = await api.post(`/api/v1/notifications/${id}/read`);
 
     return response.data;

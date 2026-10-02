@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { profileApi } from "../api/profileApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -87,6 +87,8 @@ export function ProfilePage() {
       <RoleSection profile={profile} />
 
       <PasswordForm />
+
+      <SessionsSection />
     </div>
   );
 }
@@ -525,6 +527,67 @@ function DoctorSection({ doctor }) {
           <p className="text-xs text-slate-500">Case notes written</p>
         </div>
       </div>
+    </section>
+  );
+}
+
+/**
+ * "Log out of all devices" — the panic button for a lost/shared device.
+ *
+ * Delegates revocation to the server (POST /logout-all revokes every token
+ * and deletes every cookie-session row for the account), then clears the
+ * local session WITHOUT a second /logout call: that session is already gone,
+ * and a follow-up request would 401 and mislabel a deliberate sign-out as an
+ * expired session.
+ */
+function SessionsSection() {
+  const { logoutLocal } = useAuth();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function handleLogoutAll() {
+    setBusy(true);
+    try {
+      await profileApi.logoutAll();
+      toast.success("Signed out of every device.");
+      logoutLocal();
+      navigate("/login", { replace: true });
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card p-6">
+      <h3 className="font-display text-base font-bold text-slate-900">Sessions</h3>
+      <p className="mt-1 text-sm text-slate-500">
+        Lost a device, or think someone else is signed in as you? This signs
+        you out of every browser and phone on your account — including this
+        one — so a stolen session cannot outlive the reset.
+      </p>
+
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        disabled={busy}
+        className="btn-secondary mt-4 text-xs"
+      >
+        <Icon name="logout" className="h-4 w-4" />
+        Log out of all devices
+      </button>
+
+      {confirming && (
+        <ConfirmInline
+          title="Log out of all devices?"
+          description="Every phone, browser and tablet signed in as you will be signed out immediately, including this one. You'll need to sign in again everywhere."
+          confirmLabel={busy ? "Signing out…" : "Log out everywhere"}
+          onCancel={() => setConfirming(false)}
+          onConfirm={handleLogoutAll}
+        />
+      )}
     </section>
   );
 }

@@ -41,6 +41,13 @@ return [
         'web' => [
             'driver' => 'session',
             'provider' => 'users',
+
+            // "Remember me" recaller lifetime, in minutes. The session cookie
+            // still follows SESSION_LIFETIME (and SESSION_EXPIRE_ON_CLOSE);
+            // this only governs how long the recaller may re-establish it.
+            // 30 days is long enough to be useful on a personal device and
+            // short enough for a shared CVO workstation.
+            'remember' => (int) env('AUTH_REMEMBER_MINUTES', 43200),
         ],
     ],
 

@@ -36,4 +36,13 @@ export const profileApi = {
     await ensureCsrfCookie();
     return unwrap(await api.delete("/api/v1/profile/avatar"));
   },
+
+  /**
+   * Revoke every session and token this account holds — including the one
+   * making the call. The caller is signed out everywhere.
+   */
+  logoutAll: async () => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/logout-all"));
+  },
 };

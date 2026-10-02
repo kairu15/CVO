@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, ensureCsrfCookie } from "./client";
 
 /**
  * System settings — admin-only. The office contact profile is writable; the
@@ -24,6 +24,7 @@ export const settingsApi = {
    * @returns {Promise<{office_profile: object, barangays: string[], vocabulary: object}>}
    */
   saveProfile: async (values) => {
+    await ensureCsrfCookie();
     const response = await api.patch("/api/v1/admin/settings", values);
 
     return response.data?.data ?? {};

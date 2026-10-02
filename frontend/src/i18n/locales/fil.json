@@ -23,6 +23,15 @@
     "passwordLabel": "Password",
     "passwordPlaceholder": "Ilagay ang iyong password",
     "forgot": "Nakalimutan ang password?",
+    "remember": "Tandaan ako sa device na ito",
+    "resetTitle": "I-reset ang iyong password",
+    "resetIntro": "Ilagay ang email ng iyong account at padadalhan ka namin ng reset link.",
+    "resetEmailLabel": "Email address",
+    "resetEmailRequired": "Ilagay ang iyong email address.",
+    "resetSubmit": "Ipadala ang reset link",
+    "resetSubmitting": "Nagpapadala…",
+    "resetSent": "Kung nasa aming records ang email na iyon, may naipadalang reset link. Tingnan ang iyong inbox.",
+    "resetCancel": "Kanselahin",
     "submitting": "Nag-sign in…",
     "success": "Matagumpay na nakapasok.",
     "errors": {
@@ -75,6 +84,23 @@
       "passwordConfirmationRequired": "Ilagay muli ang iyong password.",
       "passwordMismatch": "Hindi tugma ang mga password."
     }
+  },
+  "session": {
+    "expired": "Nag-expire ang iyong session — mangyaring mag-sign in muli.",
+    "inactivity": "Ini-sign out ka dahil sa kawalan ng aktibidad."
+  },
+  "resetPassword": {
+    "eyebrow": "Pagbawi ng account",
+    "title": "Pumili ng bagong password",
+    "intro": "Magtakda ng bagong password para sa {{email}}. Gagamitin mo ito sa susunod na pag-sign in.",
+    "passwordLabel": "Bagong password",
+    "confirmLabel": "Kumpirmahin ang bagong password",
+    "submit": "I-reset ang password",
+    "submitting": "Nagre-reset…",
+    "success": "Na-reset na ang iyong password. Ilalipat ka sa sign in…",
+    "invalidLinkTitle": "Hindi magagamit ang reset link",
+    "invalidLinkBody": "Kulang ang token ng link o nag-expire na ito. Humiling ng bagong reset link mula sa sign-in page.",
+    "backToLogin": "Bumalik sa sign in"
   },
   "support": {
     "eyebrow": "Suporta",

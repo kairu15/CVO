@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import * as authApi from "../api/authApi";
+import { setUnauthorizedHandler } from "../api/client";
 
 function Probe() {
   const { user, isAuthenticated, login, register, logout } = useAuth();
@@ -11,7 +12,7 @@ function Probe() {
     <div>
       <span data-testid="user">{user ? user.name : "none"}</span>
       <span data-testid="authed">{String(isAuthenticated)}</span>
-      <button type="button" onClick={() => login("admin@example.com", "password")}>
+      <button type="button" onClick={() => login("admin@example.com", "password", true)}>
         login
       </button>
       <button
@@ -44,6 +45,7 @@ vi.mock("../api/client", async (importOriginal) => {
 describe("AuthContext", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
   });
 
   it("restores the session from fetchUser on mount", async () => {
@@ -113,6 +115,71 @@ describe("AuthContext", () => {
     await waitFor(() => expect(authApi.authApi.register).toHaveBeenCalledTimes(1));
     expect(screen.getByTestId("user")).toHaveTextContent("none");
     expect(screen.getByTestId("authed")).toHaveTextContent("false");
+  });
+
+  it("forwards remember-me to the login endpoint", async () => {
+    authApi.authApi.fetchUser.mockRejectedValue(new Error("guest"));
+    authApi.authApi.login.mockResolvedValue({ id: 2, name: "Dr. Maria Santos" });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("authed")).toHaveTextContent("false"));
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "login" }));
+    });
+
+    expect(authApi.authApi.login).toHaveBeenCalledWith({
+      identifier: "admin@example.com",
+      password: "password",
+      remember: true,
+    });
+  });
+
+  it("records a session-expired notice when a request 401s mid-session", async () => {
+    authApi.authApi.fetchUser.mockResolvedValue({ id: 1, name: "CVO Administrator" });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("authed")).toHaveTextContent("true"));
+
+    // The 401 handler was registered by the provider; invoke it as a real
+    // rejected request would.
+    const handler = setUnauthorizedHandler.mock.calls.at(-1)[0];
+    await act(async () => {
+      handler();
+    });
+
+    await waitFor(() => expect(screen.getByTestId("authed")).toHaveTextContent("false"));
+    expect(sessionStorage.getItem("cvo.auth.notice")).toBe("expired");
+  });
+
+  it("stays silent on a 401 for a guest with no session", async () => {
+    authApi.authApi.fetchUser.mockRejectedValue(new Error("guest"));
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("authed")).toHaveTextContent("false"));
+
+    const handler = setUnauthorizedHandler.mock.calls.at(-1)[0];
+    await act(async () => {
+      handler();
+    });
+
+    // A guest visiting a protected route must not be told their session expired.
+    expect(sessionStorage.getItem("cvo.auth.notice")).toBeNull();
   });
 
   it("logout clears the user even if the API call fails", async () => {

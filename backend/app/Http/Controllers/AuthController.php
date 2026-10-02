@@ -69,7 +69,11 @@ class AuthController extends Controller
         );
 
         if ($request->hasSession()) {
-            Auth::guard('web')->login($user);
+            // "Remember me" issues the recaller cookie (config auth.guards.web
+            // .remember): the session cookie itself still follows
+            // SESSION_LIFETIME, but the recaller lets the guard re-establish
+            // the session after it would otherwise lapse.
+            Auth::guard('web')->login($user, $request->boolean('remember'));
 
             $request->session()->regenerate();
 

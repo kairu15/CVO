@@ -38,6 +38,25 @@ class SecurityHeadersTest extends TestCase
         $this->assertStringContainsString("frame-ancestors 'none'", $csp);
     }
 
+    public function test_api_responses_are_not_stored_in_the_browser_cache(): void
+    {
+        // The back/forward cache must not be able to resurrect a protected
+        // page after logout, and a cached 200 must not outlive the server
+        // session it came from.
+        $this->getJson('/api/v1/user')
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('Pragma', 'no-cache');
+    }
+
+    public function test_html_responses_are_not_cache_controlled_by_the_api_rule(): void
+    {
+        // The SPA shell is served by the frontend host, not this API; the
+        // API rule must not leak onto HTML replies (Laravel's welcome page),
+        // which would otherwise pin the shell forever.
+        $this->get('/')
+            ->assertHeaderMissing('Pragma');
+    }
+
     public function test_hsts_is_absent_outside_production(): void
     {
         // The test env is not production: HSTS must NOT be sent (it would

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class AuthTest extends TestCase
@@ -116,6 +117,38 @@ class AuthTest extends TestCase
             ->assertJsonPath('data.id', $user->id);
     }
 
+    public function test_remember_me_issues_the_recaller_cookie_only_when_asked(): void
+    {
+        $user = User::factory()->create();
+
+        // The SPA reaches the API from a stateful domain; only then does the
+        // cookie session (and therefore the recaller) exist.
+        $this->withHeaders(['Origin' => config('sanctum.stateful.0', 'http://localhost:5173')]);
+
+        $recaller = app('auth')->guard('web')->getRecallerName();
+
+        $plain = $this->postJson('/api/v1/login', [
+            'identifier' => $user->email,
+            'password' => 'password',
+        ])->assertOk();
+
+        $this->assertFalse(
+            $this->hasCookie($plain, $recaller),
+            'A plain login must not issue a remember-me recaller.',
+        );
+
+        $remembered = $this->postJson('/api/v1/login', [
+            'identifier' => $user->email,
+            'password' => 'password',
+            'remember' => true,
+        ])->assertOk();
+
+        $this->assertTrue(
+            $this->hasCookie($remembered, $recaller),
+            'Remember me must issue the recaller cookie.',
+        );
+    }
+
     public function test_authenticated_user_can_be_fetched(): void
     {
         $user = User::factory()->create();
@@ -152,5 +185,17 @@ class AuthTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('user.email', $user->email)
             ->assertJsonStructure(['token']);
+    }
+
+    /** Whether a response set a cookie with the given name. */
+    private function hasCookie(TestResponse $response, string $name): bool
+    {
+        foreach ($response->headers->getCookies() as $cookie) {
+            if ($cookie->getName() === $name) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

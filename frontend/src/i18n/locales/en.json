@@ -23,6 +23,15 @@
     "passwordLabel": "Password",
     "passwordPlaceholder": "Enter your password",
     "forgot": "Forgot password?",
+    "remember": "Remember me on this device",
+    "resetTitle": "Reset your password",
+    "resetIntro": "Enter your account email and we'll send you a reset link.",
+    "resetEmailLabel": "Email address",
+    "resetEmailRequired": "Enter your email address.",
+    "resetSubmit": "Send reset link",
+    "resetSubmitting": "Sending…",
+    "resetSent": "If that email address is in our records, a reset link has been sent. Check your inbox.",
+    "resetCancel": "Cancel",
     "submitting": "Signing in…",
     "success": "Signed in successfully.",
     "errors": {
@@ -75,6 +84,23 @@
       "passwordConfirmationRequired": "Re-enter your password.",
       "passwordMismatch": "Passwords do not match."
     }
+  },
+  "session": {
+    "expired": "Your session expired — please sign in again.",
+    "inactivity": "You were signed out due to inactivity."
+  },
+  "resetPassword": {
+    "eyebrow": "Account recovery",
+    "title": "Choose a new password",
+    "intro": "Set a new password for {{email}}. You'll sign in with it right after.",
+    "passwordLabel": "New password",
+    "confirmLabel": "Confirm new password",
+    "submit": "Reset password",
+    "submitting": "Resetting…",
+    "success": "Your password has been reset. Redirecting you to sign in…",
+    "invalidLinkTitle": "This reset link can't be used",
+    "invalidLinkBody": "The link is missing its token or it has expired. Request a new reset link from the sign-in page.",
+    "backToLogin": "Back to sign in"
   },
   "support": {
     "eyebrow": "Support",

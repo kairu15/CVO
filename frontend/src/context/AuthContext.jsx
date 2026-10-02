@@ -4,20 +4,47 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { authApi } from "../api/authApi";
 import { setUnauthorizedHandler } from "../api/client";
+import { queryClient } from "../api/queries";
+import { NOTICE_SESSION_EXPIRED, setSessionNotice } from "../lib/sessionNotice";
 
 const AuthContext = createContext(null);
+
+/**
+ * Wipe every trace of the previous session from the browser: the signed-in
+ * user and the React Query cache. Without the cache clear, a stale dashboard
+ * payload can be served from memory to the next user of a shared machine.
+ */
+function clearSession(setUser) {
+  setUser(null);
+  queryClient.clear();
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Any 401 anywhere in the app clears the auth state.
+  // Read inside the 401 handler without making it depend on `user`, so the
+  // handler is registered once and never re-bound mid-session.
+  const userRef = useRef(null);
+
   useEffect(() => {
-    setUnauthorizedHandler(() => setUser(null));
+    userRef.current = user;
+  }, [user]);
+
+  // Any 401 anywhere in the app clears the auth state. If the app believed it
+  // had a session, record why so the login screen can say the session expired
+  // (a guest's first fetchUser 401 must stay silent).
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      if (userRef.current) setSessionNotice(NOTICE_SESSION_EXPIRED);
+
+      clearSession(setUser);
+    });
   }, []);
 
   // Restore the session from the Sanctum cookie on first load.
@@ -29,8 +56,26 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = useCallback(async (email, password) => {
-    setUser(await authApi.login({ email, password }));
+  // Back/forward-cache restore: the page comes back frozen from history, so
+  // React mounts do not re-run and the session is never re-checked. Re-validate
+  // here and drop the user if the server no longer honors it.
+  useEffect(() => {
+    function onPageShow(event) {
+      if (!event.persisted) return;
+
+      authApi
+        .fetchUser()
+        .then((fresh) => setUser(fresh))
+        .catch(() => clearSession(setUser));
+    }
+
+    window.addEventListener("pageshow", onPageShow);
+
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
+
+  const login = useCallback(async (identifier, password, remember = false) => {
+    setUser(await authApi.login({ identifier, password, remember }));
   }, []);
 
   /**
@@ -67,8 +112,17 @@ export function AuthProvider({ children }) {
     } catch {
       // ignored — session is cleared below regardless
     } finally {
-      setUser(null);
+      clearSession(setUser);
     }
+  }, []);
+
+  /**
+   * Drop the local session WITHOUT calling the server. Used when an endpoint
+   * has already revoked this session server-side ("log out of all devices"),
+   * where a follow-up /logout call would just 401 and trip the expired notice.
+   */
+  const logoutLocal = useCallback(() => {
+    clearSession(setUser);
   }, []);
 
   const value = useMemo(
@@ -80,8 +134,9 @@ export function AuthProvider({ children }) {
       refreshUser,
       register,
       logout,
+      logoutLocal,
     }),
-    [user, loading, login, refreshUser, register, logout],
+    [user, loading, login, refreshUser, register, logout, logoutLocal],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

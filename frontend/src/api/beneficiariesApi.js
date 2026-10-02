@@ -33,16 +33,26 @@ export const fetchPuroks = async (barangayId) =>
  * covered barangay center lies within reach. A SUGGESTION only — the
  * server stores centers, not boundaries, so the farmer confirms it.
  */
-export const findNearestBarangay = async (latitude, longitude) =>
-  unwrap(await api.post("/api/v1/barangays/nearest", { latitude, longitude }));
+export const findNearestBarangay = async (latitude, longitude) => {
+  // POST verb => CSRF applies even though this is semantically a read, and the
+  // registration form calls it before any session exists.
+  await ensureCsrfCookie();
+
+  return unwrap(await api.post("/api/v1/barangays/nearest", { latitude, longitude }));
+};
 
 /**
  * Nearest purok center within ONE barangay for a moved map pin — the
  * purok auto-fill of the registration cascade. Null when that barangay
  * has no purok coordinates yet (nothing to guess from).
  */
-export const findNearestPurok = async (barangayId, latitude, longitude) =>
-  unwrap(await api.post(`/api/v1/barangays/${barangayId}/puroks/nearest`, { latitude, longitude }));
+export const findNearestPurok = async (barangayId, latitude, longitude) => {
+  await ensureCsrfCookie(); // POST verb, same reasoning as findNearestBarangay
+
+  return unwrap(
+    await api.post(`/api/v1/barangays/${barangayId}/puroks/nearest`, { latitude, longitude }),
+  );
+};
 
 /**
  * Beneficiaries — the dispersed animals and their households.

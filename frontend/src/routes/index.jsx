@@ -26,6 +26,7 @@ import FieldVisitsPage from "../pages/FieldVisitsPage";
 import { ProfilePage } from "../pages/ProfilePage";
 import DispersalStatusPage from "../pages/DispersalStatusPage";
 import NotificationsPage from "../pages/NotificationsPage";
+import ResetPasswordPage from "../pages/ResetPasswordPage";
 import SupportPage from "../pages/SupportPage";
 
 // The map bundle (MapLibre GL) is heavy — load it only when a map page opens.
@@ -76,6 +77,18 @@ export default function AppRoutes() {
             element={
               <GuestRoute>
                 <AuthPage mode="register" />
+              </GuestRoute>
+            }
+          />
+
+          {/* Password reset — the page the emailed link opens. Public, and
+              guest-only like the auth panel: a signed-in user has no reason
+              to be here. */}
+          <Route
+            path="/reset-password"
+            element={
+              <GuestRoute>
+                <ResetPasswordPage />
               </GuestRoute>
             }
           />

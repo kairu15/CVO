@@ -119,7 +119,7 @@ export function QrScanner({ open, onClose, onResult, title = "Scan animal ear ta
       </p>
 
       {supported && (
-        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-900">
+        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-900 dark:border-slate-200/60 dark:bg-black">
           <video
             ref={videoRef}
             muted

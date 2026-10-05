@@ -52,7 +52,7 @@ export function DashboardLayout() {
           <div
             aria-hidden="true"
             onClick={() => setDrawerPath(null)}
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm dark:bg-black/60"
           />
           <div className="absolute inset-y-0 left-0 w-72 max-w-[85%] shadow-panel">
             <DashboardSidebar
@@ -77,7 +77,7 @@ export function DashboardLayout() {
               (see IdleSessionGuard). Mounted in the authenticated shell only. */}
           <IdleSessionGuard />
           {viewingOtherRole && (
-            <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-xs font-medium text-brand-900">
+            <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-xs font-medium text-brand-900 dark:border-brand-200/60 dark:bg-brand-100 dark:text-brand-800">
               <span className="inline-flex items-center gap-1.5 rounded-pill bg-white px-2.5 py-1 font-semibold text-brand-800">
                 <Icon name="shield" className="h-3.5 w-3.5" />
                 {roleLabel(user.role)}

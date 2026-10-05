@@ -170,7 +170,9 @@ function makeBubble(map, position, barangay, max) {
   el.style.cssText =
     `width:${radius * 2}px;height:${radius * 2}px;border-radius:9999px;` +
     "display:grid;place-items:center;" +
-    "background:var(--color-brand-600);color:#fff;" +
+    // `--color-white` is the theme ink token: white in light mode, dark in
+    // dark mode, so the count stays legible on the lightened brand-600 bubble.
+    "background:var(--color-brand-600);color:var(--color-white);" +
     `font-size:${fontSize}px;font-weight:700;line-height:1;` +
     "border:2px solid #fff;" +
     "box-shadow:0 1px 4px rgb(15 23 42 / 0.35);cursor:pointer;" +

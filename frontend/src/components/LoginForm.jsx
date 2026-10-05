@@ -186,7 +186,7 @@ export function LoginForm({ idPrefix = "login" }) {
 
       <label
         htmlFor={`${idPrefix}-remember`}
-        className="mt-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-600"
+        className="mt-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-500"
       >
         <input
           id={`${idPrefix}-remember`}
@@ -195,12 +195,12 @@ export function LoginForm({ idPrefix = "login" }) {
           onChange={(event) =>
             setForm((prev) => ({ ...prev, remember: event.target.checked }))
           }
-          className="h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-2 focus:ring-brand-700"
+          className="h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-2 focus:ring-brand-700 dark:border-slate-400"
         />
         {t("login.remember")}
       </label>
 
-      <div className="mt-4 border-t border-slate-100 pt-4">
+      <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-200/60">
         <button
           type="button"
           onClick={toggleReset}
@@ -211,7 +211,7 @@ export function LoginForm({ idPrefix = "login" }) {
         </button>
 
         {resetOpen && (
-          <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-3">
+          <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-3 dark:border-brand-200/60 dark:bg-brand-100">
             {resetStatus === "sent" ? (
               <InlineAlert tone="success" message={t("login.resetSent")} />
             ) : (

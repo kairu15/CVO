@@ -133,7 +133,7 @@ export default function RoleDashboard({ roleKey }) {
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-700">
                 <Icon name={item.icon} className="h-5 w-5" />
               </span>
-              <span className="rounded-pill bg-slate-100 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-slate-500 uppercase">
+              <span className="rounded-pill bg-slate-100 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-slate-500 uppercase dark:bg-slate-200/60 dark:text-slate-500">
                 No data yet
               </span>
             </div>

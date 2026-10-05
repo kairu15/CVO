@@ -124,7 +124,7 @@ export function IdleSessionGuard({
       contentClassName="!max-w-md"
     >
       <div className="flex items-start gap-3.5">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-amber-50 text-amber-700">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-amber-50 text-amber-700 dark:bg-amber-100 dark:text-amber-800">
           <Icon name="alert-circle" className="h-5 w-5" />
         </span>
         <p className="text-sm text-slate-600" role="status" aria-live="polite">

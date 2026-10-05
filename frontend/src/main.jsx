@@ -5,6 +5,7 @@ import './index.css'
 // Initialises i18next (English / Filipino / Cebuano) before React renders.
 import './i18n'
 import { queryClient } from './api/queries.js'
+import { ThemeProvider } from './context/ThemeContext.jsx'
 import { ToastProvider } from './context/ToastContext.jsx'
 import { OfflineQueueProvider } from './context/OfflineQueueContext.jsx'
 import AppRoutes from './routes/index.jsx'
@@ -23,12 +24,15 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        {/* Flushes queued offline submissions on reconnect, app-wide. */}
-        <OfflineQueueProvider>
-          <AppRoutes />
-        </OfflineQueueProvider>
-      </ToastProvider>
+      {/* Theme above Toast: a flip restyles live toasts in the same tick. */}
+      <ThemeProvider>
+        <ToastProvider>
+          {/* Flushes queued offline submissions on reconnect, app-wide. */}
+          <OfflineQueueProvider>
+            <AppRoutes />
+          </OfflineQueueProvider>
+        </ToastProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,
 )

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 import { dashboardPathFor, roleLabel } from "../config/roles";
 import { notificationsApi } from "../api/notificationsApi";
 import {
@@ -108,7 +109,7 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
         type="button"
         onClick={onOpenSidebar}
         aria-label="Open navigation"
-        className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700 lg:hidden"
+        className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700 lg:hidden dark:hover:bg-brand-100 dark:hover:text-brand-700"
       >
         <Icon name="menu" />
       </button>
@@ -200,13 +201,13 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
           onClick={() => setPanel(panel === "profile" ? null : "profile")}
           aria-expanded={panel === "profile"}
           aria-label="Account menu"
-          className="flex items-center gap-2 rounded-pill border border-slate-200 py-1.5 pr-2.5 pl-1.5 transition hover:border-brand-300 hover:bg-brand-50"
+          className="flex items-center gap-2 rounded-pill border border-slate-200 py-1.5 pr-2.5 pl-1.5 transition hover:border-brand-300 hover:bg-brand-50 dark:border-slate-200/70 dark:hover:border-brand-200/60 dark:hover:bg-brand-100/60"
         >
           {user?.avatar_url ? (
             <img
               src={user.avatar_url}
               alt=""
-              className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
+              className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-200/40"
             />
           ) : (
             <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-100 text-[11px] font-bold text-brand-800">
@@ -233,21 +234,31 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
               className="fixed inset-0 z-10 cursor-default"
             />
             <div className="card absolute right-0 z-20 mt-2 w-64 p-4">
-              {user?.avatar_url ? (
+              {/* Theme toggle — the first thing in the panel, per spec, so
+                  switching is reachable without scrolling past identity. */}
+              <ThemeToggleRow />
+
+              <div className="mt-3 h-px bg-slate-100" />
+
+              <div className="mt-3 flex items-center gap-3">
+                {user?.avatar_url ? (
                 <img
                   src={user.avatar_url}
                   alt=""
-                  className="h-10 w-10 rounded-full object-cover ring-1 ring-slate-200"
+                  className="h-10 w-10 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-200/40"
                 />
               ) : (
                 <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-100 text-xs font-bold text-brand-800">
                   {initialsOf(user?.name)}
                 </span>
               )}
-              <p className="mt-2 truncate font-display text-sm font-semibold text-slate-900">
-                {user?.name}
-              </p>
-              <p className="truncate text-xs text-slate-500">{user?.email}</p>
+              <div>
+                <p className="truncate font-display text-sm font-semibold text-slate-900">
+                  {user?.name}
+                </p>
+                <p className="truncate text-xs text-slate-500">{user?.email}</p>
+              </div>
+              </div>
               <p className="mt-2 inline-flex items-center gap-1.5 rounded-pill bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-800">
                 <Icon name="shield" className="h-3.5 w-3.5" />
                 {roleLabel(user?.role)}
@@ -255,7 +266,7 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
               <Link
                 to="/dashboard/profile"
                 onClick={close}
-                className="mt-3 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800"
+                className="mt-3 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 dark:border-slate-200/70 dark:hover:border-brand-200/60 dark:hover:bg-brand-100/60 dark:hover:text-brand-700"
               >
                 <Icon name="user" className="h-4 w-4" />
                 My Profile
@@ -266,7 +277,7 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
                   close();
                   setConfirmingLogout(true);
                 }}
-                className="mt-2 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                className="mt-2 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-200/70 dark:hover:border-red-200/60 dark:hover:bg-red-100 dark:hover:text-red-700"
               >
                 <Icon name="logout" className="h-4 w-4" />
                 Log out
@@ -281,6 +292,48 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
         onClose={() => setConfirmingLogout(false)}
       />
     </header>
+  );
+}
+
+/**
+ * "Dark mode" switch — the first row of the profile panel.
+ *
+ * A real switch (role="switch", aria-checked) with a text label, so the
+ * control is understandable without the icon; the sun/moon glyph tracks the
+ * CURRENT theme, giving sighted users a second cue. Flips apply instantly via
+ * the `<html>` class + the body's 200ms transition-colors.
+ */
+function ThemeToggleRow() {
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === "dark";
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={isDark}
+      onClick={toggleTheme}
+      className="flex w-full items-center gap-3 rounded-xl px-1 py-1.5 text-left text-sm font-semibold text-slate-600 transition hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+    >
+      <Icon
+        name={isDark ? "moon" : "sun"}
+        className="h-5 w-5 shrink-0 text-amber-500 dark:text-brand-300"
+      />
+      Dark mode
+
+      <span
+        aria-hidden="true"
+        className={`ml-auto relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${
+          isDark ? "bg-brand-500" : "bg-slate-300"
+        }`}
+      >
+        <span
+          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200 ${
+            isDark ? "translate-x-[1.375rem]" : "translate-x-0.5"
+          }`}
+        />
+      </span>
+    </button>
   );
 }
 
@@ -317,7 +370,7 @@ function BackButton() {
       onClick={goBack}
       aria-label="Go back"
       title="Go back"
-      className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700"
+      className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-100 dark:hover:text-brand-700"
     >
       <Icon name="arrow-left" />
     </button>
@@ -589,7 +642,7 @@ function NotificationPanel({ onNavigate }) {
             type="button"
             onClick={markAllRead}
             disabled={marking}
-            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-brand-300 hover:bg-brand-50 disabled:opacity-60"
+            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-brand-300 hover:bg-brand-50 disabled:opacity-60 dark:border-slate-200/70 dark:hover:bg-brand-100/60"
           >
             {marking ? "Marking…" : "Mark all read"}
           </button>
@@ -598,7 +651,7 @@ function NotificationPanel({ onNavigate }) {
           <Link
             to={allHref}
             onClick={onNavigate}
-            className={`flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-brand-300 hover:bg-brand-50 ${
+            className={`flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-brand-300 hover:bg-brand-50 dark:border-slate-200/70 dark:hover:bg-brand-100/60 ${
               unreadEvents > 0 ? "flex-1" : "w-full"
             }`}
           >

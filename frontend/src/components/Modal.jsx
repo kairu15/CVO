@@ -47,7 +47,7 @@ export function Modal({ open, title, onClose, contentClassName, titleClassName, 
       <div
         aria-hidden="true"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm dark:bg-black/60"
       />
       <div
         role="dialog"
@@ -63,7 +63,7 @@ export function Modal({ open, title, onClose, contentClassName, titleClassName, 
             type="button"
             onClick={onClose}
             aria-label="Close dialog"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-100 dark:hover:text-brand-700"
           >
             <Icon name="close" />
           </button>

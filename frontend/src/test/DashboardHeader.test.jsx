@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { DashboardHeader } from "../components/DashboardHeader";
+import { ThemeProvider } from "../context/ThemeContext";
 import { searchApi } from "../api/searchApi";
 import { notificationsApi } from "../api/notificationsApi";
 
@@ -66,9 +67,11 @@ function renderHeader() {
 
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <DashboardHeader title="Doctor Dashboard" onOpenSidebar={vi.fn()} />
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter>
+          <DashboardHeader title="Doctor Dashboard" onOpenSidebar={vi.fn()} />
+        </MemoryRouter>
+      </ThemeProvider>
     </QueryClientProvider>,
   );
 }
@@ -87,19 +90,21 @@ function renderHeaderAt(entries, index) {
 
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={entries} initialIndex={index}>
-        <Routes>
-          <Route
-            path="*"
-            element={
-              <>
-                <DashboardHeader title="Doctor Dashboard" onOpenSidebar={vi.fn()} />
-                <LocationProbe />
-              </>
-            }
-          />
-        </Routes>
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={entries} initialIndex={index}>
+          <Routes>
+            <Route
+              path="*"
+              element={
+                <>
+                  <DashboardHeader title="Doctor Dashboard" onOpenSidebar={vi.fn()} />
+                  <LocationProbe />
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     </QueryClientProvider>,
   );
 }

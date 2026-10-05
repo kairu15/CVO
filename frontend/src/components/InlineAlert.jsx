@@ -3,17 +3,20 @@ import { Icon } from "./Icons";
 
 const TONES = {
   error: {
-    wrapper: "border-red-200 bg-red-50 text-red-700",
+    wrapper:
+      "border-red-200 bg-red-50 text-red-700 dark:border-red-200/60 dark:bg-red-100 dark:text-red-700",
     icon: "alert-circle",
     iconClass: "text-red-500",
   },
   success: {
-    wrapper: "border-brand-200 bg-brand-50 text-brand-800",
+    wrapper:
+      "border-brand-200 bg-brand-50 text-brand-800 dark:border-brand-200/60 dark:bg-brand-100 dark:text-brand-800",
     icon: "check",
     iconClass: "text-brand-700",
   },
   info: {
-    wrapper: "border-slate-200 bg-slate-50 text-slate-700",
+    wrapper:
+      "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-200/60 dark:bg-slate-200/50 dark:text-slate-600",
     icon: "info",
     iconClass: "text-slate-400",
   },

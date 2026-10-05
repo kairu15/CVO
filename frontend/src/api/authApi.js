@@ -15,7 +15,17 @@ export const authApi = {
     return unwrap(await api.post("/api/v1/login", payload));
   },
 
-  logout: () => api.post("/api/v1/logout"),
+  /**
+   * Sign out. Must ensure the CSRF cookie first: after a remember-me restore
+   * the session was re-established server-side, so the browser's XSRF-TOKEN
+   * cookie can predate the live session — sending it stale would 419 and
+   * leave the session alive on the server while the UI shows a signed-out
+   * screen.
+   */
+  logout: async () => {
+    await ensureCsrfCookie();
+    return api.post("/api/v1/logout");
+  },
 
   fetchUser: async () => unwrap(await api.get("/api/v1/user")),
 

@@ -60,7 +60,7 @@ export function PhotoLightbox({ open, imageUrl, alt = "", title = "Photo", capti
       <div
         aria-hidden="true"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm dark:bg-black/75"
       />
 
       <figure
@@ -73,12 +73,12 @@ export function PhotoLightbox({ open, imageUrl, alt = "", title = "Photo", capti
           type="button"
           onClick={onClose}
           aria-label="Close photo"
-          className="absolute -top-2 right-0 z-20 grid h-9 w-9 -translate-y-full place-items-center rounded-xl bg-white/90 text-slate-600 shadow-sm transition hover:bg-white hover:text-slate-900"
+          className="absolute -top-2 right-0 z-20 grid h-9 w-9 -translate-y-full place-items-center rounded-xl bg-white/90 text-slate-600 shadow-sm transition hover:bg-white hover:text-slate-900 dark:bg-white/90 dark:text-slate-700 dark:hover:bg-white dark:hover:text-slate-900"
         >
           <Icon name="close" />
         </button>
 
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto rounded-2xl bg-slate-900/40 p-2">
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto rounded-2xl bg-slate-900/40 p-2 dark:bg-black/40">
           <img
             src={imageUrl}
             alt={alt}
@@ -89,7 +89,7 @@ export function PhotoLightbox({ open, imageUrl, alt = "", title = "Photo", capti
         </div>
 
         {caption && (
-          <figcaption className="mt-3 rounded-xl bg-white/95 px-4 py-3 text-xs text-slate-600 shadow-sm">
+          <figcaption className="mt-3 rounded-xl bg-white/95 px-4 py-3 text-xs text-slate-600 shadow-sm dark:bg-white/95 dark:text-slate-700">
             {caption}
           </figcaption>
         )}

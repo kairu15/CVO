@@ -17,7 +17,7 @@ export function Skeleton({ className = "" }) {
   return (
     <span
       aria-hidden="true"
-      className={`inline-block animate-pulse rounded-lg bg-slate-100 ${className}`}
+      className={`inline-block animate-pulse rounded-lg bg-slate-100 dark:bg-slate-200/70 ${className}`}
     />
   );
 }
@@ -27,7 +27,7 @@ export function SkeletonCircle({ size = "h-10 w-10", className = "" }) {
   return (
     <span
       aria-hidden="true"
-      className={`inline-block shrink-0 animate-pulse rounded-full bg-slate-100 ${size} ${className}`}
+      className={`inline-block shrink-0 animate-pulse rounded-full bg-slate-100 dark:bg-slate-200/70 ${size} ${className}`}
     />
   );
 }

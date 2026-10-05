@@ -10,7 +10,7 @@ export function EmptyState({ title, description, action, className = "" }) {
       className={`flex flex-col items-center justify-center px-6 py-14 text-center ${className}`}
     >
       <svg viewBox="0 0 160 120" fill="none" className="h-28 w-36" aria-hidden="true">
-        <circle cx="80" cy="54" r="44" fill="var(--color-brand-50)" />
+        <circle cx="80" cy="54" r="44" fill="var(--color-brand-100)" />
         <circle
           cx="80"
           cy="54"

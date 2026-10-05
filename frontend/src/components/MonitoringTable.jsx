@@ -76,7 +76,7 @@ function RegistrationBadge({ record }) {
 
   if (record.registration_status === "old") {
     return (
-      <span className="inline-flex items-center rounded-pill bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500 uppercase ring-1 ring-slate-200">
+      <span className="inline-flex items-center rounded-pill bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500 uppercase ring-1 ring-slate-200 dark:bg-slate-200/60 dark:text-slate-500 dark:ring-slate-300/40">
         Old
       </span>
     );
@@ -162,7 +162,7 @@ export function MonitoringTable({
   }
 
   return (
-    <div className="divide-y divide-slate-100">
+    <div className="divide-y divide-slate-100 dark:divide-slate-200/60">
       {groups.map(([barangay, rows]) => {
         const isCollapsed = collapsed.has(barangay);
         // Per-barangay "new" counter — the header is where an admin scans
@@ -178,7 +178,7 @@ export function MonitoringTable({
               type="button"
               onClick={() => toggle(barangay)}
               aria-expanded={!isCollapsed}
-              className="flex w-full items-center gap-2.5 bg-slate-50/60 px-4 py-3 text-left transition hover:bg-brand-50"
+              className="flex w-full items-center gap-2.5 bg-slate-50/60 px-4 py-3 text-left transition hover:bg-brand-50 dark:bg-slate-100/40 dark:hover:bg-brand-100/50"
             >
               <Icon
                 name="chevron-down"
@@ -188,7 +188,7 @@ export function MonitoringTable({
               <span className="font-display text-sm font-semibold text-slate-900">
                 {barangay}
               </span>
-              <span className="rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500 uppercase ring-1 ring-slate-200">
+              <span className="rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500 uppercase ring-1 ring-slate-200 dark:bg-white/70 dark:ring-slate-300/40">
                 {rows.length} {rows.length === 1 ? "record" : "records"}
               </span>
               {newCount > 0 && (
@@ -231,7 +231,7 @@ export function MonitoringTable({
                       )}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-200/60">
                     {rows.map((record) => {
                       // Fresh registration: light brand-green tint (the
                       // palette's own light green, not a new color). Stays
@@ -241,7 +241,7 @@ export function MonitoringTable({
                       return (
                       <tr
                         key={record.id}
-                        className={`transition hover:bg-brand-50/60 ${isNew ? "bg-brand-50" : ""}`}
+                        className={`transition hover:bg-brand-50/60 dark:hover:bg-brand-100/40 ${isNew ? "bg-brand-50 dark:bg-brand-100/70" : ""}`}
                       >
                         {COLUMNS.map((col) => {
                           if (col.key === "name_of_farmer") {
@@ -298,7 +298,7 @@ export function MonitoringTable({
                                     <img
                                       src={photo.image_url}
                                       alt="Visit photo thumbnail"
-                                      className="h-9 w-9 rounded-lg object-cover ring-1 ring-slate-200"
+                                      className="h-9 w-9 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-300/40"
                                     />
                                     <span className="text-slate-600">{timestamp ?? "View photo"}</span>
                                   </button>
@@ -352,7 +352,7 @@ export function MonitoringTable({
                               <button
                                 type="button"
                                 onClick={() => onDelete(record)}
-                                className="rounded-pill px-3 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-50"
+                                className="rounded-pill px-3 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-50 dark:hover:bg-red-100/70"
                               >
                                 Delete
                               </button>

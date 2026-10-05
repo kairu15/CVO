@@ -15,13 +15,17 @@ import { site } from "../config/site";
 export function Brand({ subtitle, onBrand = false, className = "" }) {
   return (
     <div className={`flex min-w-0 items-center gap-3 ${className}`}>
+      {/* In dark mode the seal keeps a LITERAL light plate (not `bg-white`,
+          which the `.dark` token block re-points to a dark panel): the
+          artwork is dark ink on a mostly transparent PNG, so a dark plate
+          would swallow it. */}
       <img
         src="/logo.png"
         alt=""
         width={40}
         height={40}
-        className={`h-10 w-10 shrink-0 rounded-xl bg-white object-contain shadow-card ${
-          onBrand ? "ring-1 ring-white/40" : "ring-1 ring-slate-200/70"
+        className={`h-10 w-10 shrink-0 rounded-xl bg-white object-contain shadow-card dark:bg-[rgba(255,255,255,0.95)] ${
+          onBrand ? "ring-1 ring-white/40" : "ring-1 ring-slate-200/70 dark:ring-slate-200/30"
         }`}
       />
       <span className="min-w-0">

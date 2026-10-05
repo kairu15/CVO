@@ -23,19 +23,19 @@ const VARIANTS = {
     role: "status",
     icon: "check",
     accent: "border-l-brand-600",
-    iconWrap: "bg-brand-50 text-brand-700",
+    iconWrap: "bg-brand-50 text-brand-700 dark:bg-brand-100 dark:text-brand-800",
   },
   error: {
     role: "alert",
     icon: "alert-circle",
     accent: "border-l-red-600",
-    iconWrap: "bg-red-50 text-red-700",
+    iconWrap: "bg-red-50 text-red-700 dark:bg-red-100 dark:text-red-700",
   },
   info: {
     role: "status",
     icon: "info",
     accent: "border-l-slate-400",
-    iconWrap: "bg-slate-100 text-slate-600",
+    iconWrap: "bg-slate-100 text-slate-600 dark:bg-slate-200 dark:text-slate-700",
   },
 };
 
@@ -94,7 +94,7 @@ function ToastCard({ toast, onDismiss }) {
         <Icon name={variant.icon} className="h-4 w-4" />
       </span>
 
-      <p className="flex-1 pt-1 text-sm leading-snug font-medium text-slate-800">
+      <p className="flex-1 pt-1 text-sm leading-snug font-medium text-slate-800 dark:text-slate-600">
         {toast.message}
       </p>
 
@@ -102,7 +102,7 @@ function ToastCard({ toast, onDismiss }) {
         type="button"
         onClick={() => onDismiss(toast.id)}
         aria-label="Dismiss notification"
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 dark:hover:bg-slate-200/50 dark:hover:text-slate-500"
       >
         <Icon name="close" className="h-4 w-4" />
       </button>

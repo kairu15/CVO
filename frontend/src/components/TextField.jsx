@@ -27,7 +27,10 @@ export function TextField({
 
   return (
     <div className={className}>
-      <label htmlFor={id} className="block text-sm font-medium text-slate-700">
+      <label
+        htmlFor={id}
+        className="block text-sm font-medium text-slate-700 dark:text-slate-500"
+      >
         {label}
       </label>
 
@@ -69,7 +72,7 @@ export function PasswordToggle({ shown, onToggle }) {
       onClick={onToggle}
       aria-label={shown ? "Hide password" : "Show password"}
       aria-pressed={shown}
-      className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+      className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 dark:hover:bg-slate-200/50 dark:hover:text-slate-500"
     >
       <Icon name={shown ? "eye-off" : "eye"} className="h-4 w-4" />
     </button>

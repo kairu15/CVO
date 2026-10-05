@@ -34,9 +34,9 @@ const TYPE_ICONS = {
 };
 
 const URGENCY_TONES = {
-  urgent: "bg-red-50 text-red-700",
-  warning: "bg-amber-50 text-amber-800",
-  info: "bg-brand-50 text-brand-800",
+  urgent: "bg-red-50 text-red-700 dark:bg-red-100 dark:text-red-700",
+  warning: "bg-amber-50 text-amber-800 dark:bg-amber-100 dark:text-amber-800",
+  info: "bg-brand-50 text-brand-800 dark:bg-brand-100 dark:text-brand-800",
 };
 
 const URGENCY_LABELS = {
@@ -135,7 +135,7 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
             </p>
 
         {canSeeSmart && (
-          <div className="mt-5 inline-flex rounded-pill border border-slate-200 bg-slate-50 p-1">
+          <div className="mt-5 inline-flex rounded-pill border border-slate-200 bg-slate-50 p-1 dark:border-slate-200/70 dark:bg-slate-100/60">
             <button
               type="button"
               onClick={() => setTab("all")}
@@ -170,12 +170,12 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
 
         {!loading && total > 0 && (
           <div className="mt-5 flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-2 rounded-pill bg-slate-100 px-3.5 py-1.5 text-xs font-semibold text-slate-700">
+            <span className="inline-flex items-center gap-2 rounded-pill bg-slate-100 px-3.5 py-1.5 text-xs font-semibold text-slate-700 dark:bg-slate-200/60 dark:text-slate-600">
               <Icon name="bell" className="h-4 w-4" />
               {total} {total === 1 ? "alert" : "alerts"}
             </span>
             {urgent > 0 && (
-              <span className="inline-flex items-center gap-2 rounded-pill bg-red-50 px-3.5 py-1.5 text-xs font-semibold text-red-700">
+              <span className="inline-flex items-center gap-2 rounded-pill bg-red-50 px-3.5 py-1.5 text-xs font-semibold text-red-700 dark:bg-red-100 dark:text-red-700">
                 <Icon name="alert-circle" className="h-4 w-4" />
                 {urgent} needing action
               </span>
@@ -195,7 +195,7 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
         {/* Says why there is no dismiss control, instead of leaving its absence
             to be guessed at. The Smart Alerts tab gives the extra context: a
             flag is a rule match on existing records, not a diagnosis. */}
-        <p className="mt-4 inline-flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-xs text-slate-600">
+        <p className="mt-4 inline-flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-xs text-slate-600 dark:border-slate-200/70 dark:bg-slate-100/50 dark:text-slate-500">
           <Icon name="info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           {tab === "smart"
             ? "Smart Alerts are rule-based flags computed from records already in the system — not a diagnosis. A flag clears itself once the underlying record is updated."
@@ -228,7 +228,7 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
 
           return (
             <section key={band.key} className="card overflow-hidden">
-              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
+              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-4 py-2.5 dark:border-slate-200/60 dark:bg-slate-100/40">
                 <h3 className="font-display text-xs font-semibold tracking-wide text-slate-700 uppercase">
                   {band.title}
                 </h3>

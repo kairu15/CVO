@@ -51,7 +51,7 @@ export function DashboardSidebar({
             type="button"
             onClick={onClose}
             aria-label="Close navigation"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 dark:hover:bg-brand-100 dark:hover:text-brand-700"
           >
             <Icon name="close" />
           </button>
@@ -168,7 +168,7 @@ export function DashboardSidebar({
         <button
           type="button"
           onClick={() => setConfirming(true)}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 dark:hover:bg-red-100 dark:hover:text-red-700"
         >
           <Icon name="logout" className="h-5 w-5 shrink-0" />
           Log out

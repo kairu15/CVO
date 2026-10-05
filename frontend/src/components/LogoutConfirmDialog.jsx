@@ -40,7 +40,7 @@ export function LogoutConfirmDialog({ open, onClose }) {
       contentClassName="!max-w-md"
     >
       <div className="flex items-start gap-3.5">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-red-50 text-red-600">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-red-50 text-red-600 dark:bg-red-100 dark:text-red-700">
           <Icon name="logout" className="h-5 w-5" />
         </span>
         <p className="text-sm text-slate-600">

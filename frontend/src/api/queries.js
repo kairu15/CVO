@@ -82,14 +82,23 @@ export function useNotificationsFeed(limit = 20, filter = "all") {
  * page). `month` is "YYYY-MM" or null (all records); `search` is the raw
  * farmer-name term or ""; `page` paginates within the current selection.
  */
-export function useMonitoringRecords(month = null, page = 1, search = "", enabled = true) {
+export function useMonitoringRecords(
+  month = null,
+  page = 1,
+  search = "",
+  animalType = null,
+  sort = "date",
+  enabled = true,
+) {
   return useQuery({
-    queryKey: ["monitoring-records", { month, page, search }],
+    queryKey: ["monitoring-records", { month, page, search, animalType, sort }],
     queryFn: () =>
       monitoringApi.list({
         per_page: 100,
         ...(month ? { month } : {}),
         ...(search ? { search } : {}),
+        ...(animalType ? { animal_type: animalType } : {}),
+        sort,
         page,
       }),
     refetchInterval: POLL_INTERVALS.monitoring,
@@ -105,6 +114,21 @@ export function useMonitoringMonths(enabled = true) {
   return useQuery({
     queryKey: ["monitoring-records", "months"],
     queryFn: () => monitoringApi.months(),
+    refetchInterval: POLL_INTERVALS.monitoring,
+    enabled,
+  });
+}
+
+/**
+ * The distinct animal types present in the records, alphabetical — the
+ * animal-type filter's options. Only types with data appear, and the list is
+ * refreshed by the same invalidation as the records, so an import's new types
+ * show up immediately.
+ */
+export function useMonitoringAnimalTypes(enabled = true) {
+  return useQuery({
+    queryKey: ["monitoring-records", "animal-types"],
+    queryFn: () => monitoringApi.animalTypes(),
     refetchInterval: POLL_INTERVALS.monitoring,
     enabled,
   });

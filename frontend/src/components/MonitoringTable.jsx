@@ -110,6 +110,9 @@ function RegistrationBadge({ record }) {
  *   `onToggleRow` is also given, a checkbox column is rendered
  * @param {(record: object) => void} [props.onToggleRow] toggles one row's
  *   selection — enables the checkbox column
+ * @param {"address"|"animal_type"} [props.groupBy] which field the rows are
+ *   grouped under. The server orders the page (by date, or by animal type
+ *   when the caller asks), so this only decides the section headers.
  */
 export function MonitoringTable({
   records = [],
@@ -121,6 +124,7 @@ export function MonitoringTable({
   emptyState,
   selected,
   onToggleRow,
+  groupBy = "address",
 }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [photoRecord, setPhotoRecord] = useState(null);
@@ -132,7 +136,10 @@ export function MonitoringTable({
     const byBarangay = new Map();
 
     for (const record of records) {
-      const key = record.address || "Unlisted address";
+      const key =
+        groupBy === "animal_type"
+          ? record.animal_type || "Unspecified"
+          : record.address || "Unlisted address";
       if (!byBarangay.has(key)) byBarangay.set(key, []);
       byBarangay.get(key).push(record);
     }
@@ -140,7 +147,7 @@ export function MonitoringTable({
     return [...byBarangay.entries()].sort(([a], [b]) =>
       a.localeCompare(b),
     );
-  }, [records]);
+  }, [records, groupBy]);
 
   function toggle(barangay) {
     setCollapsed((prev) => {
@@ -193,7 +200,10 @@ export function MonitoringTable({
                 name="chevron-down"
                 className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
               />
-              <Icon name="map-pin" className="h-4 w-4 shrink-0 text-brand-700" />
+              <Icon
+                name={groupBy === "animal_type" ? "livestock" : "map-pin"}
+                className="h-4 w-4 shrink-0 text-brand-700"
+              />
               <span className="font-display text-sm font-semibold text-slate-900">
                 {barangay}
               </span>

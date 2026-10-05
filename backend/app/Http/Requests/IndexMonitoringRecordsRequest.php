@@ -34,6 +34,16 @@ class IndexMonitoringRecordsRequest extends FormRequest
             // found (see MonitoringRecordService::listFor).
             'search' => ['sometimes', 'nullable', 'string', 'max:100'],
 
+            // Animal type (beneficiary column). Applied server-side and
+            // COMBINED with `month` using AND, so "Boar" + "2026-12" returns
+            // only boar records monitored that month.
+            'animal_type' => ['sometimes', 'nullable', 'string', 'max:100'],
+
+            // Row ordering: the default (by date) or grouped alphabetically by
+            // animal type. Sorting happens in the DATABASE ORDER BY, never in
+            // PHP/JS after the fetch.
+            'sort' => ['sometimes', 'nullable', 'in:date,animal_type'],
+
             // Same bounds as the other list endpoints (ActivityLogRequest).
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
 

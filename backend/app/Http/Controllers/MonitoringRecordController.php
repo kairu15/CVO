@@ -40,6 +40,8 @@ class MonitoringRecordController extends Controller
             $request->validated('month'),
             $request->validated('search'),
             (int) $request->validated('per_page'),
+            $request->validated('animal_type'),
+            $request->validated('sort') ?? 'date',
         );
 
         return MonitoringRecordResource::collection($paginator);
@@ -55,6 +57,19 @@ class MonitoringRecordController extends Controller
     {
         return response()->json([
             'data' => $this->records->availableMonthsFor($request->user()),
+        ]);
+    }
+
+    /**
+     * The distinct animal types actually present in the caller's records,
+     * alphabetical — the animal-type filter's option list. Derived from the
+     * data (not a hardcoded list), so it reflects whatever the imported
+     * workbooks and UI registrations produced.
+     */
+    public function animalTypes(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->records->availableAnimalTypesFor($request->user()),
         ]);
     }
 

@@ -180,6 +180,9 @@ class AdminController extends Controller
      */
     public function exportMonitoringExcel(AdminExcelExportRequest $request): StreamedResponse
     {
-        return $this->excel->downloadResponse($request->validated('month') ?? null);
+        return $this->excel->downloadResponse(
+            $request->validated('month') ?? null,
+            $request->validated('animal_type') ?? null,
+        );
     }
 }

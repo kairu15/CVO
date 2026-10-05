@@ -26,6 +26,11 @@ class AdminExcelExportRequest extends FormRequest
     {
         return [
             'month' => ['sometimes', 'nullable', 'date_format:Y-m'],
+
+            // Optional animal type. When present, only that type's rows are
+            // exported; when absent the export behaves exactly as before
+            // (every type).
+            'animal_type' => ['sometimes', 'nullable', 'string', 'max:100'],
         ];
     }
 }

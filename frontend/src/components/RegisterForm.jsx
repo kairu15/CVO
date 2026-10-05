@@ -337,12 +337,18 @@ export function RegisterForm({ idPrefix = "register" }) {
                 value={form.animal_type}
                 onChange={update("animal_type")}
               >
+                {/* Mirrors config/cvo.php → animal_types, so a household
+                    registered here and one imported from a workbook use the
+                    same vocabulary (and group together in the monitoring
+                    table's animal-type view). */}
                 <option value="">{t("register.animalTypePlaceholder")}</option>
                 <option>Carabao</option>
                 <option>Cattle</option>
                 <option>Goat</option>
                 <option>Swine</option>
                 <option>Boar</option>
+                <option>Poultry</option>
+                <option>Horse</option>
               </select>
               {errors.animal_type && (
                 <p className="mt-1.5 text-xs font-medium text-red-600">{errors.animal_type}</p>

@@ -42,10 +42,39 @@ class MonitoringRecordService
         ?string $month = null,
         ?string $search = null,
         int $perPage = 15,
+        ?string $animalType = null,
+        string $sort = 'date',
     ): LengthAwarePaginator {
         $page = $this->scopeFor($user)
             ->with(['beneficiary', 'technician', 'beneficiary.technician'])
             ->when($month !== null, fn (Builder $q) => $this->applyMonthFilter($q, $month))
+            // Animal type lives on the beneficiary. Filtering with whereHas
+            // keeps it a database WHERE (before pagination), so the month and
+            // animal filters combine with AND and `meta.total` is the real
+            // filtered count — never a client-side slice of one page.
+            ->when(
+                $animalType !== null && trim($animalType) !== '',
+                fn (Builder $q) => $q->whereHas(
+                    'beneficiary',
+                    fn (Builder $bq) => $bq->where('animal_type', $animalType),
+                ),
+            )
+            ->when(
+                $sort === 'animal_type',
+                function (Builder $q): void {
+                    // Order by the beneficiary's type first (alphabetical), so
+                    // the table's grouping runs over rows the DATABASE already
+                    // ordered — not an array sort in PHP or JS. The date/id
+                    // tie-breakers below stay the secondary order within a
+                    // group.
+                    $q->orderBy(
+                        Beneficiary::query()
+                            ->select('animal_type')
+                            ->whereColumn('beneficiaries.id', 'monitoring_records.beneficiary_id')
+                            ->limit(1),
+                    );
+                },
+            )
             ->when(
                 $search !== null && trim($search) !== '',
                 function (Builder $q) use ($search): void {
@@ -96,6 +125,32 @@ class MonitoringRecordService
             ->selectRaw('distinct substr(date_monitored, 1, 7) as month')
             ->orderBy('month')
             ->pluck('month')
+            ->all();
+    }
+
+    /**
+     * The distinct animal types actually present in the caller's records,
+     * alphabetical — the type-filter option list.
+     *
+     * Built from the data (beneficiaries joined to the scoped records), not a
+     * hardcoded list, for the same reason the month list is: an option with
+     * no rows would just show an empty table. Covers imported and
+     * UI-registered households alike, since both store `animal_type` on the
+     * beneficiary.
+     *
+     * @return list<string>
+     */
+    public function availableAnimalTypesFor(User $user): array
+    {
+        return $this->scopeFor($user)
+            ->join('beneficiaries', 'beneficiaries.id', '=', 'monitoring_records.beneficiary_id')
+            ->whereNull('beneficiaries.deleted_at')
+            ->whereNotNull('beneficiaries.animal_type')
+            ->where('beneficiaries.animal_type', '!=', '')
+            ->toBase()
+            ->distinct()
+            ->orderBy('beneficiaries.animal_type')
+            ->pluck('beneficiaries.animal_type')
             ->all();
     }
 

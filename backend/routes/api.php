@@ -129,6 +129,12 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::get('monitoring-records/months', [MonitoringRecordController::class, 'months'])
         ->name('api.monitoring-records.months');
 
+    // The distinct animal types present in the data — the animal-type filter's
+    // option list. Declared before the apiResource for the same reason as
+    // `months`: otherwise {monitoring_record} would swallow "animal-types".
+    Route::get('monitoring-records/animal-types', [MonitoringRecordController::class, 'animalTypes'])
+        ->name('api.monitoring-records.animal-types');
+
     Route::apiResource('monitoring-records', MonitoringRecordController::class);
     Route::post('monitoring-records/bulk-delete', [MonitoringRecordController::class, 'bulkDestroy'])
         ->name('api.monitoring-records.bulk-delete');

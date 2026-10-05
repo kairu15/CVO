@@ -281,6 +281,86 @@ class MonitoringExcelTest extends TestCase
         @unlink($temporary);
     }
 
+    public function test_import_derives_animal_types_from_the_workbook(): void
+    {
+        $path = $this->workbook([
+            ['Farmer One', 'Ali-is', 'cattle ', 'M', 45979, null, null, null, null, null, 3, null, null],
+            ['Farmer Two', 'Ali-is', 'CATTLE', 'F', 45980, null, null, null, null, null, 3, null, null],
+            ['Farmer Three', 'Ali-is', 'Bore', 'M', 45981, null, null, null, null, null, 3, null, null],
+            ['Farmer Four', 'Ali-is', 'Chicken', 'F', 45982, null, null, null, null, null, 3, null, null],
+            ['Farmer Five', 'Ali-is', 'Unspecified', 'M', 45983, null, null, null, null, null, 3, null, null],
+            ['Farmer Six', 'Ali-is', 'Wildebeest', 'F', 45984, null, null, null, null, null, 3, null, null],
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->postJson('/api/v1/admin/monitoring-records/import', [
+                'file' => new UploadedFile($path, 'report.xlsx', null, null, true),
+            ])->assertOk();
+
+        $typeOf = fn (string $name) => Beneficiary::where('name_of_farmer', $name)->value('animal_type');
+
+        // Whitespace and casing are normalized so identical values group…
+        $this->assertSame('Cattle', $typeOf('Farmer One'));
+        $this->assertSame('Cattle', $typeOf('Farmer Two'));
+        $this->assertSame('Unspecified', $typeOf('Farmer Five'));
+
+        // …but the types come FROM THE WORKBOOK: no synonym remapping and no
+        // collapse. "Bore" and "Chicken" stay exactly as imported.
+        $this->assertSame('Bore', $typeOf('Farmer Three'));
+        $this->assertSame('Chicken', $typeOf('Farmer Four'));
+        $this->assertSame('Wildebeest', $typeOf('Farmer Six'));
+
+        // The summary lists every distinct type the file introduced.
+        $response->assertJsonPath('data.animal_types', [
+            'Bore', 'Cattle', 'Chicken', 'Unspecified', 'Wildebeest',
+        ]);
+    }
+
+    public function test_export_can_be_filtered_to_one_animal_type(): void
+    {
+        $cattle = Beneficiary::factory()->create([
+            'name_of_farmer' => 'Cattle Keeper',
+            'animal_type' => 'Cattle',
+        ]);
+        $boar = Beneficiary::factory()->create([
+            'name_of_farmer' => 'Boar Keeper',
+            'animal_type' => 'Boar',
+        ]);
+
+        MonitoringRecord::factory()->for($cattle, 'beneficiary')->create(['date_monitored' => '2025-12-05']);
+        MonitoringRecord::factory()->for($boar, 'beneficiary')->create(['date_monitored' => '2025-12-07']);
+
+        $response = $this->actingAs($this->admin)->getJson(
+            '/api/v1/admin/monitoring-records/export?animal_type=Boar&month=2025-12',
+        );
+
+        $response->assertOk();
+
+        // Filename reflects the filters that were active.
+        $disposition = $response->headers->get('content-disposition');
+        $this->assertStringContainsString('livestock-monitoring-report-boar-dec-2025.xlsx', $disposition);
+
+        $temporary = tempnam(sys_get_temp_dir(), 'export');
+        file_put_contents($temporary, $response->streamedContent());
+
+        $spreadsheet = IOFactory::load($temporary);
+        $sheet = $spreadsheet->getSheet(0);
+
+        // Only the Boar household made it into the workbook.
+        $names = [];
+        foreach ($sheet->getRowIterator(3) as $row) {
+            $value = $sheet->getCell('A'.$row->getRowIndex())->getValue();
+            if ($value !== null && $value !== '') {
+                $names[] = $value;
+            }
+        }
+
+        $this->assertSame(['Boar Keeper'], $names);
+
+        $spreadsheet->disconnectWorksheets();
+        @unlink($temporary);
+    }
+
     public function test_non_admin_cannot_import_or_export(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);

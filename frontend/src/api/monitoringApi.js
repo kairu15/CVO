@@ -36,6 +36,16 @@ export const monitoringApi = {
     return Array.isArray(response?.data?.data) ? response.data.data : [];
   },
 
+  /**
+   * The distinct animal types present in the caller's records, alphabetical —
+   * the animal-type filter's options. Server-derived, so it reflects whatever
+   * the imported workbooks and UI registrations produced.
+   */
+  animalTypes: async () => {
+    const response = await api.get("/api/v1/monitoring-records/animal-types");
+    return Array.isArray(response?.data?.data) ? response.data.data : [];
+  },
+
   get: async (id) => unwrap(await api.get(`/api/v1/monitoring-records/${id}`)),
 
   /** Technician only, for their assigned beneficiaries. */

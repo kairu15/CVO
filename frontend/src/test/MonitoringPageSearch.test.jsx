@@ -20,6 +20,7 @@ vi.mock("../api/monitoringApi", () => ({
   monitoringApi: {
     list: vi.fn(),
     months: vi.fn(),
+    animalTypes: vi.fn(),
     acceptRegistration: vi.fn(),
     remove: vi.fn(),
   },
@@ -115,6 +116,7 @@ describe("MonitoringPage farmer search", () => {
     authApi.fetchUser.mockResolvedValue({ id: 1, name: "Admin", role: "admin" });
     beneficiariesApi.list.mockResolvedValue([]);
     monitoringApi.months.mockResolvedValue(MONTHS);
+    monitoringApi.animalTypes.mockResolvedValue([]);
     monitoringApi.list.mockImplementation(({ search } = {}) =>
       Promise.resolve(
         envelope(

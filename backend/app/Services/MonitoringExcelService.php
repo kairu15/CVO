@@ -5,8 +5,10 @@ namespace App\Services;
 use App\Models\Beneficiary;
 use App\Models\MonitoringRecord;
 use App\Models\User;
+use App\Support\AnimalTypes;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -90,6 +92,9 @@ class MonitoringExcelService
             'records_skipped' => 0,
             'technicians_matched' => 0,
             'technicians_fallback' => 0,
+            // The distinct animal types this workbook actually contains,
+            // normalized (whitespace/case) and sorted. Filled during the run.
+            'animal_types' => [],
             'errors' => [],
         ];
 
@@ -172,6 +177,10 @@ class MonitoringExcelService
 
         $spreadsheet->disconnectWorksheets();
 
+        // Stable, human-readable list of every animal type the workbook held.
+        $summary['animal_types'] = array_keys($summary['animal_types']);
+        sort($summary['animal_types']);
+
         return $summary;
     }
 
@@ -179,8 +188,11 @@ class MonitoringExcelService
      * Build the monthly report workbook: one sheet per month that has records,
      * rows ordered by barangay then farmer, mirroring the CVO template.
      */
-    public function exportWorkbook(?string $month = null, ?MonitoringRecordService $records = null): Spreadsheet
-    {
+    public function exportWorkbook(
+        ?string $month = null,
+        ?string $animalType = null,
+        ?MonitoringRecordService $records = null,
+    ): Spreadsheet {
         $records ??= app(MonitoringRecordService::class);
 
         $models = MonitoringRecord::query()
@@ -189,6 +201,15 @@ class MonitoringExcelService
                 $q->whereYear('date_monitored', '=', substr($month, 0, 4))
                     ->whereMonth('date_monitored', '=', substr($month, 5, 2));
             })
+            // Animal type lives on the beneficiary; filter at the query level
+            // so the workbook holds only that type's rows.
+            ->when(
+                $animalType !== null && $animalType !== '',
+                fn ($q) => $q->whereHas(
+                    'beneficiary',
+                    fn ($b) => $b->where('animal_type', $animalType),
+                ),
+            )
             ->orderBy('date_monitored')
             ->get();
 
@@ -280,10 +301,24 @@ class MonitoringExcelService
     }
 
     /** Stream the workbook as a download. */
-    public function downloadResponse(?string $month = null): StreamedResponse
+    public function downloadResponse(?string $month = null, ?string $animalType = null): StreamedResponse
     {
-        $writer = new XlsxWriter($this->exportWorkbook($month));
-        $filename = 'livestock-monitoring-report'.($month ? "-{$month}" : '').'.xlsx';
+        $writer = new XlsxWriter($this->exportWorkbook($month, $animalType));
+
+        // Name the file after the filters that were active, e.g.
+        // livestock-monitoring-report-boar-dec-2026.xlsx — so a folder of
+        // exports says what each one holds without opening it.
+        $parts = ['livestock-monitoring-report'];
+
+        if ($animalType !== null && $animalType !== '') {
+            $parts[] = Str::slug($animalType);
+        }
+
+        if ($month) {
+            $parts[] = strtolower(Carbon::parse($month.'-01')->format('M-Y'));
+        }
+
+        $filename = implode('-', $parts).'.xlsx';
 
         return response()->streamDownload(function () use ($writer): void {
             $writer->save('php://output');
@@ -464,6 +499,12 @@ class MonitoringExcelService
             return $beneficiary;
         }
 
+        // Types come from the workbook itself (whitespace/case normalized);
+        // the summary collects the distinct set so the admin sees exactly what
+        // the file introduced.
+        $animalType = AnimalTypes::normalize($values['animal_type'] ?? null);
+        $summary['animal_types'][$animalType] = true;
+
         $sex = strtoupper(trim((string) ($values['sex'] ?? '')));
         $normalizedAddress = $address !== '' ? \App\Support\Barangays::normalize($address) : '';
 
@@ -481,7 +522,9 @@ class MonitoringExcelService
             'farmer_id' => $actor->id, // owned by the importer until reassigned
             'name_of_farmer' => $name,
             'address' => $address !== '' ? $address : 'Unlisted',
-            'animal_type' => trim((string) ($values['animal_type'] ?? '')) ?: 'Unspecified',
+            // Normalized above so the same type never splits into several
+            // groups ("cattle "/"CATTLE"); unknown-but-real types are kept.
+            'animal_type' => $animalType,
             'sex' => in_array($sex, ['M', 'F'], true) ? $sex : null,
             // Origin tag: lets the delete path clean these auto-created rows
             // up (see MonitoringRecordService::delete) without ever touching

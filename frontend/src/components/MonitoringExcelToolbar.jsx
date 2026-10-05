@@ -11,9 +11,15 @@ import { Icon } from "./Icons";
  * - Import: upload the consolidated report or the per-barangay individual
  *   report; every sheet is parsed and merged into the database.
  * - Export: download the current database as the same report layout, one
- *   sheet per month.
+ *   sheet per month. The month and animal-type filters active on screen are
+ *   passed through, so the file holds exactly what the admin is looking at
+ *   and is named after those filters.
+ *
+ * @param {object} props
+ * @param {string|null} [props.month] active "YYYY-MM" filter, if any
+ * @param {string|null} [props.animalType] active animal-type filter, if any
  */
-export function MonitoringExcelToolbar() {
+export function MonitoringExcelToolbar({ month = null, animalType = null }) {
   const fileInputRef = useRef(null);
   const invalidate = useInvalidate();
   const [importing, setImporting] = useState(false);
@@ -46,7 +52,7 @@ export function MonitoringExcelToolbar() {
 
   function handleExport() {
     // Session-cookie auth means a plain link downloads with credentials.
-    window.location.href = adminApi.exportMonitoringExcelUrl();
+    window.location.href = adminApi.exportMonitoringExcelUrl(month, animalType);
   }
 
   return (
@@ -74,9 +80,18 @@ export function MonitoringExcelToolbar() {
           {importing ? "Importing…" : "Import Excel"}
         </button>
 
-        <button type="button" onClick={handleExport} className="btn-secondary">
+        <button
+          type="button"
+          onClick={handleExport}
+          className="btn-secondary"
+          title={
+            animalType
+              ? `Export only ${animalType}${month ? ` for ${month}` : ""}`
+              : "Export every animal type"
+          }
+        >
           <Icon name="calendar" className="h-4 w-4" />
-          Export Excel
+          {animalType ? `Export ${animalType}` : "Export Excel"}
         </button>
       </div>
 
@@ -100,6 +115,9 @@ export function MonitoringExcelToolbar() {
             <li>
               {summary.records_created} monitoring record(s) added, {summary.records_skipped} duplicate(s) skipped
             </li>
+            {Array.isArray(summary.animal_types) && summary.animal_types.length > 0 && (
+              <li>Animal type(s) in the file: {summary.animal_types.join(", ")}</li>
+            )}
           </ul>
           {summary.errors?.length > 0 && (
             <details className="mt-2 text-xs text-red-700">

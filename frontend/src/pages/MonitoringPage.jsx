@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useInvalidate,
   useAssignedBeneficiaries,
+  useMonitoringAnimalTypes,
   useMonitoringMonths,
   useMonitoringRecords,
 } from "../api/queries";
@@ -13,6 +14,7 @@ import { useToast } from "../context/ToastContext";
 import { MonitoringTable } from "../components/MonitoringTable";
 import { MonitoringExcelToolbar } from "../components/MonitoringExcelToolbar";
 import { MonthYearDropdown } from "../components/MonthYearDropdown";
+import { AnimalTypeDropdown } from "../components/AnimalTypeDropdown";
 import { VisitFormModal } from "../components/VisitFormModal";
 import { EmptyState } from "../components/EmptyState";
 import { Modal } from "../components/Modal";
@@ -63,6 +65,11 @@ export default function MonitoringPage({ roleKey }) {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
+  // Animal-type filter (null = all types), and which field the table groups
+  // under. Grouping by type is the default; admins can switch back to the
+  // barangay grouping they had before.
+  const [animalType, setAnimalType] = useState(null);
+  const [groupBy, setGroupBy] = useState("animal_type");
   const toast = useToast();
 
   const isTechnician = viewerRole === "technician";
@@ -75,15 +82,22 @@ export default function MonitoringPage({ roleKey }) {
   // the server (the filters live in the database query, before pagination),
   // so a month shows ALL of its records and a search finds every match — not
   // a slice of an unfiltered page.
-  const recordsQuery = useMonitoringRecords(selectedMonth, page, debouncedSearch);
+  // Sorting is a SERVER-side ORDER BY: by animal type (alphabetical, then the
+  // existing date order within a group) or the pre-existing date order.
+  const sort = groupBy === "animal_type" ? "animal_type" : "date";
+
+  const recordsQuery = useMonitoringRecords(selectedMonth, page, debouncedSearch, animalType, sort);
   const monthsQuery = useMonitoringMonths();
+  const animalTypesQuery = useMonitoringAnimalTypes();
   const beneficiaryQuery = useAssignedBeneficiaries(isTechnician);
 
   const records = recordsQuery.data?.data ?? [];
   const meta = recordsQuery.data?.meta ?? null;
   const months = monthsQuery.data ?? [];
+  const animalTypes = animalTypesQuery.data ?? [];
   const loading = recordsQuery.isPending;
-  const fetchError = recordsQuery.error ?? monthsQuery.error ?? beneficiaryQuery.error;
+  const fetchError =
+    recordsQuery.error ?? monthsQuery.error ?? animalTypesQuery.error ?? beneficiaryQuery.error;
 
   useEffect(() => {
     setError(fetchError ? getErrorMessage(fetchError) : null);
@@ -114,6 +128,12 @@ export default function MonitoringPage({ roleKey }) {
   /** Dropdown pick: swap the month bucket and reset to the first page. */
   const selectMonth = useCallback((month) => {
     setSelectedMonth(month);
+    setPage(1);
+  }, []);
+
+  /** Animal-type pick: same — swap the filter and start back at page 1. */
+  const selectAnimalType = useCallback((type) => {
+    setAnimalType(type);
     setPage(1);
   }, []);
 
@@ -233,7 +253,7 @@ export default function MonitoringPage({ roleKey }) {
           buttons beside it (admin only; the toolbar contributes nothing for
           other roles). Months with records appear grouped by year, and the
           filter runs server-side so a selection shows the WHOLE month. */}
-      {(months.length > 0 || isAdmin) && !loading && (
+      {(months.length > 0 || animalTypes.length > 0 || isAdmin) && !loading && (
         <section className="card px-4 py-3">
           <div className="flex flex-wrap items-center gap-3">
             {months.length > 0 && (
@@ -242,6 +262,12 @@ export default function MonitoringPage({ roleKey }) {
                   months={months}
                   selected={selectedMonth}
                   onSelect={selectMonth}
+                />
+
+                <AnimalTypeDropdown
+                  types={animalTypes}
+                  selected={animalType}
+                  onSelect={selectAnimalType}
                 />
 
                 {/* Search as you type: every keystroke updates the field,
@@ -266,7 +292,36 @@ export default function MonitoringPage({ roleKey }) {
                 </div>
               </>
             )}
-            {isAdmin && <MonitoringExcelToolbar />}
+            <div className="flex items-center gap-1 rounded-pill border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-slate-300/40 dark:bg-transparent">
+              <button
+                type="button"
+                onClick={() => setGroupBy("animal_type")}
+                aria-pressed={groupBy === "animal_type"}
+                className={`rounded-pill px-3 py-1 transition ${
+                  groupBy === "animal_type"
+                    ? "bg-brand-700 text-white"
+                    : "text-slate-600 hover:bg-brand-50 dark:text-slate-400"
+                }`}
+              >
+                Group by type
+              </button>
+              <button
+                type="button"
+                onClick={() => setGroupBy("address")}
+                aria-pressed={groupBy === "address"}
+                className={`rounded-pill px-3 py-1 transition ${
+                  groupBy === "address"
+                    ? "bg-brand-700 text-white"
+                    : "text-slate-600 hover:bg-brand-50 dark:text-slate-400"
+                }`}
+              >
+                Group by barangay
+              </button>
+            </div>
+
+            {isAdmin && (
+              <MonitoringExcelToolbar month={selectedMonth} animalType={animalType} />
+            )}
           </div>
         </section>
       )}
@@ -311,12 +366,18 @@ export default function MonitoringPage({ roleKey }) {
           acceptingId={acceptingId}
           selected={selected}
           onToggleRow={canEdit ? (record) => toggle(record.id) : undefined}
+          groupBy={groupBy}
           emptyState={
             debouncedSearch
               ? {
                   title: "No matching farmers",
                   description: `No monitoring records match “${debouncedSearch}”. Try a different name or clear the search.`,
                 }
+              : animalType
+                ? {
+                    title: `No ${animalType} records${selectedMonth ? " this month" : ""}`,
+                    description: `No monitoring records for ${animalType}${selectedMonth ? " in the selected month" : ""}. Pick another animal type or clear the filter.`,
+                  }
               : selectedMonth
                 ? {
                     title: "No records this month",

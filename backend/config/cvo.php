@@ -29,6 +29,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Suggested animal types (forms)
+    |--------------------------------------------------------------------------
+    |
+    | The vocabulary the UI forms offer (the registration dropdown mirrors it).
+    | It is a SUGGESTION, not a filter on the data: the importer takes the animal
+    | types FROM THE WORKBOOK itself. A value matching one of these takes the
+    | casing below ("CATTLE" → "Cattle"); every other value is kept as its own
+    | type. The Monitoring Records animal-type filter is populated from the
+    | types actually present in the data, so imported species appear there even
+    | when absent from this list.
+    |
+    | Only a blank cell becomes "Unspecified".
+    |
+    */
+    'animal_types' => [
+        'Carabao',
+        'Cattle',
+        'Goat',
+        'Swine',
+        'Boar',
+        'Poultry',
+        'Horse',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Vaccination cycle
     |--------------------------------------------------------------------------
     |

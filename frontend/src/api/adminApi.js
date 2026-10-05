@@ -65,11 +65,19 @@ export const adminApi = {
 
   /**
    * Download the monitoring report workbook in the CVO Excel template layout
-   * (one sheet per month). `month` is an optional "YYYY-MM" filter.
+   * (one sheet per month). `month` is an optional "YYYY-MM" filter and
+   * `animalType` an optional animal-type filter — both are passed through so
+   * the file matches whatever filters are active on screen, and the server
+   * names the file after them.
    */
-  exportMonitoringExcelUrl: (month = null) => {
+  exportMonitoringExcelUrl: (month = null, animalType = null) => {
     const base = api.defaults.baseURL ?? "";
-    const params = month ? `?month=${encodeURIComponent(month)}` : "";
-    return `${base}/api/v1/admin/monitoring-records/export${params}`;
+    const params = new URLSearchParams();
+
+    if (month) params.set("month", month);
+    if (animalType) params.set("animal_type", animalType);
+
+    const query = params.toString();
+    return `${base}/api/v1/admin/monitoring-records/export${query ? `?${query}` : ""}`;
   },
 };

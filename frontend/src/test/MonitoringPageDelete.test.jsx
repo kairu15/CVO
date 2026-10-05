@@ -20,6 +20,7 @@ vi.mock("../api/monitoringApi", () => ({
   monitoringApi: {
     list: vi.fn(),
     months: vi.fn(),
+    animalTypes: vi.fn(),
     acceptRegistration: vi.fn(),
     remove: vi.fn(),
   },
@@ -96,6 +97,7 @@ describe("MonitoringPage farmer delete confirmation", () => {
     authApi.fetchUser.mockResolvedValue({ id: 1, name: "Admin", role: "admin" });
     beneficiariesApi.list.mockResolvedValue([]);
     monitoringApi.months.mockResolvedValue([]);
+    monitoringApi.animalTypes.mockResolvedValue([]);
     monitoringApi.list.mockResolvedValue(envelope([REGISTRATION_RECORD]));
   });
 

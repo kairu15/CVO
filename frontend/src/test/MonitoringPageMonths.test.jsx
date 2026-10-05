@@ -21,6 +21,7 @@ vi.mock("../api/monitoringApi", () => ({
   monitoringApi: {
     list: vi.fn(),
     months: vi.fn(),
+    animalTypes: vi.fn(),
     acceptRegistration: vi.fn(),
     remove: vi.fn(),
   },
@@ -131,6 +132,7 @@ describe("MonitoringPage month/year dropdown", () => {
     authApi.fetchUser.mockResolvedValue({ id: 1, name: "Admin", role: "admin" });
     beneficiariesApi.list.mockResolvedValue([]);
     monitoringApi.months.mockResolvedValue(MONTHS);
+    monitoringApi.animalTypes.mockResolvedValue([]);
     monitoringApi.list.mockResolvedValue(envelope([...RECORDS_SEP_2026, RECORD_JUN_2024]));
   });
 
@@ -215,7 +217,9 @@ describe("MonitoringPage month/year dropdown", () => {
     await user.click(junOption);
 
     await vi.waitFor(() =>
-      expect(screen.getByRole("combobox")).toHaveTextContent("Jun 2024"),
+      expect(
+        screen.getByRole("combobox", { name: /filter monitoring records by month/i }),
+      ).toHaveTextContent("Jun 2024"),
     );
 
     // Exactly one active option at a time; picking keeps the filter across

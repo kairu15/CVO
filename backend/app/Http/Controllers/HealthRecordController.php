@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\BulkDeletes;
+use App\Http\Requests\BulkDeleteRequest;
 use App\Http\Requests\StoreHealthRecordRequest;
 use App\Http\Requests\UpdateHealthRecordRequest;
 use App\Http\Resources\HealthRecordResource;
@@ -14,6 +16,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class HealthRecordController extends Controller
 {
+    use BulkDeletes;
+
     public function __construct(private readonly HealthRecordService $records) {}
 
     /**
@@ -73,6 +77,18 @@ class HealthRecordController extends Controller
         $this->records->delete($request->user(), $record);
 
         return response()->json([], Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Delete many health records in one request (the table's bulk action).
+     */
+    public function bulkDestroy(BulkDeleteRequest $request): JsonResponse
+    {
+        return $this->bulkDelete(
+            $request,
+            HealthRecord::class,
+            fn (HealthRecord $record) => $this->records->delete($request->user(), $record),
+        );
     }
 
     /**

@@ -12,6 +12,9 @@ import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { QrScanner } from "../components/QrScanner";
 import { Icon } from "../components/Icons";
+import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
+import { BulkActionBar } from "../components/BulkActionBar";
+import { useRowSelection } from "../hooks/useRowSelection";
 import { useAuth } from "../context/AuthContext";
 import { getRole } from "../config/roles";
 import { lookupScannedAnimal } from "../lib/scanLookup";
@@ -58,6 +61,11 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [removing, setRemoving] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Row selection for the bulk (select-all) delete.
+  const { selected, toggle, toggleAll, clear } = useRowSelection();
 
   // Mirrors FieldVisitPolicy::create — only a field technician logs a trip.
   const canLog = user?.role === "technician";
@@ -70,6 +78,9 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
   const canModify = (visit) =>
     user?.role === "admin" ||
     (user?.role === "technician" && visit.technician_id === user?.id);
+
+  // Only visits this user may delete are selectable.
+  const deletableIds = visits.filter(canModify).map((visit) => visit.id);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -120,6 +131,32 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
       setError(getErrorMessage(err));
     } finally {
       setRemoving(false);
+    }
+  }
+
+  async function confirmBulkDelete() {
+    if (selected.size === 0) return;
+
+    setBulkBusy(true);
+    setError(null);
+
+    try {
+      const result = await fieldVisitsApi.bulkRemove([...selected]);
+      const failed = result?.failed_ids?.length ?? 0;
+
+      setBulkOpen(false);
+      clear();
+      await load();
+
+      setNotice(
+        failed > 0
+          ? `Deleted ${result.deleted} of ${result.deleted + failed} visits; ${failed} could not be deleted.`
+          : `Deleted ${result.deleted} ${result.deleted === 1 ? "visit" : "visits"}.`,
+      );
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -235,9 +272,18 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
             }
           />
         ) : (
+          <>
+          <BulkActionBar
+            count={selected.size}
+            noun="visit"
+            onClear={clear}
+            onDelete={() => setBulkOpen(true)}
+            busy={bulkBusy}
+          />
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] text-left text-xs">
               <colgroup>
+                <col className="w-10" />
                 <col className="w-[10%]" />
                 <col className="w-[20%]" />
                 <col className="w-[12%]" />
@@ -249,6 +295,16 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
               </colgroup>
               <thead>
                 <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
+                  {deletableIds.length > 0 && (
+                    <th scope="col" className="w-10 px-4 py-2.5">
+                      <SelectAllCheckbox
+                        ids={deletableIds}
+                        selected={selected}
+                        onToggleAll={toggleAll}
+                        label="Select all field visits you can delete"
+                      />
+                    </th>
+                  )}
                   <th scope="col" className="px-4 py-2.5 font-semibold">Date</th>
                   <th scope="col" className="px-4 py-2.5 font-semibold">Farmer</th>
                   <th scope="col" className="px-4 py-2.5 font-semibold">Animal</th>
@@ -269,6 +325,19 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
 
                   return (
                     <tr key={visit.id} className="transition hover:bg-brand-50/40">
+                      {deletableIds.length > 0 && (
+                        <td className="px-4 py-2.5">
+                          {canModify(visit) ? (
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded accent-brand-700"
+                              aria-label={`Select visit to ${visit.name_of_farmer}`}
+                              checked={selected.has(visit.id)}
+                              onChange={() => toggle(visit.id)}
+                            />
+                          ) : null}
+                        </td>
+                      )}
                       <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
                         {formatDate(visit.visited_on)}
                       </td>
@@ -363,6 +432,7 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
 
@@ -401,6 +471,39 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
               </>
             ) : (
               "Delete visit"
+            )}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={bulkOpen}
+        title={`Delete ${selected.size} ${selected.size === 1 ? "field visit" : "field visits"}`}
+        onClose={() => setBulkOpen(false)}
+      >
+        <p className="text-sm text-slate-600">
+          Delete <strong>{selected.size}</strong> selected field visit
+          {selected.size === 1 ? "" : "s"}? This removes them from the field log
+          and cannot be undone.
+        </p>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={() => setBulkOpen(false)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary bg-red-600 hover:bg-red-700"
+            onClick={confirmBulkDelete}
+            disabled={bulkBusy}
+          >
+            {bulkBusy ? (
+              <>
+                <ButtonSpinner />
+                Deleting…
+              </>
+            ) : (
+              "Delete selected"
             )}
           </button>
         </div>

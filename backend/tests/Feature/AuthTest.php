@@ -91,7 +91,7 @@ class AuthTest extends TestCase
             ->assertJsonPath('data.email', $user->email);
     }
 
-    public function test_users_cannot_login_with_invalid_credentials(): void
+    public function test_a_wrong_password_is_reported_against_the_password_field(): void
     {
         $user = User::factory()->create();
 
@@ -101,7 +101,20 @@ class AuthTest extends TestCase
         ]);
 
         $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['identifier']);
+            ->assertJsonValidationErrors(['password'])
+            ->assertJsonPath('errors.password.0', 'Incorrect password.');
+    }
+
+    public function test_an_unknown_identifier_is_reported_as_not_found(): void
+    {
+        $response = $this->postJson('/api/v1/login', [
+            'identifier' => 'ghost@example.com',
+            'password' => 'whatever',
+        ]);
+
+        $response->assertUnprocessable()
+            ->assertJsonValidationErrors(['identifier'])
+            ->assertJsonPath('errors.identifier.0', 'No account found with that username or email.');
     }
 
     public function test_users_can_login_with_a_username(): void

@@ -268,10 +268,13 @@ class BeneficiaryService
      * schedule / smart-alert services carry an explicit `deleted_at is null`
      * filter for the same reason.
      *
-     * The account is only removed when it has no other households left: a
-     * farmer who registered several animals keeps their login, while a
-     * freshly-registered one (the case the monitoring-table delete fixes) is
-     * fully removed.
+     * The account is only removed when it has no other households left AND
+     * that account is actually a farmer: a farmer who registered several
+     * animals keeps their login, while a freshly-registered one (the case the
+     * monitoring-table delete fixes) is fully removed. A staff account is
+     * NEVER removed this way — staff may register a beneficiary on a farmer's
+     * behalf, and that row's farmer_id then points at the staff member, so
+     * deleting the household would otherwise soft-delete the staff login.
      *
      * Notifications are the one exception: `user_notifications.dedupe_key` is
      * UNIQUE and the daily Smart Alerts scan re-creates rows by that key, so
@@ -335,7 +338,12 @@ class BeneficiaryService
 
             $farmer = $farmerId !== null ? User::find($farmerId) : null;
 
-            if ($farmer !== null && $farmer->beneficiaries()->count() === 0) {
+            // Only a FARMER account goes with its last household. A staff
+            // member's login must survive: staff can register beneficiaries
+            // on a farmer's behalf and end up as their farmer_id, and
+            // deleting the household once soft-deleted the seeded admin
+            // account (locking everyone out of the demo).
+            if ($farmer !== null && $farmer->isFarmer() && $farmer->beneficiaries()->count() === 0) {
                 UserNotification::query()->where('user_id', $farmer->id)->delete();
                 $farmer->delete();
             }

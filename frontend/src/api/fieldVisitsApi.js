@@ -40,6 +40,12 @@ export const fieldVisitsApi = {
     return unwrap(await api.delete(`/api/v1/field-visits/${id}`));
   },
 
+  /** Delete many field visits in one request → { deleted, failed_ids }. */
+  bulkRemove: async (ids) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/field-visits/bulk-delete", { ids }));
+  },
+
   /**
    * Attach the geotagged photo to a visit (a retake replaces). `meta` is the
    * structured capture metadata — sent as real columns, not read back out of

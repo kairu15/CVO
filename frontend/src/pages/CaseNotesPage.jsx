@@ -10,6 +10,9 @@ import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
+import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
+import { BulkActionBar } from "../components/BulkActionBar";
+import { useRowSelection } from "../hooks/useRowSelection";
 import { useAuth } from "../context/AuthContext";
 import { getRole } from "../config/roles";
 
@@ -54,6 +57,11 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [removing, setRemoving] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Row selection for the bulk (select-all) delete.
+  const { selected, toggle, toggleAll, clear } = useRowSelection();
 
   // Mirrors CaseNotePolicy::create — only a veterinarian writes notes.
   const canAuthor = user?.role === "doctor";
@@ -61,6 +69,9 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
   // Mirrors CaseNotePolicy::update — the author, or an administrator.
   const canModify = (note) =>
     user?.role === "admin" || (user?.role === "doctor" && note.doctor_id === user?.id);
+
+  // Only notes this user may delete are selectable.
+  const deletableIds = notes.filter(canModify).map((note) => note.id);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -106,6 +117,32 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
       setError(getErrorMessage(err));
     } finally {
       setRemoving(false);
+    }
+  }
+
+  async function confirmBulkDelete() {
+    if (selected.size === 0) return;
+
+    setBulkBusy(true);
+    setError(null);
+
+    try {
+      const result = await caseNotesApi.bulkRemove([...selected]);
+      const failed = result?.failed_ids?.length ?? 0;
+
+      setBulkOpen(false);
+      clear();
+      await load();
+
+      setNotice(
+        failed > 0
+          ? `Deleted ${result.deleted} of ${result.deleted + failed} notes; ${failed} could not be deleted.`
+          : `Deleted ${result.deleted} ${result.deleted === 1 ? "note" : "notes"}.`,
+      );
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -162,10 +199,40 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
           />
         </section>
       ) : (
+        <>
+        {deletableIds.length > 0 && (
+          <div className="flex items-center gap-2 px-1">
+            <SelectAllCheckbox
+              ids={deletableIds}
+              selected={selected}
+              onToggleAll={toggleAll}
+              label="Select all case notes you can delete"
+            />
+            <span className="text-xs font-semibold text-slate-600">Select all</span>
+          </div>
+        )}
+
+        <BulkActionBar
+          count={selected.size}
+          noun="note"
+          onClear={clear}
+          onDelete={() => setBulkOpen(true)}
+          busy={bulkBusy}
+        />
+
         <ul className="space-y-4">
           {notes.map((note) => (
             <li key={note.id} className="card p-5">
               <div className="flex flex-wrap items-start gap-3">
+                {canModify(note) && (
+                  <input
+                    type="checkbox"
+                    className="mt-3 h-4 w-4 shrink-0 rounded accent-brand-700"
+                    aria-label={`Select note for ${note.name_of_farmer}`}
+                    checked={selected.has(note.id)}
+                    onChange={() => toggle(note.id)}
+                  />
+                )}
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-100 text-[11px] font-bold text-brand-800">
                   {initialsOf(note.doctor?.name)}
                 </span>
@@ -216,6 +283,7 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
             </li>
           ))}
         </ul>
+        </>
       )}
 
       <CaseNoteFormModal
@@ -261,6 +329,39 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
               </>
             ) : (
               "Delete note"
+            )}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={bulkOpen}
+        title={`Delete ${selected.size} ${selected.size === 1 ? "case note" : "case notes"}`}
+        onClose={() => setBulkOpen(false)}
+      >
+        <p className="text-sm text-slate-600">
+          Delete <strong>{selected.size}</strong> selected case note
+          {selected.size === 1 ? "" : "s"}? This removes them from the animals'
+          histories and cannot be undone.
+        </p>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={() => setBulkOpen(false)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary bg-red-600 hover:bg-red-700"
+            onClick={confirmBulkDelete}
+            disabled={bulkBusy}
+          >
+            {bulkBusy ? (
+              <>
+                <ButtonSpinner />
+                Deleting…
+              </>
+            ) : (
+              "Delete selected"
             )}
           </button>
         </div>

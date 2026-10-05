@@ -29,4 +29,18 @@ class UpdatePasswordRequest extends FormRequest
             'password' => ['required', 'string', Password::defaults(), 'confirmed'],
         ];
     }
+
+    /**
+     * Say which password is wrong — Laravel's default "The password is
+     * incorrect." is ambiguous when both a current and a new password are on
+     * the form.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'current_password.current_password' => 'Your current password is incorrect.',
+        ];
+    }
 }

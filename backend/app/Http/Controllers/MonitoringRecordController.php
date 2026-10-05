@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\BulkDeletes;
+use App\Http\Requests\BulkDeleteRequest;
 use App\Http\Requests\IndexMonitoringRecordsRequest;
 use App\Http\Requests\StoreMonitoringRecordRequest;
 use App\Http\Requests\UpdateMonitoringRecordRequest;
@@ -15,6 +17,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class MonitoringRecordController extends Controller
 {
+    use BulkDeletes;
+
     public function __construct(private readonly MonitoringRecordService $records)
     {
     }
@@ -101,6 +105,20 @@ class MonitoringRecordController extends Controller
         $this->records->delete($request->user(), $record);
 
         return response()->json([], Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Delete many records in one request (the table's bulk action). Each row
+     * is authorized individually; a registration row still soft-deletes its
+     * whole farmer through the service, exactly like the single delete.
+     */
+    public function bulkDestroy(BulkDeleteRequest $request): JsonResponse
+    {
+        return $this->bulkDelete(
+            $request,
+            MonitoringRecord::class,
+            fn (MonitoringRecord $record) => $this->records->delete($request->user(), $record),
+        );
     }
 
     /**

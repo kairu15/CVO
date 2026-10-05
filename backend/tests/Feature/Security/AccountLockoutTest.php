@@ -164,7 +164,7 @@ class AccountLockoutTest extends TestCase
         $this->assertFalse($lockout->isLocked($user));
     }
 
-    public function test_unknown_identifiers_are_never_locked_or_enumerated(): void
+    public function test_unknown_identifiers_are_never_locked(): void
     {
         // A few failures against a non-existent account (kept under the
         // 6/min route throttle so the throttle is not what answers).

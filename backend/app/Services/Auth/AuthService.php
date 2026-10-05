@@ -138,6 +138,12 @@ class AuthService
      * audited; failed attempts feed the per-account lockout; and a locked
      * account refuses authentication with 423 BEFORE any credential check.
      *
+     * Error messages are DELIBERATELY specific about which half failed:
+     * an unknown identifier says so, and a known identifier with the wrong
+     * password says so. This trades away user-enumeration protection for a
+     * clearer sign-in experience (product decision) — do not collapse the
+     * two back into one generic message without revisiting that call.
+     *
      * Stateless by design; the controller starts the session (SPA)
      * or issues a token (mobile) afterwards.
      *
@@ -162,7 +168,7 @@ class AuthService
             ]);
 
             throw ValidationException::withMessages([
-                'identifier' => __('These credentials do not match our records.'),
+                'identifier' => __('No account found with that username or email.'),
             ]);
         }
 
@@ -177,8 +183,11 @@ class AuthService
                 'reason' => 'bad_password',
             ]);
 
+            // Keyed to `password` (not `identifier`) so the SPA shows the
+            // message against the password input, which is the field that
+            // actually needs fixing.
             throw ValidationException::withMessages([
-                'identifier' => __('These credentials do not match our records.'),
+                'password' => __('Incorrect password.'),
             ]);
         }
 

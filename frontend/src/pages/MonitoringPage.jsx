@@ -19,7 +19,10 @@ import { Modal } from "../components/Modal";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
+import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
+import { BulkActionBar } from "../components/BulkActionBar";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useRowSelection } from "../hooks/useRowSelection";
 
 /**
  * Livestock Monthly Monitoring — one shared page for all four dashboards.
@@ -47,6 +50,11 @@ export default function MonitoringPage({ roleKey }) {
   const [deleting, setDeleting] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [acceptingId, setAcceptingId] = useState(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Row selection for the bulk (select-all) delete.
+  const { selected, toggle, toggleAll, clear } = useRowSelection();
   // The month/year dropdown selection — a "YYYY-MM" bucket of
   // `date_monitored`, or null to see every record regardless of month.
   const [selectedMonth, setSelectedMonth] = useState(null);
@@ -141,6 +149,34 @@ export default function MonitoringPage({ roleKey }) {
       toast.error(getErrorMessage(err));
     } finally {
       setRemoving(false);
+    }
+  }
+
+  /**
+   * Bulk delete for the selected rows. A registration row still removes the
+   * whole farmer server-side, so the confirmation warns before this runs.
+   */
+  async function confirmBulkDelete() {
+    if (selected.size === 0) return;
+
+    setBulkBusy(true);
+    try {
+      const result = await monitoringApi.bulkRemove([...selected]);
+      const failed = result?.failed_ids?.length ?? 0;
+
+      setBulkOpen(false);
+      clear();
+      await load();
+
+      toast.success(
+        failed > 0
+          ? `Deleted ${result.deleted} of ${result.deleted + failed} records; ${failed} could not be deleted.`
+          : `Deleted ${result.deleted} ${result.deleted === 1 ? "record" : "records"}.`,
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -246,6 +282,26 @@ export default function MonitoringPage({ roleKey }) {
         </section>
       ) : (
         <section className="card overflow-hidden">
+        {canEdit && records.length > 0 && (
+          <div className="flex items-center gap-2 px-4 py-2.5">
+            <SelectAllCheckbox
+              ids={records.map((record) => record.id)}
+              selected={selected}
+              onToggleAll={toggleAll}
+              label="Select all monitoring records on this page"
+            />
+            <span className="text-xs font-semibold text-slate-600">Select all</span>
+          </div>
+        )}
+
+        <BulkActionBar
+          count={selected.size}
+          noun="record"
+          onClear={clear}
+          onDelete={() => setBulkOpen(true)}
+          busy={bulkBusy}
+        />
+
         <MonitoringTable
           records={records}
           loading={loading}
@@ -253,6 +309,8 @@ export default function MonitoringPage({ roleKey }) {
           onDelete={canEdit ? (record) => setDeleting(record) : undefined}
           onAccept={isAdmin ? (record) => confirmAccept(record) : undefined}
           acceptingId={acceptingId}
+          selected={selected}
+          onToggleRow={canEdit ? (record) => toggle(record.id) : undefined}
           emptyState={
             debouncedSearch
               ? {
@@ -354,6 +412,52 @@ export default function MonitoringPage({ roleKey }) {
               "Remove farmer"
             ) : (
               "Delete record"
+            )}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={bulkOpen}
+        title={`Delete ${selected.size} selected ${selected.size === 1 ? "record" : "records"}`}
+        onClose={() => setBulkOpen(false)}
+      >
+        <div className="space-y-3 text-sm text-slate-600">
+          <p>
+            Delete <strong>{selected.size}</strong> selected monitoring
+            record{selected.size === 1 ? "" : "s"}? This cannot be undone.
+          </p>
+          {records.some(
+            (record) =>
+              selected.has(record.id) &&
+              record.registration_status &&
+              record.registration_status !== "none",
+          ) && (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-amber-900">
+              Some selected rows are farmer registrations. Deleting those removes
+              the whole farmer and all associated records, not just the row — use
+              the single-row Delete for those if that is not intended.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={() => setBulkOpen(false)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary bg-red-600 hover:bg-red-700"
+            onClick={confirmBulkDelete}
+            disabled={bulkBusy}
+          >
+            {bulkBusy ? (
+              <>
+                <ButtonSpinner />
+                Deleting…
+              </>
+            ) : (
+              "Delete selected"
             )}
           </button>
         </div>

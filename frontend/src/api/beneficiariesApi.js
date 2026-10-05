@@ -86,6 +86,16 @@ export const beneficiariesApi = {
   },
 
   /**
+   * Delete many households (admin-only by policy) → { deleted, failed_ids }.
+   * Each household still takes its whole history with it, like the single
+   * delete.
+   */
+  bulkRemove: async (ids) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/beneficiaries/bulk-delete", { ids }));
+  },
+
+  /**
    * The pass-on chain for one beneficiary: where the animal came from
    * (chain, oldest first) and where its offspring went, both as a flat list
    * (descendant_events) and as a multi-generation tree (descendant_tree).

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\BulkDeletes;
+use App\Http\Requests\BulkDeleteRequest;
 use App\Http\Requests\GeocodeRequest;
 use App\Http\Requests\IndexBeneficiariesRequest;
 use App\Http\Requests\StoreBeneficiaryRequest;
@@ -18,6 +20,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class BeneficiaryController extends Controller
 {
+    use BulkDeletes;
+
     public function __construct(
         private readonly BeneficiaryService $beneficiaries,
         private readonly AuditLogger $audit,
@@ -122,5 +126,19 @@ class BeneficiaryController extends Controller
         $this->beneficiaries->deleteFarmer($request->user(), $beneficiary);
 
         return response()->json([], Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Delete many households in one request (the directory's bulk action).
+     * Admin-only by policy; each household still soft-deletes its whole
+     * history through the same service the single delete uses.
+     */
+    public function bulkDestroy(BulkDeleteRequest $request): JsonResponse
+    {
+        return $this->bulkDelete(
+            $request,
+            \App\Models\Beneficiary::class,
+            fn (\App\Models\Beneficiary $beneficiary) => $this->beneficiaries->deleteFarmer($request->user(), $beneficiary),
+        );
     }
 }

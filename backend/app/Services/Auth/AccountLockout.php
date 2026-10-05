@@ -68,9 +68,10 @@ class AccountLockout
     /**
      * Throw the 423 locked-out validation error when the account is locked.
      *
-     * Deliberately the SAME generic message shape as a credential failure —
-     * no extra hint about the account state beyond the error key — so the
-     * endpoint does not become an oracle for whether an account exists.
+     * The lockout message is intentionally separate from the credential
+     * errors (which are now specific about unknown-identifier vs.
+     * wrong-password): it tells a legitimate user why even the right
+     * password is refused, instead of looking like a fresh failure.
      */
     public function assertNotLocked(User $user): void
     {

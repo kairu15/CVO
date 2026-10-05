@@ -106,6 +106,10 @@ function RegistrationBadge({ record }) {
  * @param {{title: string, description: string}} [props.emptyState] replaces the
  *   default "no records yet" empty state when the caller knows a more specific
  *   reason the table is empty (e.g. a month tab with no records)
+ * @param {Set<number|string>} [props.selected] selected record ids; when
+ *   `onToggleRow` is also given, a checkbox column is rendered
+ * @param {(record: object) => void} [props.onToggleRow] toggles one row's
+ *   selection — enables the checkbox column
  */
 export function MonitoringTable({
   records = [],
@@ -115,9 +119,14 @@ export function MonitoringTable({
   onAccept,
   acceptingId = null,
   emptyState,
+  selected,
+  onToggleRow,
 }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [photoRecord, setPhotoRecord] = useState(null);
+
+  const hasSelection = Boolean(onToggleRow);
+  const hasActions = Boolean(onEdit || onDelete || onAccept);
 
   const groups = useMemo(() => {
     const byBarangay = new Map();
@@ -212,19 +221,25 @@ export function MonitoringTable({
                      values widen the table (scrolling in the wrapper) rather
                      than overlapping the neighbouring cell. */}
                   <colgroup>
+                    {hasSelection && <col className="w-10" />}
                     {COLUMNS.map((col) => (
                       <col key={col.key} />
                     ))}
-                    {(onEdit || onDelete || onAccept) && <col />}
+                    {hasActions && <col />}
                   </colgroup>
                   <thead>
                     <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
+                      {hasSelection && (
+                        <th scope="col" className="w-10 px-4 py-2.5">
+                          <span className="sr-only">Select</span>
+                        </th>
+                      )}
                       {COLUMNS.map((col) => (
                         <th key={col.key} scope="col" className="px-4 py-2.5 font-semibold whitespace-nowrap">
                           {col.label}
                         </th>
                       ))}
-                      {(onEdit || onDelete || onAccept) && (
+                      {hasActions && (
                         <th scope="col" className="px-4 py-2.5 text-right font-semibold">
                           <span className="sr-only">Actions</span>
                         </th>
@@ -243,6 +258,17 @@ export function MonitoringTable({
                         key={record.id}
                         className={`transition hover:bg-brand-50/60 dark:hover:bg-brand-100/40 ${isNew ? "bg-brand-50 dark:bg-brand-100/70" : ""}`}
                       >
+                        {hasSelection && (
+                          <td className="px-4 py-2.5">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded accent-brand-700"
+                              aria-label={`Select ${record.name_of_farmer}`}
+                              checked={selected?.has(record.id) ?? false}
+                              onChange={() => onToggleRow(record)}
+                            />
+                          </td>
+                        )}
                         {COLUMNS.map((col) => {
                           if (col.key === "name_of_farmer") {
                             // The registration badge leads the farmer's name —
@@ -322,7 +348,7 @@ export function MonitoringTable({
                             </td>
                           );
                         })}
-                        {(onEdit || onDelete || onAccept) && (
+                        {hasActions && (
                           <td className="px-4 py-2.5 text-right whitespace-nowrap">
                             {/* Only on an un-accepted new registration. Once
                                 accepted the button disappears — the row keeps

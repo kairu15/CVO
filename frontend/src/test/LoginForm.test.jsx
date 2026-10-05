@@ -69,6 +69,35 @@ describe("LoginForm", () => {
     expect(auth.login).toHaveBeenCalledWith("juan", "Secret!23", false);
   });
 
+  it("shows an incorrect-password error against the password field", async () => {
+    auth.login.mockRejectedValue({
+      response: { status: 422, data: { errors: { password: ["Incorrect password."] } } },
+    });
+
+    renderForm();
+
+    await signIn();
+
+    expect(await screen.findByText("Incorrect password.")).toBeInTheDocument();
+  });
+
+  it("shows an unknown-account error against the identifier field", async () => {
+    auth.login.mockRejectedValue({
+      response: {
+        status: 422,
+        data: { errors: { identifier: ["No account found with that username or email."] } },
+      },
+    });
+
+    renderForm();
+
+    await signIn();
+
+    expect(
+      await screen.findByText("No account found with that username or email."),
+    ).toBeInTheDocument();
+  });
+
   it("remembers the identifier and pre-fills it on the next visit", async () => {
     const first = renderForm();
 

@@ -55,6 +55,15 @@ export const monitoringApi = {
     return unwrap(await api.delete(`/api/v1/monitoring-records/${id}`));
   },
 
+  /**
+   * Delete many records in one request. Resolves to { deleted, failed_ids }
+   * so the UI can report rows that were already gone or not the caller's.
+   */
+  bulkRemove: async (ids) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/monitoring-records/bulk-delete", { ids }));
+  },
+
   /** Admin accepts a registration-created record (starts the midnight countdown). */
   acceptRegistration: async (id) => {
     await ensureCsrfCookie();

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ vi.mock("../api/healthRecordsApi", () => ({
     create: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
+    bulkRemove: vi.fn(),
   },
 }));
 
@@ -235,6 +236,34 @@ describe("HealthRecordsPage", () => {
 
     expect(beneficiariesApi.list).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "New record" })).not.toBeInTheDocument();
+  });
+
+  it("select-all bulk deletes only the rows this vet may delete", async () => {
+    healthRecordsApi.bulkRemove.mockResolvedValue({ deleted: 1, failed_ids: [] });
+
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    // Select-all ticks the one row this vet authored (record 1), not the
+    // colleague's record (record 2).
+    await act(async () => {
+      await userEvent.click(
+        screen.getByLabelText("Select all health records you can delete"),
+      );
+    });
+    expect(screen.getByText("1 record selected")).toBeInTheDocument();
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Delete selected" }));
+    });
+    const dialog = screen.getByRole("dialog");
+    await act(async () => {
+      await userEvent.click(
+        within(dialog).getByRole("button", { name: "Delete selected" }),
+      );
+    });
+
+    await waitFor(() => expect(healthRecordsApi.bulkRemove).toHaveBeenCalledWith([1]));
   });
 
   it("deletes a record after confirmation", async () => {

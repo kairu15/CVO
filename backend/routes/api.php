@@ -117,6 +117,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
 
     // Beneficiaries & livestock monitoring
     Route::apiResource('beneficiaries', BeneficiaryController::class);
+    Route::post('beneficiaries/bulk-delete', [BeneficiaryController::class, 'bulkDestroy'])
+        ->name('api.beneficiaries.bulk-delete');
     Route::get('beneficiaries/{id}/lineage', [DispersalEventController::class, 'lineage'])
         ->name('api.beneficiaries.lineage');
 
@@ -128,6 +130,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         ->name('api.monitoring-records.months');
 
     Route::apiResource('monitoring-records', MonitoringRecordController::class);
+    Route::post('monitoring-records/bulk-delete', [MonitoringRecordController::class, 'bulkDestroy'])
+        ->name('api.monitoring-records.bulk-delete');
 
     // Admin accepts a registration-created monitoring record (starts the
     // midnight countdown). Declared after the apiResource so its explicit
@@ -144,9 +148,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::get('health-records/options', [HealthRecordController::class, 'options'])
         ->name('api.health-records.options');
     Route::apiResource('health-records', HealthRecordController::class);
+    Route::post('health-records/bulk-delete', [HealthRecordController::class, 'bulkDestroy'])
+        ->name('api.health-records.bulk-delete');
 
     // Freeform veterinary case notes (veterinarian-authored).
     Route::apiResource('case-notes', CaseNoteController::class);
+    Route::post('case-notes/bulk-delete', [CaseNoteController::class, 'bulkDestroy'])
+        ->name('api.case-notes.bulk-delete');
 
     // Rule-Based Health Concern Hints — the active rule table the case-note /
     // health-record forms match against, CLIENT-side. Read-only here; the
@@ -160,6 +168,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::get('field-visits/options', [FieldVisitController::class, 'options'])
         ->name('api.field-visits.options');
     Route::apiResource('field-visits', FieldVisitController::class);
+    Route::post('field-visits/bulk-delete', [FieldVisitController::class, 'bulkDestroy'])
+        ->name('api.field-visits.bulk-delete');
 
     // Geotagged visit photos — declared AFTER the apiResource so the explicit
     // paths win over the resource's {field_visit} binding. POST attaches (and

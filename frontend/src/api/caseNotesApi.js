@@ -33,4 +33,10 @@ export const caseNotesApi = {
     await ensureCsrfCookie();
     return unwrap(await api.delete(`/api/v1/case-notes/${id}`));
   },
+
+  /** Delete many notes in one request → { deleted, failed_ids }. */
+  bulkRemove: async (ids) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/case-notes/bulk-delete", { ids }));
+  },
 };

@@ -40,4 +40,10 @@ export const healthRecordsApi = {
     await ensureCsrfCookie();
     return unwrap(await api.delete(`/api/v1/health-records/${id}`));
   },
+
+  /** Delete many health records in one request → { deleted, failed_ids }. */
+  bulkRemove: async (ids) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/health-records/bulk-delete", { ids }));
+  },
 };

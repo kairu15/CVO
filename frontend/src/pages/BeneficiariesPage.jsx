@@ -9,6 +9,9 @@ import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
+import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
+import { BulkActionBar } from "../components/BulkActionBar";
+import { beneficiariesApi } from "../api/beneficiariesApi";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useToast } from "../context/ToastContext";
 
@@ -33,6 +36,8 @@ export default function BeneficiariesPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkTechnician, setBulkTechnician] = useState("");
   const [saving, setSaving] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   // The floating details window — the clicked row itself, so opening it
   // never fires another request (the list payload carries every field).
@@ -102,6 +107,23 @@ export default function BeneficiariesPage() {
     });
   }
 
+  /** Global "Select all": tick every loaded beneficiary, or clear them all. */
+  function toggleAll(ids) {
+    setSelected((prev) => {
+      if (ids.length === 0) return prev;
+
+      const next = new Set(prev);
+      const allSelected = ids.every((id) => next.has(id));
+
+      for (const id of ids) {
+        if (allSelected) next.delete(id);
+        else next.add(id);
+      }
+
+      return next;
+    });
+  }
+
   const [detail, setDetail] = useState(null);
 
   async function saveBulk() {
@@ -138,6 +160,35 @@ export default function BeneficiariesPage() {
     }
   }
 
+  /**
+   * Bulk delete the selected households. Admin-only server-side; each row
+   * takes its whole history with it, same as the single delete, so the
+   * confirmation spells that out before this runs.
+   */
+  async function confirmBulkDelete() {
+    if (selected.size === 0) return;
+
+    setBulkBusy(true);
+    try {
+      const result = await beneficiariesApi.bulkRemove([...selected]);
+      const failed = result?.failed_ids?.length ?? 0;
+
+      setBulkDeleteOpen(false);
+      setSelected(new Set());
+      await load();
+
+      toast.success(
+        failed > 0
+          ? `Deleted ${result.deleted} of ${result.deleted + failed} beneficiaries; ${failed} could not be deleted.`
+          : `Deleted ${result.deleted} ${result.deleted === 1 ? "beneficiary" : "beneficiaries"}.`,
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   const technicianName = (id) =>
     technicians.find((t) => t.id === id)?.name ?? "—";
 
@@ -158,6 +209,17 @@ export default function BeneficiariesPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {beneficiaries.length > 0 && (
+              <label className="mr-1 flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
+                <SelectAllCheckbox
+                  ids={beneficiaries.map((beneficiary) => beneficiary.id)}
+                  selected={selected}
+                  onToggleAll={toggleAll}
+                  label="Select all beneficiaries"
+                />
+                Select all
+              </label>
+            )}
             <div className="relative">
               <Icon name="search" className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400" />
               <input
@@ -182,6 +244,24 @@ export default function BeneficiariesPage() {
       </section>
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
+
+      <BulkActionBar
+        count={selected.size}
+        noun="beneficiary"
+        plural="beneficiaries"
+        onClear={() => setSelected(new Set())}
+        onDelete={() => setBulkDeleteOpen(true)}
+        busy={bulkBusy}
+      >
+        <button
+          type="button"
+          className="rounded-pill bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={() => setBulkOpen(true)}
+          disabled={bulkBusy}
+        >
+          Assign technician
+        </button>
+      </BulkActionBar>
 
       <section className="card overflow-hidden">
         {loading ? (
@@ -315,6 +395,46 @@ export default function BeneficiariesPage() {
               </>
             ) : (
               "Apply"
+            )}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={bulkDeleteOpen}
+        title={`Delete ${selected.size} selected ${selected.size === 1 ? "beneficiary" : "beneficiaries"}`}
+        onClose={() => setBulkDeleteOpen(false)}
+      >
+        <div className="space-y-3 text-sm text-slate-600">
+          <p>
+            This removes <strong>{selected.size}</strong> selected
+            household{selected.size === 1 ? "" : "s"} and all associated records —
+            monitoring history, health records, case notes, field visits, visit
+            photos, technician assignments and notifications.
+          </p>
+          <p>
+            The records are archived (not erased) for the office's audit and
+            retention, and can only be restored by a database administrator.
+          </p>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={() => setBulkDeleteOpen(false)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary bg-red-600 hover:bg-red-700"
+            onClick={confirmBulkDelete}
+            disabled={bulkBusy}
+          >
+            {bulkBusy ? (
+              <>
+                <ButtonSpinner />
+                Deleting…
+              </>
+            ) : (
+              "Delete selected"
             )}
           </button>
         </div>

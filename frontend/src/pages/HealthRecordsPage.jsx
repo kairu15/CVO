@@ -10,6 +10,9 @@ import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
+import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
+import { BulkActionBar } from "../components/BulkActionBar";
+import { useRowSelection } from "../hooks/useRowSelection";
 import { useAuth } from "../context/AuthContext";
 import { getRole } from "../config/roles";
 
@@ -53,6 +56,11 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [removing, setRemoving] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Row selection for the bulk (select-all) delete.
+  const { selected, toggle, toggleAll, clear } = useRowSelection();
 
   // Mirrors HealthRecordPolicy::create — only a veterinarian authors records.
   const canAuthor = user?.role === "doctor";
@@ -61,6 +69,10 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
   const canModify = (record) =>
     user?.role === "admin" ||
     (user?.role === "doctor" && record.doctor_id === user?.id);
+
+  // Only rows this user may actually delete are selectable, so select-all can
+  // never offer a batch the server would reject.
+  const deletableIds = records.filter(canModify).map((record) => record.id);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -111,6 +123,32 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
       setError(getErrorMessage(err));
     } finally {
       setRemoving(false);
+    }
+  }
+
+  async function confirmBulkDelete() {
+    if (selected.size === 0) return;
+
+    setBulkBusy(true);
+    setError(null);
+
+    try {
+      const result = await healthRecordsApi.bulkRemove([...selected]);
+      const failed = result?.failed_ids?.length ?? 0;
+
+      setBulkOpen(false);
+      clear();
+      await load();
+
+      setNotice(
+        failed > 0
+          ? `Deleted ${result.deleted} of ${result.deleted + failed} records; ${failed} could not be deleted.`
+          : `Deleted ${result.deleted} ${result.deleted === 1 ? "record" : "records"}.`,
+      );
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -172,10 +210,28 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
             }
           />
         ) : (
+          <>
+          <BulkActionBar
+            count={selected.size}
+            noun="record"
+            onClear={clear}
+            onDelete={() => setBulkOpen(true)}
+            busy={bulkBusy}
+          />
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
+                  {deletableIds.length > 0 && (
+                    <th scope="col" className="w-10 px-4 py-2.5">
+                      <SelectAllCheckbox
+                        ids={deletableIds}
+                        selected={selected}
+                        onToggleAll={toggleAll}
+                        label="Select all health records you can delete"
+                      />
+                    </th>
+                  )}
                   <th scope="col" className="px-4 py-2.5 font-semibold">Date</th>
                   <th scope="col" className="px-4 py-2.5 font-semibold">Farmer</th>
                   <th scope="col" className="px-4 py-2.5 font-semibold">Animal</th>
@@ -192,6 +248,19 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
               <tbody className="divide-y divide-slate-100">
                 {records.map((record) => (
                   <tr key={record.id} className="transition hover:bg-brand-50/40">
+                    {deletableIds.length > 0 && (
+                      <td className="px-4 py-2.5">
+                        {canModify(record) ? (
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded accent-brand-700"
+                            aria-label={`Select record for ${record.name_of_farmer}`}
+                            checked={selected.has(record.id)}
+                            onChange={() => toggle(record.id)}
+                          />
+                        ) : null}
+                      </td>
+                    )}
                     <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
                       {formatDate(record.date_recorded)}
                     </td>
@@ -258,6 +327,7 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
 
@@ -305,6 +375,39 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
               </>
             ) : (
               "Delete record"
+            )}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={bulkOpen}
+        title={`Delete ${selected.size} ${selected.size === 1 ? "health record" : "health records"}`}
+        onClose={() => setBulkOpen(false)}
+      >
+        <p className="text-sm text-slate-600">
+          Delete <strong>{selected.size}</strong> selected health record
+          {selected.size === 1 ? "" : "s"}? This removes them from the animals'
+          histories and cannot be undone.
+        </p>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={() => setBulkOpen(false)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary bg-red-600 hover:bg-red-700"
+            onClick={confirmBulkDelete}
+            disabled={bulkBusy}
+          >
+            {bulkBusy ? (
+              <>
+                <ButtonSpinner />
+                Deleting…
+              </>
+            ) : (
+              "Delete selected"
             )}
           </button>
         </div>

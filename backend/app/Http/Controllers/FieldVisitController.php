@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\BulkDeletes;
+use App\Http\Requests\BulkDeleteRequest;
 use App\Http\Requests\StoreFieldVisitPhotoRequest;
 use App\Http\Requests\StoreFieldVisitRequest;
 use App\Http\Requests\UpdateFieldVisitRequest;
@@ -23,6 +25,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class FieldVisitController extends Controller
 {
+    use BulkDeletes;
+
     public function __construct(
         private readonly FieldVisitService $visits,
         private readonly NotificationService $notifications,
@@ -86,6 +90,18 @@ class FieldVisitController extends Controller
         $this->visits->delete($request->user(), $visit);
 
         return response()->json([], Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Delete many field visits in one request (the table's bulk action).
+     */
+    public function bulkDestroy(BulkDeleteRequest $request): JsonResponse
+    {
+        return $this->bulkDelete(
+            $request,
+            FieldVisit::class,
+            fn (FieldVisit $visit) => $this->visits->delete($request->user(), $visit),
+        );
     }
 
     /**

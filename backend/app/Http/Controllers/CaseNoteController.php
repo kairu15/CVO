@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\BulkDeletes;
+use App\Http\Requests\BulkDeleteRequest;
 use App\Http\Requests\StoreCaseNoteRequest;
 use App\Http\Requests\UpdateCaseNoteRequest;
 use App\Http\Resources\CaseNoteResource;
@@ -14,6 +16,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class CaseNoteController extends Controller
 {
+    use BulkDeletes;
+
     public function __construct(private readonly CaseNoteService $notes) {}
 
     /**
@@ -73,5 +77,18 @@ class CaseNoteController extends Controller
         $this->notes->delete($request->user(), $note);
 
         return response()->json([], Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Delete many notes in one request (the table's bulk action). Rows the
+     * caller may not delete come back as failed_ids.
+     */
+    public function bulkDestroy(BulkDeleteRequest $request): JsonResponse
+    {
+        return $this->bulkDelete(
+            $request,
+            CaseNote::class,
+            fn (CaseNote $note) => $this->notes->delete($request->user(), $note),
+        );
     }
 }

@@ -210,6 +210,23 @@ class FarmerDeletionTest extends TestCase
         $this->assertSoftDeleted('case_notes', ['id' => $data['note']->id]);
     }
 
+    public function test_deleting_a_household_never_removes_a_staff_account(): void
+    {
+        // Staff can register a beneficiary on a farmer's behalf, and that
+        // row's farmer_id then points at the STAFF account. Deleting the
+        // household must not soft-delete the staff login — this once removed
+        // the seeded admin and locked everyone out of the demo.
+        $staff = User::factory()->create(['role' => 'admin']);
+        $beneficiary = Beneficiary::factory()->forFarmer($staff)->create();
+
+        $this->actingAs($this->admin)
+            ->deleteJson("/api/v1/beneficiaries/{$beneficiary->id}")
+            ->assertNoContent();
+
+        $this->assertSoftDeleted('beneficiaries', ['id' => $beneficiary->id]);
+        $this->assertDatabaseHas('users', ['id' => $staff->id, 'deleted_at' => null]);
+    }
+
     public function test_a_farmer_owning_several_households_keeps_their_account(): void
     {
         [$farmer, $beneficiary, $record] = $this->registerFarmer();

@@ -7,6 +7,7 @@ import { DashboardSidebar } from "./DashboardSidebar";
 import { IdleSessionGuard } from "./IdleSessionGuard";
 import { OfflineBanner } from "./OfflineBanner";
 import { Icon } from "./Icons";
+import { useSiteConfig } from "../hooks/useSiteConfig";
 
 /**
  * Shared shell for every role dashboard: role-conditional sidebar, top header
@@ -20,6 +21,12 @@ export function DashboardLayout() {
   const { user } = useAuth();
   const location = useLocation();
   const [drawerPath, setDrawerPath] = useState(null);
+
+  // The admin-configured inactivity window (System Settings → Session). Null
+  // until the public site config loads, in which case the guard keeps its own
+  // shipped default — passing undefined, not null, is what selects that
+  // default.
+  const { idleMinutes } = useSiteConfig();
 
   // The drawer is only "open" for the route it was opened on, so navigating
   // (including with the browser back button) closes it without an effect.
@@ -75,7 +82,7 @@ export function DashboardLayout() {
           <OfflineBanner />
           {/* Signs the user out after a quiet period, with a countdown first
               (see IdleSessionGuard). Mounted in the authenticated shell only. */}
-          <IdleSessionGuard />
+          <IdleSessionGuard idleMs={idleMinutes ? idleMinutes * 60_000 : undefined} />
           {viewingOtherRole && (
             <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-xs font-medium text-brand-900 dark:border-brand-200/60 dark:bg-brand-100 dark:text-brand-800">
               <span className="inline-flex items-center gap-1.5 rounded-pill bg-white px-2.5 py-1 font-semibold text-brand-800">

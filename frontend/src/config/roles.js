@@ -13,6 +13,15 @@
 export const ROLE_KEYS = ["admin", "doctor", "technician", "farmer"];
 
 /**
+ * Roles an administrator creates — mirrors `User::STAFF_ROLES` on the server.
+ *
+ * Farmer accounts come from public self-registration, which also creates the
+ * beneficiary record the monitoring modules auto-fill from; the admin "create
+ * account" form deliberately offers only these three.
+ */
+export const STAFF_ROLE_KEYS = ["admin", "doctor", "technician"];
+
+/**
  * Roles allowed into *every* dashboard, not just their own.
  *
  * The CVO administrator oversees all four workspaces, so it is the "all

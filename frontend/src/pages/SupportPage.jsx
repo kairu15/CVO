@@ -2,18 +2,21 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 import { Icon } from "../components/Icons";
 import { site } from "../config/site";
+import { useSiteConfig } from "../hooks/useSiteConfig";
 import { roleLabel } from "../config/roles";
 
 /**
  * Farmer "Support / Contact CVO" screen.
  *
- * Entirely static — every value comes from `config/site.js`, which already
- * existed for the public landing page. There is no endpoint behind this: the
- * office's own contact details are not user data.
+ * The contact block is the office's own profile: an administrator edits it in
+ * System Settings, it is stored in the `settings` table, and this page reads
+ * it back from the public `GET /api/v1/site` endpoint through `useSiteConfig`.
+ * Until that request lands (and if it fails) the shipped values in
+ * `config/site.js` render instead, so the page is never blank — replace those
+ * placeholders with the real office numbers before launch.
  *
- * NOTE the values in site.js are still placeholders (cvo@example.gov.ph,
- * (035) 000-0000). They are rendered as-is rather than faked here; replace
- * them in that one file before launch and this page follows.
+ * The rest of the copy (the office name, the social links) is genuine static
+ * site content and stays in `config/site.js`.
  */
 
 /** Up to two initials for the avatar chip. */
@@ -30,30 +33,31 @@ function initialsOf(name) {
 export default function SupportPage() {
   const { user } = useAuth();
   const { t } = useTranslation();
+  const { contact } = useSiteConfig();
 
   const details = [
     {
       icon: "map-pin",
       label: t("support.office"),
-      value: site.address,
+      value: contact.address,
       href: null,
     },
     {
       icon: "mail",
       label: t("support.email"),
-      value: site.email,
-      href: `mailto:${site.email}`,
+      value: contact.email,
+      href: `mailto:${contact.email}`,
     },
     {
       icon: "phone",
       label: t("support.telephone"),
-      value: site.phone,
-      href: `tel:${site.phone.replace(/[^\d+]/g, "")}`,
+      value: contact.phone,
+      href: `tel:${contact.phone.replace(/[^\d+]/g, "")}`,
     },
     {
       icon: "clock",
       label: t("support.officeHours"),
-      value: site.hours,
+      value: contact.hours,
       href: null,
     },
   ];
@@ -125,7 +129,7 @@ export default function SupportPage() {
           {/* The same policy the sign-in form states, kept in one place so
               the two screens cannot contradict each other. */}
           <p className="mt-4 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-3 text-xs text-brand-900">
-            {t("common.passwordResetPolicy", { email: site.email, phone: site.phone })}
+            {t("common.passwordResetPolicy", { email: contact.email, phone: contact.phone })}
           </p>
         </section>
       </div>

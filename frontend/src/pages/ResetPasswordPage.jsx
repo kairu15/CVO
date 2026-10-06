@@ -10,6 +10,7 @@ import { PasswordToggle, TextField } from "../components/TextField";
 import { authApi } from "../api/authApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { site } from "../config/site";
+import { useSiteConfig } from "../hooks/useSiteConfig";
 
 /**
  * Password reset — the page the emailed link opens.
@@ -25,6 +26,9 @@ import { site } from "../config/site";
  */
 export default function ResetPasswordPage() {
   const { t } = useTranslation();
+  // Office contact details from System Settings (public read path), so the
+  // note quotes the number the office actually answers.
+  const { contact } = useSiteConfig();
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
@@ -148,8 +152,8 @@ export default function ResetPasswordPage() {
                 </p>
                 <p className="text-xs text-slate-500">
                   {t("common.passwordResetPolicy", {
-                    email: site.email,
-                    phone: site.phone,
+                    email: contact.email,
+                    phone: contact.phone,
                   })}
                 </p>
                 <Link to="/login" className="btn-primary w-full">

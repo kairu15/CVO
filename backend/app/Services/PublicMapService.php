@@ -26,6 +26,8 @@ class PublicMapService
 {
     public const CACHE_KEY = 'public-map-summary';
 
+    public function __construct(private readonly SettingsService $settings) {}
+
     /** Fallback view when no barangay has rows yet: Bayawan City centre. */
     public const FALLBACK_CENTER = ['lat' => 9.3638, 'lng' => 122.8022];
 
@@ -99,8 +101,8 @@ class PublicMapService
         // overdue or due-soon today (due-soon includes overdue: the window
         // boundary is later than the overdue boundary).
         $dueBy = CarbonImmutable::now()->startOfDay()
-            ->addDays((int) config('cvo.vaccination_due_soon_days'))
-            ->subDays((int) config('cvo.vaccination_interval_days'))
+            ->addDays($this->settings->vaccinationDueSoonDays())
+            ->subDays($this->settings->vaccinationIntervalDays())
             ->toDateString();
 
         return Beneficiary::query()

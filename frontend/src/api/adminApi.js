@@ -24,6 +24,42 @@ export const adminApi = {
     return unwrap(await api.patch(`/api/v1/admin/users/${userId}/role`, { role }));
   },
 
+  /**
+   * Create a staff account (admin/doctor/technician). Farmer accounts come
+   * from public self-registration, so the server rejects that role here.
+   * `password` + `password_confirmation` must match the registration policy.
+   */
+  createUser: async (payload) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/admin/users", payload));
+  },
+
+  /**
+   * Edit an account's name/email, and its role when one is sent. A role
+   * change on the signed-in administrator's own account is refused by the
+   * server (422 on `role`), same as the dedicated role endpoint.
+   */
+  updateUser: async (userId, payload) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.patch(`/api/v1/admin/users/${userId}`, payload));
+  },
+
+  /**
+   * Deactivate an account — the system soft-deletes accounts rather than
+   * removing them, so rows that reference the account stay intact. Revokes
+   * the account's sessions at the same time. Reversible via reactivateUser.
+   */
+  deactivateUser: async (userId) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.delete(`/api/v1/admin/users/${userId}`));
+  },
+
+  /** Reactivate a deactivated account (restores the soft-deleted row). */
+  reactivateUser: async (userId) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post(`/api/v1/admin/users/${userId}/reactivate`));
+  },
+
   /** Admin-wide beneficiary directory including current technician. */
   listBeneficiaries: async (params = {}) =>
     unwrap.list(await api.get("/api/v1/admin/beneficiaries", { params })),

@@ -6,6 +6,7 @@ import { useToast } from "../context/ToastContext";
 import { authApi } from "../api/authApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { site } from "../config/site";
+import { useSiteConfig } from "../hooks/useSiteConfig";
 import { takeSessionNotice } from "../lib/sessionNotice";
 import {
   readRememberedIdentifier,
@@ -28,6 +29,9 @@ const NOTICE_KEYS = {
  */
 export function LoginForm({ idPrefix = "login" }) {
   const { t } = useTranslation();
+  // The office's own contact details (System Settings), so the reset note
+  // quotes the phone number the office actually answers.
+  const { contact } = useSiteConfig();
   const { login } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
@@ -273,8 +277,8 @@ export function LoginForm({ idPrefix = "login" }) {
                 receive the link (office-managed resets). */}
             <p className="mt-3 text-[11px] leading-snug text-brand-900/70">
               {t("common.passwordResetPolicy", {
-                email: site.email,
-                phone: site.phone,
+                email: contact.email,
+                phone: contact.phone,
               })}
             </p>
           </div>

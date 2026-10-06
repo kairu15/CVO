@@ -72,7 +72,7 @@ class SettingsTest extends TestCase
         // shipped placeholder even though the fallback comes from config.
         config(['cvo.office.phone' => '(035) 000-9999']);
 
-        Cache::forget('settings.office_profile');
+        Cache::forget('settings.values');
 
         $this->actingAs($this->admin())
             ->getJson('/api/v1/admin/settings')
@@ -105,14 +105,94 @@ class SettingsTest extends TestCase
 
     public function test_an_unknown_key_is_ignored(): void
     {
+        // The smart-alert thresholds are still config-owned (they are clinical
+        // decisions, some of them explicitly unconfirmed), so the settings
+        // endpoint must not start storing them just because it now stores
+        // other numeric keys.
         $this->actingAs($this->admin())
             ->patchJson('/api/v1/admin/settings', [
                 'office_phone' => '(035) 555-0100',
-                'vaccination_interval_days' => 1, // not a settings-table key
+                'bcs_normal_range' => [2, 4], // not a settings-table key
             ])
             ->assertOk();
 
+        $this->assertDatabaseMissing('settings', ['key' => 'bcs_normal_range']);
+    }
+
+    public function test_settings_return_the_configured_vaccination_cycle_before_any_save(): void
+    {
+        $data = $this->actingAs($this->admin())
+            ->getJson('/api/v1/admin/settings')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame(config('cvo.vaccination_interval_days'), $data['alerts']['vaccination_interval_days']);
+        $this->assertSame(config('cvo.vaccination_due_soon_days'), $data['alerts']['vaccination_due_soon_days']);
+        $this->assertSame(config('security.client_idle_minutes'), $data['session']['idle_minutes']);
+    }
+
+    public function test_an_admin_can_save_the_vaccination_thresholds(): void
+    {
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', [
+                'vaccination_interval_days' => 90,
+                'vaccination_due_soon_days' => 14,
+            ])
+            ->assertOk()
+            // Returned as numbers, not the strings the table stores — the
+            // settings screen renders them back into number inputs.
+            ->assertJsonPath('data.alerts.vaccination_interval_days', 90)
+            ->assertJsonPath('data.alerts.vaccination_due_soon_days', 14);
+
+        $this->assertDatabaseHas('settings', ['key' => 'vaccination_interval_days', 'value' => '90']);
+        $this->assertDatabaseHas('settings', ['key' => 'vaccination_due_soon_days', 'value' => '14']);
+    }
+
+    public function test_a_nonsensical_vaccination_threshold_is_rejected(): void
+    {
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', ['vaccination_interval_days' => 0])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['vaccination_interval_days']);
+
         $this->assertDatabaseMissing('settings', ['key' => 'vaccination_interval_days']);
+    }
+
+    public function test_an_admin_can_save_the_inactivity_window(): void
+    {
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', ['session_idle_minutes' => 25])
+            ->assertOk()
+            ->assertJsonPath('data.session.idle_minutes', 25);
+
+        $this->assertDatabaseHas('settings', ['key' => 'session_idle_minutes', 'value' => '25']);
+    }
+
+    public function test_the_inactivity_window_cannot_exceed_the_servers_own_idle_limit(): void
+    {
+        // A longer client window would leave the user silently 401'd
+        // mid-form — the exact failure IdleSessionGuard exists to prevent.
+        $serverLimit = (int) config('security.session_idle');
+
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', ['session_idle_minutes' => $serverLimit + 1])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['session_idle_minutes']);
+
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', ['session_idle_minutes' => $serverLimit])
+            ->assertOk();
+    }
+
+    public function test_the_server_session_ceilings_are_reported_read_only(): void
+    {
+        $data = $this->actingAs($this->admin())
+            ->getJson('/api/v1/admin/settings')
+            ->assertOk()
+            ->json('data.session');
+
+        $this->assertSame((int) config('security.session_idle'), $data['server_idle_minutes']);
+        $this->assertSame((int) config('security.session_absolute'), $data['server_absolute_minutes']);
     }
 
     public function test_a_read_hits_the_cache_and_a_write_drops_it(): void

@@ -43,6 +43,8 @@ class SmartAlertService
 
     private const ALERT_LINK_TECHNICIAN = '/dashboard/technician/notifications';
 
+    public function __construct(private readonly SettingsService $settings) {}
+
     /**
      * Admin recipients, resolved once per run rather than once per rule per
      * household — the same handful of accounts receives every alert.
@@ -161,7 +163,10 @@ class SmartAlertService
      */
     private function overdueVaccinationAlerts(): array
     {
-        $interval = (int) config('cvo.vaccination_interval_days');
+        // The administrator-editable cycle, shared with the Vaccination
+        // Schedule through SettingsService so the alert and that screen can
+        // never disagree about which animals are late.
+        $interval = $this->settings->vaccinationIntervalDays();
         $overdueOn = CarbonImmutable::now()->startOfDay()->subDays($interval)->toDateString();
         $last = VaccinationScheduleService::lastVaccinationSql();
 

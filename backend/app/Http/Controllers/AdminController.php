@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Http\Requests\AdminBeneficiariesRequest;
 use App\Http\Requests\AdminExcelExportRequest;
 use App\Http\Requests\AdminExcelImportRequest;
+use App\Http\Requests\AdminUserLifecycleRequest;
+use App\Http\Requests\AdminUserStoreRequest;
+use App\Http\Requests\AdminUserUpdateRequest;
 use App\Http\Requests\AdminUsersRequest;
 use App\Http\Requests\AssignRoleRequest;
 use App\Http\Requests\AssignTechnicianRequest;
@@ -15,12 +18,14 @@ use App\Models\Beneficiary;
 use App\Models\User;
 use App\Services\BeneficiaryService;
 use App\Services\MonitoringExcelService;
+use App\Services\UserAccountService;
 use App\Services\UserRoleService;
 use App\Support\Like;
 use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -31,18 +36,26 @@ class AdminController extends Controller
     public function __construct(
         private readonly MonitoringExcelService $excel,
         private readonly UserRoleService $roles,
+        private readonly UserAccountService $accounts,
         private readonly BeneficiaryService $beneficiaries,
     ) {}
 
     /**
      * List users, optionally filtered by role — e.g.
      * /api/v1/admin/users?role=technician for the Technicians screen.
+     *
+     * `status` picks which account states are included: `active` (default),
+     * `deactivated`, or `all`. Deactivated accounts are soft-deleted rows, so
+     * the scope is chosen with onlyTrashed/withTrashed rather than a column.
      */
     public function users(AdminUsersRequest $request): AnonymousResourceCollection
     {
         $validated = $request->validated();
+        $status = $validated['status'] ?? 'active';
 
         $users = User::query()
+            ->when($status === 'deactivated', fn ($q) => $q->onlyTrashed())
+            ->when($status === 'all', fn ($q) => $q->withTrashed())
             ->when($validated['role'] ?? null, fn ($q, $role) => $q->where('role', $role))
             ->when($validated['search'] ?? null, function ($q, $search): void {
                 $pattern = Like::contains($search);
@@ -57,6 +70,57 @@ class AdminController extends Controller
             ->paginate(Pagination::perPage($validated['per_page'] ?? null));
 
         return UserResource::collection($users);
+    }
+
+    /**
+     * Create a staff account (admin/doctor/technician). Farmer accounts are
+     * created by public self-registration, which also creates the beneficiary
+     * record — see UserAccountService.
+     */
+    public function storeUser(AdminUserStoreRequest $request): JsonResponse
+    {
+        $user = $this->accounts->create($request->user(), $request->validated());
+
+        return (new UserResource($user))
+            ->response()
+            ->setStatusCode(Response::HTTP_CREATED);
+    }
+
+    /**
+     * Edit an account's name/email, and its role when one is sent.
+     */
+    public function updateUser(AdminUserUpdateRequest $request, int $id): UserResource
+    {
+        // withTrashed, like reactivateUser: a deactivated account is a
+        // soft-deleted row, and correcting it (an email that changed while the
+        // person was away) must not answer 404.
+        $user = User::withTrashed()->findOrFail($id);
+
+        return new UserResource(
+            $this->accounts->update($request->user(), $user, $request->validated()),
+        );
+    }
+
+    /**
+     * Deactivate an account (soft delete + end its sessions). Reversible via
+     * reactivateUser; there is no hard-delete endpoint for accounts.
+     */
+    public function deactivateUser(AdminUserLifecycleRequest $request, int $id): UserResource
+    {
+        $user = User::findOrFail($id);
+
+        return new UserResource($this->accounts->deactivate($request->user(), $user));
+    }
+
+    /**
+     * Reactivate a deactivated account. `withTrashed` is required: the row is
+     * soft-deleted, so the default scope cannot see it to restore it.
+     */
+    public function reactivateUser(AdminUserLifecycleRequest $request, int $id): UserResource
+    {
+        $user = User::withTrashed()->findOrFail($id);
+
+        return new UserResource($this->accounts->reactivate($request->user(), $user));
     }
 
     /**

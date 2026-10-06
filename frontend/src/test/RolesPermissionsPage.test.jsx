@@ -9,6 +9,11 @@ import { ROLE_KEYS, roles } from "../config/roles";
  * renders — so the tests assert the coupling itself: every role's module
  * list on the page must match the nav config, and the page must offer no
  * editing affordance.
+ *
+ * The create/read tables are transcribed from the backend Policies, so these
+ * tests pin the rows that are easiest to get wrong: a role listed as able to
+ * create a record it cannot, and a read scope stated as wider than the
+ * Policy allows.
  */
 function renderPage() {
   return render(
@@ -16,6 +21,13 @@ function renderPage() {
       <RolesPermissionsPage roleKey="admin" />
     </MemoryRouter>,
   );
+}
+
+/** The row in `table` whose first cell names `label`. */
+function rowNamed(table, label) {
+  return within(table)
+    .getAllByRole("row")
+    .find((row) => within(row).queryByText(label));
 }
 
 describe("RolesPermissionsPage", () => {
@@ -47,23 +59,52 @@ describe("RolesPermissionsPage", () => {
     }
   });
 
-  it("marks every role as able to read, with staff-only write surfaces distinguished", () => {
+  it("shows which roles may create each record type", () => {
     renderPage();
 
-    // "Who can record what" table: one check cell per allowed role.
-    const table = screen.getByRole("table");
-    const rows = within(table).getAllByRole("row");
+    const [writeTable] = screen.getAllByRole("table");
 
-    const monitoring = rows.find((r) => within(r).queryByText("Monitoring visits"));
-    expect(monitoring).toBeDefined();
-    // Only the technician column carries a check for this row: the other
-    // three cells render a dash inside a span, so count those.
-    const dashes = monitoring.querySelectorAll("td span").length;
-    expect(dashes).toBe(3);
+    // Only the technician column carries a check for monitoring records: the
+    // other three cells render a dash, so count those.
+    const monitoring = rowNamed(writeTable, "Monitoring records");
+    expect(monitoring.querySelectorAll("td span")).toHaveLength(3);
 
-    const beneficiaries = rows.find((r) => within(r).queryByText("Beneficiaries"));
-    // All four roles record beneficiaries, so no dash cell in this row.
-    expect(within(beneficiaries).queryAllByText("—")).toHaveLength(0);
+    // Doctors read every household but do NOT create beneficiary records
+    // (BeneficiaryPolicy::create excludes the doctor role) — exactly one dash.
+    const beneficiaries = rowNamed(writeTable, "Beneficiaries");
+    expect(within(beneficiaries).queryAllByText("—")).toHaveLength(1);
+
+    // A dispersal is recorded by the farmer who received the animal, the
+    // technician in the field, or an admin backfilling — but not by a vet.
+    const dispersal = rowNamed(writeTable, "Dispersal events");
+    expect(within(dispersal).queryAllByText("—")).toHaveLength(1);
+
+    // Account creation is admin-only.
+    const accounts = rowNamed(writeTable, "Staff accounts");
+    expect(within(accounts).queryAllByText("—")).toHaveLength(3);
+  });
+
+  it("maps how far each role's view reaches, per the policies", () => {
+    renderPage();
+
+    const [, readTable] = screen.getAllByRole("table");
+
+    const beneficiaries = within(rowNamed(readTable, "Beneficiaries")).getAllByRole("cell");
+    expect(beneficiaries[1]).toHaveTextContent("All"); // admin
+    expect(beneficiaries[2]).toHaveTextContent("All"); // doctor
+    expect(beneficiaries[3]).toHaveTextContent("Assigned"); // technician
+    expect(beneficiaries[4]).toHaveTextContent("Own"); // farmer
+
+    // Field visits are scoped by the VISITING technician, not by assignment —
+    // the one row where the technician's scope is "own" rather than
+    // "assigned" (FieldVisitPolicy's docblock calls this out).
+    const visits = within(rowNamed(readTable, "Field visits")).getAllByRole("cell");
+    expect(visits[3]).toHaveTextContent("Own");
+    expect(visits[4]).toHaveTextContent("Own");
+
+    // Non-admin roles have no reach at all into accounts and settings.
+    const accounts = rowNamed(readTable, "Accounts, settings & reports");
+    expect(within(accounts).getAllByText("—")).toHaveLength(3);
   });
 
   it("shows where each rule is enforced, server-side", () => {
@@ -73,7 +114,7 @@ describe("RolesPermissionsPage", () => {
     expect(
       screen.getByText(/BeneficiaryService::scopeQueryFor/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/UserRoleService self-change guard/)).toBeInTheDocument();
+    expect(screen.getByText(/UserRoleService and UserAccountService/)).toBeInTheDocument();
   });
 
   it("offers no editing control — the page states why", () => {

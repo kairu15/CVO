@@ -55,6 +55,28 @@ class VaccinationScheduleTest extends TestCase
             ->assertJsonPath('data.0.days_until_due', $this->interval - 10);
     }
 
+    public function test_a_saved_vaccination_interval_drives_the_schedule(): void
+    {
+        // The administrator shortens the cycle from System Settings → Alerts &
+        // Thresholds. This is the point of the setting: the derived schedule
+        // has to follow it, not a value baked into config at deploy time.
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->patchJson('/api/v1/admin/settings', ['vaccination_interval_days' => 30])
+            ->assertOk()
+            ->assertJsonPath('data.alerts.vaccination_interval_days', 30);
+
+        // Vaccinated 40 days ago: scheduled under the 180-day default,
+        // overdue under the new 30-day cycle.
+        $beneficiary = $this->vaccinatedDaysAgo(40);
+
+        $this->actingAs($this->doctor())
+            ->getJson('/api/v1/vaccination-schedule')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $beneficiary->id)
+            ->assertJsonPath('data.0.next_due_date', now()->subDays(40)->addDays(30)->toDateString())
+            ->assertJsonPath('data.0.status', 'overdue');
+    }
+
     public function test_an_animal_never_vaccinated_is_reported_as_never(): void
     {
         Beneficiary::factory()->create();

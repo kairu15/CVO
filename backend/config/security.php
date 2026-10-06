@@ -41,6 +41,14 @@ return [
     // Enforced by App\Http\Middleware\AbsoluteSessionExpiry.
     'session_absolute' => (int) env('SECURITY_SESSION_ABSOLUTE', 720),
 
+    // The SPA's own inactivity auto-logout (App\...\IdleSessionGuard) —
+    // deliberately SHORTER than session_idle above, so the client warns the
+    // user and signs out before the server's own window would 401 them
+    // mid-form. Admin-editable (System Settings → Session); this is the
+    // shipped default, and SettingsService never allows the saved value to
+    // exceed session_idle.
+    'client_idle_minutes' => (int) env('SECURITY_CLIENT_IDLE_MINUTES', 15),
+
     'token_idle' => (int) env('SECURITY_TOKEN_IDLE', 240),
     'token_absolute' => (int) env('SECURITY_TOKEN_ABSOLUTE', 10080),
 

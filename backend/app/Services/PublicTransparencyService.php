@@ -25,6 +25,8 @@ class PublicTransparencyService
 {
     public const CACHE_KEY = 'public-transparency';
 
+    public function __construct(private readonly SettingsService $settings) {}
+
     /** How many recent months the reach trend covers. */
     private const REACH_MONTHS = 12;
 
@@ -169,7 +171,7 @@ class PublicTransparencyService
         $last = VaccinationScheduleService::lastVaccinationSql();
 
         $overdueOn = CarbonImmutable::now()->startOfDay()
-            ->subDays((int) config('cvo.vaccination_interval_days'))
+            ->subDays($this->settings->vaccinationIntervalDays())
             ->toDateString();
 
         $total = Beneficiary::count();

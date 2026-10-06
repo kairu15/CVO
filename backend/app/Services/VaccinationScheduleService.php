@@ -18,8 +18,11 @@ use Illuminate\Database\Eloquent\Builder;
  * that drifts the moment a visit is back-dated or corrected — and the brief's
  * own rule is to build on existing records rather than invent source tables.
  *
- * The cycle length lives in config/cvo.php. Per-species cycles are the point
- * at which this stops being config and becomes real data.
+ * The cycle length is an administrator-editable setting (System Settings →
+ * Alerts & Thresholds), read through SettingsService so this screen, the
+ * smart-alert scan and the public vaccination counts can never disagree about
+ * which animals are late. Per-species cycles are the point at which this stops
+ * being a setting and becomes real data.
  */
 class VaccinationScheduleService
 {
@@ -39,16 +42,19 @@ class VaccinationScheduleService
         self::STATUS_SCHEDULED,
     ];
 
-    public function __construct(private readonly BeneficiaryService $beneficiaries) {}
+    public function __construct(
+        private readonly BeneficiaryService $beneficiaries,
+        private readonly SettingsService $settings,
+    ) {}
 
     public function intervalDays(): int
     {
-        return (int) config('cvo.vaccination_interval_days');
+        return $this->settings->vaccinationIntervalDays();
     }
 
     public function dueSoonDays(): int
     {
-        return (int) config('cvo.vaccination_due_soon_days');
+        return $this->settings->vaccinationDueSoonDays();
     }
 
     /**
@@ -93,8 +99,13 @@ class VaccinationScheduleService
      */
     public static function scheduleFor(?string $lastVaccination): array
     {
-        $interval = (int) config('cvo.vaccination_interval_days');
-        $window = (int) config('cvo.vaccination_due_soon_days');
+        // Resolved from the container rather than injected because this is a
+        // static helper the resources call per row. The settings read behind it
+        // is a single cache lookup, and an empty table falls back to config.
+        $settings = app(SettingsService::class);
+
+        $interval = $settings->vaccinationIntervalDays();
+        $window = $settings->vaccinationDueSoonDays();
 
         if (! $lastVaccination) {
             return [

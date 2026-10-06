@@ -53,6 +53,12 @@ class ActivityLog extends Model
         'role_changed',
         'technician_assigned',
 
+        // Account lifecycle (admin User Management)
+        'user_created',
+        'user_updated',
+        'user_deactivated',
+        'user_reactivated',
+
         // Record CRUD (subject of item 7's coverage)
         'beneficiary_created',
         'beneficiary_updated',

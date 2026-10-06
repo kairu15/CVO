@@ -5,6 +5,7 @@ import { Icon } from "../components/Icons";
 import { features, navLinks, site } from "../config/site";
 import { publicRoles } from "../config/roles";
 import { usePublicMapSummary } from "../hooks/usePublicMapSummary";
+import { useSiteConfig } from "../hooks/useSiteConfig";
 
 // MapLibre is heavy — keep it out of the main bundle and load it only when the
 // hero card renders (same lazy pattern as the dashboard's DispersalMap).
@@ -22,6 +23,10 @@ const ILLUSTRATIVE_STATS = [
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { data, loading, error } = usePublicMapSummary();
+
+  // Office contact details come from System Settings (public read path); the
+  // shipped config/site.js values render until that request lands.
+  const { contact } = useSiteConfig();
 
   // Real numbers under the map once the summary arrives; the original
   // illustrative labels until then.
@@ -370,21 +375,21 @@ export default function LandingPage() {
             <ul className="mt-4 space-y-3 text-sm text-slate-600">
               <li className="flex gap-3">
                 <Icon name="map-pin" className="h-5 w-5 shrink-0 text-brand-600" />
-                <span>{site.address}</span>
+                <span>{contact.address}</span>
               </li>
               <li className="flex gap-3">
                 <Icon name="mail" className="h-5 w-5 shrink-0 text-brand-600" />
-                <a href={`mailto:${site.email}`} className="hover:text-brand-800">
-                  {site.email}
+                <a href={`mailto:${contact.email}`} className="hover:text-brand-800">
+                  {contact.email}
                 </a>
               </li>
               <li className="flex gap-3">
                 <Icon name="phone" className="h-5 w-5 shrink-0 text-brand-600" />
-                <span>{site.phone}</span>
+                <span>{contact.phone}</span>
               </li>
               <li className="flex gap-3">
                 <Icon name="clock" className="h-5 w-5 shrink-0 text-brand-600" />
-                <span>{site.hours}</span>
+                <span>{contact.hours}</span>
               </li>
             </ul>
           </div>

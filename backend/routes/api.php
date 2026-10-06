@@ -20,6 +20,7 @@ use App\Http\Controllers\PublicTransparencyController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SiteController;
 use App\Http\Controllers\SymptomRuleController;
 use App\Http\Controllers\VaccinationScheduleController;
 use App\Http\Middleware\EnsureUserIsAdmin;
@@ -102,6 +103,14 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/public/map-summary', [PublicMapController::class, 'summary'])
         ->middleware('throttle:30,1')
         ->name('api.public.map-summary');
+
+    // Public site metadata — the office contact details an administrator edits
+    // in System Settings, plus the SPA's own inactivity window. Session-free
+    // because every page that renders them (landing, Support, the
+    // password-reset note) is used before login.
+    Route::get('/site', [SiteController::class, 'show'])
+        ->middleware('throttle:60,1')
+        ->name('api.site');
 
     // Public transparency dashboard — aggregate program statistics only
     // (city totals, per-barangay counts, a monthly reach trend, vaccination
@@ -235,10 +244,19 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     // Livestock pass-on / re-dispersal chain
     Route::apiResource('dispersal-events', DispersalEventController::class);
 
-    // Admin: account roles and technician assignment
+    // Admin: account management (create / edit / deactivate) and roles
     Route::prefix('admin')->middleware(EnsureUserIsAdmin::class)->group(function (): void {
         Route::get('/users', [AdminController::class, 'users'])->name('api.admin.users');
+        Route::post('/users', [AdminController::class, 'storeUser'])->name('api.admin.users.store');
+        // Declared before the {id} PATCH below only for readability — the two
+        // paths differ in segment count, so neither can shadow the other.
         Route::patch('/users/{id}/role', [AdminController::class, 'assignRole'])->name('api.admin.users.assign-role');
+        Route::patch('/users/{id}', [AdminController::class, 'updateUser'])->name('api.admin.users.update');
+        // Deactivation is the soft delete: the account stops signing in but
+        // stays resolvable for the rows that reference it (authored records,
+        // audit trail). Reactivate is the way back.
+        Route::delete('/users/{id}', [AdminController::class, 'deactivateUser'])->name('api.admin.users.deactivate');
+        Route::post('/users/{id}/reactivate', [AdminController::class, 'reactivateUser'])->name('api.admin.users.reactivate');
         Route::get('/beneficiaries', [AdminController::class, 'beneficiaries'])->name('api.admin.beneficiaries');
         Route::patch('/beneficiaries/{id}/assign-technician', [AdminController::class, 'assignTechnician'])->name('api.admin.beneficiaries.assign-technician');
         Route::patch('/beneficiaries/bulk-assign-technician', [AdminController::class, 'bulkAssignTechnician'])
@@ -253,6 +271,10 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         // City-wide program report — aggregated, read-only.
         Route::get('/report', [ReportController::class, 'index'])
             ->name('api.admin.report');
+        // The same report as a spreadsheet, scoped by the same filters, so the
+        // figures behind the charts are not trapped on screen.
+        Route::get('/report/export', [ReportController::class, 'export'])
+            ->name('api.admin.report.export');
 
         // System settings — office contact profile (writable), program
         // configuration (read-only).

@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ReportRequest;
+use App\Services\ReportExcelService;
 use App\Services\ReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * City-wide program report — admin-only, read-only, entirely derived.
@@ -17,7 +19,10 @@ use Illuminate\Support\Carbon;
  */
 class ReportController extends Controller
 {
-    public function __construct(private readonly ReportService $reports) {}
+    public function __construct(
+        private readonly ReportService $reports,
+        private readonly ReportExcelService $excel,
+    ) {}
 
     public function index(ReportRequest $request): JsonResponse
     {
@@ -30,5 +35,20 @@ class ReportController extends Controller
                 isset($validated['from']) ? Carbon::parse($validated['from']) : null,
             ),
         ]);
+    }
+
+    /**
+     * The same report as a spreadsheet, scoped by the same filters — so the
+     * numbers behind the charts are available as a file, not only on screen.
+     */
+    public function export(ReportRequest $request): StreamedResponse
+    {
+        $validated = $request->validated();
+
+        return $this->excel->downloadResponse(
+            $request->user(),
+            $validated['barangay'] ?? null,
+            isset($validated['from']) ? Carbon::parse($validated['from']) : null,
+        );
     }
 }

@@ -23,7 +23,10 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
  */
 class AnimalHealthService
 {
-    public function __construct(private readonly BeneficiaryService $beneficiaries) {}
+    public function __construct(
+        private readonly BeneficiaryService $beneficiaries,
+        private readonly SettingsService $settings,
+    ) {}
 
     /**
      * Role-scoped health rollup, most urgent first.
@@ -79,8 +82,10 @@ class AnimalHealthService
             ->orderBy('name_of_farmer');
 
         if ($attentionOnly) {
+            // The administrator-editable cycle, so this rollup and the
+            // Vaccination Schedule cannot disagree about who is overdue.
             $overdueOn = CarbonImmutable::now()->startOfDay()
-                ->subDays((int) config('cvo.vaccination_interval_days'))
+                ->subDays($this->settings->vaccinationIntervalDays())
                 ->toDateString();
 
             // Same two triggers the resource reports as reasons, expressed in

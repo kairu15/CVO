@@ -30,6 +30,11 @@ class AdminUsersRequest extends FormRequest
         return [
             'role' => ['sometimes', 'nullable', Rule::in(User::ROLES)],
             'search' => ['sometimes', 'nullable', 'string', 'max:255'],
+            // Which account states to include. Defaults to `active` so the
+            // technician pickers (which share this endpoint) can never offer a
+            // deactivated technician; User Management asks for `all` so
+            // deactivated accounts stay visible and reactivatable.
+            'status' => ['sometimes', 'nullable', Rule::in(['active', 'deactivated', 'all'])],
             // Page size, clamped to 50 by the controller
             // (App\Support\Pagination); `page` walks the bounded pages.
             'per_page' => ['sometimes', 'integer', 'min:1'],

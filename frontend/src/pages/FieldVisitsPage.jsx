@@ -14,6 +14,7 @@ import { QrScanner } from "../components/QrScanner";
 import { Icon } from "../components/Icons";
 import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
 import { BulkActionBar } from "../components/BulkActionBar";
+import { PaginationFooter } from "../components/PaginationFooter";
 import { useRowSelection } from "../hooks/useRowSelection";
 import { useAuth } from "../context/AuthContext";
 import { getRole } from "../config/roles";
@@ -50,6 +51,8 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
   const config = getRole(roleKey);
 
   const [visits, setVisits] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [page, setPage] = useState(1);
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [purposes, setPurposes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -88,11 +91,12 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
 
     try {
       const [visitsRes, optionsRes] = await Promise.all([
-        fieldVisitsApi.list({ per_page: 200 }),
+        fieldVisitsApi.list({ per_page: 50, page }),
         fieldVisitsApi.options(),
       ]);
 
-      setVisits(visitsRes ?? []);
+      setVisits(visitsRes?.data ?? []);
+      setMeta(visitsRes?.meta ?? null);
       setPurposes(optionsRes?.purposes ?? []);
 
       // The picker is only needed by someone who can log a trip.
@@ -104,7 +108,7 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [canLog]);
+  }, [canLog, page]);
 
   useEffect(() => {
     load();
@@ -432,6 +436,13 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
               </tbody>
             </table>
           </div>
+
+          <PaginationFooter
+            meta={meta}
+            shown={visits.length}
+            noun="visit"
+            onPageChange={setPage}
+          />
           </>
         )}
       </section>

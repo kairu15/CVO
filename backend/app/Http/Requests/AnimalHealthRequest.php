@@ -27,7 +27,8 @@ class AnimalHealthRequest extends FormRequest
             // vaccination, or at least one open case. Anything else is a 422
             // rather than a silently ignored parameter.
             'filter' => ['sometimes', 'string', Rule::in(['attention'])],
-            'per_page' => ['sometimes', 'integer', 'between:1,200'],
+            // Clamped to 50 by the controller (App\Support\Pagination).
+            'per_page' => ['sometimes', 'integer', 'min:1'],
         ];
     }
 }

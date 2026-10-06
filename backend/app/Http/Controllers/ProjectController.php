@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateProjectRequest;
 use App\Http\Resources\ProjectResource;
 use App\Models\Project;
 use App\Services\ProjectService;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -24,7 +25,10 @@ class ProjectController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         return ProjectResource::collection(
-            $this->projects->listFor($request->user()),
+            $this->projects->listFor(
+                $request->user(),
+                Pagination::perPage($request->input('per_page')),
+            ),
         );
     }
 

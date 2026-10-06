@@ -12,6 +12,7 @@ import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
 import { BulkActionBar } from "../components/BulkActionBar";
+import { PaginationFooter } from "../components/PaginationFooter";
 import { useRowSelection } from "../hooks/useRowSelection";
 import { useAuth } from "../context/AuthContext";
 import { getRole } from "../config/roles";
@@ -48,6 +49,8 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
   const config = getRole(roleKey);
 
   const [notes, setNotes] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [page, setPage] = useState(1);
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -78,8 +81,9 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
     setError(null);
 
     try {
-      const notesRes = await caseNotesApi.list({ per_page: 200 });
-      setNotes(notesRes ?? []);
+      const notesRes = await caseNotesApi.list({ per_page: 50, page });
+      setNotes(notesRes?.data ?? []);
+      setMeta(notesRes?.meta ?? null);
 
       // The picker is only needed by someone who can write a note.
       if (canAuthor) {
@@ -90,7 +94,7 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [canAuthor]);
+  }, [canAuthor, page]);
 
   useEffect(() => {
     load();
@@ -283,6 +287,13 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
             </li>
           ))}
         </ul>
+
+        <PaginationFooter
+          meta={meta}
+          shown={notes.length}
+          noun="note"
+          onPageChange={setPage}
+        />
         </>
       )}
 

@@ -25,7 +25,8 @@ class VaccinationScheduleRequest extends FormRequest
     {
         return [
             'status' => ['sometimes', 'string', Rule::in(VaccinationScheduleService::STATUSES)],
-            'per_page' => ['sometimes', 'integer', 'between:1,200'],
+            // Clamped to 50 by the controller (App\Support\Pagination).
+            'per_page' => ['sometimes', 'integer', 'min:1'],
         ];
     }
 }

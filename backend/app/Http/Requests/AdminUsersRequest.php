@@ -30,6 +30,10 @@ class AdminUsersRequest extends FormRequest
         return [
             'role' => ['sometimes', 'nullable', Rule::in(User::ROLES)],
             'search' => ['sometimes', 'nullable', 'string', 'max:255'],
+            // Page size, clamped to 50 by the controller
+            // (App\Support\Pagination); `page` walks the bounded pages.
+            'per_page' => ['sometimes', 'integer', 'min:1'],
+            'page' => ['sometimes', 'integer', 'min:1'],
         ];
     }
 }

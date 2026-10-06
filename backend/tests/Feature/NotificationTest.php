@@ -345,8 +345,14 @@ class NotificationTest extends TestCase
         $farmer = $this->farmer();
 
         $this->actingAs($farmer)->getJson('/api/v1/notifications?limit=0')->assertInvalid(['limit']);
-        $this->actingAs($farmer)->getJson('/api/v1/notifications?limit=500')->assertInvalid(['limit']);
         $this->actingAs($farmer)->getJson('/api/v1/notifications?limit=abc')->assertInvalid(['limit']);
+
+        // An over-limit page size is clamped to the system-wide 50, not
+        // rejected, so an older caller keeps getting a full page.
+        $this->actingAs($farmer)
+            ->getJson('/api/v1/notifications?limit=500')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 50);
     }
 
     public function test_the_feed_is_read_only(): void

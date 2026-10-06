@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Project;
 use App\Models\User;
+use App\Support\Pagination;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 class ProjectService
@@ -11,9 +12,9 @@ class ProjectService
     /**
      * List the user's projects, newest first.
      */
-    public function listFor(User $user): LengthAwarePaginator
+    public function listFor(User $user, int $perPage = Pagination::DEFAULT_PER_PAGE): LengthAwarePaginator
     {
-        return $user->projects()->latest()->paginate(15);
+        return $user->projects()->latest()->paginate($perPage);
     }
 
     /**

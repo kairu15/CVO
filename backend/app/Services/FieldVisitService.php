@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Beneficiary;
 use App\Models\FieldVisit;
 use App\Models\User;
+use App\Support\Pagination;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -18,13 +19,13 @@ class FieldVisitService
      * codebase: it filters on the VISITING technician rather than on assigned
      * beneficiaries, because a visit is the technician's own activity log.
      */
-    public function listFor(User $user): LengthAwarePaginator
+    public function listFor(User $user, int $perPage = Pagination::DEFAULT_PER_PAGE): LengthAwarePaginator
     {
         return $this->scopeFor($user)
             ->with(['beneficiary', 'technician', 'photos'])
             ->latest('visited_on')
             ->latest('id')
-            ->paginate(15);
+            ->paginate($perPage);
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Http\Requests\UpdateMonitoringRecordRequest;
 use App\Http\Resources\MonitoringRecordResource;
 use App\Models\MonitoringRecord;
 use App\Services\MonitoringRecordService;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -39,7 +40,7 @@ class MonitoringRecordController extends Controller
             $request->user(),
             $request->validated('month'),
             $request->validated('search'),
-            (int) $request->validated('per_page'),
+            Pagination::perPage($request->validated('per_page') ?? null),
             $request->validated('animal_type'),
             $request->validated('sort') ?? 'date',
         );

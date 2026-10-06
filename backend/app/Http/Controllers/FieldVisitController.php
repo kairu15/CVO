@@ -17,6 +17,7 @@ use App\Services\NotificationService;
 use App\Services\AuditLogger;
 use App\Services\FieldVisitService;
 use App\Support\ImageSanitizer;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -39,7 +40,10 @@ class FieldVisitController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         return FieldVisitResource::collection(
-            $this->visits->listFor($request->user()),
+            $this->visits->listFor(
+                $request->user(),
+                Pagination::perPage($request->input('per_page')),
+            ),
         );
     }
 

@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateCaseNoteRequest;
 use App\Http\Resources\CaseNoteResource;
 use App\Models\CaseNote;
 use App\Services\CaseNoteService;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -26,7 +27,10 @@ class CaseNoteController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         return CaseNoteResource::collection(
-            $this->notes->listFor($request->user()),
+            $this->notes->listFor(
+                $request->user(),
+                Pagination::perPage($request->input('per_page')),
+            ),
         );
     }
 

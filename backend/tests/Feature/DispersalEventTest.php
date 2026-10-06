@@ -377,4 +377,120 @@ class DispersalEventTest extends TestCase
 
         $this->assertSame([], $response->json('data.descendant_tree'));
     }
+
+    public function test_admin_can_correct_a_dispersal_events_details(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $beneficiary = Beneficiary::factory()->create();
+        $event = DispersalEvent::factory()->initial($beneficiary)->create();
+
+        $this->actingAs($admin)
+            ->patchJson("/api/v1/dispersal-events/{$event->id}", [
+                'date_dispersed' => '2026-08-15',
+                'remarks' => 'Corrected date per field log.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.remarks', 'Corrected date per field log.');
+
+        $this->assertDatabaseHas('dispersal_events', [
+            'id' => $event->id,
+            'remarks' => 'Corrected date per field log.',
+        ]);
+    }
+
+    public function test_admin_can_soft_delete_a_dispersal_event(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $beneficiary = Beneficiary::factory()->create();
+        $event = DispersalEvent::factory()->initial($beneficiary)->create();
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/v1/dispersal-events/{$event->id}")
+            ->assertNoContent();
+
+        $this->assertSoftDeleted('dispersal_events', ['id' => $event->id]);
+    }
+
+    public function test_assigned_technician_can_update_their_own_dispersal_event(): void
+    {
+        $technician = User::factory()->create(['role' => 'technician']);
+        $beneficiary = Beneficiary::factory()->assignedTo($technician)->create();
+        $event = DispersalEvent::factory()->initial($beneficiary)->create();
+
+        $this->actingAs($technician)
+            ->patchJson("/api/v1/dispersal-events/{$event->id}", [
+                'remarks' => 'Technician correction.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.remarks', 'Technician correction.');
+    }
+
+    public function test_technician_cannot_touch_a_dispersal_event_outside_their_scope(): void
+    {
+        $technician = User::factory()->create(['role' => 'technician']);
+        $unassigned = Beneficiary::factory()->create(); // no technician
+        $event = DispersalEvent::factory()->initial($unassigned)->create();
+
+        $this->actingAs($technician)
+            ->patchJson("/api/v1/dispersal-events/{$event->id}", ['remarks' => 'Nope.'])
+            ->assertForbidden();
+
+        $this->actingAs($technician)
+            ->deleteJson("/api/v1/dispersal-events/{$event->id}")
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('dispersal_events', [
+            'id' => $event->id,
+            'deleted_at' => null,
+        ]);
+    }
+
+    public function test_farmer_cannot_update_or_delete_a_dispersal_event(): void
+    {
+        $farmer = User::factory()->create(['role' => 'farmer']);
+        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->create();
+        $event = DispersalEvent::factory()->initial($beneficiary)->create();
+
+        $this->actingAs($farmer)
+            ->patchJson("/api/v1/dispersal-events/{$event->id}", ['remarks' => 'Mine.'])
+            ->assertForbidden();
+
+        $this->actingAs($farmer)
+            ->deleteJson("/api/v1/dispersal-events/{$event->id}")
+            ->assertForbidden();
+    }
+
+    public function test_switching_a_re_dispersal_back_to_initial_clears_the_parent(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $parent = Beneficiary::factory()->create();
+        $recipient = Beneficiary::factory()->create();
+        $event = DispersalEvent::factory()->reDispersal($recipient, $parent)->create();
+
+        $this->actingAs($admin)
+            ->patchJson("/api/v1/dispersal-events/{$event->id}", [
+                'dispersal_type' => 'initial',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.parent_beneficiary_id', null);
+
+        $this->assertDatabaseHas('dispersal_events', [
+            'id' => $event->id,
+            'parent_beneficiary_id' => null,
+        ]);
+    }
+
+    public function test_switching_an_initial_dispersal_to_re_dispersal_requires_a_parent(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $beneficiary = Beneficiary::factory()->create();
+        $event = DispersalEvent::factory()->initial($beneficiary)->create();
+
+        $this->actingAs($admin)
+            ->patchJson("/api/v1/dispersal-events/{$event->id}", [
+                'dispersal_type' => 're-dispersal',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['parent_beneficiary_id']);
+    }
 }

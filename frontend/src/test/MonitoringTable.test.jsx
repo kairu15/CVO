@@ -195,6 +195,29 @@ describe("MonitoringTable technician + timestamp columns", () => {
     );
   });
 
+  it("tints only the row for the beneficiary a notification pointed at", async () => {
+    const flashed = {
+      ...RECORD_UNASSIGNED_NO_PHOTO,
+      id: 9,
+      name_of_farmer: "Flashed Farmer",
+      beneficiary_id: 77,
+    };
+
+    render(
+      <MonitoringTable
+        records={[flashed, RECORD_UNASSIGNED_NO_PHOTO]}
+        highlightBeneficiaryId={77}
+      />,
+    );
+
+    const flashedRow = (await screen.findByText("Flashed Farmer")).closest("tr");
+    expect(flashedRow?.className).toContain("bg-sky-50");
+
+    // A farmer the notification did not name keeps its normal styling.
+    const otherRow = screen.getByText("Doyle Walter").closest("tr");
+    expect(otherRow?.className).not.toContain("bg-sky-50");
+  });
+
   it("closes the lightbox on Escape", async () => {
     renderTable();
     await userEvent.click(await screen.findByRole("button", { name: /view full-size photo/i }));

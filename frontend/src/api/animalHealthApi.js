@@ -19,5 +19,5 @@ export const animalHealthApi = {
    * @param {number} [params.per_page] up to 200
    */
   list: async (params = {}) =>
-    unwrap.list(await api.get("/api/v1/animal-health", { params })),
+    unwrap.page(await api.get("/api/v1/animal-health", { params })),
 };

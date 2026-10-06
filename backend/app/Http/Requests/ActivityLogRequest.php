@@ -27,7 +27,9 @@ class ActivityLogRequest extends FormRequest
             'date_from' => ['sometimes', 'nullable', 'date'],
             'date_to' => ['sometimes', 'nullable', 'date', 'after_or_equal:date_from'],
             'search' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            // Over-limit values are clamped to 50 by the controller
+            // (App\Support\Pagination), matching every other list endpoint.
+            'per_page' => ['sometimes', 'integer', 'min:1'],
         ];
     }
 }

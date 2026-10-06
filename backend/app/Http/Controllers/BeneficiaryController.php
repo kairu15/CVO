@@ -12,6 +12,7 @@ use App\Http\Resources\BeneficiaryResource;
 use App\Services\AuditLogger;
 use App\Services\BeneficiaryService;
 use App\Support\Barangays;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -28,16 +29,15 @@ class BeneficiaryController extends Controller
     ) {}
 
     /**
-     * Role-scoped beneficiary list. `per_page` is honoured (capped at 500 by
-     * the request) so map/dashboard/picker callers see every household the
-     * monitoring table reports on, not just the first 15.
+     * Role-scoped beneficiary list. `per_page` is clamped to 50 by
+     * App\Support\Pagination, so no response carries more than 50 households.
      */
     public function index(IndexBeneficiariesRequest $request): AnonymousResourceCollection
     {
         return BeneficiaryResource::collection(
             $this->beneficiaries->listFor(
                 $request->user(),
-                $request->integer('per_page', 15),
+                Pagination::perPage($request->validated('per_page') ?? null),
             ),
         );
     }

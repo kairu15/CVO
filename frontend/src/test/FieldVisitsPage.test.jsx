@@ -144,7 +144,7 @@ describe("FieldVisitsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     auth.user = { id: 7, name: "Jun Technician", role: "technician" };
-    fieldVisitsApi.list.mockResolvedValue(VISITS);
+    fieldVisitsApi.list.mockResolvedValue({ data: VISITS, meta: null });
     fieldVisitsApi.options.mockResolvedValue({ purposes: PURPOSES });
     fieldVisitsApi.uploadPhoto.mockResolvedValue({ id: 1 });
     geotag.captureGeotag.mockResolvedValue(CAPTURE);

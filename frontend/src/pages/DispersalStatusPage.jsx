@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { dispersalApi } from "../api/dispersalApi";
 import { useAutoRefresh } from "../api/queries";
 import { beneficiariesApi } from "../api/beneficiariesApi";
@@ -8,8 +8,10 @@ import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
+import { PaginationFooter } from "../components/PaginationFooter";
 import { Icon } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
+import { useFlashHighlight } from "../hooks/useFlashHighlight";
 import { getRole } from "../config/roles";
 
 /**
@@ -35,7 +37,15 @@ function formatDate(value) {
 export default function DispersalStatusPage({ roleKey = "farmer" }) {
   const { user } = useAuth();
   const { t } = useTranslation();
+  const location = useLocation();
   const config = getRole(roleKey);
+
+  // A notification that points here seeds the household to flash — the
+  // movement row touching that farmer is tinted, then fades.
+  const [highlightBeneficiaryId] = useFlashHighlight(
+    location.state?.highlightBeneficiaryId ?? null,
+    2600,
+  );
 
   const typeLabels = {
     initial: t("dispersalStatus.typeInitial"),
@@ -43,6 +53,8 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
   };
 
   const [events, setEvents] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [page, setPage] = useState(1);
   const [myIds, setMyIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -57,19 +69,20 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
     setError(null);
 
     try {
-      const requests = [dispersalApi.list({ per_page: 200 })];
-      if (isFarmer) requests.push(beneficiariesApi.list({ per_page: 200 }));
+      const requests = [dispersalApi.list({ per_page: 50, page })];
+      if (isFarmer) requests.push(beneficiariesApi.list({ per_page: 50 }));
 
       const [eventsRes, mineRes] = await Promise.all(requests);
 
-      setEvents(eventsRes ?? []);
+      setEvents(eventsRes?.data ?? []);
+      setMeta(eventsRes?.meta ?? null);
       setMyIds(new Set((mineRes ?? []).map((b) => b.id)));
     } catch (err) {
       if (!quiet) setError(getErrorMessage(err));
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [isFarmer]);
+  }, [isFarmer, page]);
 
   useEffect(() => {
     load();
@@ -166,9 +179,21 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
               <tbody className="divide-y divide-slate-100">
                 {events.map((event) => {
                   const ownerId = lineageOwnerId(event);
+                  const isHighlighted =
+                    highlightBeneficiaryId !== null &&
+                    highlightBeneficiaryId !== undefined &&
+                    (event.beneficiary_id === highlightBeneficiaryId ||
+                      event.parent_beneficiary_id === highlightBeneficiaryId);
 
                   return (
-                    <tr key={event.id} className="transition hover:bg-brand-50/40">
+                    <tr
+                      key={event.id}
+                      className={`transition-colors duration-700 ${
+                        isHighlighted
+                          ? "bg-sky-50 dark:bg-sky-100/60"
+                          : "hover:bg-brand-50/40"
+                      }`}
+                    >
                       <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
                         {formatDate(event.date_dispersed)}
                       </td>
@@ -210,6 +235,13 @@ export default function DispersalStatusPage({ roleKey = "farmer" }) {
             </table>
           </div>
         )}
+
+        <PaginationFooter
+          meta={meta}
+          shown={events.length}
+          noun="movement"
+          onPageChange={setPage}
+        />
       </section>
     </div>
   );

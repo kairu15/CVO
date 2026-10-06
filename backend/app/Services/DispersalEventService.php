@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Beneficiary;
 use App\Models\DispersalEvent;
 use App\Models\User;
+use App\Support\Pagination;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -26,13 +27,13 @@ class DispersalEventService
      * beneficiary rules so the API can never leak another technician's or
      * farmer's chain.
      */
-    public function listFor(User $user): LengthAwarePaginator
+    public function listFor(User $user, int $perPage = Pagination::DEFAULT_PER_PAGE): LengthAwarePaginator
     {
         return $this->scopeQueryFor($user)
             ->with(['beneficiary', 'parentBeneficiary', 'newBeneficiary'])
             ->latest('date_dispersed')
             ->latest('id')
-            ->paginate(15);
+            ->paginate($perPage);
     }
 
     /**
@@ -109,6 +110,36 @@ class DispersalEventService
 
             return $event;
         });
+    }
+
+    /**
+     * Correct a recorded dispersal. Only the descriptive fields are writable
+     * (see UpdateDispersalEventRequest); the recipient and the captured
+     * signature are audit anchors. Switching the type back to `initial`
+     * clears the now-meaningless parent reference.
+     */
+    public function update(User $actor, DispersalEvent $event, array $data): DispersalEvent
+    {
+        if (($data['dispersal_type'] ?? $event->dispersal_type) === DispersalEvent::TYPE_INITIAL) {
+            $event->parent_beneficiary_id = null;
+        }
+
+        $event->fill($data)->save();
+
+        $this->audit->log($actor, 'dispersal_updated', $event);
+
+        return $event->refresh();
+    }
+
+    /**
+     * Soft-delete a recorded dispersal. Soft delete matches the rest of the
+     * system, so a corrected history can still be recovered.
+     */
+    public function delete(User $actor, DispersalEvent $event): void
+    {
+        $event->delete();
+
+        $this->audit->log($actor, 'dispersal_deleted', $event);
     }
 
     /**

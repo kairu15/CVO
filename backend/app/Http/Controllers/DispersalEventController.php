@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreDispersalEventRequest;
+use App\Http\Requests\UpdateDispersalEventRequest;
 use App\Http\Resources\BeneficiaryResource;
 use App\Http\Resources\DispersalEventResource;
+use App\Models\DispersalEvent;
 use App\Services\DispersalEventService;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -21,7 +24,10 @@ class DispersalEventController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         return DispersalEventResource::collection(
-            $this->events->listFor($request->user()),
+            $this->events->listFor(
+                $request->user(),
+                Pagination::perPage($request->input('per_page')),
+            ),
         );
     }
 
@@ -52,6 +58,40 @@ class DispersalEventController extends Controller
         $this->authorize('view', $event);
 
         return new DispersalEventResource($event);
+    }
+
+    /**
+     * Correct a recorded dispersal (admin, or the assigned technician). Only
+     * the descriptive fields are editable — the recipient and the captured
+     * signature are audit anchors (see UpdateDispersalEventRequest).
+     */
+    public function update(UpdateDispersalEventRequest $request, int $id): DispersalEventResource
+    {
+        $event = DispersalEvent::findOrFail($id);
+
+        $this->authorize('update', $event);
+
+        $event = $this->events->update($request->user(), $event, $request->validated());
+
+        return new DispersalEventResource(
+            $event->load(['beneficiary', 'parentBeneficiary', 'newBeneficiary']),
+        );
+    }
+
+    /**
+     * Soft-delete a recorded dispersal (admin, or the assigned technician).
+     * Soft delete follows the rest of the system: the row leaves the lineage
+     * and the list but stays recoverable.
+     */
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        $event = DispersalEvent::findOrFail($id);
+
+        $this->authorize('delete', $event);
+
+        $this->events->delete($request->user(), $event);
+
+        return response()->json([], Response::HTTP_NO_CONTENT);
     }
 
     /**

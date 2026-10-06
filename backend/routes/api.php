@@ -50,12 +50,30 @@ Route::prefix('v1')->middleware('throttle:6,1')->group(function (): void {
         ->name('api.password.email');
     Route::post('/reset-password', [PasswordResetController::class, 'reset'])
         ->name('api.password.reset');
+});
 
+/*
+|--------------------------------------------------------------------------
+| Public reference & aggregate routes
+|--------------------------------------------------------------------------
+|
+| Session-free: the registration form's barangay cascade, the geocode proxy
+| and the public dashboards are all used BEFORE login. They deliberately sit
+| in their own group rather than the auth group above: that group is capped
+| at 6 requests/minute per IP, so nesting these under it silently throttled
+| the landing page and the address cascade to the same tiny login budget
+| (the per-route 30/60-per-minute limits never took effect — the outer
+| 6/min always tripped first). Each route carries the budget it intends.
+|
+*/
+Route::prefix('v1')->group(function (): void {
     // Location reference data for the public forms — the registration
     // form's barangay → purok cascade. Read-only and session-free: these
     // are reference tables, not user data, so they need no auth. Ordered
     // by id (the config seed order) so the dropdown reads as a stable list.
-    Route::get('/barangays', [BarangayController::class, 'index'])->name('api.barangays');
+    Route::get('/barangays', [BarangayController::class, 'index'])
+        ->middleware('throttle:60,1')
+        ->name('api.barangays');
     Route::get('/barangays/{barangay}/puroks', [BarangayController::class, 'puroks'])
         ->middleware('throttle:60,1')
         ->name('api.barangays.puroks');

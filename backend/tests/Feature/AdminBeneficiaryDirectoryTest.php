@@ -17,21 +17,25 @@ class AdminBeneficiaryDirectoryTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_the_directory_honours_per_page_so_it_matches_the_monitoring_table(): void
+    public function test_the_directory_defaults_to_fifty_and_caps_per_page_at_fifty(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        Beneficiary::factory()->count(25)->create();
+        Beneficiary::factory()->count(60)->create();
 
-        $this->actingAs($admin)
-            ->getJson('/api/v1/admin/beneficiaries?per_page=200')
-            ->assertOk()
-            ->assertJsonCount(25, 'data');
-
-        // The plain call still behaves like a normal paginated list.
+        // The plain call is a normal paginated list whose default page is 50.
         $this->actingAs($admin)
             ->getJson('/api/v1/admin/beneficiaries')
             ->assertOk()
-            ->assertJsonCount(15, 'data');
+            ->assertJsonCount(50, 'data')
+            ->assertJsonPath('meta.per_page', 50)
+            ->assertJsonPath('meta.total', 60);
+
+        // An over-limit `per_page` is clamped to 50, not rejected.
+        $this->actingAs($admin)
+            ->getJson('/api/v1/admin/beneficiaries?per_page=200')
+            ->assertOk()
+            ->assertJsonCount(50, 'data')
+            ->assertJsonPath('meta.per_page', 50);
     }
 
     public function test_the_directory_still_filters_by_farmer_name_and_address(): void
@@ -39,7 +43,10 @@ class AdminBeneficiaryDirectoryTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
         Beneficiary::factory()->create(['name_of_farmer' => 'Nena Reyes', 'address' => 'Dawis']);
         Beneficiary::factory()->create(['name_of_farmer' => 'Other Farmer', 'address' => 'Tayawan']);
-        Beneficiary::factory()->count(3)->create();
+        // Pin the filler rows' address: the factory picks a random barangay, and
+        // "Tayawan" is among them, which would make the search assertions below
+        // flaky.
+        Beneficiary::factory()->count(3)->create(['address' => 'Dawis']);
 
         $this->actingAs($admin)
             ->getJson('/api/v1/admin/beneficiaries?per_page=200&search=Nena')
@@ -61,12 +68,12 @@ class AdminBeneficiaryDirectoryTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_the_directory_rejects_an_out_of_range_per_page(): void
+    public function test_the_directory_rejects_a_non_integer_per_page(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
 
         $this->actingAs($admin)
-            ->getJson('/api/v1/admin/beneficiaries?per_page=5000')
+            ->getJson('/api/v1/admin/beneficiaries?per_page=abc')
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['per_page']);
     }

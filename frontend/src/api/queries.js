@@ -60,12 +60,13 @@ export function useUnreadNotificationsCount(enabled = true) {
  * rule-based flags only). The filter is a SERVER-side query parameter so a
  * capped page still reports the true counts for the selected set.
  */
-export function useNotificationsFeed(limit = 20, filter = "all") {
+export function useNotificationsFeed(limit = 20, filter = "all", page = 1) {
   return useQuery({
-    queryKey: ["notifications", "feed", limit, filter],
+    queryKey: ["notifications", "feed", limit, filter, page],
     queryFn: () =>
       notificationsApi.list({
         limit,
+        page,
         ...(filter !== "all" ? { filter } : {}),
       }),
     refetchInterval: POLL_INTERVALS.notifications,

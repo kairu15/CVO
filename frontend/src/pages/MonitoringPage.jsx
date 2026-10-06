@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   useInvalidate,
   useAssignedBeneficiaries,
@@ -23,7 +24,9 @@ import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
 import { BulkActionBar } from "../components/BulkActionBar";
+import { PaginationFooter } from "../components/PaginationFooter";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useFlashHighlight } from "../hooks/useFlashHighlight";
 import { useRowSelection } from "../hooks/useRowSelection";
 
 /**
@@ -42,8 +45,16 @@ import { useRowSelection } from "../hooks/useRowSelection";
  */
 export default function MonitoringPage({ roleKey }) {
   const { user } = useAuth();
+  const location = useLocation();
   const viewerRole = roleKey ?? user?.role;
   const invalidate = useInvalidate();
+
+  // A notification that points here seeds the farmer to flash via router
+  // state; the id clears itself so the row's tint fades back out.
+  const [highlightBeneficiaryId] = useFlashHighlight(
+    location.state?.highlightBeneficiaryId ?? null,
+    2600,
+  );
 
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [error, setError] = useState(null);
@@ -367,6 +378,7 @@ export default function MonitoringPage({ roleKey }) {
           selected={selected}
           onToggleRow={canEdit ? (record) => toggle(record.id) : undefined}
           groupBy={groupBy}
+          highlightBeneficiaryId={highlightBeneficiaryId}
           emptyState={
             debouncedSearch
               ? {
@@ -388,39 +400,12 @@ export default function MonitoringPage({ roleKey }) {
           }
         />
 
-        {meta && meta.last_page > 1 && (
-          <div className="flex items-center justify-between gap-4 border-t border-slate-100 px-4 py-3 text-xs text-slate-600">
-            <span>
-              Showing {records.length} of {meta.total} record
-              {meta.total === 1 ? "" : "s"}
-              {selectedMonth ? " in this month" : ""}
-              {debouncedSearch ? " matching your search" : ""}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-                disabled={page <= 1}
-                className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Icon name="chevron-down" className="h-3.5 w-3.5 -rotate-90" />
-                Prev
-              </button>
-              <span className="tabular-nums">
-                Page {meta.current_page} of {meta.last_page}
-              </span>
-              <button
-                type="button"
-                onClick={() => setPage((current) => Math.min(meta.last_page, current + 1))}
-                disabled={page >= meta.last_page}
-                className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Next
-                <Icon name="chevron-down" className="h-3.5 w-3.5 rotate-90" />
-              </button>
-            </div>
-          </div>
-        )}
+        <PaginationFooter
+          meta={meta}
+          shown={records.length}
+          noun="record"
+          onPageChange={setPage}
+        />
         </section>
       )}
 

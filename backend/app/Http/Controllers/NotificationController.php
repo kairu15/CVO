@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\NotificationFeedRequest;
 use App\Services\NotificationService;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -25,8 +26,11 @@ class NotificationController extends Controller
 
         $feed = $this->notifications->feed(
             $request->user(),
-            (int) ($validated['limit'] ?? NotificationService::DEFAULT_LIMIT),
+            // `per_page` is the system-wide name; `limit` is the feed's
+            // historical alias for the same page size. Either is clamped to 50.
+            Pagination::perPage($validated['per_page'] ?? $validated['limit'] ?? null),
             $validated['filter'] ?? NotificationService::FILTER_ALL,
+            (int) ($validated['page'] ?? 1),
         );
 
         // `meta` carries the counts so the header bell can show a badge from

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\HealthRecord;
 use App\Models\User;
+use App\Support\Pagination;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -22,13 +23,13 @@ class HealthRecordService
      * records use — so a technician only ever receives records for assigned
      * beneficiaries and a farmer only their own, server-side.
      */
-    public function listFor(User $user): LengthAwarePaginator
+    public function listFor(User $user, int $perPage = Pagination::DEFAULT_PER_PAGE): LengthAwarePaginator
     {
         return $this->scopeFor($user)
             ->with(['beneficiary', 'doctor'])
             ->latest('date_recorded')
             ->latest('id')
-            ->paginate(15);
+            ->paginate($perPage);
     }
 
     /**

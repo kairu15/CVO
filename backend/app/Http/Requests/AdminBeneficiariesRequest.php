@@ -30,10 +30,10 @@ class AdminBeneficiariesRequest extends FormRequest
             'search' => ['sometimes', 'nullable', 'string', 'max:255'],
 
             // The directory groups every household by barangay for bulk
-            // assignment, so it must be able to ask for the whole list —
-            // capping it at the old fixed 15 rows made the page look like the
-            // program only had a handful of beneficiaries.
-            'per_page' => ['sometimes', 'integer', 'min:1', 'max:500'],
+            // assignment and pages through the result. Over-limit values are
+            // clamped to 50 by the controller (see App\Support\Pagination),
+            // never rejected, and `page` walks the bounded pages.
+            'per_page' => ['sometimes', 'integer', 'min:1'],
 
             'page' => ['sometimes', 'integer', 'min:1'],
         ];

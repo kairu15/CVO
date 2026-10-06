@@ -85,7 +85,7 @@ function table() {
 describe("AnimalHealthPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    animalHealthApi.list.mockResolvedValue(ROWS);
+    animalHealthApi.list.mockResolvedValue({ data: ROWS, meta: null });
   });
 
   it("rolls visits, diagnoses, notes and vaccination state into one row per animal", async () => {

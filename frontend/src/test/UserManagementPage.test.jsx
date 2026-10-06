@@ -9,6 +9,7 @@ import { ToastProvider } from "../context/ToastContext";
 vi.mock("../api/adminApi", () => ({
   adminApi: {
     listUsers: vi.fn(),
+    listUsersPage: vi.fn(),
     assignRole: vi.fn(),
   },
 }));
@@ -66,7 +67,7 @@ function renderPage() {
 describe("UserManagementPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    adminApi.listUsers.mockResolvedValue(ACCOUNTS);
+    adminApi.listUsersPage.mockResolvedValue({ data: ACCOUNTS, meta: null });
   });
 
   it("lists accounts with their role", async () => {
@@ -93,7 +94,7 @@ describe("UserManagementPage", () => {
     });
 
     await waitFor(() => {
-      const calls = adminApi.listUsers.mock.calls;
+      const calls = adminApi.listUsersPage.mock.calls;
       expect(calls[calls.length - 1]?.[0]?.role).toBe("technician");
     });
   });
@@ -107,7 +108,7 @@ describe("UserManagementPage", () => {
     });
 
     await waitFor(() => {
-      const calls = adminApi.listUsers.mock.calls;
+      const calls = adminApi.listUsersPage.mock.calls;
       expect(calls[calls.length - 1]?.[0]?.search).toBe("Nena");
     });
   });
@@ -169,7 +170,7 @@ describe("UserManagementPage", () => {
   });
 
   it("surfaces an API failure", async () => {
-    adminApi.listUsers.mockRejectedValue(new Error("Can't reach the server."));
+    adminApi.listUsersPage.mockRejectedValue(new Error("Can't reach the server."));
 
     renderPage();
 

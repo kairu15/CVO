@@ -6,6 +6,7 @@ use App\Models\Beneficiary;
 use App\Models\DispersalEvent;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Support\Pagination;
 
 /**
  * Notifications — a derived, read-only feed.
@@ -82,7 +83,7 @@ class NotificationService
 
     public const FILTERS = [self::FILTER_ALL, self::FILTER_SMART];
 
-    public const DEFAULT_LIMIT = 20;
+    public const DEFAULT_LIMIT = Pagination::DEFAULT_PER_PAGE;
 
     /**
      * How many records of each kind are scanned per request.
@@ -180,8 +181,12 @@ class NotificationService
      *
      * @return array{alerts: list<array<string, mixed>>, counts: array<string, mixed>}
      */
-    public function feed(User $user, int $limit = self::DEFAULT_LIMIT, string $filter = self::FILTER_ALL): array
-    {
+    public function feed(
+        User $user,
+        int $limit = self::DEFAULT_LIMIT,
+        string $filter = self::FILTER_ALL,
+        int $page = 1,
+    ): array {
         // Reset per call: the flag is set while scanning, and a service
         // instance reused across calls must not inherit the previous answer.
         $this->truncated = false;
@@ -216,8 +221,19 @@ class NotificationService
 
         $counts['truncated'] = $this->truncated;
 
+        // Pagination metadata rides alongside the counts: `total` above is the
+        // WHOLE feed's size, so a page reports what it carries and what sits
+        // behind it. `$limit` is clamped to Pagination::MAX_PER_PAGE here, so
+        // the feed honours the same 50-row ceiling as every list endpoint.
+        $perPage = Pagination::perPage($limit);
+        $page = max(1, $page);
+
+        $counts['per_page'] = $perPage;
+        $counts['current_page'] = $page;
+        $counts['last_page'] = max(1, (int) ceil($counts['total'] / $perPage));
+
         return [
-            'alerts' => array_slice($alerts, 0, $limit),
+            'alerts' => array_slice($alerts, ($page - 1) * $perPage, $perPage),
             'counts' => $counts,
         ];
     }

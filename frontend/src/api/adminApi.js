@@ -11,6 +11,13 @@ export const adminApi = {
   /** List users, e.g. { role: "technician" } for the Technicians screen. */
   listUsers: async (params = {}) => unwrap.list(await api.get("/api/v1/admin/users", { params })),
 
+  /**
+   * The same user list, paginated: resolves to `{ data, meta }` so the table
+   * can render its page footer (see `unwrap.page`).
+   */
+  listUsersPage: async (params = {}) =>
+    unwrap.page(await api.get("/api/v1/admin/users", { params })),
+
   /** Set a user's role (self-registration stays farmer-only; this is the elevation path). */
   assignRole: async (userId, role) => {
     await ensureCsrfCookie();
@@ -20,6 +27,13 @@ export const adminApi = {
   /** Admin-wide beneficiary directory including current technician. */
   listBeneficiaries: async (params = {}) =>
     unwrap.list(await api.get("/api/v1/admin/beneficiaries", { params })),
+
+  /**
+   * The same directory, paginated: resolves to `{ data, meta }` so the table
+   * can render its page footer (see `unwrap.page`).
+   */
+  listBeneficiariesPage: async (params = {}) =>
+    unwrap.page(await api.get("/api/v1/admin/beneficiaries", { params })),
 
   /** Attach / detach (technicianId = null) a technician on a beneficiary. */
   assignTechnician: async (beneficiaryId, technicianId) => {

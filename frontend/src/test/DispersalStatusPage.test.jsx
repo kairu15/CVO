@@ -59,7 +59,7 @@ describe("DispersalStatusPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     auth.user = { id: 4, name: "Aling Nena Farmer", role: "farmer" };
-    dispersalApi.list.mockResolvedValue(EVENTS);
+    dispersalApi.list.mockResolvedValue({ data: EVENTS, meta: null });
     beneficiariesApi.list.mockResolvedValue(MINE);
   });
 
@@ -127,7 +127,7 @@ describe("DispersalStatusPage", () => {
   });
 
   it("explains an empty log rather than showing a bare table", async () => {
-    dispersalApi.list.mockResolvedValue([]);
+    dispersalApi.list.mockResolvedValue({ data: [], meta: null });
 
     renderPage();
 

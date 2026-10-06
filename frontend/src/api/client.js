@@ -62,6 +62,22 @@ unwrap.list = (response) => {
 };
 
 /**
+ * Unwrap a paginated Laravel resource collection into `{ data, meta }`.
+ *
+ * `meta` carries total / current_page / last_page / per_page so a table can
+ * render its footer; it is null on a bare `{ data: [...] }` response, which is
+ * what lets an unpaginated endpoint degrade gracefully.
+ */
+unwrap.page = (response) => {
+  const body = response?.data;
+
+  return {
+    data: Array.isArray(body?.data) ? body.data : [],
+    meta: body?.meta ?? null,
+  };
+};
+
+/**
  * Extract Laravel validation errors keyed by field name, so forms can show
  * messages against the offending input. Returns null when the failure was not
  * a 422 validation response.

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ActivityLogRequest;
 use App\Models\ActivityLog;
 use App\Models\User;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use App\Http\Resources\ActivityLogResource;
@@ -42,7 +43,7 @@ class ActivityLogController extends Controller
             })
             ->latest('created_at')
             ->latest('id')
-            ->paginate((int) ($validated['per_page'] ?? 25));
+            ->paginate(Pagination::perPage($validated['per_page'] ?? null));
 
         return ActivityLogResource::collection($logs);
     }

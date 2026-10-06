@@ -23,11 +23,14 @@ class NotificationFeedRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'limit' => [
-                'sometimes',
-                'integer',
-                'between:1,'.NotificationService::SCAN_CAP,
-            ],
+            // `limit` is the historical page-size parameter; `per_page` is the
+            // system-wide name for the same thing. Either is accepted and
+            // clamped to 50 (App\Support\Pagination::MAX_PER_PAGE) by the
+            // controller, so a request can never pull more than one full page
+            // at a time. `page` walks the feed.
+            'limit' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1'],
+            'page' => ['sometimes', 'integer', 'min:1'],
             // `smart` narrows the feed to the daily rule-based flags, which
             // the UI renders as its own "Flagged" tab.
             'filter' => [

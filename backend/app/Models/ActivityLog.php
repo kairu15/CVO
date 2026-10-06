@@ -58,6 +58,8 @@ class ActivityLog extends Model
         'beneficiary_updated',
         'beneficiary_deleted',
         'dispersal_created',
+        'dispersal_updated',
+        'dispersal_deleted',
         'monitoring_created',
         'monitoring_updated',
         'monitoring_deleted',

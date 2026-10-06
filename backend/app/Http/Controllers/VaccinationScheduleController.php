@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\VaccinationScheduleRequest;
 use App\Http\Resources\VaccinationScheduleResource;
 use App\Services\VaccinationScheduleService;
+use App\Support\Pagination;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 /**
@@ -26,7 +27,7 @@ class VaccinationScheduleController extends Controller
             $this->schedule->listFor(
                 $request->user(),
                 $validated['status'] ?? null,
-                (int) ($validated['per_page'] ?? 15),
+                Pagination::perPage($validated['per_page'] ?? null),
             ),
         );
     }

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Support\Pagination;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -56,7 +57,7 @@ class VaccinationScheduleService
      * Never-vaccinated and longest-overdue animals lead, which is the order a
      * field team actually works through.
      */
-    public function listFor(User $user, ?string $status = null, int $perPage = 15): LengthAwarePaginator
+    public function listFor(User $user, ?string $status = null, int $perPage = Pagination::DEFAULT_PER_PAGE): LengthAwarePaginator
     {
         $last = self::lastVaccinationSql();
 

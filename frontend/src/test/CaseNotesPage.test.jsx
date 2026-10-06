@@ -76,7 +76,7 @@ describe("CaseNotesPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     auth.user = { id: 10, name: "Dr. Maria Santos", role: "doctor" };
-    caseNotesApi.list.mockResolvedValue(NOTES);
+    caseNotesApi.list.mockResolvedValue({ data: NOTES, meta: null });
     symptomRulesApi.active.mockResolvedValue([]);
     beneficiariesApi.list.mockResolvedValue([
       { id: 11, name_of_farmer: "Aling Nena", address: "Banay Banay", animal_type: "Carabao", sex: "F" },
@@ -151,7 +151,9 @@ describe("CaseNotesPage", () => {
     // First load: the two existing notes. The post-save refresh returns the
     // new note — the page must re-fetch itself rather than wait for the 30s
     // poll, which is what made a written note look like it never appeared.
-    caseNotesApi.list.mockResolvedValueOnce(NOTES).mockResolvedValue([...NOTES, saved]);
+    caseNotesApi.list
+      .mockResolvedValueOnce({ data: NOTES, meta: null })
+      .mockResolvedValue({ data: [...NOTES, saved], meta: null });
 
     renderPage();
     await screen.findByText("Aling Nena");

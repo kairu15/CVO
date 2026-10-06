@@ -6,8 +6,11 @@ import { api, ensureCsrfCookie, unwrap } from "./client";
  * Every method returns already-unwrapped data (see `unwrap` in client.js).
  */
 export const dispersalApi = {
-  /** Role-scoped list of dispersal events. Always an array. */
-  list: async (params = {}) => unwrap.list(await api.get("/api/v1/dispersal-events", { params })),
+  /**
+   * Role-scoped page of dispersal events. Resolves to the paginated envelope
+   * `{ data, meta }` (see `unwrap.page`).
+   */
+  list: async (params = {}) => unwrap.page(await api.get("/api/v1/dispersal-events", { params })),
 
   get: async (id) => unwrap(await api.get(`/api/v1/dispersal-events/${id}`)),
 

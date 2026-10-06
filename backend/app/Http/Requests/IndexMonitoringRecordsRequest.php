@@ -44,8 +44,10 @@ class IndexMonitoringRecordsRequest extends FormRequest
             // PHP/JS after the fetch.
             'sort' => ['sometimes', 'nullable', 'in:date,animal_type'],
 
-            // Same bounds as the other list endpoints (ActivityLogRequest).
-            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            // Same policy as the other list endpoints (ActivityLogRequest):
+            // an over-limit value is clamped to 50 by the controller
+            // (App\Support\Pagination) instead of being rejected.
+            'per_page' => ['sometimes', 'integer', 'min:1'],
 
             'page' => ['sometimes', 'integer', 'min:1'],
         ];

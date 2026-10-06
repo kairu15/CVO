@@ -12,6 +12,7 @@ import {
 } from "../api/queries";
 import { searchApi } from "../api/searchApi";
 import { getErrorMessage } from "../api/client";
+import { useFlashHighlight } from "../hooks/useFlashHighlight";
 import { Icon } from "./Icons";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { SkeletonList } from "./Skeleton";
@@ -531,8 +532,18 @@ function NotificationBadge({ active }) {
 function NotificationPanel({ onNavigate }) {
   const { user } = useAuth();
   const invalidate = useInvalidate();
+  const navigate = useNavigate();
   const [marking, setMarking] = useState(false);
-  const { data, isLoading, error } = useNotificationsFeed(10);
+
+  // The clicked notification tints for a beat before the panel closes and
+  // the route changes; the destination flashes the same beneficiary's row.
+  const [flashId, setFlashId] = useFlashHighlight(null, 1500);
+  const navTimer = useRef(null);
+  useEffect(() => () => clearTimeout(navTimer.current), []);
+  // Five is the glance: enough to see what needs attention, short enough to
+  // sit in the dropdown without covering the page behind it. The full history
+  // lives on the role's notifications page ("View all").
+  const { data, isLoading, error } = useNotificationsFeed(5);
 
   const alerts = data?.alerts ?? [];
   const counts = data?.counts ?? {};
@@ -559,7 +570,12 @@ function NotificationPanel({ onNavigate }) {
    * no read state to write. Navigation is never blocked on the write — the
    * invalidated poll catches up either way.
    */
-  function openAlert(alert) {
+  function openAlert(event, alert) {
+    // Tint first, then close + navigate, so the tap reads before the panel
+    // goes. The destination reads the same beneficiary id to flash its row.
+    event.preventDefault();
+    setFlashId(alert.id);
+
     if (typeof alert.id === "string" && alert.id.startsWith("event-") && !alert.read) {
       const id = Number(alert.id.slice("event-".length));
 
@@ -569,12 +585,21 @@ function NotificationPanel({ onNavigate }) {
         .catch(() => {});
     }
 
-    onNavigate();
+    const state =
+      alert.beneficiary_id !== null && alert.beneficiary_id !== undefined
+        ? { highlightBeneficiaryId: alert.beneficiary_id }
+        : undefined;
+
+    clearTimeout(navTimer.current);
+    navTimer.current = setTimeout(() => {
+      onNavigate();
+      navigate(alert.link, { state });
+    }, 220);
   }
 
   return (
-    <div className="card absolute right-0 z-20 mt-2 w-80 p-4">
-      <div className="flex items-center justify-between">
+    <div className="card absolute right-0 z-20 mt-2 flex max-h-[70vh] w-80 flex-col p-4">
+      <div className="flex shrink-0 items-center justify-between">
         <p className="font-display text-sm font-semibold text-slate-900">Notifications</p>
         {attention > 0 && (
           <span className="rounded-pill bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
@@ -596,7 +621,7 @@ function NotificationPanel({ onNavigate }) {
           falls due.
         </p>
       ) : (
-        <ul className="mt-2 space-y-1">
+        <ul className="mt-2 -mr-1 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
           {alerts.map((alert) => {
             const hint = dueHint(alert.days_until_due);
             const meta = [formatDate(alert.date), hint].filter(Boolean).join(" · ");
@@ -606,9 +631,13 @@ function NotificationPanel({ onNavigate }) {
               <li key={alert.id}>
                 <Link
                   to={alert.link}
-                  onClick={() => openAlert(alert)}
-                  className={`flex items-start gap-2.5 rounded-xl px-2 py-2 transition hover:bg-brand-50 ${
-                    isEvent && !alert.read ? "bg-brand-50/70" : ""
+                  onClick={(event) => openAlert(event, alert)}
+                  className={`flex items-start gap-2.5 rounded-xl px-2 py-2 transition-colors duration-700 ${
+                    flashId === alert.id
+                      ? "bg-sky-50 dark:bg-sky-100/50"
+                      : isEvent && !alert.read
+                        ? "bg-brand-50/70"
+                        : "hover:bg-brand-50"
                   }`}
                 >
                   <Icon
@@ -636,7 +665,7 @@ function NotificationPanel({ onNavigate }) {
         </ul>
       )}
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3 flex shrink-0 items-center gap-2">
         {unreadEvents > 0 && (
           <button
             type="button"

@@ -1,12 +1,14 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { notificationsApi } from "../api/notificationsApi";
 import { useInvalidate, useNotificationsFeed } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
+import { PaginationFooter } from "../components/PaginationFooter";
 import { Icon } from "../components/Icons";
+import { useFlashHighlight } from "../hooks/useFlashHighlight";
 import { getRole } from "../config/roles";
 
 /**
@@ -84,14 +86,21 @@ function dueHint(days) {
 export default function NotificationsPage({ roleKey = "farmer" }) {
   const config = getRole(roleKey);
   const invalidate = useInvalidate();
+  const navigate = useNavigate();
+
+  // The clicked notification tints for a beat before the route changes.
+  const [flashId, setFlashId] = useFlashHighlight(null, 1500);
+  const navTimer = useRef(null);
+  useEffect(() => () => clearTimeout(navTimer.current), []);
 
   // Smart Alerts are written for admins and technicians only (plus the
   // assigned technician for household-level flags), so the tab is hidden
   // where it could never have anything in it.
   const canSeeSmart = roleKey === "admin" || roleKey === "technician";
   const [tab, setTab] = useState("all");
+  const [page, setPage] = useState(1);
 
-  const { data, isLoading: loading, error: queryError } = useNotificationsFeed(50, tab);
+  const { data, isLoading: loading, error: queryError } = useNotificationsFeed(50, tab, page);
 
   const alerts = data?.alerts ?? [];
   const counts = data?.counts ?? {};
@@ -113,7 +122,13 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
    * rather than clearing wholesale; a derived alert has no read state to
    * write. The write races the navigation but never blocks it.
    */
-  function openAlert(alert) {
+  function openAlert(event, alert) {
+    // Tint the row first, then swap the route: the tap feedback needs a beat
+    // to register, and the destination reads the same beneficiary id to
+    // flash the matching record.
+    event.preventDefault();
+    setFlashId(alert.id);
+
     if (typeof alert.id === "string" && alert.id.startsWith("event-") && !alert.read) {
       const id = Number(alert.id.slice("event-".length));
 
@@ -122,6 +137,14 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
         .then(() => invalidate.notifications())
         .catch(() => {});
     }
+
+    const state =
+      alert.beneficiary_id !== null && alert.beneficiary_id !== undefined
+        ? { highlightBeneficiaryId: alert.beneficiary_id }
+        : undefined;
+
+    clearTimeout(navTimer.current);
+    navTimer.current = setTimeout(() => navigate(alert.link, { state }), 220);
   }
 
   return (
@@ -138,7 +161,10 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
           <div className="mt-5 inline-flex rounded-pill border border-slate-200 bg-slate-50 p-1 dark:border-slate-200/70 dark:bg-slate-100/60">
             <button
               type="button"
-              onClick={() => setTab("all")}
+              onClick={() => {
+                setTab("all");
+                setPage(1);
+              }}
               aria-pressed={tab === "all"}
               className={`rounded-pill px-3.5 py-1.5 text-xs font-semibold transition ${
                 tab === "all"
@@ -150,7 +176,10 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
             </button>
             <button
               type="button"
-              onClick={() => setTab("smart")}
+              onClick={() => {
+                setTab("smart");
+                setPage(1);
+              }}
               aria-pressed={tab === "smart"}
               className={`inline-flex items-center gap-2 rounded-pill px-3.5 py-1.5 text-xs font-semibold transition ${
                 tab === "smart"
@@ -221,7 +250,8 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
           />
         </section>
       ) : (
-        BANDS.map((band) => {
+        <>
+        {BANDS.map((band) => {
           const rows = alerts.filter((alert) => band.urgencies.includes(alert.urgency));
 
           if (rows.length === 0) return null;
@@ -245,7 +275,11 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
                   return (
                     <li
                       key={alert.id}
-                      className="flex flex-wrap items-start gap-3 px-4 py-3.5 transition hover:bg-brand-50/40"
+                      className={`flex flex-wrap items-start gap-3 px-4 py-3.5 transition-colors duration-700 ${
+                        flashId === alert.id
+                          ? "bg-sky-50 dark:bg-sky-100/50"
+                          : "hover:bg-brand-50/40"
+                      }`}
                     >
                       <span
                         className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${
@@ -277,7 +311,7 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
 
                       <Link
                         to={alert.link}
-                        onClick={() => openAlert(alert)}
+                        onClick={(event) => openAlert(event, alert)}
                         className="shrink-0 rounded-pill px-3 py-1 text-[11px] font-semibold text-brand-800 transition hover:bg-brand-100"
                       >
                         View
@@ -288,7 +322,19 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
               </ul>
             </section>
           );
-        })
+        })}
+
+        <PaginationFooter
+          meta={{
+            total,
+            current_page: counts.current_page,
+            last_page: counts.last_page,
+          }}
+          shown={alerts.length}
+          noun="alert"
+          onPageChange={setPage}
+        />
+        </>
       )}
     </div>
   );

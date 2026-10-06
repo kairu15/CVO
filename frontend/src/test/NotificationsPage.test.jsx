@@ -208,6 +208,6 @@ describe("NotificationsPage", () => {
     renderPage();
     await screen.findByText("Vaccination overdue");
 
-    expect(notificationsApi.list).toHaveBeenCalledWith({ limit: 50 });
+    expect(notificationsApi.list).toHaveBeenCalledWith({ limit: 50, page: 1 });
   });
 });

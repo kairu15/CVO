@@ -17,6 +17,7 @@ use App\Services\BeneficiaryService;
 use App\Services\MonitoringExcelService;
 use App\Services\UserRoleService;
 use App\Support\Like;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Validation\Rule;
@@ -53,7 +54,7 @@ class AdminController extends Controller
                 });
             })
             ->orderBy('name')
-            ->paginate(15);
+            ->paginate(Pagination::perPage($validated['per_page'] ?? null));
 
         return UserResource::collection($users);
     }
@@ -157,7 +158,7 @@ class AdminController extends Controller
             })
             ->orderBy('address')
             ->orderBy('name_of_farmer')
-            ->paginate($validated['per_page'] ?? 15);
+            ->paginate(Pagination::perPage($validated['per_page'] ?? null));
 
         return BeneficiaryResource::collection($beneficiaries);
     }

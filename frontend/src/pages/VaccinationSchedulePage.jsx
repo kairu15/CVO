@@ -5,6 +5,7 @@ import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
+import { PaginationFooter } from "../components/PaginationFooter";
 import { Icon } from "../components/Icons";
 import { getRole } from "../config/roles";
 
@@ -68,6 +69,8 @@ export default function VaccinationSchedulePage({ roleKey = "doctor" }) {
   const config = getRole(roleKey);
 
   const [rows, setRows] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [status, setStatus] = useState("all");
@@ -78,17 +81,19 @@ export default function VaccinationSchedulePage({ roleKey = "doctor" }) {
 
     try {
       const result = await vaccinationApi.schedule({
-        per_page: 200,
+        per_page: 50,
+        page,
         status: status === "all" ? undefined : status,
       });
 
-      setRows(result ?? []);
+      setRows(result?.data ?? []);
+      setMeta(result?.meta ?? null);
     } catch (err) {
       if (!quiet) setError(getErrorMessage(err));
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [status]);
+  }, [status, page]);
 
   useEffect(() => {
     load();
@@ -121,7 +126,10 @@ export default function VaccinationSchedulePage({ roleKey = "doctor" }) {
             <button
               key={filter.value}
               type="button"
-              onClick={() => setStatus(filter.value)}
+              onClick={() => {
+                setStatus(filter.value);
+                setPage(1);
+              }}
               aria-pressed={status === filter.value}
               className={`rounded-pill px-3 py-1.5 text-xs font-semibold transition ${
                 status === filter.value
@@ -153,7 +161,7 @@ export default function VaccinationSchedulePage({ roleKey = "doctor" }) {
           <>
             <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-2.5 text-[11px] text-slate-500">
               <span className="font-semibold text-slate-700">
-                {rows.length} {rows.length === 1 ? "animal" : "animals"}
+                {meta?.total ?? rows.length} {(meta?.total ?? rows.length) === 1 ? "animal" : "animals"}
               </span>
             </div>
 
@@ -233,6 +241,13 @@ export default function VaccinationSchedulePage({ roleKey = "doctor" }) {
                 </tbody>
               </table>
             </div>
+
+            <PaginationFooter
+              meta={meta}
+              shown={rows.length}
+              noun="animal"
+              onPageChange={setPage}
+            />
           </>
         )}
       </section>

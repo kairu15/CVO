@@ -20,5 +20,5 @@ export const vaccinationApi = {
    * @param {number} [params.per_page] up to 200
    */
   schedule: async (params = {}) =>
-    unwrap.list(await api.get("/api/v1/vaccination-schedule", { params })),
+    unwrap.page(await api.get("/api/v1/vaccination-schedule", { params })),
 };

@@ -9,6 +9,7 @@ import { ToastProvider } from "../context/ToastContext";
 vi.mock("../api/adminApi", () => ({
   adminApi: {
     listBeneficiaries: vi.fn(),
+    listBeneficiariesPage: vi.fn(),
     listUsers: vi.fn(),
     bulkAssignTechnician: vi.fn(),
     assignTechnician: vi.fn(),
@@ -54,7 +55,7 @@ const BENEFICIARIES = [
 ];
 
 function mockList(beneficiaries = BENEFICIARIES) {
-  adminApi.listBeneficiaries.mockResolvedValue(beneficiaries);
+  adminApi.listBeneficiariesPage.mockResolvedValue({ data: beneficiaries, meta: null });
   adminApi.listUsers.mockResolvedValue(TECHNICIANS);
 }
 
@@ -92,7 +93,7 @@ describe("BeneficiariesPage search", () => {
     });
 
     await waitFor(() => {
-      const calls = adminApi.listBeneficiaries.mock.calls;
+      const calls = adminApi.listBeneficiariesPage.mock.calls;
       const last = calls[calls.length - 1]?.[0];
       expect(last?.search).toBe("Nena");
     });
@@ -208,14 +209,14 @@ describe("BeneficiariesPage directory scope", () => {
     mockList();
   });
 
-  // The server used to hard-code paginate(15) and ignore per_page, so the
-  // directory showed 15 households while the monitoring table reported on
-  // hundreds. The page must keep asking for the whole set.
-  it("requests the full directory rather than the server's default page", async () => {
+  // The directory pages 50 at a time — the same server-enforced ceiling every
+  // list uses — and reads the paginator meta so it can render its footer.
+  it("pages the directory at the shared 50-row size", async () => {
     renderPage();
     await screen.findByText("Aling Nena");
 
-    const params = adminApi.listBeneficiaries.mock.calls[0]?.[0];
-    expect(params?.per_page).toBe(200);
+    const params = adminApi.listBeneficiariesPage.mock.calls[0]?.[0];
+    expect(params?.per_page).toBe(50);
+    expect(params?.page).toBe(1);
   });
 });

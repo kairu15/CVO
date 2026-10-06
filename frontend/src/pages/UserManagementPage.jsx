@@ -7,6 +7,7 @@ import { ButtonSpinner } from "../components/LoadingSpinner";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
+import { PaginationFooter } from "../components/PaginationFooter";
 import { Icon } from "../components/Icons";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useAuth } from "../context/AuthContext";
@@ -45,6 +46,8 @@ export default function UserManagementPage() {
   const { user: currentUser } = useAuth();
 
   const [users, setUsers] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -61,19 +64,21 @@ export default function UserManagementPage() {
     setError(null);
 
     try {
-      const rows = await adminApi.listUsers({
-        per_page: 200,
+      const rows = await adminApi.listUsersPage({
+        per_page: 50,
+        page,
         role: roleFilter === "all" ? undefined : roleFilter,
         search: debouncedSearch || undefined,
       });
 
-      setUsers(rows ?? []);
+      setUsers(rows?.data ?? []);
+      setMeta(rows?.meta ?? null);
     } catch (err) {
       if (!quiet) setError(getErrorMessage(err));
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [roleFilter, debouncedSearch]);
+  }, [roleFilter, debouncedSearch, page]);
 
   useEffect(() => {
     load();
@@ -144,7 +149,10 @@ export default function UserManagementPage() {
             <input
               type="search"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
               placeholder="Search name, username or email…"
               className="field w-64 pl-9"
               aria-label="Search accounts"
@@ -156,7 +164,10 @@ export default function UserManagementPage() {
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setRoleFilter("all")}
+            onClick={() => {
+              setRoleFilter("all");
+              setPage(1);
+            }}
             aria-pressed={roleFilter === "all"}
             className={`rounded-pill px-3 py-1.5 text-xs font-semibold transition ${
               roleFilter === "all"
@@ -171,7 +182,10 @@ export default function UserManagementPage() {
             <button
               key={key}
               type="button"
-              onClick={() => setRoleFilter(key)}
+              onClick={() => {
+                setRoleFilter(key);
+                setPage(1);
+              }}
               aria-pressed={roleFilter === key}
               className={`rounded-pill px-3 py-1.5 text-xs font-semibold transition ${
                 roleFilter === key
@@ -203,7 +217,7 @@ export default function UserManagementPage() {
           <>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5 text-[11px] text-slate-500">
               <span className="font-semibold text-slate-700">
-                {users.length} {users.length === 1 ? "account" : "accounts"}
+                {meta?.total ?? users.length} {(meta?.total ?? users.length) === 1 ? "account" : "accounts"}
               </span>
               {ROLE_KEYS.filter((key) => counts[key] > 0).map((key) => (
                 <span key={key}>
@@ -277,6 +291,13 @@ export default function UserManagementPage() {
                 </tbody>
               </table>
             </div>
+
+            <PaginationFooter
+              meta={meta}
+              shown={users.length}
+              noun="account"
+              onPageChange={setPage}
+            />
           </>
         )}
       </section>

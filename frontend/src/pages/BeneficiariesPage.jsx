@@ -11,6 +11,7 @@ import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
 import { BulkActionBar } from "../components/BulkActionBar";
+import { PaginationFooter } from "../components/PaginationFooter";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useToast } from "../context/ToastContext";
@@ -26,6 +27,8 @@ import { useToast } from "../context/ToastContext";
 export default function BeneficiariesPage() {
   const toast = useToast();
   const [beneficiaries, setBeneficiaries] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [page, setPage] = useState(1);
   const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -48,21 +51,23 @@ export default function BeneficiariesPage() {
 
     try {
       const [beneficiariesRes, usersRes] = await Promise.all([
-        adminApi.listBeneficiaries({
-          per_page: 200,
+        adminApi.listBeneficiariesPage({
+          per_page: 50,
+          page,
           search: debouncedSearch || undefined,
         }),
-        adminApi.listUsers({ role: "technician", per_page: 100 }),
+        adminApi.listUsers({ role: "technician", per_page: 50 }),
       ]);
 
-      setBeneficiaries(beneficiariesRes ?? []);
+      setBeneficiaries(beneficiariesRes?.data ?? []);
+      setMeta(beneficiariesRes?.meta ?? null);
       setTechnicians(usersRes ?? []);
     } catch (err) {
       if (!quiet) setError(getErrorMessage(err));
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [debouncedSearch]);
+  }, [debouncedSearch, page]);
 
   useEffect(() => {
     load();
@@ -225,7 +230,10 @@ export default function BeneficiariesPage() {
               <input
                 type="search"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
                 placeholder="Search farmer or barangay…"
                 className="field w-64 pl-9"
                 aria-label="Search beneficiaries"
@@ -272,6 +280,7 @@ export default function BeneficiariesPage() {
             description="Beneficiaries appear here when farmers register their dispersed animals."
           />
         ) : (
+          <>
           <div className="divide-y divide-slate-100">
             {grouped.map(([barangay, rows]) => (
               <div key={barangay}>
@@ -352,6 +361,15 @@ export default function BeneficiariesPage() {
               </div>
             ))}
           </div>
+
+          <PaginationFooter
+            meta={meta}
+            shown={beneficiaries.length}
+            noun="beneficiary"
+            plural="beneficiaries"
+            onPageChange={setPage}
+          />
+          </>
         )}
       </section>
 

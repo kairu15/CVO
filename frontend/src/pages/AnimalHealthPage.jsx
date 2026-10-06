@@ -6,6 +6,7 @@ import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
+import { PaginationFooter } from "../components/PaginationFooter";
 import { Icon } from "../components/Icons";
 import { getRole } from "../config/roles";
 
@@ -47,6 +48,8 @@ export default function AnimalHealthPage({ roleKey = "doctor" }) {
   const config = getRole(roleKey);
 
   const [rows, setRows] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [attentionOnly, setAttentionOnly] = useState(false);
@@ -57,17 +60,19 @@ export default function AnimalHealthPage({ roleKey = "doctor" }) {
 
     try {
       const result = await animalHealthApi.list({
-        per_page: 200,
+        per_page: 50,
+        page,
         filter: attentionOnly ? "attention" : undefined,
       });
 
-      setRows(result ?? []);
+      setRows(result?.data ?? []);
+      setMeta(result?.meta ?? null);
     } catch (err) {
       if (!quiet) setError(getErrorMessage(err));
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [attentionOnly]);
+  }, [attentionOnly, page]);
 
   useEffect(() => {
     load();
@@ -94,7 +99,10 @@ export default function AnimalHealthPage({ roleKey = "doctor" }) {
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setAttentionOnly(false)}
+            onClick={() => {
+              setAttentionOnly(false);
+              setPage(1);
+            }}
             aria-pressed={!attentionOnly}
             className={`rounded-pill px-3 py-1.5 text-xs font-semibold transition ${
               !attentionOnly
@@ -106,7 +114,10 @@ export default function AnimalHealthPage({ roleKey = "doctor" }) {
           </button>
           <button
             type="button"
-            onClick={() => setAttentionOnly(true)}
+            onClick={() => {
+              setAttentionOnly(true);
+              setPage(1);
+            }}
             aria-pressed={attentionOnly}
             className={`rounded-pill px-3 py-1.5 text-xs font-semibold transition ${
               attentionOnly
@@ -143,7 +154,7 @@ export default function AnimalHealthPage({ roleKey = "doctor" }) {
           <>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5 text-[11px] text-slate-500">
               <span className="font-semibold text-slate-700">
-                {rows.length} {rows.length === 1 ? "animal" : "animals"}
+                {meta?.total ?? rows.length} {(meta?.total ?? rows.length) === 1 ? "animal" : "animals"}
               </span>
               {!attentionOnly && flagged > 0 && (
                 <span className="font-medium text-amber-700">
@@ -258,6 +269,13 @@ export default function AnimalHealthPage({ roleKey = "doctor" }) {
                 </tbody>
               </table>
             </div>
+
+            <PaginationFooter
+              meta={meta}
+              shown={rows.length}
+              noun="animal"
+              onPageChange={setPage}
+            />
           </>
         )}
       </section>

@@ -9,12 +9,10 @@ use Illuminate\Foundation\Http\FormRequest;
  *
  * Read-only; only shapes the query, never mutates anything.
  *
- * `per_page` exists because the map, the dashboards and the picker dropdowns
- * have to see the SAME set of households the monitoring table reports on.
- * Without it the endpoint silently capped every caller at its 15-row default,
- * so the dispersal map drew only 15 of ~250 beneficiaries and read as "the
- * program has almost no geo-tagged farmers" while the monitoring table showed
- * hundreds of records.
+ * `per_page` exists so a caller can ask for a page size other than the
+ * default; the value is clamped to App\Support\Pagination::MAX_PER_PAGE (50)
+ * by the controller, so this endpoint can never return more than 50 rows per
+ * request. `page` walks the pages of that bounded size.
  */
 class IndexBeneficiariesRequest extends FormRequest
 {
@@ -29,10 +27,10 @@ class IndexBeneficiariesRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // Larger ceiling than the monitoring table (100): this list backs
-            // whole-map / whole-directory views, not a paginated table, and the
-            // city-wide dataset is a few hundred households.
-            'per_page' => ['sometimes', 'integer', 'min:1', 'max:500'],
+            // No upper-bound rule here: an over-limit value is clamped to 50
+            // by the controller (see App\Support\Pagination) rather than
+            // rejected, so older callers keep working.
+            'per_page' => ['sometimes', 'integer', 'min:1'],
 
             'page' => ['sometimes', 'integer', 'min:1'],
         ];

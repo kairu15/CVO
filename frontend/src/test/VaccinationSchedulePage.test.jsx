@@ -67,7 +67,7 @@ function table() {
 describe("VaccinationSchedulePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vaccinationApi.schedule.mockResolvedValue(ROWS);
+    vaccinationApi.schedule.mockResolvedValue({ data: ROWS, meta: null });
   });
 
   it("lists each animal with its last and next due date", async () => {
@@ -134,7 +134,7 @@ describe("VaccinationSchedulePage", () => {
   });
 
   it("shows an empty state when nothing matches the filter", async () => {
-    vaccinationApi.schedule.mockResolvedValue([]);
+    vaccinationApi.schedule.mockResolvedValue({ data: [], meta: null });
 
     renderPage();
 

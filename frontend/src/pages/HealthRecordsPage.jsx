@@ -12,6 +12,7 @@ import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
 import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
 import { BulkActionBar } from "../components/BulkActionBar";
+import { PaginationFooter } from "../components/PaginationFooter";
 import { useRowSelection } from "../hooks/useRowSelection";
 import { useAuth } from "../context/AuthContext";
 import { getRole } from "../config/roles";
@@ -46,6 +47,8 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
   const config = getRole(roleKey);
 
   const [records, setRecords] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [page, setPage] = useState(1);
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [outcomes, setOutcomes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -80,11 +83,12 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
 
     try {
       const [recordsRes, optionsRes] = await Promise.all([
-        healthRecordsApi.list({ per_page: 200 }),
+        healthRecordsApi.list({ per_page: 50, page }),
         healthRecordsApi.options(),
       ]);
 
-      setRecords(recordsRes ?? []);
+      setRecords(recordsRes?.data ?? []);
+      setMeta(recordsRes?.meta ?? null);
       setOutcomes(optionsRes?.outcomes ?? []);
 
       // The picker is only needed by someone who can author a record.
@@ -96,7 +100,7 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [canAuthor]);
+  }, [canAuthor, page]);
 
   useEffect(() => {
     load();
@@ -327,6 +331,13 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
               </tbody>
             </table>
           </div>
+
+          <PaginationFooter
+            meta={meta}
+            shown={records.length}
+            noun="record"
+            onPageChange={setPage}
+          />
           </>
         )}
       </section>

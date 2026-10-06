@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateHealthRecordRequest;
 use App\Http\Resources\HealthRecordResource;
 use App\Models\HealthRecord;
 use App\Services\HealthRecordService;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -26,7 +27,10 @@ class HealthRecordController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         return HealthRecordResource::collection(
-            $this->records->listFor($request->user()),
+            $this->records->listFor(
+                $request->user(),
+                Pagination::perPage($request->input('per_page')),
+            ),
         );
     }
 

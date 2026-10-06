@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Support\Pagination;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -30,7 +31,7 @@ class AnimalHealthService
      * @param bool $attentionOnly only animals with an overdue/absent vaccination
      *   or at least one open case
      */
-    public function listFor(User $user, bool $attentionOnly = false, int $perPage = 15): LengthAwarePaginator
+    public function listFor(User $user, bool $attentionOnly = false, int $perPage = Pagination::DEFAULT_PER_PAGE): LengthAwarePaginator
     {
         // Reused rather than rewritten: the last-vaccination expression has to
         // match the Vaccination Schedule exactly or the two screens would

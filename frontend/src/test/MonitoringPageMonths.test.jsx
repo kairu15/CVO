@@ -267,7 +267,7 @@ describe("MonitoringPage month/year dropdown", () => {
       within(screen.getByRole("listbox")).getByRole("option", { name: "Sep 2026" }),
     );
 
-    expect(await screen.findByText(/Showing 2 of 37 records in this month/)).toBeInTheDocument();
+    expect(await screen.findByText(/Showing 2 of 37 records/)).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
   });
 });

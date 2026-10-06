@@ -85,7 +85,7 @@ describe("HealthRecordsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     auth.user = { id: 10, name: "Dr. Maria Santos", role: "doctor" };
-    healthRecordsApi.list.mockResolvedValue(RECORDS);
+    healthRecordsApi.list.mockResolvedValue({ data: RECORDS, meta: null });
     healthRecordsApi.options.mockResolvedValue({ outcomes: OUTCOMES });
     symptomRulesApi.active.mockResolvedValue([]);
     beneficiariesApi.list.mockResolvedValue([
@@ -168,8 +168,8 @@ describe("HealthRecordsPage", () => {
     // new row — the page must re-fetch itself rather than wait for the 30s
     // poll, which is what made a saved record look like it never appeared.
     healthRecordsApi.list
-      .mockResolvedValueOnce(RECORDS)
-      .mockResolvedValue([...RECORDS, saved]);
+      .mockResolvedValueOnce({ data: RECORDS, meta: null })
+      .mockResolvedValue({ data: [...RECORDS, saved], meta: null });
 
     renderPage();
     await screen.findByText("Aling Nena");

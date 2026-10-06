@@ -11,9 +11,12 @@ import { api, ensureCsrfCookie, unwrap } from "./client";
  */
 
 export const fieldVisitsApi = {
-  /** Role-scoped list — scoping is enforced server-side. Always an array. */
+  /**
+   * Role-scoped page — scoping is enforced server-side. Resolves to the
+   * paginated envelope `{ data, meta }` (see `unwrap.page`).
+   */
   list: async (params = {}) =>
-    unwrap.list(await api.get("/api/v1/field-visits", { params })),
+    unwrap.page(await api.get("/api/v1/field-visits", { params })),
 
   get: async (id) => unwrap(await api.get(`/api/v1/field-visits/${id}`)),
 

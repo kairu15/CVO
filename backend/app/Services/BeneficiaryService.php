@@ -12,6 +12,7 @@ use App\Models\MonitoringRecord;
 use App\Models\TechnicianAssignment;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Support\Pagination;
 use Database\Factories\BeneficiaryFactory;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -32,12 +33,12 @@ class BeneficiaryService
      * farmer: only their own. The scoping is applied at the query level so
      * the API can never leak rows the client merely failed to filter.
      *
-     * `$perPage` is caller-controlled (validated and capped by
-     * IndexBeneficiariesRequest) because the whole-map views need the complete
-     * household set, not one page of it. The 15-row default stays for the
-     * plain paginated callers.
+     * `$perPage` is caller-controlled and clamped to
+     * App\Support\Pagination::MAX_PER_PAGE (50), so no single response can
+     * carry more than 50 households; callers that need the whole set walk the
+     * pages. The default is the same 50.
      */
-    public function listFor(User $user, int $perPage = 15): LengthAwarePaginator
+    public function listFor(User $user, int $perPage = Pagination::DEFAULT_PER_PAGE): LengthAwarePaginator
     {
         return $this->scopeQueryFor($user)
             ->with(['technician', 'farmer'])

@@ -141,32 +141,36 @@ class BeneficiaryTest extends TestCase
     }
 
     /**
-     * Regression: the endpoint ignored `per_page` and always answered with 15
-     * rows, so the dispersal map could only ever draw 15 households no matter
-     * how many the monitoring table reported on.
+     * The list is paginated with a hard ceiling of 50 rows per response: the
+     * default page is 50, and an over-limit `per_page` is clamped to it rather
+     * than rejected, so callers that used to ask for more keep working.
      */
-    public function test_the_list_honours_per_page_and_still_defaults_to_fifteen(): void
+    public function test_the_list_defaults_to_fifty_and_caps_per_page_at_fifty(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        Beneficiary::factory()->count(20)->create();
-
-        $this->actingAs($admin)
-            ->getJson('/api/v1/beneficiaries?per_page=500')
-            ->assertOk()
-            ->assertJsonCount(20, 'data');
+        Beneficiary::factory()->count(60)->create();
 
         $this->actingAs($admin)
             ->getJson('/api/v1/beneficiaries')
             ->assertOk()
-            ->assertJsonCount(15, 'data');
+            ->assertJsonCount(50, 'data')
+            ->assertJsonPath('meta.per_page', 50)
+            ->assertJsonPath('meta.total', 60)
+            ->assertJsonPath('meta.last_page', 2);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/beneficiaries?per_page=500')
+            ->assertOk()
+            ->assertJsonCount(50, 'data')
+            ->assertJsonPath('meta.per_page', 50);
     }
 
-    public function test_the_list_rejects_an_out_of_range_per_page(): void
+    public function test_the_list_rejects_a_non_integer_per_page(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
 
         $this->actingAs($admin)
-            ->getJson('/api/v1/beneficiaries?per_page=5000')
+            ->getJson('/api/v1/beneficiaries?per_page=abc')
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['per_page']);
     }

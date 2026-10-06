@@ -113,6 +113,9 @@ function RegistrationBadge({ record }) {
  * @param {"address"|"animal_type"} [props.groupBy] which field the rows are
  *   grouped under. The server orders the page (by date, or by animal type
  *   when the caller asks), so this only decides the section headers.
+ * @param {number|string|null} [props.highlightBeneficiaryId] tints the rows
+ *   belonging to one beneficiary — the "you arrived from this notification"
+ *   flash. The caller clears it after a moment, so the tint fades out.
  */
 export function MonitoringTable({
   records = [],
@@ -125,6 +128,7 @@ export function MonitoringTable({
   selected,
   onToggleRow,
   groupBy = "address",
+  highlightBeneficiaryId = null,
 }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [photoRecord, setPhotoRecord] = useState(null);
@@ -262,11 +266,24 @@ export function MonitoringTable({
                       // palette's own light green, not a new color). Stays
                       // through `accepted` until the midnight expiry.
                       const isNew = Boolean(record.is_new);
+                      // Arrived-from-a-notification flash: a light sky tint
+                      // that outranks the "new" tint while it is on, then
+                      // fades back once the caller clears the id.
+                      const isHighlighted =
+                        highlightBeneficiaryId !== null &&
+                        highlightBeneficiaryId !== undefined &&
+                        record.beneficiary_id === highlightBeneficiaryId;
 
                       return (
                       <tr
                         key={record.id}
-                        className={`transition hover:bg-brand-50/60 dark:hover:bg-brand-100/40 ${isNew ? "bg-brand-50 dark:bg-brand-100/70" : ""}`}
+                        className={`transition-colors duration-700 hover:bg-brand-50/60 dark:hover:bg-brand-100/40 ${
+                          isHighlighted
+                            ? "bg-sky-50 dark:bg-sky-100/60"
+                            : isNew
+                              ? "bg-brand-50 dark:bg-brand-100/70"
+                              : ""
+                        }`}
                       >
                         {hasSelection && (
                           <td className="px-4 py-2.5">

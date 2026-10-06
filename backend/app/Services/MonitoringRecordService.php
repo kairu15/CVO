@@ -8,6 +8,7 @@ use App\Models\MonitoringRecord;
 use App\Models\User;
 use App\Models\UserNotification;
 use App\Support\Like;
+use App\Support\Pagination;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -41,7 +42,7 @@ class MonitoringRecordService
         User $user,
         ?string $month = null,
         ?string $search = null,
-        int $perPage = 15,
+        int $perPage = Pagination::DEFAULT_PER_PAGE,
         ?string $animalType = null,
         string $sort = 'date',
     ): LengthAwarePaginator {

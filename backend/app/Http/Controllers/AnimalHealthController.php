@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\AnimalHealthRequest;
 use App\Http\Resources\AnimalHealthResource;
 use App\Services\AnimalHealthService;
+use App\Support\Pagination;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 /**
@@ -27,7 +28,7 @@ class AnimalHealthController extends Controller
             $this->health->listFor(
                 $request->user(),
                 ($validated['filter'] ?? null) === 'attention',
-                (int) ($validated['per_page'] ?? 15),
+                Pagination::perPage($validated['per_page'] ?? null),
             ),
         );
     }

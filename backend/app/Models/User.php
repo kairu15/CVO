@@ -117,12 +117,15 @@ class User extends Authenticatable
      *
      * Item 8: avatars live on the private `secure` disk and are served
      * through short-lived signed URLs, not a guessable public path.
+     * Root-relative (App\Support\SecureMedia) so the browser resolves them
+     * against its own origin — the SPA may be reached through a tunnel or
+     * staging domain where an APP_URL-absolute URL would never load.
      */
     protected function avatarUrl(): \Illuminate\Database\Eloquent\Casts\Attribute
     {
         return \Illuminate\Database\Eloquent\Casts\Attribute::get(
             fn () => $this->avatar_path !== null
-                ? \Illuminate\Support\Facades\Storage::disk('secure')->temporaryUrl(
+                ? \App\Support\SecureMedia::temporaryUrl(
                     $this->avatar_path,
                     now()->addMinutes((int) config('security.signed_url_minutes', 30)),
                 )

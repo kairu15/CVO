@@ -121,6 +121,10 @@ services:
       # Host-reachable URL: the browser makes this call, not the container.
       # `http://backend:8005` would be unreachable from the Browser.
       VITE_API_URL: ${VITE_API_URL:-http://localhost:8005}
+      # The /secure-files media proxy must resolve from INSIDE the container
+      # (the compose network), not the host loopback the vite config defaults
+      # to for a host-run `npm run dev:ngrok`.
+      VITE_API_PROXY_TARGET: ${VITE_API_PROXY_TARGET:-http://backend:8005}
       # Bind mounts on Docker Desktop (Windows/macOS) do not always deliver
       # inotify events into the container; polling makes HMR reliable.
       CHOKIDAR_USEPOLLING: "true"

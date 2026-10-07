@@ -18,6 +18,17 @@ export default defineConfig(({ mode }) => {
   const tunnelHost = env.VITE_TUNNEL_HOST?.trim()
   const apiTarget = env.VITE_API_PROXY_TARGET?.trim() || 'http://127.0.0.1:8005'
 
+  // Signed media from the API's private disk (avatars, visit photos,
+  // dispersal signatures) is served as ROOT-RELATIVE URLs (App\Support\SecureMedia
+  // on the backend), so the browser always fetches it same-origin — from
+  // whichever host the page itself is on. Both dev modes therefore proxy the
+  // disk's serve path to the API: inside Docker the target is the compose
+  // network address (VITE_API_PROXY_TARGET), for a host-run server the
+  // published 127.0.0.1:8005.
+  const mediaProxy = {
+    '/secure-files': { target: apiTarget, changeOrigin: false },
+  }
+
   return {
     plugins: [react(), tailwindcss()],
 
@@ -41,6 +52,8 @@ export default defineConfig(({ mode }) => {
       //   CORS_ALLOWED_ORIGINS=http://localhost:<port>,http://127.0.0.1:<port>
       strictPort: true,
 
+      proxy: mediaProxy,
+
       // Tunnel mode only (see VITE_TUNNEL_HOST above). Vite 6+ rejects requests
       // whose Host header it does not recognise, and the SPA has to reach the
       // API on the tunnel origin so csrf-cookie/session cookies stay
@@ -56,6 +69,7 @@ export default defineConfig(({ mode }) => {
             ],
 
             proxy: {
+              ...mediaProxy,
               '/api': { target: apiTarget, changeOrigin: false },
               '/sanctum': { target: apiTarget, changeOrigin: false },
             },

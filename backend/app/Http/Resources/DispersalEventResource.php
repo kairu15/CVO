@@ -29,7 +29,7 @@ class DispersalEventResource extends JsonResource
             // never from the public webroot — same treatment as visit photos.
             'has_signature' => $this->signature_path !== null,
             'signature_url' => $this->signature_path
-                ? Storage::disk('secure')->temporaryUrl(
+                ? \App\Support\SecureMedia::temporaryUrl(
                     $this->signature_path,
                     now()->addMinutes((int) config('security.signed_url_minutes', 30)),
                 )

@@ -27,8 +27,10 @@ class FieldVisitPhotoResource extends JsonResource
 
             // Item 8: photos live on the private `secure` disk, outside the
             // public webroot. Access goes through a short-lived signed URL —
-            // knowing the path is not enough to fetch the file.
-            'image_url' => Storage::disk('secure')->temporaryUrl(
+            // knowing the path is not enough to fetch the file. Root-relative
+            // (App\Support\SecureMedia) so it resolves against whatever origin
+            // the SPA is actually on.
+            'image_url' => \App\Support\SecureMedia::temporaryUrl(
                 $this->image_path,
                 now()->addMinutes((int) config('security.signed_url_minutes', 30)),
             ),

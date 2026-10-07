@@ -12,8 +12,10 @@ use App\Http\Requests\AdminUsersRequest;
 use App\Http\Requests\AssignRoleRequest;
 use App\Http\Requests\AssignTechnicianRequest;
 use App\Http\Requests\BulkAssignTechnicianRequest;
+use App\Http\Requests\BulkDeactivateUsersRequest;
 use App\Http\Resources\BeneficiaryResource;
 use App\Http\Resources\UserResource;
+use App\Models\ActivityLog;
 use App\Models\Beneficiary;
 use App\Models\User;
 use App\Services\BeneficiaryService;
@@ -54,9 +56,18 @@ class AdminController extends Controller
         $status = $validated['status'] ?? 'active';
 
         $users = User::query()
+            ->with('creator:id,name')
             ->when($status === 'deactivated', fn ($q) => $q->onlyTrashed())
             ->when($status === 'all', fn ($q) => $q->withTrashed())
             ->when($validated['role'] ?? null, fn ($q, $role) => $q->where('role', $role))
+            ->when($validated['barangay'] ?? null, function ($q, $barangay): void {
+                // The farmer slice: accounts owning a household in the given
+                // barangay. Beneficiary addresses are normalized to the
+                // canonical barangay name at registration, so an exact match
+                // is the honest join — no fuzzy matching that could silently
+                // pull in the wrong households.
+                $q->whereHas('beneficiaries', fn ($b) => $b->where('address', $barangay));
+            })
             ->when($validated['search'] ?? null, function ($q, $search): void {
                 $pattern = Like::contains($search);
 
@@ -79,9 +90,14 @@ class AdminController extends Controller
      */
     public function storeUser(AdminUserStoreRequest $request): JsonResponse
     {
-        $user = $this->accounts->create($request->user(), $request->validated());
+        $result = $this->accounts->create($request->user(), $request->validated());
 
-        return (new UserResource($user))
+        // A passwordless (invited) account carries its one-time setup link in
+        // the response: email delivery depends on the configured mailer, and
+        // the office must never be blocked onboarding by missing SMTP — the
+        // link can be handed over directly until a mail service goes live.
+        return (new UserResource($result['user']))
+            ->additional(['setup_url' => $result['setup_url']])
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
     }
@@ -121,6 +137,68 @@ class AdminController extends Controller
         $user = User::withTrashed()->findOrFail($id);
 
         return new UserResource($this->accounts->reactivate($request->user(), $user));
+    }
+
+    /**
+     * Deactivate several accounts in one request. Resolves to
+     * { updated, failed_ids } — per-row outcomes, not a batch that dies at the
+     * first refusal (the actor's own account is the expected refusal).
+     */
+    public function bulkDeactivateUsers(BulkDeactivateUsersRequest $request): JsonResponse
+    {
+        $result = $this->accounts->deactivateMany($request->user(), $request->validated()['ids']);
+
+        return response()->json(['data' => $result]);
+    }
+
+    /**
+     * One account's activity trail for the User Management detail modal:
+     * events performed BY the account (sign-ins, sign-outs, password changes)
+     * and events ABOUT the account (created, invited, edited, role changed,
+     * deactivated, reactivated) — one append-only read of the audit log, no
+     * second write path to keep in sync.
+     */
+    /**
+     * Events the account performed itself — its own sign-ins and password
+     * work. (Anything the account does to a RECORD is already attributed to
+     * it in the activity-log screen; this modal cares about the account.)
+     */
+    private const OWNED_ACTIVITY_ACTIONS = [
+        'login',
+        'logout',
+        'logout_all',
+        'failed_login',
+        'token_issued',
+        'password_changed',
+        'password_reset_requested',
+        'password_reset_completed',
+    ];
+
+    public function userActivity(AdminUserLifecycleRequest $request, int $id): JsonResponse
+    {
+        $user = User::withTrashed()->with('creator:id,name')->findOrFail($id);
+
+        $activity = ActivityLog::query()
+            ->with('actor:id,name')
+            ->where(function ($query) use ($user): void {
+                // Events ABOUT the account: the audit row targets it
+                // (created, invited, edited, role changed, deactivated...).
+                $query->where('target_type', class_basename(User::class))
+                    ->where('target_id', $user->id);
+            })
+            ->orWhere(function ($query) use ($user): void {
+                // Events BY the account: its own sign-ins and password work.
+                $query->where('actor_id', $user->id)
+                    ->whereIn('action', self::OWNED_ACTIVITY_ACTIONS);
+            })
+            ->latest('created_at')
+            ->limit(50)
+            ->get();
+
+        return response()->json(['data' => [
+            'user' => new UserResource($user),
+            'activity' => $activity,
+        ]]);
     }
 
     /**

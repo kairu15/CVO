@@ -13,7 +13,7 @@ class ActivityLogRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user() !== null && $this->user()->role === 'admin';
+        return $this->user() !== null && $this->user()->hasPermission('view_activity_logs');
     }
 
     /**

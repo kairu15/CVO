@@ -9,10 +9,11 @@ import { LogoutConfirmDialog } from "./LogoutConfirmDialog";
 /**
  * Dashboard sidebar.
  *
- * Menu items come from `config/roles.js`, so all four dashboards share this
- * component and differ only in their role config. Items without a `to` value
- * are modules that have not been built yet — they render as inert rows with a
- * "Soon" tag rather than as links that lead nowhere.
+ * Menu items come from `config/roles.js`, grouped into bands with headers
+ * (Monitoring / Program / Administration) so the same concept sits in the
+ * same group on every role's sidebar. Items without a `to` value are modules
+ * that have not been built yet — they render as inert rows with a "Soon" tag
+ * rather than as links that lead nowhere.
  *
  * An item may declare a `badge` source (e.g. `badge: "notifications"`); when
  * that source has a live count above zero the row shows a small red count
@@ -101,66 +102,78 @@ export function DashboardSidebar({
           </div>
         )}
 
-        <nav aria-label="Dashboard" className="space-y-1">
-          {config?.nav.map((item) => {
-            const badgeCount = item.badge ? badgeCounts[item.badge] ?? 0 : 0;
+        <nav aria-label="Dashboard" className="space-y-4">
+          {config?.nav.map((band, bandIndex) => (
+            <div key={band.group ?? `band-${bandIndex}`} className="space-y-1">
+              {/* Named group header; ungrouped bands (Overview, the closing
+                  row) render without one. */}
+              {band.group && (
+                <p className="px-3 pb-0.5 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
+                  {band.group}
+                </p>
+              )}
 
-            return item.to ? (
-              <NavLink
-                key={item.label}
-                to={item.to}
-                onClick={onNavigate}
-                /* NavLink matches by path prefix, so the dashboard root
-                   ("Overview") would stay lit on every sub-page — clicking
-                   Monitoring Records appeared to do nothing. Require an exact
-                   match for the root; deeper modules keep prefix matching so
-                   they stay lit on their own sub-routes. */
-                end={item.to === config?.path}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                    isActive
-                      ? "bg-brand-100 text-brand-900"
-                      : "text-slate-600 hover:bg-brand-50 hover:text-brand-800"
-                  }`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <Icon
-                      name={item.icon}
-                      className={`h-5 w-5 shrink-0 ${
-                        isActive ? "text-brand-700" : "text-slate-400"
-                      }`}
-                    />
-                    <span className="truncate">{item.label}</span>
-                    {badgeCount > 0 && !isActive && (
+              {band.items.map((item) => {
+                const badgeCount = item.badge ? badgeCounts[item.badge] ?? 0 : 0;
+
+                return item.to ? (
+                  <NavLink
+                    key={item.label}
+                    to={item.to}
+                    onClick={onNavigate}
+                    /* NavLink matches by path prefix, so the dashboard root
+                       ("Overview") would stay lit on every sub-page — clicking
+                       Monitoring Records appeared to do nothing. Require an exact
+                       match for the root; deeper modules keep prefix matching so
+                       they stay lit on their own sub-routes. */
+                    end={item.to === config?.path}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                        isActive
+                          ? "bg-brand-100 text-brand-900"
+                          : "text-slate-600 hover:bg-brand-50 hover:text-brand-800"
+                      }`
+                    }
+                  >
+                    {({ isActive }) => (
                       <>
-                        <span
-                          aria-hidden="true"
-                          className="ml-auto grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white"
-                        >
-                          {badgeCount > 9 ? "9+" : badgeCount}
-                        </span>
-                        <span className="sr-only">{badgeCount} unread</span>
+                        <Icon
+                          name={item.icon}
+                          className={`h-5 w-5 shrink-0 ${
+                            isActive ? "text-brand-700" : "text-slate-400"
+                          }`}
+                        />
+                        <span className="truncate">{item.label}</span>
+                        {badgeCount > 0 && !isActive && (
+                          <>
+                            <span
+                              aria-hidden="true"
+                              className="ml-auto grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white"
+                            >
+                              {badgeCount > 9 ? "9+" : badgeCount}
+                            </span>
+                            <span className="sr-only">{badgeCount} unread</span>
+                          </>
+                        )}
                       </>
                     )}
-                  </>
-                )}
-              </NavLink>
-            ) : (
-              <span
-                key={item.label}
-                className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400"
-                title="This module has not been built yet"
-              >
-                <Icon name={item.icon} className="h-5 w-5 shrink-0 text-slate-300" />
-                <span className="truncate">{item.label}</span>
-                <span className="ml-auto rounded-pill bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-400 uppercase">
-                  Soon
-                </span>
-              </span>
-            );
-          })}
+                  </NavLink>
+                ) : (
+                  <span
+                    key={item.label}
+                    className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400"
+                    title="This module has not been built yet"
+                  >
+                    <Icon name={item.icon} className="h-5 w-5 shrink-0 text-slate-300" />
+                    <span className="truncate">{item.label}</span>
+                    <span className="ml-auto rounded-pill bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-400 uppercase">
+                      Soon
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </div>
 

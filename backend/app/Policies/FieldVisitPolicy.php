@@ -17,11 +17,15 @@ class FieldVisitPolicy
 {
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, User::ROLES, true);
+        return $user->hasPermission('field_visits.view');
     }
 
     public function view(User $user, FieldVisit $visit): bool
     {
+        if (! $user->hasPermission('field_visits.view')) {
+            return false;
+        }
+
         if (in_array($user->role, ['admin', 'doctor'], true)) {
             return true;
         }
@@ -38,7 +42,7 @@ class FieldVisitPolicy
      */
     public function create(User $user): bool
     {
-        return $user->role === 'technician';
+        return $user->hasPermission('field_visits.create');
     }
 
     /**
@@ -47,6 +51,10 @@ class FieldVisitPolicy
      */
     public function update(User $user, FieldVisit $visit): bool
     {
+        if (! $user->hasPermission('field_visits.update')) {
+            return false;
+        }
+
         return $user->role === 'admin'
             || ($user->role === 'technician' && $visit->technician_id === $user->id);
     }

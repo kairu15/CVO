@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../api/adminApi";
+import { fetchBarangays } from "../api/beneficiariesApi";
 import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { Modal } from "../components/Modal";
@@ -8,8 +9,11 @@ import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { PaginationFooter } from "../components/PaginationFooter";
+import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
+import { BulkActionBar } from "../components/BulkActionBar";
 import { Icon } from "../components/Icons";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useRowSelection } from "../hooks/useRowSelection";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { ROLE_KEYS, STAFF_ROLE_KEYS, roleLabel } from "../config/roles";
@@ -17,15 +21,21 @@ import { ROLE_KEYS, STAFF_ROLE_KEYS, roleLabel } from "../config/roles";
 /**
  * Admin "User Management" screen — the account lifecycle, not just roles.
  *
- * Lists every account (search + role + status filters, all server-side so the
- * table can paginate) and offers the four write actions the API exposes:
- * create a staff account, edit name/email/role, deactivate, reactivate.
+ * Lists every account (search + role + barangay + status filters, all
+ * server-side so the table can paginate) and offers the write actions the API
+ * exposes: create a staff account (with a password now, or an emailed setup
+ * link the new staff member completes themselves), edit name/email/role,
+ * deactivate (singly or in bulk), reactivate, and inspect one account's
+ * activity trail (last sign-in, creator, role changes — the append-only audit
+ * log read back, not a second store).
  *
- * Two rules are mirrored from the server rather than invented here, and both
- * are stated in the UI so the reason is visible instead of arriving as a 422:
- *   - an administrator cannot change their own role, and
- *   - an administrator cannot deactivate their own account.
- * In both cases the server is the authority; the disabled control only saves
+ * Rules mirrored from the server rather than invented here, each stated in
+ * the UI so the reason is visible instead of arriving as a 422:
+ *   - an administrator cannot change their own role,
+ *   - an administrator cannot deactivate their own account (its bulk
+ *     checkbox is disabled too — the server skips it and reports the miss),
+ *   - an invited account cannot sign in until its setup link is completed.
+ * In all cases the server is the authority; the disabled control only saves
  * the round trip.
  *
  * Deactivation is the soft delete the rest of the system uses, so it is
@@ -51,8 +61,6 @@ const EMPTY_CREATE = {
   name: "",
   email: "",
   role: "technician",
-  password: "",
-  password_confirmation: "",
 };
 
 function formatDate(value) {
@@ -60,6 +68,32 @@ function formatDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
 }
+
+function formatDateTime(value) {
+  if (!value) return "Never";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Never"
+    : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+/** Human copy for the audit actions the activity modal shows. */
+const ACTIVITY_LABELS = {
+  login: "Signed in",
+  logout: "Signed out",
+  logout_all: "Signed out everywhere",
+  failed_login: "Failed sign-in attempt",
+  token_issued: "Signed in (mobile token)",
+  password_changed: "Changed their password",
+  password_reset_requested: "Requested a password reset",
+  password_reset_completed: "Completed a password reset",
+  user_created: "Account created",
+  user_invited: "Account created — setup link sent",
+  user_updated: "Account details edited",
+  role_changed: "Role changed",
+  user_deactivated: "Account deactivated",
+  user_reactivated: "Account reactivated",
+};
 
 export default function UserManagementPage() {
   const toast = useToast();
@@ -74,6 +108,8 @@ export default function UserManagementPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [barangayFilter, setBarangayFilter] = useState("");
+  const [barangays, setBarangays] = useState([]);
   const debouncedSearch = useDebouncedValue(search, 300);
 
   // Account being edited / created, plus the field errors the server returned.
@@ -84,9 +120,23 @@ export default function UserManagementPage() {
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState(EMPTY_CREATE);
   const [createErrors, setCreateErrors] = useState({});
+  // Invite mode (default): no password is typed here — the new staff member
+  // sets their own via a one-time link. Flipping to "password now" keeps the
+  // old flow available for a shared-desk setup.
+  const [inviteMode, setInviteMode] = useState(true);
+  const [created, setCreated] = useState(null); // {name, setup_url} after an invite
 
   /** Account awaiting deactivation confirmation — null when no dialog is up. */
   const [confirming, setConfirming] = useState(null);
+
+  // Bulk selection over the CURRENT page's active accounts.
+  const { selected, toggle, toggleAll, clear } = useRowSelection();
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Per-account activity modal.
+  const [activity, setActivity] = useState(null); // {user, activity}
+  const [activityLoading, setActivityLoading] = useState(false);
 
   const [saving, setSaving] = useState(false);
 
@@ -99,6 +149,7 @@ export default function UserManagementPage() {
         per_page: 50,
         page,
         role: roleFilter === "all" ? undefined : roleFilter,
+        barangay: barangayFilter || undefined,
         search: debouncedSearch || undefined,
         // `all` keeps deactivated accounts visible so they can be brought
         // back; the API's own default is `active` for the picker endpoints.
@@ -112,7 +163,7 @@ export default function UserManagementPage() {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [roleFilter, statusFilter, debouncedSearch, page]);
+  }, [roleFilter, statusFilter, barangayFilter, debouncedSearch, page]);
 
   useEffect(() => {
     load();
@@ -121,6 +172,23 @@ export default function UserManagementPage() {
   // Quietly re-fetch so accounts registered or changed elsewhere appear live.
   useAutoRefresh(load);
 
+  // The barangay filter's options — the same covered list registration uses.
+  useEffect(() => {
+    let active = true;
+
+    fetchBarangays()
+      .then((rows) => {
+        if (active) setBarangays(rows);
+      })
+      .catch(() => {
+        /* the filter simply offers no options; the list itself still loads */
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const counts = useMemo(() => {
     const tally = Object.fromEntries(ROLE_KEYS.map((key) => [key, 0]));
     for (const row of users) {
@@ -128,6 +196,12 @@ export default function UserManagementPage() {
     }
     return tally;
   }, [users]);
+
+  /** Active accounts on this page are the selectable bulk rows. */
+  const selectableIds = useMemo(
+    () => users.filter((row) => row.status === "active").map((row) => row.id),
+    [users],
+  );
 
   /** The account being edited is the signed-in administrator's own. */
   const editingSelf = editing !== null && editing.id === currentUser?.id;
@@ -149,6 +223,22 @@ export default function UserManagementPage() {
     setCreating(true);
     setCreateForm(EMPTY_CREATE);
     setCreateErrors({});
+    setInviteMode(true);
+  }
+
+  async function openActivity(row) {
+    setActivity({ user: row, activity: [] });
+    setActivityLoading(true);
+
+    try {
+      const data = await adminApi.userActivity(row.id);
+      setActivity(data);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+      setActivity(null);
+    } finally {
+      setActivityLoading(false);
+    }
   }
 
   /**
@@ -201,14 +291,30 @@ export default function UserManagementPage() {
     setCreateErrors({});
 
     try {
-      const created = await adminApi.createUser(createForm);
+      const payload = { ...createForm };
+
+      if (inviteMode) {
+        delete payload.password;
+        delete payload.password_confirmation;
+      } else {
+        payload.password = createForm.password;
+        payload.password_confirmation = createForm.password_confirmation;
+      }
+
+      const result = await adminApi.createUser(payload);
 
       setCreating(false);
       await load();
 
-      toast.success(
-        `${created?.name ?? createForm.name} can now sign in as ${roleLabel(created?.role ?? createForm.role)}.`,
-      );
+      if (result?.setup_url) {
+        // Invite: the link IS the deliverable — show it for copy/paste (a
+        // mailer may not be configured yet, so email alone is not enough).
+        setCreated({ name: result.name ?? createForm.name, setup_url: result.setup_url });
+      } else {
+        toast.success(
+          `${result?.name ?? createForm.name} can now sign in as ${roleLabel(result?.role ?? createForm.role)}.`,
+        );
+      }
     } catch (err) {
       reportFailure(err, setCreateErrors);
     } finally {
@@ -232,6 +338,30 @@ export default function UserManagementPage() {
       toast.error(getErrorMessage(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function deactivateBulk() {
+    setBulkBusy(true);
+
+    try {
+      const result = await adminApi.bulkDeactivateUsers([...selected]);
+
+      setBulkConfirming(false);
+      clear();
+      await load();
+
+      const skipped = result?.failed_ids?.length ?? 0;
+
+      toast.success(
+        skipped > 0
+          ? `${result.updated} account${result.updated === 1 ? "" : "s"} deactivated — ${skipped} skipped (your own account cannot be deactivated here).`
+          : `${result?.updated ?? 0} account${result?.updated === 1 ? "" : "s"} deactivated and signed out everywhere.`,
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -362,6 +492,35 @@ export default function UserManagementPage() {
             </button>
           ))}
         </div>
+
+        {/* Barangay filter — the farmer slice: who holds households where. */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <label
+            htmlFor="barangay-filter"
+            className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase"
+          >
+            Barangay
+          </label>
+          <select
+            id="barangay-filter"
+            value={barangayFilter}
+            onChange={(event) => {
+              setBarangayFilter(event.target.value);
+              setPage(1);
+            }}
+            className="field w-56 text-xs"
+          >
+            <option value="">All barangays</option>
+            {barangays.map((barangay) => (
+              <option key={barangay.id} value={barangay.name}>
+                {barangay.name}
+              </option>
+            ))}
+          </select>
+          <span className="text-[11px] text-slate-400">
+            Filters farmer accounts by the barangay of their registered households.
+          </span>
+        </div>
       </section>
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
@@ -391,19 +550,45 @@ export default function UserManagementPage() {
               ))}
             </div>
 
+            {/* Bulk actions over the selected (active) accounts. */}
+            <BulkActionBar
+              count={selected.size}
+              onClear={clear}
+              noun="account"
+              busy={bulkBusy}
+            >
+              <button
+                type="button"
+                onClick={() => setBulkConfirming(true)}
+                disabled={bulkBusy}
+                className="inline-flex items-center gap-1 rounded-pill bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {bulkBusy ? <ButtonSpinner className="border-rose-200 border-t-white" /> : null}
+                Deactivate selected
+              </button>
+            </BulkActionBar>
+
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <colgroup>
-                  <col className="w-[20%]" />
-                  <col className="w-[13%]" />
-                  <col className="w-[23%]" />
+                  <col className="w-[4%]" />
+                  <col className="w-[19%]" />
                   <col className="w-[12%]" />
+                  <col className="w-[22%]" />
                   <col className="w-[11%]" />
+                  <col className="w-[10%]" />
                   <col className="w-[11%]" />
                   <col />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
+                    <th scope="col" className="px-4 py-2.5">
+                      <SelectAllCheckbox
+                        ids={selectableIds}
+                        selected={selected}
+                        onToggleAll={toggleAll}
+                      />
+                    </th>
                     <th scope="col" className="px-4 py-2.5 font-semibold">Name</th>
                     <th scope="col" className="px-4 py-2.5 font-semibold">Username</th>
                     <th scope="col" className="px-4 py-2.5 font-semibold">Email</th>
@@ -425,6 +610,19 @@ export default function UserManagementPage() {
                         key={row.id}
                         className={`transition hover:bg-brand-50/40 ${deactivated ? "bg-slate-50/70" : ""}`}
                       >
+                        <td className="px-4 py-2.5">
+                          {/* Only active accounts are bulk-deactivatable — a
+                              deactivated one would be a no-op, and the actor's
+                              own account is refused by the server. */}
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${row.name} for bulk deactivation`}
+                            checked={selected.has(row.id)}
+                            disabled={deactivated || isSelf}
+                            onChange={() => toggle(row.id)}
+                            className="h-4 w-4 accent-brand-700 disabled:opacity-30"
+                          />
+                        </td>
                         <td className="px-4 py-2.5 font-medium whitespace-nowrap text-slate-900">
                           <span className={deactivated ? "text-slate-500" : undefined}>
                             {row.name}
@@ -471,6 +669,13 @@ export default function UserManagementPage() {
                           {formatDate(row.created_at)}
                         </td>
                         <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => openActivity(row)}
+                            className="rounded-pill px-3 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                          >
+                            Activity
+                          </button>
                           <button
                             type="button"
                             onClick={() => openEditor(row)}
@@ -528,10 +733,19 @@ export default function UserManagementPage() {
         onClose={() => setCreating(false)}
         contentClassName="max-w-lg"
       >
-        <p className="text-xs text-slate-500">
-          The new staff member signs in with this email and password. Share the
-          password with them directly — the system does not email it.
-        </p>
+        {inviteMode ? (
+          <p className="text-xs text-slate-500">
+            The new staff member gets a one-time setup link at this email
+            address and sets their own password. More secure than typing one
+            for them — nobody else ever knows it.
+          </p>
+        ) : (
+          <p className="text-xs text-slate-500">
+            The new staff member signs in with this email and the password you
+            type. Share the password with them directly — the system does not
+            email it.
+          </p>
+        )}
 
         <form
           className="mt-4 space-y-3"
@@ -594,48 +808,89 @@ export default function UserManagementPage() {
             )}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="create-password" className="block text-xs font-semibold text-slate-600">
-                Password
+          {/* How the password arrives — the invite link (default) or a typed
+              one. Both are real server paths; this toggle only picks which
+              payload is sent. */}
+          <fieldset className="rounded-xl border border-slate-200 p-3">
+            <legend className="px-1 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+              Password
+            </legend>
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-start gap-2 text-xs text-slate-700">
+                <input
+                  type="radio"
+                  name="password-mode"
+                  checked={inviteMode}
+                  onChange={() => setInviteMode(true)}
+                  className="mt-0.5 h-4 w-4 accent-brand-700"
+                />
+                <span>
+                  <span className="font-semibold">Email a setup link</span> — they
+                  choose their own password.
+                </span>
               </label>
-              <input
-                id="create-password"
-                type="password"
-                className="field mt-1 w-full text-sm"
-                value={createForm.password}
-                onChange={(event) => setCreateForm({ ...createForm, password: event.target.value })}
-                autoComplete="new-password"
-              />
-              {createErrors.password && (
-                <p className="mt-1 text-[11px] text-rose-600">{createErrors.password}</p>
-              )}
+              <label className="flex items-start gap-2 text-xs text-slate-700">
+                <input
+                  type="radio"
+                  name="password-mode"
+                  checked={!inviteMode}
+                  onChange={() => setInviteMode(false)}
+                  className="mt-0.5 h-4 w-4 accent-brand-700"
+                />
+                <span className="font-semibold">Set a password now</span>
+              </label>
             </div>
 
-            <div>
-              <label
-                htmlFor="create-password-confirmation"
-                className="block text-xs font-semibold text-slate-600"
-              >
-                Confirm password
-              </label>
-              <input
-                id="create-password-confirmation"
-                type="password"
-                className="field mt-1 w-full text-sm"
-                value={createForm.password_confirmation}
-                onChange={(event) =>
-                  setCreateForm({ ...createForm, password_confirmation: event.target.value })
-                }
-                autoComplete="new-password"
-              />
-            </div>
-          </div>
+            {!inviteMode && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="create-password"
+                    className="block text-xs font-semibold text-slate-600"
+                  >
+                    Password
+                  </label>
+                  <input
+                    id="create-password"
+                    type="password"
+                    className="field mt-1 w-full text-sm"
+                    value={createForm.password ?? ""}
+                    onChange={(event) =>
+                      setCreateForm({ ...createForm, password: event.target.value })
+                    }
+                    autoComplete="new-password"
+                  />
+                  {createErrors.password && (
+                    <p className="mt-1 text-[11px] text-rose-600">{createErrors.password}</p>
+                  )}
+                </div>
 
-          <p className="text-[11px] text-slate-500">
-            At least 8 characters, with upper and lower case, a number and a
-            symbol — the same policy registration uses.
-          </p>
+                <div>
+                  <label
+                    htmlFor="create-password-confirmation"
+                    className="block text-xs font-semibold text-slate-600"
+                  >
+                    Confirm password
+                  </label>
+                  <input
+                    id="create-password-confirmation"
+                    type="password"
+                    className="field mt-1 w-full text-sm"
+                    value={createForm.password_confirmation ?? ""}
+                    onChange={(event) =>
+                      setCreateForm({ ...createForm, password_confirmation: event.target.value })
+                    }
+                    autoComplete="new-password"
+                  />
+                </div>
+
+                <p className="text-[11px] text-slate-500 sm:col-span-2">
+                  At least 8 characters, with upper and lower case, a number and
+                  a symbol — the same policy registration uses.
+                </p>
+              </div>
+            )}
+          </fieldset>
 
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" className="btn-secondary" onClick={() => setCreating(false)}>
@@ -649,14 +904,187 @@ export default function UserManagementPage() {
               {saving ? (
                 <>
                   <ButtonSpinner />
-                  Creating…
+                  {inviteMode ? "Creating & sending link…" : "Creating…"}
                 </>
+              ) : inviteMode ? (
+                "Create account & send setup link"
               ) : (
                 "Create account"
               )}
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Invite created — the one-time setup link, copyable. */}
+      <Modal
+        open={created !== null}
+        title="Account created — setup link ready"
+        onClose={() => setCreated(null)}
+        contentClassName="max-w-lg"
+      >
+        <p className="text-sm text-slate-600">
+          <span className="font-semibold text-slate-900">{created?.name}</span> has
+          an account. This one-time link lets them set their own password:
+        </p>
+
+        <div className="mt-3 flex items-start gap-2">
+          <code className="flex-1 rounded-xl bg-slate-50 px-3 py-2.5 text-[11px] break-all text-slate-700">
+            {created?.setup_url}
+          </code>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(created?.setup_url ?? "");
+                toast.success("Setup link copied.");
+              } catch {
+                toast.error("Copying failed — select the link text manually.");
+              }
+            }}
+            className="btn-secondary rounded-pill px-4 py-2 text-xs font-semibold"
+          >
+            Copy
+          </button>
+        </div>
+
+        <p className="mt-3 text-[11px] text-slate-500">
+          The link is also sent to their email address. If no mail service is
+          configured yet, hand the link over directly — it expires and can only
+          be used once.
+        </p>
+
+        <div className="mt-4 flex justify-end">
+          <button
+            type="button"
+            className="btn-primary rounded-pill px-4 py-2 text-sm font-semibold"
+            onClick={() => setCreated(null)}
+          >
+            Done
+          </button>
+        </div>
+      </Modal>
+
+      {/* Bulk deactivation confirmation */}
+      <Modal
+        open={bulkConfirming}
+        title={`Deactivate ${selected.size} ${selected.size === 1 ? "account" : "accounts"}?`}
+        onClose={() => setBulkConfirming(false)}
+        contentClassName="max-w-md"
+      >
+        <p className="text-sm text-slate-600">
+          Each selected account will no longer be able to sign in, and is signed
+          out of every device immediately.
+        </p>
+        <p className="mt-3 text-xs text-slate-500">
+          Their records are kept — the accounts are deactivated, not deleted, so
+          anything they logged stays in the system. You can reactivate them from
+          this screen at any time.
+        </p>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={() => setBulkConfirming(false)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-pill bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+            onClick={deactivateBulk}
+            disabled={bulkBusy}
+          >
+            {bulkBusy ? (
+              <>
+                <ButtonSpinner />
+                Deactivating…
+              </>
+            ) : (
+              "Deactivate accounts"
+            )}
+          </button>
+        </div>
+      </Modal>
+
+      {/* One account's activity trail */}
+      <Modal
+        open={activity !== null}
+        title={`Account activity — ${activity?.user?.name ?? ""}`}
+        onClose={() => setActivity(null)}
+        contentClassName="max-w-xl"
+      >
+        {activityLoading || !activity ? (
+          <SkeletonList rows={4} />
+        ) : (
+          <div className="space-y-4">
+            <dl className="grid grid-cols-2 gap-3 text-xs">
+              <div className="rounded-xl border border-slate-200 px-3 py-2.5">
+                <dt className="font-semibold tracking-wide text-slate-500 uppercase">
+                  Last sign-in
+                </dt>
+                <dd className="mt-1 text-sm text-slate-800">
+                  {formatDateTime(activity.user.last_login_at)}
+                </dd>
+              </div>
+              <div className="rounded-xl border border-slate-200 px-3 py-2.5">
+                <dt className="font-semibold tracking-wide text-slate-500 uppercase">
+                  Created by
+                </dt>
+                <dd className="mt-1 text-sm text-slate-800">
+                  {activity.user.created_by_name ?? "Self-registration"}
+                </dd>
+              </div>
+              <div className="rounded-xl border border-slate-200 px-3 py-2.5">
+                <dt className="font-semibold tracking-wide text-slate-500 uppercase">Role</dt>
+                <dd className="mt-1 text-sm text-slate-800">{roleLabel(activity.user.role)}</dd>
+              </div>
+              <div className="rounded-xl border border-slate-200 px-3 py-2.5">
+                <dt className="font-semibold tracking-wide text-slate-500 uppercase">Status</dt>
+                <dd className="mt-1 text-sm text-slate-800 capitalize">
+                  {activity.user.status}
+                </dd>
+              </div>
+            </dl>
+
+            <div>
+              <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+                History (newest first)
+              </p>
+              {activity.activity.length === 0 ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  Nothing recorded yet — this account has not signed in and has
+                  not been changed since the audit trail began.
+                </p>
+              ) : (
+                <ul className="mt-2 max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                  {activity.activity.map((entry) => (
+                    <li
+                      key={entry.id}
+                      className="flex items-start justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2"
+                    >
+                      <span>
+                        <span className="text-xs font-semibold text-slate-800">
+                          {ACTIVITY_LABELS[entry.action] ?? entry.action}
+                        </span>
+                        {entry.action === "role_changed" && entry.context && (
+                          <span className="ml-1.5 text-xs text-slate-500">
+                            {entry.context.previous_role} → {entry.context.new_role}
+                          </span>
+                        )}
+                        <span className="block text-[11px] text-slate-400">
+                          {entry.actor?.name && entry.actor.id !== activity.user.id
+                            ? `by ${entry.actor.name}`
+                            : "by the account itself"}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-[11px] text-slate-400">
+                        {formatDateTime(entry.created_at)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Edit name / email / role */}

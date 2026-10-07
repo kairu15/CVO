@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Setting;
 use App\Models\User;
-use App\Support\Barangays;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
@@ -45,7 +44,12 @@ class SettingsTest extends TestCase
             ->json('data');
 
         $this->assertSame(config('cvo.office.phone'), $data['office_profile']['office_phone']);
-        $this->assertSame(Barangays::all(), $data['barangays']);
+        // Reference data rides along with ids + puroks so the page can manage
+        // it through the dedicated /admin/barangays endpoints. The payload is
+        // DB-driven (like the public cascade); its shape is covered in
+        // BarangayManagementTest.
+        $this->assertIsList($data['barangays']);
+        $this->assertSame(config('cvo.animal_types'), $data['animal_types']);
         $this->assertSame(config('cvo.health_outcomes'), $data['vocabulary']['health_outcomes']);
     }
 
@@ -220,5 +224,84 @@ class SettingsTest extends TestCase
             ->getJson('/api/v1/admin/settings')
             ->assertOk()
             ->assertJsonPath('data.office_profile.office_phone', '(035) 555-0100');
+    }
+
+    public function test_an_admin_can_save_the_field_visit_overdue_threshold(): void
+    {
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', ['field_visit_overdue_days' => 45])
+            ->assertOk()
+            ->assertJsonPath('data.alerts.field_visit_overdue_days', 45);
+
+        // The smart-alert scan reads the saved value, not config.
+        $this->assertSame(45, app(\App\Services\SettingsService::class)->fieldVisitOverdueDays());
+    }
+
+    public function test_a_nonsensical_field_visit_threshold_is_rejected(): void
+    {
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', ['field_visit_overdue_days' => 0])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['field_visit_overdue_days']);
+    }
+
+    public function test_an_admin_can_save_the_animal_type_list(): void
+    {
+        $list = ['Carabao', 'Cattle', 'Chicken'];
+
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', ['animal_types' => $list])
+            ->assertOk()
+            ->assertJsonPath('data.animal_types', $list);
+
+        // The importer's casing vocabulary now comes from the saved list.
+        $this->assertSame($list, \App\Support\AnimalTypes::suggested());
+        $this->assertSame('Chicken', \App\Support\AnimalTypes::normalize('CHICKEN'));
+    }
+
+    public function test_an_invalid_animal_type_list_is_rejected(): void
+    {
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', ['animal_types' => ['Goat', '']])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['animal_types.1']);
+    }
+
+    public function test_notification_preferences_default_to_everything_on(): void
+    {
+        $data = $this->actingAs($this->admin())
+            ->getJson('/api/v1/admin/settings')
+            ->assertOk()
+            ->json('data.notifications');
+
+        $this->assertSame(['registration-new', 'registration-accepted', 'technician-assigned', 'technician-reassigned', 'field-visit-photo', 'smart-vaccination-overdue', 'smart-bcs-out-of-range', 'smart-no-recent-visit', 'smart-barangay-flag'], array_keys($data));
+        $this->assertNotContains(false, $data);
+    }
+
+    public function test_a_disabled_event_type_writes_no_notification(): void
+    {
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', ['notify_technician_assigned' => false])
+            ->assertOk();
+
+        $service = app(\App\Services\NotificationService::class);
+
+        $recipient = User::factory()->create(['role' => 'technician']);
+
+        $suppressed = $service->create($recipient, [
+            'type' => 'technician-assigned',
+            'title' => 'Should not exist',
+            'message' => 'Suppressed by preference',
+        ]);
+        $this->assertNull($suppressed);
+        $this->assertDatabaseMissing('user_notifications', ['type' => 'technician-assigned']);
+
+        // Other types still write.
+        $service->create($recipient, [
+            'type' => 'registration-accepted',
+            'title' => 'Still writes',
+            'message' => 'Not suppressed',
+        ]);
+        $this->assertDatabaseHas('user_notifications', ['type' => 'registration-accepted']);
     }
 }

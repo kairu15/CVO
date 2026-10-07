@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { DashboardSidebar } from "../components/DashboardSidebar";
 import { notificationsApi } from "../api/notificationsApi";
+import { flatNav, ROLE_KEYS } from "../config/roles";
 
 vi.mock("../api/notificationsApi", () => ({
   notificationsApi: { unreadCount: vi.fn() },
@@ -77,5 +78,44 @@ describe("DashboardSidebar", () => {
       ).toBeInTheDocument(),
     );
     expect(screen.queryByText("3")).not.toBeInTheDocument();
+  });
+
+  it("renders group headers for the grouped bands", async () => {
+    renderSidebar();
+
+    await screen.findByRole("link", { name: /Notifications/ });
+
+    expect(screen.getByText("Monitoring")).toBeInTheDocument();
+    expect(screen.getByText("Program")).toBeInTheDocument();
+    expect(screen.getByText("Administration")).toBeInTheDocument();
+  });
+
+  it("carries no Soon tags: every sidebar item is routed", async () => {
+    renderSidebar();
+
+    await screen.findByRole("link", { name: /Notifications/ });
+
+    // The mechanism still exists for future unbuilt modules, but nothing
+    // currently uses it.
+    expect(screen.queryByText("Soon")).not.toBeInTheDocument();
+
+    // The config agrees: every flattened item across every role has a route.
+    for (const role of ROLE_KEYS) {
+      for (const item of flatNav(role)) {
+        expect(item.to, `${role} → ${item.label}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("scopes each role's sidebar to its own modules", () => {
+    // Grouping is labelling, not permissions: a farmer's sidebar must never
+    // name an admin module, and the admin items stay admin-only in the config.
+    const farmerLabels = flatNav("farmer").map((item) => item.label);
+    expect(farmerLabels).toEqual(
+      expect.arrayContaining(["My Animals", "Dispersal Status", "Support / Contact CVO"]),
+    );
+    for (const forbidden of ["User Management", "Roles & Permissions", "System Settings", "Reports"]) {
+      expect(farmerLabels).not.toContain(forbidden);
+    }
   });
 });

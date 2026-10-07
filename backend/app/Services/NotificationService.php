@@ -100,6 +100,7 @@ class NotificationService
     public function __construct(
         private readonly VaccinationScheduleService $schedule,
         private readonly DispersalEventService $dispersals,
+        private readonly SettingsService $settings,
     ) {}
 
     /**
@@ -109,9 +110,18 @@ class NotificationService
      * dispersal) recomputes from records, but events like "a farmer
      * registered" have no record to re-derive from — they must be written
      * here, once, with read state, or they never existed.
+     *
+     * An event type switched off in System Settings (Notification Preferences)
+     * is suppressed here and answers null — the event still happened, it just
+     * does not ring the bell. Callers that fire-and-forget are unaffected;
+     * the return type went nullable exactly when this gate arrived.
      */
-    public function create(User $recipient, array $attributes): UserNotification
+    public function create(User $recipient, array $attributes): ?UserNotification
     {
+        if (! $this->settings->notificationTypeEnabled((string) $attributes['type'])) {
+            return null;
+        }
+
         return UserNotification::create([
             'user_id' => $recipient->id,
             'actor_id' => $attributes['actor_id'] ?? null,

@@ -19,11 +19,15 @@ class HealthRecordPolicy
      */
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, User::ROLES, true);
+        return $user->hasPermission('health_records.view');
     }
 
     public function view(User $user, HealthRecord $record): bool
     {
+        if (! $user->hasPermission('health_records.view')) {
+            return false;
+        }
+
         if (in_array($user->role, ['admin', 'doctor'], true)) {
             return true;
         }
@@ -40,7 +44,7 @@ class HealthRecordPolicy
      */
     public function create(User $user): bool
     {
-        return $user->role === 'doctor';
+        return $user->hasPermission('health_records.create');
     }
 
     /**
@@ -52,6 +56,10 @@ class HealthRecordPolicy
      */
     public function update(User $user, HealthRecord $record): bool
     {
+        if (! $user->hasPermission('health_records.update')) {
+            return false;
+        }
+
         return $user->role === 'admin'
             || ($user->role === 'doctor' && $record->doctor_id === $user->id);
     }

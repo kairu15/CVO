@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AbsoluteSessionExpiry;
+use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -31,6 +32,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Security headers (CSP / XCTO / XFO / HSTS) on every response.
         $middleware->append(SecurityHeaders::class);
+
+        // Alias for the Roles & Permissions matrix: `permission:manage_users`.
+        $middleware->alias(['permission' => EnsurePermission::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

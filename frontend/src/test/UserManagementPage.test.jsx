@@ -15,7 +15,17 @@ vi.mock("../api/adminApi", () => ({
     updateUser: vi.fn(),
     deactivateUser: vi.fn(),
     reactivateUser: vi.fn(),
+    bulkDeactivateUsers: vi.fn(),
+    userActivity: vi.fn(),
   },
+}));
+
+// The barangay filter's option list loads on mount; give it a stub.
+vi.mock("../api/beneficiariesApi", () => ({
+  fetchBarangays: vi.fn().mockResolvedValue([
+    { id: 1, name: "Dawis", latitude: 9.57, longitude: 122.88 },
+    { id: 2, name: "Tayawan", latitude: 9.49, longitude: 122.73 },
+  ]),
 }));
 
 // Instant debounce — the debounce behaviour itself is covered in the hook test.
@@ -152,7 +162,7 @@ describe("UserManagementPage", () => {
     });
   });
 
-  it("creates a staff account and reports it", async () => {
+  it("creates a staff account with a typed password when that mode is chosen", async () => {
     adminApi.createUser.mockResolvedValue({
       id: 9,
       name: "Doc Reyes",
@@ -166,6 +176,10 @@ describe("UserManagementPage", () => {
 
     await act(async () => {
       await userEvent.click(screen.getByRole("button", { name: /new staff account/i }));
+    });
+    // Switch from the default invite mode to the typed-password flow.
+    await act(async () => {
+      await userEvent.click(screen.getByRole("radio", { name: /Set a password now/ }));
     });
     await act(async () => {
       await userEvent.type(screen.getByLabelText("Full name"), "Doc Reyes");
@@ -201,6 +215,140 @@ describe("UserManagementPage", () => {
     );
   });
 
+  it("invites by default: no password is sent and the setup link is shown", async () => {
+    adminApi.createUser.mockResolvedValue({
+      id: 10,
+      name: "Doc Reyes",
+      role: "doctor",
+      setup_url: "http://localhost:5173/reset-password?token=abc123&email=doc.reyes%40example.com",
+    });
+
+    renderPage();
+    await screen.findByText("Jun Technician");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: /new staff account/i }));
+    });
+    await act(async () => {
+      await userEvent.type(screen.getByLabelText("Full name"), "Doc Reyes");
+    });
+    await act(async () => {
+      await userEvent.type(screen.getByLabelText("Email"), "doc.reyes@example.com");
+    });
+    await act(async () => {
+      await userEvent.selectOptions(screen.getByLabelText("Role"), "doctor");
+    });
+    await act(async () => {
+      await userEvent.click(
+        screen.getByRole("button", { name: "Create account & send setup link" }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(adminApi.createUser).toHaveBeenCalledWith({
+        name: "Doc Reyes",
+        email: "doc.reyes@example.com",
+        role: "doctor",
+      });
+    });
+
+    // The link is the deliverable — surfaced for copy/paste.
+    expect(await screen.findByText(/setup link ready/i)).toBeInTheDocument();
+    expect(screen.getByText(/reset-password\?token=abc123/)).toBeInTheDocument();
+  });
+
+  it("bulk-deactivates the selected active accounts", async () => {
+    adminApi.bulkDeactivateUsers.mockResolvedValue({ updated: 2, failed_ids: [] });
+
+    renderPage();
+    await screen.findByText("Jun Technician");
+
+    // Own row and deactivated rows have no selectable checkbox.
+    expect(
+      within(rowFor("CVO Administrator")).getByRole("checkbox", { name: /Select .* for bulk/ }),
+    ).toBeDisabled();
+    expect(
+      within(rowFor("Lito Former")).getByRole("checkbox", { name: /Select .* for bulk/ }),
+    ).toBeDisabled();
+
+    await act(async () => {
+      await userEvent.click(
+        within(rowFor("Jun Technician")).getByRole("checkbox", { name: /Select .* for bulk/ }),
+      );
+    });
+    await act(async () => {
+      await userEvent.click(
+        within(rowFor("Nena Farmer")).getByRole("checkbox", { name: /Select .* for bulk/ }),
+      );
+    });
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Deactivate selected" }));
+    });
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Deactivate accounts" }));
+    });
+
+    await waitFor(() =>
+      expect(adminApi.bulkDeactivateUsers).toHaveBeenCalledWith([2, 3]),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent("2 accounts deactivated");
+  });
+
+  it("shows an account's activity trail in a modal", async () => {
+    adminApi.userActivity.mockResolvedValue({
+      user: {
+        ...ACCOUNTS[1],
+        last_login_at: "2026-10-05T08:30:00+00:00",
+        created_by: 1,
+        created_by_name: "CVO Administrator",
+      },
+      activity: [
+        {
+          id: 11,
+          action: "role_changed",
+          context: { previous_role: "technician", new_role: "doctor" },
+          actor: { id: 1, name: "CVO Administrator" },
+          created_at: "2026-10-04T10:00:00+00:00",
+        },
+        {
+          id: 12,
+          action: "login",
+          actor: { id: 2, name: "Jun Technician" },
+          created_at: "2026-10-05T08:30:00+00:00",
+        },
+      ],
+    });
+
+    renderPage();
+    await screen.findByText("Jun Technician");
+
+    await act(async () => {
+      await userEvent.click(
+        within(rowFor("Jun Technician")).getByRole("button", { name: "Activity" }),
+      );
+    });
+
+    expect(await screen.findByText(/Account activity — Jun Technician/)).toBeInTheDocument();
+    expect(screen.getByText(/Last sign-in/i)).toBeInTheDocument();
+    expect(screen.getByText("Role changed")).toBeInTheDocument();
+    expect(screen.getByText(/technician → doctor/)).toBeInTheDocument();
+  });
+
+  it("re-queries the API when a barangay filter is chosen", async () => {
+    renderPage();
+    await screen.findByText("Jun Technician");
+
+    await act(async () => {
+      await userEvent.selectOptions(screen.getByLabelText("Barangay"), "Dawis");
+    });
+
+    await waitFor(() => {
+      const calls = adminApi.listUsersPage.mock.calls;
+      expect(calls[calls.length - 1]?.[0]?.barangay).toBe("Dawis");
+    });
+  });
+
   it("shows server validation errors against the field that failed", async () => {
     adminApi.createUser.mockRejectedValue({
       response: { data: { errors: { email: ["That email is already taken."] } } },
@@ -213,7 +361,9 @@ describe("UserManagementPage", () => {
       await userEvent.click(screen.getByRole("button", { name: /new staff account/i }));
     });
     await act(async () => {
-      await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "Create account & send setup link" }),
+      );
     });
 
     expect(await screen.findByText("That email is already taken.")).toBeInTheDocument();

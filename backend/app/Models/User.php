@@ -7,13 +7,14 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'username', 'email', 'password', 'role', 'avatar_path'])]
+#[Fillable(['name', 'username', 'email', 'password', 'role', 'avatar_path', 'created_by'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -60,8 +61,19 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'last_login_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * The administrator who created this account (User Management's invite
+     * trail). Null for self-registered farmers; withTrashed because the
+     * creator may already be deactivated — the fact survives them.
+     */
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
     public function projects(): HasMany
@@ -72,6 +84,31 @@ class User extends Authenticatable
     public function isFarmer(): bool
     {
         return $this->role === self::DEFAULT_ROLE;
+    }
+
+    /**
+     * The permission keys granted to this account's role.
+     *
+     * @return list<string>
+     */
+    public function permissions(): array
+    {
+        return Permission::keysForRole($this->role);
+    }
+
+    /**
+     * Whether this account's role holds a capability. The single gate the
+     * Policies, middleware and FormRequests use — backed by the
+     * role_permissions matrix an administrator edits, rather than role
+     * string comparisons scattered through the code.
+     *
+     * Row-level SCOPE (all / assigned / own) is NOT decided here: a grant
+     * says what a role may do in principle, the Policies still decide which
+     * rows.
+     */
+    public function hasPermission(string $key): bool
+    {
+        return in_array($key, $this->permissions(), true);
     }
 
     /**

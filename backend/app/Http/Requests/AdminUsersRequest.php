@@ -14,12 +14,12 @@ class AdminUsersRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->role === 'admin';
+        return $this->user()?->hasPermission('manage_users');
     }
 
     protected function failedAuthorization(): never
     {
-        abort(403, 'Administrator access required.');
+        abort(403, 'You do not have permission to perform this action.');
     }
 
     /**
@@ -35,6 +35,9 @@ class AdminUsersRequest extends FormRequest
             // deactivated technician; User Management asks for `all` so
             // deactivated accounts stay visible and reactivatable.
             'status' => ['sometimes', 'nullable', Rule::in(['active', 'deactivated', 'all'])],
+            // The farmer slice: only accounts owning a household in this
+            // barangay. Values come from the covered-barangay list.
+            'barangay' => ['sometimes', 'nullable', 'string', 'max:255'],
             // Page size, clamped to 50 by the controller
             // (App\Support\Pagination); `page` walks the bounded pages.
             'per_page' => ['sometimes', 'integer', 'min:1'],

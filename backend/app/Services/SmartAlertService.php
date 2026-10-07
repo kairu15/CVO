@@ -15,8 +15,11 @@ use Illuminate\Support\Collection;
  *
  * No model, no training data, no external service: every rule is a plain SQL
  * aggregation plus a threshold comparison, and each fires in milliseconds even
- * at a few thousand records. The thresholds live in config/cvo.php
- * (`smart_alerts`) so the office can tune them without a code change.
+ * at a few thousand records. The thresholds are administrator-editable through
+ * SettingsService (Alerts & Thresholds in System Settings) so the office can
+ * tune them without a code change; each rule can also be switched off via the
+ * notification preferences, and a switched-off rule's existing rows are
+ * cleared by the next scan.
  *
  * Unlike the derived notification feed, these alerts are STORED — they have
  * read state and a stable `dedupe_key` — because the scan re-runs daily and
@@ -124,6 +127,13 @@ class SmartAlertService
         $keys = [];
 
         foreach ($specs as $spec) {
+            // A rule switched off in System Settings stops writing, and its
+            // existing rows age out as stale on this same pass — the alert
+            // restates a decision, and that decision is now "don't alert".
+            if (! $this->settings->notificationTypeEnabled((string) $spec['type'])) {
+                continue;
+            }
+
             $keys[] = $spec['dedupe_key'];
 
             UserNotification::updateOrCreate(
@@ -290,7 +300,8 @@ class SmartAlertService
      */
     private function noRecentVisitAlerts(): array
     {
-        $days = (int) config('cvo.smart_alerts.no_recent_visit_days');
+        // Administrator-editable (System Settings → Alerts & Thresholds).
+        $days = $this->settings->fieldVisitOverdueDays();
         $cutoff = CarbonImmutable::now()->startOfDay()->subDays($days)->toDateString();
         $lastVisit = '(select max(fv.visited_on) from field_visits fv where fv.beneficiary_id = beneficiaries.id and fv.deleted_at is null)';
 

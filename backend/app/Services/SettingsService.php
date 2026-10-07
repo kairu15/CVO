@@ -8,25 +8,37 @@ use Illuminate\Support\Facades\Cache;
 /**
  * System settings — the values an administrator can change without a deploy.
  *
- * Three groups, one table, one cache entry:
+ * Five groups, one table, one cache entry:
  *
- *   contact  the office contact profile. Rendered on the public landing page,
- *            the farmer Support page and the password-reset note, so it is
- *            read on nearly every anonymous request.
- *   alerts   the vaccination cycle (how long after a vaccination an animal is
- *            due again, and how far ahead it warns). These used to be
- *            config-only, which made a clinical decision a code deploy.
- *   session  the SPA's own inactivity auto-logout window.
+ *   contact       the office contact profile. Rendered on the public landing
+ *                 page, the farmer Support page and the password-reset note,
+ *                 so it is read on nearly every anonymous request.
+ *   alerts        the vaccination cycle (how long after a vaccination an
+ *                 animal is due again, how far ahead it warns) and the
+ *                 field-visit overdue window the smart-alert scan uses.
+ *                 These used to be config-only, which made a clinical
+ *                 decision a code deploy.
+ *   session       the SPA's own inactivity auto-logout window.
+ *   animal_types  the suggested species vocabulary forms offer. Still a
+ *                 suggestion — the importer keeps unknown workbook values as
+ *                 their own type — but the list itself is now data, so a new
+ *                 program category does not need a deploy.
+ *   notifications which stored event types and smart-alert rules actually
+ *                 write notification rows. A disabled type is suppressed at
+ *                 write time; for smart alerts the next scan also clears the
+ *                 rows the disabled rule had already written.
  *
  * Defaults live in config (config/cvo.php, config/security.php) and a key that
  * has never been saved falls back to them, so the table starts empty and every
  * value has one obvious meaning instead of two. Writes forget the cache, so a
  * stale number can outlive an edit by exactly zero requests.
  *
- * Deliberately NOT here: the barangay/purok reference data. Beneficiary
- * addresses and every validation rule normalize against that list, so renaming
- * a barangay would silently orphan every historical row that spells it the old
- * way. It stays configuration (see SettingsController).
+ * Deliberately NOT here: renaming barangays. Beneficiary addresses and every
+ * validation rule normalize against that list, so renaming a barangay would
+ * silently orphan every historical row that spells it the old way. Puroks are
+ * FK-referenced (beneficiaries.purok_id), so purok add/rename IS safe and is
+ * managed through the dedicated reference-data endpoints — see
+ * BarangayController, not this service.
  */
 class SettingsService
 {
@@ -34,10 +46,56 @@ class SettingsService
     public const CONTACT_KEYS = ['office_email', 'office_phone', 'office_hours', 'office_address'];
 
     /** @var list<string> */
-    public const ALERT_KEYS = ['vaccination_interval_days', 'vaccination_due_soon_days'];
+    public const ALERT_KEYS = [
+        'vaccination_interval_days',
+        'vaccination_due_soon_days',
+        'field_visit_overdue_days',
+    ];
 
     /** @var list<string> */
     public const SESSION_KEYS = ['session_idle_minutes'];
+
+    /** The suggested animal-type vocabulary, stored as a JSON list. */
+    public const ANIMAL_TYPES_KEY = 'animal_types';
+
+    /**
+     * Which notification types actually write rows. Every stored event type
+     * and every smart-alert rule gets a `notify_*` switch, defaulting to on:
+     * the seeded behaviour is today's behaviour.
+     *
+     * @var list<string>
+     */
+    public const NOTIFICATION_KEYS = [
+        'notify_registration_new',
+        'notify_registration_accepted',
+        'notify_technician_assigned',
+        'notify_technician_reassigned',
+        'notify_field_visit_photo',
+        'notify_smart_vaccination_overdue',
+        'notify_smart_bcs_out_of_range',
+        'notify_smart_no_recent_visit',
+        'notify_smart_barangay_flag',
+    ];
+
+    /**
+     * Notification type → its notify_* settings key. Types absent from this
+     * map (the derived feed: dispersal, re-dispersal, vaccination due/overdue)
+     * restate existing records on read and are not written anywhere, so there
+     * is nothing to switch off.
+     *
+     * @var array<string, string>
+     */
+    public const NOTIFICATION_KEY_FOR_TYPE = [
+        'registration-new' => 'notify_registration_new',
+        'registration-accepted' => 'notify_registration_accepted',
+        'technician-assigned' => 'notify_technician_assigned',
+        'technician-reassigned' => 'notify_technician_reassigned',
+        'field-visit-photo' => 'notify_field_visit_photo',
+        'smart-vaccination-overdue' => 'notify_smart_vaccination_overdue',
+        'smart-bcs-out-of-range' => 'notify_smart_bcs_out_of_range',
+        'smart-no-recent-visit' => 'notify_smart_no_recent_visit',
+        'smart-barangay-flag' => 'notify_smart_barangay_flag',
+    ];
 
     /**
      * Every key this service owns. Anything else in the table is ignored.
@@ -48,6 +106,8 @@ class SettingsService
         ...self::CONTACT_KEYS,
         ...self::ALERT_KEYS,
         ...self::SESSION_KEYS,
+        self::ANIMAL_TYPES_KEY,
+        ...self::NOTIFICATION_KEYS,
     ];
 
     private const CACHE_KEY = 'settings.values';
@@ -55,7 +115,7 @@ class SettingsService
     /**
      * All groups, typed — what the System Settings screen renders.
      *
-     * @return array{contact: array<string, string|null>, alerts: array<string, int>, session: array{idle_minutes: int}}
+     * @return array{contact: array<string, string|null>, alerts: array<string, int>, session: array{idle_minutes: int}, animal_types: list<string>, notifications: array<string, bool>}
      */
     public function all(): array
     {
@@ -71,10 +131,13 @@ class SettingsService
             'alerts' => [
                 'vaccination_interval_days' => (int) $values['vaccination_interval_days'],
                 'vaccination_due_soon_days' => (int) $values['vaccination_due_soon_days'],
+                'field_visit_overdue_days' => (int) $values['field_visit_overdue_days'],
             ],
             'session' => [
                 'idle_minutes' => (int) $values['session_idle_minutes'],
             ],
+            'animal_types' => $this->animalTypes(),
+            'notifications' => $this->notifications(),
         ];
     }
 
@@ -115,6 +178,86 @@ class SettingsService
     }
 
     /**
+     * How stale a household's latest field visit may get before the smart
+     * alert scan flags it (and how old a household may be before the rule
+     * applies at all).
+     */
+    public function fieldVisitOverdueDays(): int
+    {
+        return $this->all()['alerts']['field_visit_overdue_days'];
+    }
+
+    /**
+     * The suggested animal-type vocabulary — the list the forms offer and the
+     * importer uses for casing. Falls back to config when the key was never
+     * saved; an admin-saved list replaces it wholesale.
+     *
+     * @return list<string>
+     */
+    public function animalTypes(): array
+    {
+        $decoded = json_decode((string) ($this->values()[self::ANIMAL_TYPES_KEY] ?? ''), true);
+
+        if (! is_array($decoded)) {
+            return array_values(config('cvo.animal_types', []));
+        }
+
+        return array_values(array_filter($decoded, fn ($t) => is_string($t) && trim($t) !== ''));
+    }
+
+    /**
+     * Replace the suggested animal-type vocabulary.
+     *
+     * @param  list<string>  $types
+     */
+    public function saveAnimalTypes(array $types): void
+    {
+        $clean = array_values(array_unique(array_map(
+            fn (string $t) => trim($t),
+            array_filter($types, fn ($t) => is_string($t) && trim($t) !== ''),
+        )));
+
+        Setting::updateOrCreate(
+            ['key' => self::ANIMAL_TYPES_KEY],
+            ['value' => json_encode($clean)],
+        );
+
+        Cache::forget(self::CACHE_KEY);
+    }
+
+    /**
+     * Every toggleable notification type with its on/off state.
+     *
+     * @return array<string, bool>
+     */
+    public function notifications(): array
+    {
+        $values = $this->values();
+
+        return collect(self::NOTIFICATION_KEY_FOR_TYPE)
+            ->mapWithKeys(fn (string $key, string $type) => [
+                $type => (bool) $values[$key],
+            ])
+            ->all();
+    }
+
+    /**
+     * Whether a notification type currently writes rows. Unknown types
+     * (e.g. the derived feed, which writes nothing) default to enabled so a
+     * caller cannot silently lose a notification by typo'ing the key.
+     */
+    public function notificationTypeEnabled(string $type): bool
+    {
+        $key = self::NOTIFICATION_KEY_FOR_TYPE[$type] ?? null;
+
+        if ($key === null) {
+            return true;
+        }
+
+        return (bool) $this->values()[$key];
+    }
+
+    /**
      * The SPA's inactivity auto-logout window, in minutes.
      *
      * This is the CLIENT guard (IdleSessionGuard), deliberately shorter than
@@ -141,9 +284,14 @@ class SettingsService
                 continue;
             }
 
+            // Booleans store as '1'/'0' — PHP's bare (string) cast turns
+            // false into '', which reads back falsy by luck rather than by
+            // intent. One storage convention for every on/off key.
+            $value = is_bool($values[$key]) ? ($values[$key] ? '1' : '0') : $values[$key];
+
             Setting::updateOrCreate(
                 ['key' => $key],
-                ['value' => $values[$key] === null ? null : (string) $values[$key]],
+                ['value' => $value === null ? null : (string) $value],
             );
         }
 
@@ -201,8 +349,16 @@ class SettingsService
 
             'vaccination_interval_days' => (string) config('cvo.vaccination_interval_days'),
             'vaccination_due_soon_days' => (string) config('cvo.vaccination_due_soon_days'),
+            'field_visit_overdue_days' => (string) config('cvo.smart_alerts.no_recent_visit_days'),
 
             'session_idle_minutes' => (string) config('security.client_idle_minutes'),
+
+            self::ANIMAL_TYPES_KEY => json_encode(array_values(config('cvo.animal_types', []))),
+
+            // Notification switches default to on: the seeded behaviour is
+            // exactly today's behaviour, and an admin can only turn things
+            // off, never have to discover the list to turn things on.
+            ...array_fill_keys(self::NOTIFICATION_KEYS, '1'),
         ];
     }
 }

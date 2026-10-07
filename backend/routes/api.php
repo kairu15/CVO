@@ -18,6 +18,7 @@ use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\PublicMapController;
 use App\Http\Controllers\PublicTransparencyController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SiteController;
@@ -244,63 +245,123 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     // Livestock pass-on / re-dispersal chain
     Route::apiResource('dispersal-events', DispersalEventController::class);
 
-    // Admin: account management (create / edit / deactivate) and roles
-    Route::prefix('admin')->middleware(EnsureUserIsAdmin::class)->group(function (): void {
-        Route::get('/users', [AdminController::class, 'users'])->name('api.admin.users');
-        Route::post('/users', [AdminController::class, 'storeUser'])->name('api.admin.users.store');
+    // Admin: the /admin module, gated PER CAPABILITY by the role_permissions
+    // matrix (EnsurePermission) instead of one role check. With the shipped
+    // seed only `admin` holds these capabilities, so day-one behaviour is
+    // unchanged — but a grant made on the Roles & Permissions screen now
+    // actually opens the door (e.g. view_reports for a doctor), and a revoked
+    // grant closes it, per endpoint. Each FormRequest re-checks the same
+    // capability as the second gate.
+    Route::prefix('admin')->group(function (): void {
+        Route::get('/users', [AdminController::class, 'users'])
+            ->middleware('permission:manage_users')->name('api.admin.users');
+        Route::post('/users', [AdminController::class, 'storeUser'])
+            ->middleware('permission:manage_users')->name('api.admin.users.store');
         // Declared before the {id} PATCH below only for readability — the two
         // paths differ in segment count, so neither can shadow the other.
-        Route::patch('/users/{id}/role', [AdminController::class, 'assignRole'])->name('api.admin.users.assign-role');
-        Route::patch('/users/{id}', [AdminController::class, 'updateUser'])->name('api.admin.users.update');
+        Route::patch('/users/{id}/role', [AdminController::class, 'assignRole'])
+            ->middleware('permission:manage_users')->name('api.admin.users.assign-role');
+        Route::patch('/users/{id}', [AdminController::class, 'updateUser'])
+            ->middleware('permission:manage_users')->name('api.admin.users.update');
         // Deactivation is the soft delete: the account stops signing in but
         // stays resolvable for the rows that reference it (authored records,
         // audit trail). Reactivate is the way back.
-        Route::delete('/users/{id}', [AdminController::class, 'deactivateUser'])->name('api.admin.users.deactivate');
-        Route::post('/users/{id}/reactivate', [AdminController::class, 'reactivateUser'])->name('api.admin.users.reactivate');
-        Route::get('/beneficiaries', [AdminController::class, 'beneficiaries'])->name('api.admin.beneficiaries');
-        Route::patch('/beneficiaries/{id}/assign-technician', [AdminController::class, 'assignTechnician'])->name('api.admin.beneficiaries.assign-technician');
+        Route::delete('/users/{id}', [AdminController::class, 'deactivateUser'])
+            ->middleware('permission:manage_users')->name('api.admin.users.deactivate');
+        Route::post('/users/{id}/reactivate', [AdminController::class, 'reactivateUser'])
+            ->middleware('permission:manage_users')->name('api.admin.users.reactivate');
+        Route::get('/users/{id}/activity', [AdminController::class, 'userActivity'])
+            ->middleware('permission:manage_users')->name('api.admin.users.activity');
+        Route::post('/users/bulk-deactivate', [AdminController::class, 'bulkDeactivateUsers'])
+            ->middleware('permission:manage_users')->name('api.admin.users.bulk-deactivate');
+        Route::get('/beneficiaries', [AdminController::class, 'beneficiaries'])
+            ->middleware('permission:assign_technicians')->name('api.admin.beneficiaries');
+        Route::patch('/beneficiaries/{id}/assign-technician', [AdminController::class, 'assignTechnician'])
+            ->middleware('permission:assign_technicians')->name('api.admin.beneficiaries.assign-technician');
         Route::patch('/beneficiaries/bulk-assign-technician', [AdminController::class, 'bulkAssignTechnician'])
+            ->middleware('permission:assign_technicians')
             ->name('api.admin.beneficiaries.bulk-assign-technician');
 
         // Livestock monitoring report workbook (CVO Excel format)
         Route::post('/monitoring-records/import', [AdminController::class, 'importMonitoringExcel'])
-            ->name('api.admin.monitoring.import');
+            ->middleware('permission:import_monitoring_records')->name('api.admin.monitoring.import');
         Route::get('/monitoring-records/export', [AdminController::class, 'exportMonitoringExcel'])
-            ->name('api.admin.monitoring.export');
+            ->middleware('permission:export_monitoring_records')->name('api.admin.monitoring.export');
+
+        // The Reports screen's five charts — one dedicated aggregation
+        // endpoint each (ReportChartService): the database computes the
+        // aggregate, the SPA renders it. Filters follow each chart's
+        // semantics (barangay / animal type / month / date range).
+        Route::get('/report/charts/dispersal-trend', [ReportController::class, 'dispersalTrend'])
+            ->middleware('permission:view_reports')->name('api.admin.report.charts.dispersal-trend');
+        Route::get('/report/charts/animals-by-barangay', [ReportController::class, 'animalsByBarangay'])
+            ->middleware('permission:view_reports')->name('api.admin.report.charts.animals-by-barangay');
+        Route::get('/report/charts/vaccination-compliance', [ReportController::class, 'vaccinationCompliance'])
+            ->middleware('permission:view_reports')->name('api.admin.report.charts.vaccination-compliance');
+        Route::get('/report/charts/animal-type-distribution', [ReportController::class, 'animalTypeDistribution'])
+            ->middleware('permission:view_reports')->name('api.admin.report.charts.animal-type-distribution');
+        Route::get('/report/charts/technician-workload', [ReportController::class, 'technicianWorkload'])
+            ->middleware('permission:view_reports')->name('api.admin.report.charts.technician-workload');
 
         // City-wide program report — aggregated, read-only.
         Route::get('/report', [ReportController::class, 'index'])
-            ->name('api.admin.report');
+            ->middleware('permission:view_reports')->name('api.admin.report');
         // The same report as a spreadsheet, scoped by the same filters, so the
         // figures behind the charts are not trapped on screen.
         Route::get('/report/export', [ReportController::class, 'export'])
-            ->name('api.admin.report.export');
+            ->middleware('permission:view_reports')->name('api.admin.report.export');
 
-        // System settings — office contact profile (writable), program
-        // configuration (read-only).
+        // The capability matrix itself. Guarded by manage_roles — the one
+        // permission that can edit permissions. The controller refuses (422)
+        // any change that would leave no active account holding it.
+        Route::get('/roles/permissions', [RolePermissionController::class, 'index'])
+            ->middleware('permission:manage_roles')->name('api.admin.roles.permissions');
+        Route::patch('/roles/{role}/permissions', [RolePermissionController::class, 'update'])
+            ->middleware('permission:manage_roles')->name('api.admin.roles.permissions.update');
+
+        // System settings — office contact profile, alert thresholds, animal
+        // types, notification preferences (writable); session ceilings and
+        // form vocabularies (read-only).
         Route::get('/settings', [SettingsController::class, 'index'])
-            ->name('api.admin.settings');
+            ->middleware('permission:manage_settings')->name('api.admin.settings');
         Route::patch('/settings', [SettingsController::class, 'update'])
-            ->name('api.admin.settings.update');
+            ->middleware('permission:manage_settings')->name('api.admin.settings.update');
+
+        // Reference data management — puroks/sitios (add / rename / delete
+        // when unused) and barangays (add / re-center; rename is deliberately
+        // impossible, see BarangayController). The public read cascade above
+        // serves whatever is recorded here, so the registration form follows
+        // without a redeploy.
+        Route::post('/barangays', [BarangayController::class, 'store'])
+            ->middleware('permission:manage_reference_data')->name('api.admin.barangays.store');
+        Route::patch('/barangays/{barangay}', [BarangayController::class, 'update'])
+            ->middleware('permission:manage_reference_data')->name('api.admin.barangays.update');
+        Route::post('/barangays/{barangay}/puroks', [BarangayController::class, 'storePurok'])
+            ->middleware('permission:manage_reference_data')->name('api.admin.barangays.puroks.store');
+        Route::patch('/puroks/{purok}', [BarangayController::class, 'updatePurok'])
+            ->middleware('permission:manage_reference_data')->name('api.admin.puroks.update');
+        Route::delete('/puroks/{purok}', [BarangayController::class, 'destroyPurok'])
+            ->middleware('permission:manage_reference_data')->name('api.admin.puroks.destroy');
 
         // Health concern hint rules — the admin-editable half of the
         // Rule-Based Health Concern Hints (the read-only half is
-        // `GET /symptom-rules` above).
+        // `GET /symptom-rules` above). Lives under manage_settings because
+        // System Settings is the screen that manages them.
         Route::get('/symptom-rules', [SymptomRuleController::class, 'index'])
-            ->name('api.admin.symptom-rules');
+            ->middleware('permission:manage_settings')->name('api.admin.symptom-rules');
         Route::post('/symptom-rules', [SymptomRuleController::class, 'store'])
-            ->name('api.admin.symptom-rules.store');
+            ->middleware('permission:manage_settings')->name('api.admin.symptom-rules.store');
         Route::patch('/symptom-rules/{symptomRule}', [SymptomRuleController::class, 'update'])
-            ->name('api.admin.symptom-rules.update');
+            ->middleware('permission:manage_settings')->name('api.admin.symptom-rules.update');
         Route::delete('/symptom-rules/{symptomRule}', [SymptomRuleController::class, 'destroy'])
-            ->name('api.admin.symptom-rules.destroy');
+            ->middleware('permission:manage_settings')->name('api.admin.symptom-rules.destroy');
 
-        // Security audit trail (item 7) — read-only, admin-only. The table
+        // Security audit trail (item 7) — read-only. The table
         // endpoint is paginated and filterable; the actions endpoint feeds
         // the UI's filter dropdown from the canonical vocabulary.
         Route::get('/activity-logs', [ActivityLogController::class, 'index'])
-            ->name('api.admin.activity-logs');
+            ->middleware('permission:view_activity_logs')->name('api.admin.activity-logs');
         Route::get('/activity-logs/actions', [ActivityLogController::class, 'actions'])
-            ->name('api.admin.activity-logs.actions');
+            ->middleware('permission:view_activity_logs')->name('api.admin.activity-logs.actions');
     });
 });

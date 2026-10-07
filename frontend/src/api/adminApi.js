@@ -27,12 +27,42 @@ export const adminApi = {
   /**
    * Create a staff account (admin/doctor/technician). Farmer accounts come
    * from public self-registration, so the server rejects that role here.
-   * `password` + `password_confirmation` must match the registration policy.
+   *
+   * With `password` + `password_confirmation` (matching the registration
+   * policy), the account signs in with them immediately. WITHOUT a password
+   * the account is invited: the server emails a one-time setup link (when a
+   * mailer is configured) and ALWAYS returns `setup_url` on the response so
+   * the admin can hand it over directly — real email delivery is an SMTP
+   * configuration away, not a code change. Resolves to
+   * `{ ...user, setup_url }`.
    */
   createUser: async (payload) => {
     await ensureCsrfCookie();
-    return unwrap(await api.post("/api/v1/admin/users", payload));
+    const response = await api.post("/api/v1/admin/users", payload);
+
+    return {
+      ...unwrap(response),
+      setup_url: response.data?.setup_url ?? null,
+    };
   },
+
+  /**
+   * Deactivate several accounts in one request. Resolves to
+   * { updated, failed_ids } — the actor's own account is refused by the
+   * server (mirrored by disabling its checkbox), never a batch crash.
+   */
+  bulkDeactivateUsers: async (ids) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/admin/users/bulk-deactivate", { ids }));
+  },
+
+  /**
+   * One account's activity trail: { user, activity } — the activity rows are
+   * events performed BY the account (sign-ins, password work) and ABOUT it
+   * (created, invited, edited, role changed, deactivated, reactivated).
+   */
+  userActivity: async (userId) =>
+    unwrap(await api.get(`/api/v1/admin/users/${userId}/activity`)),
 
   /**
    * Edit an account's name/email, and its role when one is sent. A role
@@ -129,5 +159,67 @@ export const adminApi = {
 
     const query = params.toString();
     return `${base}/api/v1/admin/monitoring-records/export${query ? `?${query}` : ""}`;
+  },
+
+  // ── Roles & Permissions: the capability matrix ──────────────────────────
+
+  /**
+   * The whole capability matrix: { roles: [{key,label}], groups:
+   * [{group, permissions: [{key, label, granted: {admin: bool, ...}}]}],
+   * manage_roles_holders: {role: activeAccountCount} }.
+   */
+  getRolePermissions: async () =>
+    unwrap(await api.get("/api/v1/admin/roles/permissions")),
+
+  /**
+   * Flip one cell of the matrix. Resolves to the fresh matrix (the server's
+   * answer, not an optimistic guess). The server refuses (422) a change that
+   * would leave no active account holding manage_roles.
+   */
+  setRolePermission: async (role, permissionKey, granted) =>
+    unwrap(
+      await api.patch(`/api/v1/admin/roles/${role}/permissions`, {
+        permission: permissionKey,
+        granted,
+      }),
+    ),
+
+  // ── Reference data: barangays & puroks (System Settings) ────────────────
+  //
+  // Puroks can be added, renamed and deleted while unused. Barangays can be
+  // added and re-centered but never renamed — the server drops a name on
+  // PATCH because free-text historical addresses normalize against it.
+
+  /** Add a coverage area: { name, latitude, longitude }. */
+  createBarangay: async (payload) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/admin/barangays", payload));
+  },
+
+  /** Re-center a barangay: { latitude, longitude }. Name is immutable. */
+  updateBarangay: async (barangayId, payload) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.patch(`/api/v1/admin/barangays/${barangayId}`, payload));
+  },
+
+  /** Record a purok/sitio in one barangay: { name, latitude?, longitude? }. */
+  createPurok: async (barangayId, payload) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post(`/api/v1/admin/barangays/${barangayId}/puroks`, payload));
+  },
+
+  /** Rename / re-center / un-placeholder a purok. */
+  updatePurok: async (purokId, payload) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.patch(`/api/v1/admin/puroks/${purokId}`, payload));
+  },
+
+  /**
+   * Delete a purok. Resolves true; rejects with the server's 409 message when
+   * households still reference it.
+   */
+  deletePurok: async (purokId) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.delete(`/api/v1/admin/puroks/${purokId}`));
   },
 };

@@ -18,12 +18,12 @@ class AdminUserStoreRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->role === 'admin';
+        return $this->user()?->hasPermission('manage_users');
     }
 
     protected function failedAuthorization(): never
     {
-        abort(403, 'Administrator access required.');
+        abort(403, 'You do not have permission to perform this action.');
     }
 
     /**
@@ -37,10 +37,12 @@ class AdminUserStoreRequest extends FormRequest
             // Staff roles only — self-registration is the farmer path, and it
             // creates the beneficiary record this screen cannot.
             'role' => ['required', 'string', Rule::in(User::STAFF_ROLES)],
-            // Same policy as registration (Password::defaults(): min 8, mixed
-            // case, number, symbol), confirmed so a typo cannot lock a new
-            // staff member out of the account the administrator just made.
-            'password' => ['required', 'string', Password::defaults(), 'confirmed'],
+            // OPTIONAL — the invite path. Sent: the account signs in with it
+            // (same policy as registration: min 8, mixed case, number,
+            // symbol, confirmed so a typo cannot lock the person out).
+            // Omitted: the account is created passwordless and receives a
+            // one-time setup link to set their own password.
+            'password' => ['nullable', 'string', Password::defaults(), 'confirmed'],
         ];
     }
 

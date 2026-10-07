@@ -393,4 +393,205 @@ class AdminUserManagementTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['status']);
     }
+
+    // ── Bulk deactivation ───────────────────────────────────────────────────
+
+    public function test_admin_can_bulk_deactivate_accounts(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $targets = User::factory()->count(3)->create(['role' => 'farmer']);
+
+        $this->actingAs($admin)
+            ->postJson('/api/v1/admin/users/bulk-deactivate', ['ids' => $targets->pluck('id')->all()])
+            ->assertOk()
+            ->assertJsonPath('data.updated', 3)
+            ->assertJsonPath('data.failed_ids', []);
+
+        foreach ($targets as $target) {
+            $this->assertSoftDeleted('users', ['id' => $target->id]);
+            $this->assertDatabaseHas('activity_logs', [
+                'action' => 'user_deactivated',
+                'target_id' => $target->id,
+            ]);
+        }
+    }
+
+    public function test_bulk_deactivation_skips_the_actor_instead_of_failing(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $other = User::factory()->create(['role' => 'technician']);
+
+        $this->actingAs($admin)
+            ->postJson('/api/v1/admin/users/bulk-deactivate', ['ids' => [$admin->id, $other->id]])
+            ->assertOk()
+            ->assertJsonPath('data.updated', 1)
+            ->assertJsonPath('data.failed_ids', [$admin->id]);
+
+        $this->assertNotSoftDeleted('users', ['id' => $admin->id]);
+        $this->assertSoftDeleted('users', ['id' => $other->id]);
+    }
+
+    public function test_bulk_deactivation_rejects_unknown_and_deactivated_ids(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $gone = User::factory()->create(['role' => 'farmer']);
+        $gone->delete();
+
+        $this->actingAs($admin)
+            ->postJson('/api/v1/admin/users/bulk-deactivate', ['ids' => [999999]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['ids.0']);
+
+        $this->actingAs($admin)
+            ->postJson('/api/v1/admin/users/bulk-deactivate', ['ids' => [$gone->id]])
+            ->assertUnprocessable();
+    }
+
+    // ── Per-account activity ────────────────────────────────────────────────
+
+    public function test_activity_endpoint_returns_the_account_trail(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        // Create through the real path so the user_created audit row exists.
+        $this->actingAs($admin)
+            ->postJson('/api/v1/admin/users', [
+                'name' => 'Trail Tech',
+                'email' => 'trail.tech@example.com',
+                'role' => 'technician',
+                'password' => 'Str0ng!Pass',
+                'password_confirmation' => 'Str0ng!Pass',
+            ])
+            ->assertStatus(201);
+
+        $technician = User::where('email', 'trail.tech@example.com')->first();
+
+        // Sign the technician in — stamps last_login_at and writes the login audit row.
+        $this->postJson('/api/v1/login', ['identifier' => $technician->email, 'password' => 'Str0ng!Pass'])
+            ->assertOk();
+
+        $data = $this->actingAs($admin)
+            ->getJson("/api/v1/admin/users/{$technician->id}/activity")
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('technician', $data['user']['role']);
+        $this->assertNotNull($data['user']['last_login_at']);
+        $this->assertSame($admin->id, $data['user']['created_by']);
+        $this->assertSame($admin->name, $data['user']['created_by_name']);
+
+        $actions = collect($data['activity'])->pluck('action')->all();
+        $this->assertContains('login', $actions);
+        $this->assertContains('user_created', $actions);
+    }
+
+    public function test_role_changes_appear_in_the_account_activity(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $technician = User::factory()->create(['role' => 'technician']);
+
+        $this->actingAs($admin)
+            ->patchJson("/api/v1/admin/users/{$technician->id}/role", ['role' => 'doctor'])
+            ->assertOk();
+
+        $activity = $this->actingAs($admin)
+            ->getJson("/api/v1/admin/users/{$technician->id}/activity")
+            ->assertOk()
+            ->json('data.activity');
+
+        $roleChange = collect($activity)->firstWhere('action', 'role_changed');
+        $this->assertNotNull($roleChange);
+        $this->assertSame('technician', $roleChange['context']['previous_role']);
+        $this->assertSame('doctor', $roleChange['context']['new_role']);
+    }
+
+    // ── Barangay filter ─────────────────────────────────────────────────────
+
+    public function test_the_list_filters_farmers_by_barangay(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $here = User::factory()->create(['role' => 'farmer']);
+        $there = User::factory()->create(['role' => 'farmer']);
+        \App\Models\Beneficiary::factory()->forFarmer($here)->create(['address' => 'Dawis']);
+        \App\Models\Beneficiary::factory()->forFarmer($there)->create(['address' => 'Tayawan']);
+
+        $ids = $this->actingAs($admin)
+            ->getJson('/api/v1/admin/users?role=farmer&barangay=Dawis')
+            ->assertOk()
+            ->collect('data.*.id');
+
+        $this->assertContains($here->id, $ids);
+        $this->assertNotContains($there->id, $ids);
+    }
+
+    // ── Invite flow (passwordless staff account) ────────────────────────────
+
+    public function test_creating_an_account_without_a_password_returns_a_setup_link(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($admin)
+            ->postJson('/api/v1/admin/users', [
+                'name' => 'Invited Vet',
+                'email' => 'invited.vet@example.com',
+                'role' => 'doctor',
+            ])
+            ->assertStatus(201);
+
+        $this->assertNotNull($response->json('setup_url'));
+        $this->assertStringContainsString('/reset-password?token=', $response->json('setup_url'));
+
+        // The account cannot sign in yet — nobody knows its password.
+        $this->postJson('/api/v1/login', [
+            'identifier' => 'invited.vet@example.com',
+            'password' => 'whatever-comes-to-mind',
+        ])->assertUnprocessable();
+    }
+
+    public function test_the_invited_staff_member_sets_their_own_password(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $setupUrl = $this->actingAs($admin)
+            ->postJson('/api/v1/admin/users', [
+                'name' => 'Invited Tech',
+                'email' => 'invited.tech@example.com',
+                'role' => 'technician',
+            ])
+            ->assertStatus(201)
+            ->json('setup_url');
+
+        // Parse the token out of the SPA link the admin received.
+        parse_str((string) parse_url((string) $setupUrl, PHP_URL_QUERY), $query);
+        $this->assertArrayHasKey('token', $query);
+
+        // The invitee completes the SAME endpoint the public reset flow uses.
+        $this->postJson('/api/v1/reset-password', [
+            'token' => $query['token'],
+            'email' => 'invited.tech@example.com',
+            'password' => 'MyOwn!Pass1',
+            'password_confirmation' => 'MyOwn!Pass1',
+        ])->assertOk();
+
+        // ...and signs in with the password they chose.
+        $this->postJson('/api/v1/login', [
+            'identifier' => 'invited.tech@example.com',
+            'password' => 'MyOwn!Pass1',
+        ])->assertOk();
+    }
+
+    public function test_a_passwordless_invite_is_audited_as_an_invitation(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)
+            ->postJson('/api/v1/admin/users', [
+                'name' => 'Invited Vet',
+                'email' => 'invited2.vet@example.com',
+                'role' => 'doctor',
+            ])
+            ->assertStatus(201);
+
+        $this->assertDatabaseHas('activity_logs', ['action' => 'user_invited']);
+    }
 }

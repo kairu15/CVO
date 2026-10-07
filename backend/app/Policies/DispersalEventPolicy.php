@@ -14,11 +14,15 @@ class DispersalEventPolicy
      */
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, ['admin', 'doctor', 'technician', 'farmer'], true);
+        return $user->hasPermission('dispersals.view');
     }
 
     public function view(User $user, DispersalEvent $event): bool
     {
+        if (! $user->hasPermission('dispersals.view')) {
+            return false;
+        }
+
         if (in_array($user->role, ['admin', 'doctor'], true)) {
             return true;
         }
@@ -39,11 +43,15 @@ class DispersalEventPolicy
      */
     public function create(User $user): bool
     {
-        return in_array($user->role, ['admin', 'technician', 'farmer'], true);
+        return $user->hasPermission('dispersals.create');
     }
 
     public function update(User $user, DispersalEvent $event): bool
     {
+        if (! $user->hasPermission('dispersals.update')) {
+            return false;
+        }
+
         if ($user->role === 'admin') {
             return true;
         }
@@ -54,6 +62,10 @@ class DispersalEventPolicy
 
     public function delete(User $user, DispersalEvent $event): bool
     {
+        if (! $user->hasPermission('dispersals.delete')) {
+            return false;
+        }
+
         return $user->role === 'admin'
             || ($user->role === 'technician'
                 && $event->beneficiary->technician_id === $user->id);

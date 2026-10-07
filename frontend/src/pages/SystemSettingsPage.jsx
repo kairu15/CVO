@@ -1,31 +1,43 @@
 import { useCallback, useEffect, useState } from "react";
 import { settingsApi } from "../api/settingsApi";
+import { adminApi } from "../api/adminApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { InlineAlert } from "../components/InlineAlert";
 import { SkeletonList } from "../components/Skeleton";
 import { Icon } from "../components/Icons";
 import { SymptomRulesEditor } from "../components/SymptomRulesEditor";
+import { useToast } from "../context/ToastContext";
 import { getRole } from "../config/roles";
 
 /**
  * Admin "System Settings" screen.
  *
- * Four sections with three different natures, grouped rather than listed flat:
+ * Sections with three different natures, grouped rather than listed flat:
  *
  * - Office contact profile — DATA. The office edits it (the phone number
  *   changes when the office moves), and the public landing page, the farmer
  *   Support page and the password-reset note read it back through
  *   `GET /api/v1/site`.
- * - Alerts & thresholds — POLICY. The vaccination cycle used to be a config
- *   value, which made a clinical decision a code deploy. It is a setting now,
- *   read by every derived surface through SettingsService.
+ * - Alerts & thresholds — POLICY. The vaccination cycle and the field-visit
+ *   overdue window used to be config values, which made a clinical decision a
+ *   code deploy. They are settings now, read by every derived surface through
+ *   the backend SettingsService.
  * - Session — the SPA's own inactivity auto-logout. The server's session
  *   ceilings sit beside it READ-ONLY, because they are enforced by the
  *   framework's session configuration and genuinely cannot change without a
  *   restart. Showing them is the honest option: the admin needs to see the
  *   limit the client window must stay under.
- * - Barangays & vocabularies — read-only on purpose. Both validate existing
- *   records, so an edited copy here could drift from what the server enforces.
+ * - Animal types — the suggested species vocabulary the forms offer. It stays
+ *   a suggestion (the importer keeps unknown workbook values as their own
+ *   type), but the list is data now, so a new program category needs no deploy.
+ * - Notification preferences — which stored event types and smart-alert rules
+ *   actually write notification rows. A disabled smart-alert rule also clears
+ *   the rows it had already written on the next scan.
+ * - Reference data — puroks/sitios are managed here (add, rename, delete
+ *   while unused; beneficiaries point at them by id, so renames are safe).
+ *   Barangays can be added and re-centered but not renamed — the free-text
+ *   historical addresses normalize against the list, so a rename would orphan
+ *   them. Form vocabularies stay read-only for the same reason.
  *
  * Each writable section saves only its own keys, so an edit to one group can
  * never blank another.
@@ -73,6 +85,40 @@ const ALERT_FIELDS = [
     max: 365,
     hint: "How far ahead of the due date the animal starts showing as due soon.",
   },
+  {
+    key: "field_visit_overdue_days",
+    label: "Field-visit overdue (days)",
+    min: 1,
+    max: 3650,
+    hint: "How stale a household's latest field visit may get before the daily smart-alert scan flags it.",
+  },
+];
+
+/**
+ * The notification switches, grouped the way the notifications screen reads.
+ * `type` is the server's event vocabulary; `key` is the settings key the
+ * toggle saves under.
+ */
+const NOTIFICATION_PREFERENCES = [
+  {
+    group: "Events",
+    items: [
+      { key: "notify_registration_new", type: "registration-new", label: "New registration submitted" },
+      { key: "notify_registration_accepted", type: "registration-accepted", label: "Registration accepted" },
+      { key: "notify_technician_assigned", type: "technician-assigned", label: "Technician assigned" },
+      { key: "notify_technician_reassigned", type: "technician-reassigned", label: "Technician reassigned" },
+      { key: "notify_field_visit_photo", type: "field-visit-photo", label: "Field visit photo uploaded" },
+    ],
+  },
+  {
+    group: "Smart alerts (daily scan)",
+    items: [
+      { key: "notify_smart_vaccination_overdue", type: "smart-vaccination-overdue", label: "Overdue vaccination" },
+      { key: "notify_smart_bcs_out_of_range", type: "smart-bcs-out-of-range", label: "Body condition out of range" },
+      { key: "notify_smart_no_recent_visit", type: "smart-no-recent-visit", label: "No recent field visit" },
+      { key: "notify_smart_barangay_flag", type: "smart-barangay-flag", label: "Barangay concern flag" },
+    ],
+  },
 ];
 
 /** Shared input row: label wraps the control, hint doubles as error slot. */
@@ -102,6 +148,20 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
   const [profile, setProfile] = useState({});
   const [alerts, setAlerts] = useState({});
   const [session, setSession] = useState({});
+  const [animalTypes, setAnimalTypes] = useState([]);
+  const [newAnimalType, setNewAnimalType] = useState("");
+  const [notifications, setNotifications] = useState({});
+
+  // Reference-data editor state (puroks are row operations, saved immediately
+  // rather than through the section-save pattern — each change is its own
+  // API call, and the canonical list is refetched after every one).
+  const [newPurokByBarangay, setNewPurokByBarangay] = useState({});
+  const [renamingPurokId, setRenamingPurokId] = useState(null);
+  const [renamePurokValue, setRenamePurokValue] = useState("");
+  const [confirmingPurokId, setConfirmingPurokId] = useState(null);
+  const [newBarangay, setNewBarangay] = useState({ name: "", latitude: "", longitude: "" });
+  const [refBusy, setRefBusy] = useState(false);
+  const toast = useToast();
 
   // Which section's Save button is in flight — so only that button shows a
   // spinner and the others stay usable.
@@ -113,6 +173,8 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
     setProfile(settings.office_profile ?? {});
     setAlerts(settings.alerts ?? {});
     setSession(settings.session ?? {});
+    setAnimalTypes(settings.animal_types ?? []);
+    setNotifications(settings.notifications ?? {});
   }, []);
 
   const load = useCallback(async () => {
@@ -125,6 +187,16 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
       setError(getErrorMessage(err));
     } finally {
       setLoading(false);
+    }
+  }, [apply]);
+
+  // Refetch without the full-page skeleton — for row operations (purok add /
+  // rename / delete) where the screen should stay put.
+  const refetchQuietly = useCallback(async () => {
+    try {
+      apply(await settingsApi.get());
+    } catch (err) {
+      setError(getErrorMessage(err));
     }
   }, [apply]);
 
@@ -167,6 +239,80 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
   }
 
   const saving = savingSection !== null;
+
+  // ── Reference data (puroks / barangays) ─────────────────────────────────
+  // Each mutation is its own request, then the canonical list is refetched so
+  // the screen never drifts from what the server has.
+
+  async function runRefAction(action, successMessage) {
+    setRefBusy(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await action();
+      await refetchQuietly();
+      toast.success(successMessage);
+      return true;
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+      return false;
+    } finally {
+      setRefBusy(false);
+    }
+  }
+
+  async function addPurok(barangay) {
+    const name = (newPurokByBarangay[barangay.id] ?? "").trim();
+    if (!name) return;
+
+    const ok = await runRefAction(
+      () => adminApi.createPurok(barangay.id, { name }),
+      `Purok "${name}" added to ${barangay.name}.`,
+    );
+
+    if (ok) setNewPurokByBarangay((prev) => ({ ...prev, [barangay.id]: "" }));
+  }
+
+  async function renamePurok(purok) {
+    const name = renamePurokValue.trim();
+    if (!name || name === purok.name) {
+      setRenamingPurokId(null);
+      return;
+    }
+
+    const ok = await runRefAction(
+      () => adminApi.updatePurok(purok.id, { name }),
+      "Purok renamed. Registered households now show the new name.",
+    );
+
+    if (ok) setRenamingPurokId(null);
+  }
+
+  async function deletePurok(purok) {
+    const ok = await runRefAction(
+      () => adminApi.deletePurok(purok.id),
+      `Purok "${purok.name}" deleted.`,
+    );
+
+    if (ok) setConfirmingPurokId(null);
+  }
+
+  async function addBarangay(event) {
+    event.preventDefault();
+
+    const ok = await runRefAction(
+      () =>
+        adminApi.createBarangay({
+          name: newBarangay.name.trim(),
+          latitude: newBarangay.latitude,
+          longitude: newBarangay.longitude,
+        }),
+      `Barangay "${newBarangay.name.trim()}" is now covered.`,
+    );
+
+    if (ok) setNewBarangay({ name: "", latitude: "", longitude: "" });
+  }
 
   return (
     <div className="space-y-6">
@@ -379,34 +525,387 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
             </div>
           </section>
 
-          {/* Read-only: the barangay list */}
+          {/* Writable: the suggested animal-type vocabulary */}
           <section className="card p-6">
-            <div className="flex items-center justify-between">
-              <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
-                Barangays covered
-              </h3>
-              <span className="inline-flex items-center gap-1.5 rounded-pill bg-slate-100 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-slate-600 uppercase">
-                <Icon name="lock" className="h-3 w-3" />
-                Read-only
-              </span>
-            </div>
+            <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
+              Animal types
+            </h3>
             <p className="mt-1.5 text-xs text-slate-500">
-              The registration form's dropdown and every address validation
-              normalize against this list. Changing it is a deploy, not a
-              setting — renaming a barangay would orphan historical records that
-              spell it the old way.
+              The species list the forms suggest. It never becomes a filter on
+              existing records — the import keeps every value it finds, even one
+              not listed here — so adding a program category is safe. Saved as
+              one list.
             </p>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              {data.barangays.map((barangay) => (
+              {animalTypes.map((type) => (
                 <span
-                  key={barangay}
-                  className="rounded-pill bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800"
+                  key={type}
+                  className="inline-flex items-center gap-1.5 rounded-pill bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800"
                 >
-                  {barangay}
+                  {type}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${type}`}
+                    disabled={saving}
+                    onClick={() =>
+                      setAnimalTypes((prev) => prev.filter((t) => t !== type))
+                    }
+                    className="text-brand-600 hover:text-rose-600 disabled:opacity-40"
+                  >
+                    <Icon name="close" className="h-3 w-3" />
+                  </button>
                 </span>
               ))}
+              {animalTypes.length === 0 && (
+                <p className="text-xs text-slate-500">No types yet — add the first one below.</p>
+              )}
             </div>
+
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                save(
+                  "animal_types",
+                  ["animal_types"],
+                  { animal_types: animalTypes },
+                  "Animal types saved. New registrations offer the updated list.",
+                );
+              }}
+              className="mt-4 flex flex-wrap items-end gap-3"
+            >
+              <Field
+                id="new-animal-type"
+                label="Add a type"
+                hint="Shown as a suggestion on forms."
+                error={fieldErrors["animal_types"]}
+              >
+                <input
+                  id="new-animal-type"
+                  type="text"
+                  maxLength={50}
+                  value={newAnimalType}
+                  onChange={(event) => setNewAnimalType(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      const trimmed = newAnimalType.trim();
+                      if (trimmed && !animalTypes.includes(trimmed)) {
+                        setAnimalTypes((prev) => [...prev, trimmed]);
+                      }
+                      setNewAnimalType("");
+                    }
+                  }}
+                  className="field mt-1 w-48 text-sm"
+                />
+              </Field>
+              <button
+                type="button"
+                disabled={saving || !newAnimalType.trim()}
+                onClick={() => {
+                  const trimmed = newAnimalType.trim();
+                  if (trimmed && !animalTypes.includes(trimmed)) {
+                    setAnimalTypes((prev) => [...prev, trimmed]);
+                  }
+                  setNewAnimalType("");
+                }}
+                className="btn-secondary inline-flex items-center gap-2 rounded-pill px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                <Icon name="plus" className="h-4 w-4" />
+                Add
+              </button>
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="btn-primary inline-flex items-center gap-2 rounded-pill px-5 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                {savingSection === "animal_types" ? "Saving…" : "Save animal types"}
+                {savingSection !== "animal_types" && <Icon name="check" className="h-4 w-4" />}
+              </button>
+            </form>
+          </section>
+
+          {/* Writable: which notifications actually write rows */}
+          <section className="card p-6">
+            <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
+              Notification preferences
+            </h3>
+            <p className="mt-1.5 text-xs text-slate-500">
+              Which events and smart-alert rules create a notification. Turning
+              a smart alert off also clears the flags it had already written, on
+              the next daily scan.
+            </p>
+
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                const items = NOTIFICATION_PREFERENCES.flatMap((group) => group.items);
+                const keys = items.map((item) => item.key);
+                const values = Object.fromEntries(
+                  items.map((item) => [item.key, notifications[item.type] ?? true]),
+                );
+                save(
+                  "notifications",
+                  keys,
+                  values,
+                  "Notification preferences saved. Future events follow them now.",
+                );
+              }}
+              className="mt-4 grid gap-6 sm:grid-cols-2"
+            >
+              {NOTIFICATION_PREFERENCES.map((group) => (
+                <fieldset key={group.group}>
+                  <legend className="text-xs font-semibold text-slate-700">{group.group}</legend>
+                  <ul className="mt-2 space-y-2">
+                    {group.items.map((item) => (
+                      <li
+                        key={item.key}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2"
+                      >
+                        <label
+                          htmlFor={`notify-${item.key}`}
+                          className="text-xs font-medium text-slate-700"
+                        >
+                          {item.label}
+                        </label>
+                        <input
+                          id={`notify-${item.key}`}
+                          type="checkbox"
+                          checked={notifications[item.type] ?? true}
+                          onChange={(event) =>
+                            setNotifications((prev) => ({
+                              ...prev,
+                              [item.type]: event.target.checked,
+                            }))
+                          }
+                          className="h-4 w-4 accent-brand-700"
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </fieldset>
+              ))}
+
+              <div className="sm:col-span-2">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="btn-primary inline-flex items-center gap-2 rounded-pill px-5 py-2 text-sm font-semibold disabled:opacity-60"
+                >
+                  {savingSection === "notifications" ? "Saving…" : "Save notification preferences"}
+                  {savingSection !== "notifications" && <Icon name="check" className="h-4 w-4" />}
+                </button>
+              </div>
+            </form>
+          </section>
+
+          {/* Writable: reference data (puroks) + add-only barangays */}
+          <section className="card p-6">
+            <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
+              Reference data
+            </h3>
+            <p className="mt-1.5 text-xs text-slate-500">
+              The barangays the program covers and the puroks inside them.
+              Puroks can be added, renamed and deleted while no household is
+              registered in them — the registration form's dropdown follows
+              immediately. Barangays can be added but not renamed: renaming one
+              would orphan every historical address that spells it the old way.
+            </p>
+
+            <div className="mt-4 space-y-4">
+              {data.barangays.map((barangay) => (
+                <div key={barangay.id} className="rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+                    <p className="text-sm font-semibold text-slate-800">{barangay.name}</p>
+                    <span className="text-[11px] text-slate-500">
+                      {barangay.puroks.length}{" "}
+                      {barangay.puroks.length === 1 ? "purok" : "puroks"}
+                    </span>
+                  </div>
+
+                  <ul className="divide-y divide-slate-50 px-4">
+                    {barangay.puroks.map((purok) => (
+                      <li key={purok.id} className="flex items-center justify-between gap-3 py-2">
+                        {renamingPurokId === purok.id ? (
+                          <span className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={renamePurokValue}
+                              onChange={(event) => setRenamePurokValue(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  renamePurok(purok);
+                                }
+                              }}
+                              className="field w-48 text-sm"
+                              aria-label="Purok name"
+                            />
+                            <button
+                              type="button"
+                              disabled={refBusy}
+                              onClick={() => renamePurok(purok)}
+                              className="text-xs font-semibold text-brand-700 hover:text-brand-900 disabled:opacity-50"
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRenamingPurokId(null)}
+                              className="text-xs text-slate-500 hover:text-slate-700"
+                            >
+                              Cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-2 text-xs text-slate-700">
+                            {purok.name}
+                            {purok.is_placeholder && (
+                              <span className="rounded-pill bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 uppercase">
+                                Placeholder
+                              </span>
+                            )}
+                          </span>
+                        )}
+
+                        {renamingPurokId !== purok.id && (
+                          <span className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              disabled={refBusy}
+                              onClick={() => {
+                                setRenamingPurokId(purok.id);
+                                setRenamePurokValue(purok.name);
+                              }}
+                              className="text-xs font-semibold text-brand-700 hover:text-brand-900 disabled:opacity-50"
+                            >
+                              Rename
+                            </button>
+                            {confirmingPurokId === purok.id ? (
+                              <span className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={refBusy}
+                                  onClick={() => deletePurok(purok)}
+                                  className="rounded-pill bg-rose-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                                >
+                                  Confirm delete
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmingPurokId(null)}
+                                  className="text-xs text-slate-500 hover:text-slate-700"
+                                >
+                                  Cancel
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={refBusy}
+                                onClick={() => setConfirmingPurokId(purok.id)}
+                                className="text-xs font-semibold text-rose-600 hover:text-rose-700 disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                    {barangay.puroks.length === 0 && (
+                      <li className="py-2 text-xs text-slate-500">No puroks recorded yet.</li>
+                    )}
+                  </ul>
+
+                  <div className="flex items-end gap-2 px-4 py-3">
+                    <input
+                      type="text"
+                      value={newPurokByBarangay[barangay.id] ?? ""}
+                      onChange={(event) =>
+                        setNewPurokByBarangay((prev) => ({
+                          ...prev,
+                          [barangay.id]: event.target.value,
+                        }))
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addPurok(barangay);
+                        }
+                      }}
+                      placeholder="New purok / sitio name"
+                      className="field w-56 text-sm"
+                      aria-label={`New purok in ${barangay.name}`}
+                    />
+                    <button
+                      type="button"
+                      disabled={refBusy || !newPurokByBarangay[barangay.id]?.trim()}
+                      onClick={() => addPurok(barangay)}
+                      className="btn-secondary inline-flex items-center gap-1.5 rounded-pill px-4 py-2 text-xs font-semibold disabled:opacity-60"
+                    >
+                      <Icon name="plus" className="h-3.5 w-3.5" />
+                      Add purok
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <form onSubmit={addBarangay} className="mt-6 rounded-xl border border-slate-200 p-4">
+              <p className="text-xs font-semibold text-slate-700">Add a barangay</p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                The map center is used for GPS auto-detect. New barangays appear
+                at the end of every dropdown.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                <input
+                  type="text"
+                  required
+                  minLength={2}
+                  maxLength={255}
+                  value={newBarangay.name}
+                  onChange={(event) =>
+                    setNewBarangay((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  placeholder="Barangay name"
+                  className="field text-sm"
+                  aria-label="Barangay name"
+                />
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  value={newBarangay.latitude}
+                  onChange={(event) =>
+                    setNewBarangay((prev) => ({ ...prev, latitude: event.target.value }))
+                  }
+                  placeholder="Latitude"
+                  className="field text-sm"
+                  aria-label="Latitude"
+                />
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  value={newBarangay.longitude}
+                  onChange={(event) =>
+                    setNewBarangay((prev) => ({ ...prev, longitude: event.target.value }))
+                  }
+                  placeholder="Longitude"
+                  className="field text-sm"
+                  aria-label="Longitude"
+                />
+                <button
+                  type="submit"
+                  disabled={refBusy}
+                  className="btn-primary inline-flex items-center justify-center gap-2 rounded-pill px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                >
+                  {refBusy ? "Working…" : "Add barangay"}
+                </button>
+              </div>
+            </form>
           </section>
 
           {/* Read-only: form vocabularies */}

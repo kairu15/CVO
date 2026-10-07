@@ -13,12 +13,12 @@ class AdminBeneficiariesRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->role === 'admin';
+        return $this->user()?->hasPermission('assign_technicians');
     }
 
     protected function failedAuthorization(): never
     {
-        abort(403, 'Administrator access required.');
+        abort(403, 'You do not have permission to perform this action.');
     }
 
     /**

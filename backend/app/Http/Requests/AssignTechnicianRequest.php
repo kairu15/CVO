@@ -9,7 +9,7 @@ class AssignTechnicianRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->role === 'admin';
+        return $this->user()->hasPermission('assign_technicians');
     }
 
     /**

@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Notifications\AccountSetup;
 use App\Services\Auth\AuthService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -43,27 +45,68 @@ class UserAccountService
      * account from this screen would produce an account with no dispersal
      * attached — a state the rest of the system does not expect.
      *
-     * @param  array{name: string, email: string, password: string, role: string}  $attributes
+     * INVITES: `password` is optional. When the admin does not type one, the
+     * account starts with an unguessable random value it cannot sign in with
+     * and receives a one-time setup link (the Laravel password broker —
+     * hashed, single-use, time-limited) so the new staff member sets their
+     * OWN password. The link is returned to the actor as well as emailed:
+     * delivery depends on the configured mailer, and "no SMTP yet" must not
+     * block onboarding — the admin can hand the link over directly.
+     *
+     * @param  array{name: string, email: string, password?: string|null, role: string}  $attributes
+     * @return array{user: User, setup_url: string|null}
      */
-    public function create(User $actor, array $attributes): User
+    public function create(User $actor, array $attributes): array
     {
-        $user = DB::transaction(function () use ($actor, $attributes): User {
+        $invited = ($attributes['password'] ?? null) === null;
+
+        $user = DB::transaction(function () use ($actor, $attributes, $invited): User {
             // The `password` => 'hashed' cast on User hashes on assignment.
+            // For an invite, a random 32-char value holds the column: nobody
+            // knows it, so the account is unusable until the setup link
+            // completes — which is the point.
             $user = User::create([
                 'name' => $attributes['name'],
                 'email' => $attributes['email'],
-                'password' => $attributes['password'],
+                'password' => $attributes['password'] ?? Str::password(32, symbols: false),
                 'role' => $attributes['role'],
+                'created_by' => $actor->id,
             ]);
 
-            $this->audit->log($actor, 'user_created', $user, [
+            $this->audit->log($actor, $invited ? 'user_invited' : 'user_created', $user, [
                 'role' => $user->role,
+                'invited' => $invited,
             ]);
 
             return $user;
         });
 
-        return $user;
+        if (! $invited) {
+            return ['user' => $user, 'setup_url' => null];
+        }
+
+        // The same broker the public "forgot password" flow uses: the token
+        // is stored hashed, single-use, expiring per
+        // config('auth.passwords.users.expire').
+        $token = \Illuminate\Support\Facades\Password::createToken($user);
+
+        // Reuse the SPA URL shape the reset flow already publishes through
+        // ResetPassword::createUrlUsing, so both links land on the same page
+        // and completion endpoint.
+        $frontend = rtrim((string) config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:5173')), '/');
+
+        $setupUrl = $frontend.'/reset-password?token='.$token.'&email='.urlencode($user->email);
+
+        // Best effort: a mailer failure must not fail the invite — the URL is
+        // already in the admin's hands. Under the default `log` mailer this
+        // simply writes to the application log.
+        try {
+            $user->notify(new AccountSetup($setupUrl));
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return ['user' => $user, 'setup_url' => $setupUrl];
     }
 
     /**
@@ -149,5 +192,32 @@ class UserAccountService
         ]);
 
         return $target->refresh();
+    }
+
+    /**
+     * Deactivate many accounts in one request — the bulk row of the same
+     * lifecycle. Each account goes through deactivate() individually, so the
+     * self-guard, the session revocation and the per-row audit all behave
+     * exactly as the single-account path does; the actor's own account is
+     * skipped, not a crash in the middle of the batch.
+     *
+     * @param  list<int>  $ids
+     * @return array{updated: int, failed_ids: list<int>}
+     */
+    public function deactivateMany(User $actor, array $ids): array
+    {
+        $updated = 0;
+        $failed = [];
+
+        foreach (User::query()->whereIn('id', $ids)->get() as $target) {
+            try {
+                $this->deactivate($actor, $target);
+                $updated++;
+            } catch (ValidationException) {
+                $failed[] = $target->id;
+            }
+        }
+
+        return ['updated' => $updated, 'failed_ids' => $failed];
     }
 }

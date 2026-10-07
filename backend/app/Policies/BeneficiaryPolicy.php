@@ -8,6 +8,12 @@ use App\Models\User;
 class BeneficiaryPolicy
 {
     /**
+     * Capability gates come from the role_permissions matrix
+     * ($user->hasPermission); the row-scope rules below stay role-driven, so
+     * granting a capability to a role the scope rules never reach is inert.
+     */
+
+    /**
      * admin: all beneficiaries (program oversight).
      * doctor: all beneficiaries (health oversight).
      * technician: only beneficiaries assigned to them.
@@ -15,11 +21,15 @@ class BeneficiaryPolicy
      */
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, ['admin', 'doctor', 'technician', 'farmer'], true);
+        return $user->hasPermission('beneficiaries.view');
     }
 
     public function view(User $user, Beneficiary $beneficiary): bool
     {
+        if (! $user->hasPermission('beneficiaries.view')) {
+            return false;
+        }
+
         if (in_array($user->role, ['admin', 'doctor'], true)) {
             return true;
         }
@@ -37,7 +47,7 @@ class BeneficiaryPolicy
      */
     public function create(User $user): bool
     {
-        return in_array($user->role, ['admin', 'technician', 'farmer'], true);
+        return $user->hasPermission('beneficiaries.create');
     }
 
     /**
@@ -45,6 +55,10 @@ class BeneficiaryPolicy
      */
     public function update(User $user, Beneficiary $beneficiary): bool
     {
+        if (! $user->hasPermission('beneficiaries.update')) {
+            return false;
+        }
+
         if ($user->role === 'admin') {
             return true;
         }
@@ -54,7 +68,7 @@ class BeneficiaryPolicy
 
     public function delete(User $user, Beneficiary $beneficiary): bool
     {
-        return $user->role === 'admin';
+        return $user->hasPermission('beneficiaries.delete');
     }
 
     /**
@@ -62,6 +76,6 @@ class BeneficiaryPolicy
      */
     public function assignTechnician(User $user): bool
     {
-        return $user->role === 'admin';
+        return $user->hasPermission('assign_technicians');
     }
 }

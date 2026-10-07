@@ -35,26 +35,25 @@ class Barangays
     }
 
     /**
-     * Name → [lat, lng] for every covered barangay. Cache-backed at runtime;
-     * seeded DB first, config fallback second.
+     * Name → [lat, lng] for every covered barangay. Seeded DB first, config
+     * fallback second.
+     *
+     * Deliberately NOT memoized: a static cache would outlive the database
+     * state it was computed from (visible immediately in the test suite, where
+     * each test gets a fresh database but the process does not restart), and
+     * the underlying query is one tiny SELECT anyway.
      *
      * @return array<string, array{0: float, 1: float}>
      */
     public static function centers(): array
     {
-        static $cached = null;
-
-        if ($cached !== null) {
-            return $cached;
-        }
-
         $fromDb = self::namesFromDb(centersToo: true);
 
         if (is_array($fromDb)) {
-            return $cached = $fromDb;
+            return $fromDb;
         }
 
-        return $cached = collect(Config::array('barangays.entries', []))
+        return collect(Config::array('barangays.entries', []))
             ->mapWithKeys(fn (array $entry) => [
                 $entry['name'] => [(float) $entry['latitude'], (float) $entry['longitude']],
             ])

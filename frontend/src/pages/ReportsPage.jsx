@@ -1,22 +1,64 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { reportsApi } from "../api/reportsApi";
+import { monitoringApi } from "../api/monitoringApi";
 import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
+import { MonthYearDropdown } from "../components/MonthYearDropdown";
+import { AnimalTypeDropdown } from "../components/AnimalTypeDropdown";
 import { Icon } from "../components/Icons";
 import { getRole } from "../config/roles";
 
 /**
- * Admin "Reports" screen — the city-wide program overview.
+ * Admin "Reports" screen — the city-wide program overview, with charts.
  *
  * Read-only by construction: every number is the API's aggregate over records
- * some other screen owns, so the page offers filters (barangay, from-date)
- * but no authoring surface. The per-barangay table is the anchor — the summary
- * cards should always sum to it, which is what makes a wrong number on this
- * page noticeable instead of merely plausible.
+ * some other screen owns. The five charts each pull from ONE dedicated
+ * aggregation endpoint (see reportsApi) — the database computes the numbers,
+ * this page only renders them, so a chart can never quietly disagree with the
+ * per-barangay table that anchors the page.
+ *
+ * Filters follow each chart's own semantics rather than one global filter
+ * row: the dispersal charts take the barangay + date range + animal type,
+ * the type distribution takes the Monitoring Records month/year filter, and
+ * workload takes the barangay slice.
+ *
+ * Series colours are the UI's own brand/earth palette (index.css), not the
+ * charting library's defaults — a chart is part of this page, not an app
+ * embedded in it.
  */
+
+/** brand / earth tokens from index.css, as concrete values for SVG. */
+const CHART_COLORS = {
+  primary: "#558b2f", // brand-700
+  accent: "#8bc34a", // brand-400
+  deep: "#2d4d19", // brand-900
+  earth: "#a1784d", // earth-500
+  sand: "#d2b48c", // earth-300
+  clay: "#bb9469", // earth-400
+};
+
+/** The donut's slice palette: greens for the herd, earth tones for the rest. */
+const PIE_COLORS = [CHART_COLORS.primary, CHART_COLORS.accent, CHART_COLORS.earth, CHART_COLORS.sand, CHART_COLORS.deep, CHART_COLORS.clay];
+
+const AXIS_STYLE = { fontSize: 11, fill: "#64748b" };
 
 /** Small labelled figure used across the summary bands. */
 function Stat({ label, value, hint }) {
@@ -33,6 +75,66 @@ function Stat({ label, value, hint }) {
   );
 }
 
+/**
+ * One chart's data lifecycle — independent fetch, independent skeleton, so a
+ * slow chart never delays the page and a failed chart degrades to its own
+ * empty frame instead of blanking the screen.
+ */
+function useChart(loader) {
+  const [state, setState] = useState({ data: null, loading: true, error: null });
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+
+    loader()
+      .then((data) => {
+        if (active) setState({ data, loading: false, error: null });
+      })
+      .catch((err) => {
+        if (active) setState({ data: null, loading: false, error: getErrorMessage(err) });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [loader, tick]);
+
+  return { ...state, refresh: useCallback(() => setTick((t) => t + 1), []) };
+}
+
+/** Card frame: title + loading/empty/error states around the chart body. */
+function ChartCard({ title, caption, state, isEmpty, emptyTitle, emptyDescription, children }) {
+  return (
+    <section className="card p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
+          {title}
+        </h3>
+        {caption && <p className="text-xs text-slate-500">{caption}</p>}
+      </div>
+
+      {state.loading ? (
+        <div className="mt-4">
+          <SkeletonList rows={3} rowClassName="h-24" />
+        </div>
+      ) : state.error ? (
+        <div className="mt-4">
+          <InlineAlert message={state.error} />
+        </div>
+      ) : isEmpty ? (
+        <div className="mt-4">
+          <EmptyState title={emptyTitle} description={emptyDescription} />
+        </div>
+      ) : (
+        <div className="mt-4 h-72">{children}</div>
+      )}
+    </section>
+  );
+}
+
 export default function ReportsPage({ roleKey = "admin" }) {
   const config = getRole(roleKey);
 
@@ -42,6 +144,10 @@ export default function ReportsPage({ roleKey = "admin" }) {
 
   const [barangay, setBarangay] = useState("");
   const [from, setFrom] = useState("");
+  const [animalType, setAnimalType] = useState(null);
+  const [month, setMonth] = useState(null);
+  const [typeOptions, setTypeOptions] = useState([]);
+  const [monthOptions, setMonthOptions] = useState([]);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -68,17 +174,85 @@ export default function ReportsPage({ roleKey = "admin" }) {
   // Quietly re-fetch so the figures track records logged elsewhere.
   useAutoRefresh(load);
 
+  // The Monitoring Records filters' own option sources — the same lists that
+  // screen uses, so the filters cannot offer a value the data never had.
+  useEffect(() => {
+    let active = true;
+
+    monitoringApi.animalTypes().then((types) => active && setTypeOptions(types)).catch(() => {});
+    monitoringApi.months().then((months) => active && setMonthOptions(months)).catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Chart loaders — each re-runs when ITS filters move.
+  const trendState = useChart(
+    useCallback(
+      () =>
+        reportsApi.dispersalTrend({
+          barangay: barangay || undefined,
+          animal_type: animalType ?? undefined,
+          from: from || undefined,
+        }),
+      [barangay, animalType, from],
+    ),
+  );
+  const byBarangayState = useChart(
+    useCallback(
+      () => reportsApi.animalsByBarangay({ animal_type: animalType ?? undefined, from: from || undefined }),
+      [animalType, from],
+    ),
+  );
+  const complianceState = useChart(
+    useCallback(
+      () =>
+        reportsApi.vaccinationCompliance({
+          barangay: barangay || undefined,
+          animal_type: animalType ?? undefined,
+        }),
+      [barangay, animalType],
+    ),
+  );
+  const distributionState = useChart(
+    useCallback(
+      () => reportsApi.animalTypeDistribution({ month: month ?? undefined, from: from || undefined }),
+      [month, from],
+    ),
+  );
+  const workloadState = useChart(
+    useCallback(() => reportsApi.technicianWorkload({ barangay: barangay || undefined }), [barangay]),
+  );
+
   const barangays = data?.scope?.barangays ?? [];
   const program = data?.program ?? {};
   const activity = data?.activity ?? {};
   const clinical = data?.clinical ?? {};
   const rows = data?.per_barangay ?? [];
-  const trend = data?.trend ?? [];
+
+  const trend = trendState.data ?? [];
+  const byBarangay = byBarangayState.data ?? [];
+  const compliance = complianceState.data ?? [];
+  const distribution = distributionState.data ?? [];
+  const workload = workloadState.data ?? [];
+
+  // Chart-empty predicates: a chart with rows but no signal (all zeros) is an
+  // empty chart too — an empty frame beats a flat line at the axis floor.
+  const trendEmpty = trend.length === 0 || trend.every((m) => m.dispersals === 0 && m.re_dispersals === 0);
+  const byBarangayEmpty = byBarangay.length === 0 || byBarangay.every((b) => b.dispersals === 0);
+  const complianceEmpty = compliance.length === 0 || compliance.every((m) => m.rate === null);
+  const distributionEmpty = distribution.length === 0;
+  const workloadEmpty = workload.length === 0;
 
   // The busiest month leads the trend band, so the page answers "when was the
-  // program most active" without anyone reading six rows.
+  // program most active" without anyone reading twelve points.
   const peakMonth = trend.reduce(
     (best, m) => (m.dispersals > (best?.dispersals ?? -1) ? m : best),
+    null,
+  );
+  const topBarangay = byBarangay.reduce(
+    (best, b) => (b.dispersals > (best?.dispersals ?? -1) ? b : best),
     null,
   );
 
@@ -136,13 +310,25 @@ export default function ReportsPage({ roleKey = "admin" }) {
                 className="field mt-1 w-40 text-xs"
               />
             </div>
+
+            {/* The Monitoring Records filters, where they apply. */}
+            <AnimalTypeDropdown
+              types={typeOptions}
+              selected={animalType}
+              onSelect={setAnimalType}
+            />
+            <MonthYearDropdown
+              months={monthOptions}
+              selected={month}
+              onSelect={setMonth}
+            />
           </div>
         </div>
 
-        {barangay && (
-          <p className="mt-4 inline-flex items-center gap-2 rounded-pill bg-brand-50 px-3.5 py-1.5 text-xs font-semibold text-brand-800">
+        {(barangay || animalType || month) && (
+          <p className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-pill bg-brand-50 px-3.5 py-1.5 text-xs font-semibold text-brand-800">
             <Icon name="map-pin" className="h-3.5 w-3.5" />
-            Scoped to {barangay}
+            Scoped to: {[barangay || "all barangays", animalType ?? "all types", month ? `month ${month}` : "all months"].join(" · ")}
           </p>
         )}
       </section>
@@ -240,7 +426,175 @@ export default function ReportsPage({ roleKey = "admin" }) {
             </div>
           </section>
 
-          {/* Per-barangay table */}
+          {/* Chart 1 — dispersal trend over time */}
+          <ChartCard
+            title="Dispersal trend"
+            caption={
+              peakMonth && peakMonth.dispersals > 0
+                ? `Busiest: ${peakMonth.label} (${peakMonth.dispersals})`
+                : undefined
+            }
+            state={trendState}
+            isEmpty={trendEmpty}
+            emptyTitle="No dispersals in this window"
+            emptyDescription="Once animals are dispersed, the monthly trend draws itself here."
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trend} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="label" tick={AXIS_STYLE} tickLine={false} />
+                <YAxis allowDecimals={false} tick={AXIS_STYLE} tickLine={false} />
+                <Tooltip />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line
+                  type="monotone"
+                  dataKey="dispersals"
+                  name="Dispersals"
+                  stroke={CHART_COLORS.primary}
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: CHART_COLORS.primary }}
+                  activeDot={{ r: 5 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="re_dispersals"
+                  name="Re-dispersals"
+                  stroke={CHART_COLORS.earth}
+                  strokeWidth={2}
+                  strokeDasharray="5 3"
+                  dot={{ r: 3, fill: CHART_COLORS.earth }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          {/* Charts 2 + 3 side by side */}
+          <section className="grid gap-6 xl:grid-cols-2">
+            <ChartCard
+              title="Animals dispersed by barangay"
+              caption={
+                topBarangay && topBarangay.dispersals > 0
+                  ? `Most: ${topBarangay.barangay} (${topBarangay.dispersals})`
+                  : undefined
+              }
+              state={byBarangayState}
+              isEmpty={byBarangayEmpty}
+              emptyTitle="No dispersals match the filter"
+              emptyDescription="Every covered barangay appears here — with zero where nothing has been dispersed yet."
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={byBarangay} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis
+                    dataKey="barangay"
+                    tick={{ ...AXIS_STYLE, fontSize: 10 }}
+                    tickLine={false}
+                    interval={0}
+                    angle={-40}
+                    textAnchor="end"
+                    height={60}
+                  />
+                  <YAxis allowDecimals={false} tick={AXIS_STYLE} tickLine={false} />
+                  <Tooltip />
+                  <Bar dataKey="dispersals" name="Dispersals" fill={CHART_COLORS.accent} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard
+              title="Vaccination compliance"
+              caption="Share of animals inside the vaccination cycle, per month"
+              state={complianceState}
+              isEmpty={complianceEmpty}
+              emptyTitle="No compliance data yet"
+              emptyDescription="The rate appears once animals are registered — before that there is nothing to be compliant with."
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={compliance} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="label" tick={AXIS_STYLE} tickLine={false} />
+                  <YAxis
+                    domain={[0, 100]}
+                    tick={AXIS_STYLE}
+                    tickLine={false}
+                    tickFormatter={(v) => `${v}%`}
+                  />
+                  <Tooltip formatter={(value) => [`${value}%`, "Compliant"]} />
+                  <Line
+                    type="monotone"
+                    dataKey="rate"
+                    name="Compliant (%)"
+                    stroke={CHART_COLORS.primary}
+                    strokeWidth={2}
+                    dot={{ r: 3, fill: CHART_COLORS.primary }}
+                    connectNulls={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </section>
+
+          {/* Charts 4 + 5 side by side */}
+          <section className="grid gap-6 xl:grid-cols-2">
+            <ChartCard
+              title="Animal type distribution"
+              caption={month ? `Monitoring records in ${month}` : "All monitoring records"}
+              state={distributionState}
+              isEmpty={distributionEmpty}
+              emptyTitle="No monitoring records match"
+              emptyDescription="The donut fills in as monitoring visits are logged."
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={distribution}
+                    dataKey="animals"
+                    nameKey="animal_type"
+                    innerRadius="55%"
+                    outerRadius="85%"
+                    paddingAngle={2}
+                  >
+                    {distribution.map((entry, index) => (
+                      <Cell key={entry.animal_type} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard
+              title="Technician workload"
+              caption="Households currently assigned, per technician"
+              state={workloadState}
+              isEmpty={workloadEmpty}
+              emptyTitle="No technicians yet"
+              emptyDescription="Technician accounts appear here as they are created under User Management."
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={workload}
+                  layout="vertical"
+                  margin={{ top: 8, right: 24, bottom: 0, left: 24 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tick={AXIS_STYLE} tickLine={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="technician"
+                    width={120}
+                    tick={{ ...AXIS_STYLE, fontSize: 10 }}
+                    tickLine={false}
+                  />
+                  <Tooltip />
+                  <Bar dataKey="households" name="Households" fill={CHART_COLORS.earth} radius={[0, 4, 4, 0]} barSize={18} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </section>
+
+          {/* Per-barangay table — the anchor the charts must agree with */}
           <section className="card overflow-hidden">
             <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
               <h3 className="font-display text-xs font-semibold tracking-wide text-slate-700 uppercase">
@@ -287,52 +641,6 @@ export default function ReportsPage({ roleKey = "admin" }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
-          </section>
-
-          {/* Dispersal trend */}
-          <section className="card p-6">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
-                Dispersals — last {trend.length} months
-              </h3>
-              {peakMonth && peakMonth.dispersals > 0 && (
-                <p className="text-xs text-slate-500">
-                  Busiest: {peakMonth.label} ({peakMonth.dispersals})
-                </p>
-              )}
-            </div>
-
-            {trend.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-500">No dispersal data yet.</p>
-            ) : (
-              <div className="mt-4 space-y-2">
-                {trend.map((m) => {
-                  const max = Math.max(...trend.map((x) => x.dispersals), 1);
-                  const width = Math.round((m.dispersals / max) * 100);
-
-                  return (
-                    <div key={m.month} className="flex items-center gap-3">
-                      <span className="w-16 shrink-0 text-xs font-semibold text-slate-600">
-                        {m.label}
-                      </span>
-                      <span className="h-5 min-w-8 flex-1 overflow-hidden rounded-pill bg-slate-100">
-                        <span
-                          className="flex h-full items-center rounded-pill bg-brand-500 px-2 text-[10px] font-bold text-white transition-all"
-                          style={{ width: `${Math.max(width, m.dispersals > 0 ? 8 : 0)}%` }}
-                        >
-                          {m.dispersals > 0 ? m.dispersals : ""}
-                        </span>
-                      </span>
-                      {m.re_dispersals > 0 && (
-                        <span className="w-24 shrink-0 text-[11px] text-slate-500">
-                          {m.re_dispersals} re-dispersal{m.re_dispersals === 1 ? "" : "s"}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
               </div>
             )}
           </section>

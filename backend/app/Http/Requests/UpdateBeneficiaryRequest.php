@@ -41,7 +41,7 @@ class UpdateBeneficiaryRequest extends FormRequest
             'sex' => ['sometimes', 'in:M,F'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'technician_id' => $this->user()?->role === 'admin'
+            'technician_id' => $this->user()?->hasPermission('assign_technicians')
                 ? ['nullable', 'integer', 'exists:users,id,role,technician']
                 : ['prohibited'],
         ];

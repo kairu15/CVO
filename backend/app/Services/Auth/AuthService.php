@@ -193,6 +193,11 @@ class AuthService
 
         $this->lockout->clear($user);
 
+        // The fact the User Management table shows per account ("last
+        // login"). saveQuietly: this is bookkeeping, not a model event the
+        // rest of the system should react to.
+        $user->forceFill(['last_login_at' => now()])->saveQuietly();
+
         $this->audit->log($user, 'login', User::class);
 
         return $user;

@@ -13,13 +13,17 @@ namespace App\Support;
  *   - surrounding and repeated whitespace ("cattle  " → "Cattle")
  *   - casing ("CATTLE" → "Cattle", "cattle" → "Cattle")
  *
- * A value that matches the suggested vocabulary in config/cvo.php takes that
- * vocabulary's exact casing; every other value is kept as its own type
- * (title-cased). A blank cell becomes "Unspecified".
+ * A value that matches the suggested vocabulary takes that vocabulary's
+ * exact casing; every other value is kept as its own type (title-cased). A
+ * blank cell becomes "Unspecified".
  *
  * So a workbook containing "Carabao", "Chicken" and "Bore" yields exactly
  * those three filter options — nothing is merged into "Poultry"/"Boar" and
  * nothing is discarded.
+ *
+ * The suggested vocabulary itself is administrator-editable (System Settings →
+ * Animal Types, stored via SettingsService) so a new program category does
+ * not need a deploy; config/cvo.php stays as the shipped default.
  */
 class AnimalTypes
 {
@@ -27,15 +31,15 @@ class AnimalTypes
     public const UNSPECIFIED = 'Unspecified';
 
     /**
-     * The suggested vocabulary (config/cvo.php → animal_types), used ONLY to
-     * give a known value its preferred casing. It never replaces or rejects a
-     * value that is absent from the list.
+     * The suggested vocabulary, used ONLY to give a known value its preferred
+     * casing. It never replaces or rejects a value that is absent from the
+     * list.
      *
      * @return list<string>
      */
     public static function suggested(): array
     {
-        return array_values(config('cvo.animal_types', []));
+        return app(\App\Services\SettingsService::class)->animalTypes();
     }
 
     /**

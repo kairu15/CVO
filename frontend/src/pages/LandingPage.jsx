@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icons";
 import { features, navLinks, site } from "../config/site";
-import { publicRoles } from "../config/roles";
+import { flatNav, publicRoles } from "../config/roles";
 import { usePublicMapSummary } from "../hooks/usePublicMapSummary";
 import { useSiteConfig } from "../hooks/useSiteConfig";
 
@@ -297,7 +297,7 @@ export default function LandingPage() {
                     {role.blurb}
                   </p>
                   <ul className="mt-4 space-y-1.5 border-t border-slate-100 pt-4">
-                    {role.nav
+                    {flatNav(role.key)
                       .filter((item) => !item.to)
                       .slice(0, 3)
                       .map((item) => (

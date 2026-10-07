@@ -17,11 +17,15 @@ class CaseNotePolicy
 {
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, User::ROLES, true);
+        return $user->hasPermission('case_notes.view');
     }
 
     public function view(User $user, CaseNote $note): bool
     {
+        if (! $user->hasPermission('case_notes.view')) {
+            return false;
+        }
+
         if (in_array($user->role, ['admin', 'doctor'], true)) {
             return true;
         }
@@ -38,7 +42,7 @@ class CaseNotePolicy
      */
     public function create(User $user): bool
     {
-        return $user->role === 'doctor';
+        return $user->hasPermission('case_notes.create');
     }
 
     /**
@@ -48,6 +52,10 @@ class CaseNotePolicy
      */
     public function update(User $user, CaseNote $note): bool
     {
+        if (! $user->hasPermission('case_notes.update')) {
+            return false;
+        }
+
         return $user->role === 'admin'
             || ($user->role === 'doctor' && $note->doctor_id === $user->id);
     }

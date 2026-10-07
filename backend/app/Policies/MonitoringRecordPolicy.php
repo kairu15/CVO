@@ -13,6 +13,10 @@ class MonitoringRecordPolicy
      */
     public function view(User $user, MonitoringRecord $record): bool
     {
+        if (! $user->hasPermission('monitoring.view')) {
+            return false;
+        }
+
         if (in_array($user->role, ['admin', 'doctor'], true)) {
             return true;
         }
@@ -29,7 +33,7 @@ class MonitoringRecordPolicy
      */
     public function create(User $user): bool
     {
-        return $user->role === 'technician';
+        return $user->hasPermission('monitoring.create');
     }
 
     /**
@@ -37,6 +41,10 @@ class MonitoringRecordPolicy
      */
     public function update(User $user, MonitoringRecord $record): bool
     {
+        if (! $user->hasPermission('monitoring.update')) {
+            return false;
+        }
+
         if (in_array($user->role, ['admin', 'doctor'], true)) {
             return true;
         }
@@ -46,6 +54,10 @@ class MonitoringRecordPolicy
 
     public function delete(User $user, MonitoringRecord $record): bool
     {
+        if (! $user->hasPermission('monitoring.delete')) {
+            return false;
+        }
+
         return $user->role === 'admin'
             || ($user->role === 'technician' && $record->technician_id === $user->id);
     }
@@ -56,7 +68,7 @@ class MonitoringRecordPolicy
      */
     public function acceptRegistration(User $user, MonitoringRecord $record): bool
     {
-        return $user->role === 'admin'
+        return $user->hasPermission('monitoring.accept-registration')
             && $record->registration_status !== MonitoringRecord::REGISTRATION_NONE;
     }
 }

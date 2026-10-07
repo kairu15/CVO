@@ -5,7 +5,7 @@ import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icons";
-import { getRole } from "../config/roles";
+import { flatNav, getRole } from "../config/roles";
 import { useAuth } from "../context/AuthContext";
 
 /**
@@ -74,7 +74,7 @@ export default function RoleDashboard({ roleKey }) {
     );
   }
 
-  const modules = config.nav.filter((item) => !item.to);
+  const modules = flatNav(config.key).filter((item) => !item.to);
 
   return (
     <div className="space-y-6">

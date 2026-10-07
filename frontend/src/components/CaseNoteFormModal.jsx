@@ -3,6 +3,7 @@ import { caseNotesApi } from "../api/caseNotesApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
@@ -39,6 +40,7 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
   const [form, setForm] = useState(EMPTY_FORM);
   const [beneficiaryId, setBeneficiaryId] = useState("");
   const toast = useToast();
+  const { user } = useAuth();
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
 
@@ -80,8 +82,30 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
   async function queueNote(createPayload) {
     await enqueue({
       kind: "case-note",
+      mode: "create",
       label: `Case note — ${beneficiary?.name_of_farmer ?? "beneficiary"}`,
       payload: createPayload,
+      userId: user?.id ?? null,
+    });
+
+    toast.success("Saved on this device — it will sync when you're back online.");
+    onSaved?.();
+    onClose();
+  }
+
+  /**
+   * Queue an EDIT of an existing note. Two notes about one animal are not a
+   * conflict (they are separate rows), but editing the SAME note can overwrite
+   * a change someone else made — the queue checks that before applying.
+   */
+  async function queueNoteEdit(payload) {
+    await enqueue({
+      kind: "case-note",
+      mode: "update",
+      serverId: note.id,
+      label: `Case note edit — ${beneficiary?.name_of_farmer ?? "beneficiary"}`,
+      payload,
+      userId: user?.id ?? null,
     });
 
     toast.success("Saved on this device — it will sync when you're back online.");
@@ -113,7 +137,22 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
       };
 
       if (editing) {
-        await caseNotesApi.update(note.id, payload);
+        // Offline: queue the edit; the queue replays it and flags a conflict
+        // if the note changed on the server in the meantime.
+        if (!isOnline()) {
+          await queueNoteEdit(payload);
+          return;
+        }
+
+        try {
+          await caseNotesApi.update(note.id, payload);
+        } catch (editError) {
+          if (isNetworkError(editError)) {
+            await queueNoteEdit(payload);
+            return;
+          }
+          throw editError;
+        }
       } else {
         const createPayload = { ...payload, beneficiary_id: Number(beneficiaryId) };
 

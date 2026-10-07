@@ -15,6 +15,7 @@ import { getErrorMessage } from "../api/client";
 import { useFlashHighlight } from "../hooks/useFlashHighlight";
 import { Icon } from "./Icons";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { SyncStatusBadge } from "./SyncStatusBadge";
 import { SkeletonList } from "./Skeleton";
 import { LogoutConfirmDialog } from "./LogoutConfirmDialog";
 
@@ -166,6 +167,10 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
 
       {/* Language — English / Filipino / Cebuano, persisted in localStorage. */}
       <LanguageSwitcher className="hidden md:inline-flex" />
+
+      {/* Offline sync — a persistent count of anything still to sync, so a
+          technician can verify nothing was lost even after days offline. */}
+      <SyncStatusBadge />
 
       {/* Notifications — the live alert feed (same endpoint the farmer
           notifications page reads), with a badge only when something needs

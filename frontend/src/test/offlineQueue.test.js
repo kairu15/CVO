@@ -8,16 +8,22 @@ import {
   getQueue,
   isNetworkError,
   markPending,
+  resolveConflict,
 } from "../lib/offlineQueue";
 import { fieldVisitsApi } from "../api/fieldVisitsApi";
 import { caseNotesApi } from "../api/caseNotesApi";
+import { syncApi } from "../api/syncApi";
 
 vi.mock("../api/fieldVisitsApi", () => ({
-  fieldVisitsApi: { create: vi.fn(), uploadPhoto: vi.fn() },
+  fieldVisitsApi: { create: vi.fn(), update: vi.fn(), get: vi.fn(), uploadPhoto: vi.fn() },
 }));
 
 vi.mock("../api/caseNotesApi", () => ({
-  caseNotesApi: { create: vi.fn() },
+  caseNotesApi: { create: vi.fn(), update: vi.fn(), get: vi.fn() },
+}));
+
+vi.mock("../api/syncApi", () => ({
+  syncApi: { logConflict: vi.fn() },
 }));
 
 /** A server-side rejection (validation): the item is the problem. */
@@ -188,5 +194,98 @@ describe("offlineQueue", () => {
   it("classifies transport errors versus server rejections", () => {
     expect(isNetworkError(networkError())).toBe(true);
     expect(isNetworkError(validationError())).toBe(false);
+  });
+
+  it("parks an edit as a conflict when the server record changed first", async () => {
+    // Server record is newer than the moment the edit was queued.
+    caseNotesApi.get.mockResolvedValue({ updated_at: new Date(Date.now() + 60_000).toISOString() });
+
+    await enqueue({
+      kind: "case-note",
+      mode: "update",
+      serverId: 5,
+      payload: { body: "edited offline" },
+      label: "note edit",
+    });
+
+    const summary = await flushQueue();
+    const rows = await getQueue();
+
+    expect(summary.conflicts).toBe(1);
+    expect(caseNotesApi.update).not.toHaveBeenCalled();
+    expect(rows[0].status).toBe("conflict");
+    expect(rows[0].conflict).toMatchObject({ entityType: "case_note", entityId: 5 });
+  });
+
+  it("applies an edit normally when the server record is unchanged", async () => {
+    caseNotesApi.get.mockResolvedValue({ updated_at: new Date(Date.now() - 60_000).toISOString() });
+    caseNotesApi.update.mockResolvedValue({ id: 5 });
+
+    await enqueue({ kind: "case-note", mode: "update", serverId: 5, payload: { body: "edited" } });
+    const summary = await flushQueue();
+
+    expect(caseNotesApi.update).toHaveBeenCalledWith(5, { body: "edited" });
+    expect(summary.synced).toBe(1);
+    expect(await getQueue()).toEqual([]);
+  });
+
+  it("overwrites on the technician's say-so (last-write-wins) and logs it", async () => {
+    caseNotesApi.get.mockResolvedValue({ updated_at: new Date(Date.now() + 60_000).toISOString() });
+    caseNotesApi.update.mockResolvedValue({ id: 5 });
+    syncApi.logConflict.mockResolvedValue({});
+
+    const id = await enqueue({
+      kind: "case-note",
+      mode: "update",
+      serverId: 5,
+      payload: { body: "mine" },
+    });
+    await flushQueue(); // detects the conflict and parks it
+
+    await resolveConflict(id, "overwrite");
+
+    expect(caseNotesApi.update).toHaveBeenCalledWith(5, { body: "mine" });
+    expect(syncApi.logConflict).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entity_type: "case_note",
+        entity_id: 5,
+        resolution: "overwrite",
+      }),
+    );
+    expect(await getQueue()).toEqual([]);
+  });
+
+  it("keeps the server version on the technician's say-so and logs it", async () => {
+    caseNotesApi.get.mockResolvedValue({ updated_at: new Date(Date.now() + 60_000).toISOString() });
+    syncApi.logConflict.mockResolvedValue({});
+
+    const id = await enqueue({
+      kind: "case-note",
+      mode: "update",
+      serverId: 5,
+      payload: { body: "mine" },
+    });
+    await flushQueue(); // conflict
+
+    await resolveConflict(id, "keep_server");
+
+    expect(caseNotesApi.update).not.toHaveBeenCalled();
+    expect(syncApi.logConflict).toHaveBeenCalledWith(
+      expect.objectContaining({ resolution: "keep_server" }),
+    );
+    expect(await getQueue()).toEqual([]);
+  });
+
+  it("does not auto-retry a failed item — only an explicit retry does", async () => {
+    caseNotesApi.create.mockRejectedValue(validationError());
+
+    await enqueue(note(1));
+    await flushQueue();
+    expect(caseNotesApi.create).toHaveBeenCalledTimes(1);
+
+    // A later reconnect must NOT hammer the server with the same bad payload.
+    await flushQueue();
+    expect(caseNotesApi.create).toHaveBeenCalledTimes(1);
+    expect((await getQueue())[0].status).toBe("error");
   });
 });

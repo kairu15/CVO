@@ -22,6 +22,7 @@ use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SiteController;
+use App\Http\Controllers\SyncConflictController;
 use App\Http\Controllers\SymptomRuleController;
 use App\Http\Controllers\VaccinationScheduleController;
 use App\Http\Middleware\EnsureUserIsAdmin;
@@ -242,6 +243,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         ->middleware('throttle:60,1')
         ->name('api.search');
 
+    // Offline sync conflicts — the client reports the technician's decision
+    // (last-write-wins overwrite, or kept the newer server version) so a
+    // conflict is auditable rather than silent. Always stamped with the
+    // caller; there is no {id} to spoof.
+    Route::post('sync/conflicts', [SyncConflictController::class, 'store'])
+        ->name('api.sync.conflicts.store');
+
     // Livestock pass-on / re-dispersal chain
     Route::apiResource('dispersal-events', DispersalEventController::class);
 
@@ -363,5 +371,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
             ->middleware('permission:view_activity_logs')->name('api.admin.activity-logs');
         Route::get('/activity-logs/actions', [ActivityLogController::class, 'actions'])
             ->middleware('permission:view_activity_logs')->name('api.admin.activity-logs.actions');
+
+        // Offline sync conflicts — the admin audit view of conflicts logged
+        // by field staff (reuses the audit-trail permission; it is the same
+        // kind of "what happened" record).
+        Route::get('/sync-conflicts', [SyncConflictController::class, 'index'])
+            ->middleware('permission:view_activity_logs')->name('api.admin.sync-conflicts');
     });
 });

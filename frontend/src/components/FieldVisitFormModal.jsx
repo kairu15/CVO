@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fieldVisitsApi } from "../api/fieldVisitsApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import { captureGeotag } from "../lib/geotagPhoto";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { Modal } from "./Modal";
@@ -56,6 +57,7 @@ export function FieldVisitFormModal({
   const [locating, setLocating] = useState(false);
   const [locationNote, setLocationNote] = useState(null);
   const toast = useToast();
+  const { user } = useAuth();
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
 
@@ -189,14 +191,42 @@ export function FieldVisitFormModal({
    * device is offline, or when the request never reached the server. The
    * composited photo blob rides along in IndexedDB so the evidence is not lost.
    */
+  /** The photo blob + its structured metadata, as the queue stores them. */
+  function queuedPhoto() {
+    return capture
+      ? { blob: capture.photo.blob, meta: { ...capture.meta, gps_timestamp: undefined } }
+      : null;
+  }
+
   async function queueVisit(createPayload) {
     await enqueue({
       kind: "field-visit",
+      mode: "create",
       label: `Field visit — ${beneficiary?.name_of_farmer ?? "beneficiary"}`,
       payload: createPayload,
-      photo: capture
-        ? { blob: capture.photo.blob, meta: { ...capture.meta, gps_timestamp: undefined } }
-        : null,
+      userId: user?.id ?? null,
+      photo: queuedPhoto(),
+    });
+
+    toast.success("Saved on this device — it will sync when you're back online.");
+    onSaved?.();
+    onClose();
+  }
+
+  /**
+   * Queue an EDIT of an existing visit. Unlike a create, this can overwrite a
+   * record someone else changed while the technician was offline — the queue
+   * checks that at sync time and asks before overwriting.
+   */
+  async function queueVisitEdit(payload) {
+    await enqueue({
+      kind: "field-visit",
+      mode: "update",
+      serverId: visit.id,
+      label: `Field visit edit — ${beneficiary?.name_of_farmer ?? "beneficiary"}`,
+      payload,
+      userId: user?.id ?? null,
+      photo: queuedPhoto(),
     });
 
     toast.success("Saved on this device — it will sync when you're back online.");
@@ -246,15 +276,32 @@ export function FieldVisitFormModal({
       };
 
       if (editing) {
-        await fieldVisitsApi.update(visit.id, payload);
+        // Offline: queue the whole edit (data + any new photo) and let the
+        // queue replay it — and flag a conflict if the visit changed on the
+        // server in the meantime.
+        if (!isOnline()) {
+          await queueVisitEdit(payload);
+          return;
+        }
 
-        // A capture taken while editing attaches (or replaces) the photo —
-        // also the recovery path for a visit whose original upload failed.
-        if (capture) {
-          await fieldVisitsApi.uploadPhoto(visit.id, capture.photo.blob, {
-            ...capture.meta,
-            gps_timestamp: undefined, // derived server-side from the columns
-          });
+        try {
+          await fieldVisitsApi.update(visit.id, payload);
+
+          // A capture taken while editing attaches (or replaces) the photo —
+          // also the recovery path for a visit whose original upload failed.
+          if (capture) {
+            await fieldVisitsApi.uploadPhoto(visit.id, capture.photo.blob, {
+              ...capture.meta,
+              gps_timestamp: undefined, // derived server-side from the columns
+            });
+          }
+        } catch (editError) {
+          // The edit never reached the server — queue it rather than losing it.
+          if (isNetworkError(editError)) {
+            await queueVisitEdit(payload);
+            return;
+          }
+          throw editError;
         }
 
         toast.success("Field visit updated.");
@@ -309,6 +356,7 @@ export function FieldVisitFormModal({
               label: `Photo — ${beneficiary?.name_of_farmer ?? "field visit"}`,
               payload: null,
               serverId: visitId,
+              userId: user?.id ?? null,
               photo: {
                 blob: capture.photo.blob,
                 meta: { ...capture.meta, gps_timestamp: undefined },

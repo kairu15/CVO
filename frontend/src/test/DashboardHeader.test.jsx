@@ -28,6 +28,10 @@ vi.mock("../api/notificationsApi", () => ({
   },
 }));
 
+// The sync badge reads the offline-queue context, which this header test does
+// not mount; the badge has its own coverage. Stubbed so the header renders.
+vi.mock("../components/SyncStatusBadge", () => ({ SyncStatusBadge: () => null }));
+
 const SEARCH_GROUPS = [
   {
     type: "beneficiary",

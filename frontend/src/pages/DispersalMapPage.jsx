@@ -3,6 +3,7 @@ import { beneficiariesApi } from "../api/beneficiariesApi";
 import { useAutoRefresh } from "../api/queries";
 import { dispersalApi } from "../api/dispersalApi";
 import { getErrorMessage } from "../api/client";
+import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { DispersalMap } from "../components/DispersalMap";
 import { EmptyState } from "../components/EmptyState";
 import { InlineAlert } from "../components/InlineAlert";
@@ -102,22 +103,22 @@ export default function DispersalMapPage({ roleKey }) {
       return;
     }
 
-    setSubmitting(true);
-    try {
-      await dispersalApi.create({
-        beneficiary_id: Number(source),
-        parent_beneficiary_id: Number(source),
-        dispersal_type: "re-dispersal",
-        register_new: true,
-        date_dispersed: form.date_dispersed || undefined,
-        remarks: form.remarks.trim() || undefined,
-        new_name_of_farmer: form.new_name_of_farmer.trim(),
-        new_address: form.new_address.trim(),
-        new_animal_type: form.new_animal_type,
-        new_sex: form.new_sex,
-        signature,
-        signature_captured_at: new Date().toISOString(),
-      });
+    const payload = {
+      beneficiary_id: Number(source),
+      parent_beneficiary_id: Number(source),
+      dispersal_type: "re-dispersal",
+      register_new: true,
+      date_dispersed: form.date_dispersed || undefined,
+      remarks: form.remarks.trim() || undefined,
+      new_name_of_farmer: form.new_name_of_farmer.trim(),
+      new_address: form.new_address.trim(),
+      new_animal_type: form.new_animal_type,
+      new_sex: form.new_sex,
+      signature,
+      signature_captured_at: new Date().toISOString(),
+    };
+
+    function resetReDispersal() {
       setRecordOpen(false);
       setSource("");
       setSignature(null);
@@ -129,6 +130,34 @@ export default function DispersalMapPage({ roleKey }) {
         date_dispersed: "",
         remarks: "",
       });
+    }
+
+    setSubmitting(true);
+    try {
+      try {
+        await dispersalApi.create(payload);
+      } catch (err) {
+        // No connection: queue the whole registration + dispersal (including
+        // the signed agreement) so the field work is not lost, and replay it in
+        // order on reconnect. A queued-empty beneficiary is only created once
+        // the payload actually lands.
+        if (isNetworkError(err)) {
+          await enqueue({
+            kind: "dispersal",
+            mode: "create",
+            label: `Re-dispersal — ${payload.new_name_of_farmer}`,
+            payload,
+            userId: user?.id ?? null,
+          });
+          resetReDispersal();
+          setNotice("Saved on this device — the re-dispersal will sync when you're back online.");
+          await load();
+          return;
+        }
+        throw err;
+      }
+
+      resetReDispersal();
       setNotice("Re-dispersal recorded — the recipient now appears on the map.");
       await load();
     } catch (err) {

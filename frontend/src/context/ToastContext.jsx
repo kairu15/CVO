@@ -77,3 +77,14 @@ export function useToast() {
   if (!ctx) throw new Error("useToast must be used within a ToastProvider");
   return ctx.toast;
 }
+
+/**
+ * The toast API when a provider is present, else null.
+ *
+ * For providers that only OPTIONALLY surface feedback — the offline queue
+ * batches a sync toast, but must keep working (and stay testable) without a
+ * ToastProvider mounted above it.
+ */
+export function useOptionalToast() {
+  return useContext(ToastContext)?.toast ?? null;
+}

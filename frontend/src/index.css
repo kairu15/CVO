@@ -260,6 +260,18 @@
    Dispersal map pins (element built in components/DispersalMap.jsx)
    --------------------------------------------------------------------------- */
 
+/*
+ * The map shell in native fullscreen. The UA stylesheet sizes the fullscreen
+ * element to the viewport, but the component's own h-[26rem] utility would
+ * beat it for the first paint after requestFullscreen() — before React swaps
+ * the classes on the fullscreenchange event — so force full height here.
+ */
+.cvo-map-shell:fullscreen,
+.cvo-map-shell:-webkit-full-screen {
+  width: 100% !important;
+  height: 100% !important;
+}
+
 .cvo-map-pin {
   position: relative;
   width: 18px;

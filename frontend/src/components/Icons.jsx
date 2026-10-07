@@ -31,6 +31,22 @@ const ICONS = {
     </>
   ),
   "chevron-down": <path d="m6 9.5 6 6 6-6" />,
+  expand: (
+    <>
+      <path d="M15 3.5h5.5V9" />
+      <path d="M9 20.5H3.5V15" />
+      <path d="M20.5 3.5 14 10" />
+      <path d="M3.5 20.5 10 14" />
+    </>
+  ),
+  compress: (
+    <>
+      <path d="M4 14h6v6" />
+      <path d="M20 10h-6V4" />
+      <path d="m14 10 7-7" />
+      <path d="m3 21 7-7" />
+    </>
+  ),
   sun: (
     <>
       <circle cx="12" cy="12" r="4.2" />

@@ -27,6 +27,11 @@ import { spreadPositions } from "../lib/mapPositions";
 /** Default view: Bayawan City, Negros Oriental — the CVO's coverage area. */
 const DEFAULT_CENTER = [9.3638, 122.8022]; // [lat, lng] — same order as the props; converted at the MapLibre callsites
 
+/** The element the browser currently shows fullscreen, vendor-prefixed for older Safari. */
+function fullscreenElement() {
+  return document.fullscreenElement ?? document.webkitFullscreenElement ?? null;
+}
+
 /** Raster style with OSM tiles — no API key, same basemap as before. */
 const OSM_STYLE = {
   version: 8,
@@ -107,11 +112,16 @@ export function DispersalMap({
   selected = null,
 }) {
   const containerRef = useRef(null);
+  const shellRef = useRef(null); // the box that flips to fullscreen (container + overlay)
   const mapRef = useRef(null);
   const markersRef = useRef([]); // { marker, beneficiary }
   const selectedMarkerRef = useRef(null);
   const onPickRef = useRef(onPick);
+  // True while fullscreen is emulated with fixed positioning because the
+  // Fullscreen API is missing (iPhone Safari) or refused the request.
+  const cssFallbackRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [animalFilter, setAnimalFilter] = useState("all");
 
   // Keep the latest callback without re-creating the map on every render.
@@ -192,6 +202,83 @@ export function DispersalMap({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- center/selected only recenter via the effect below; the map is created once
   }, []);
+
+  async function toggleFullscreen() {
+    const shell = shellRef.current;
+    if (!shell) return;
+
+    // Already fullscreen — leave the native session first, then the emulated one.
+    if (fullscreenElement()) {
+      (document.exitFullscreen ?? document.webkitExitFullscreen)?.call(document);
+      return;
+    }
+    if (cssFallbackRef.current) {
+      cssFallbackRef.current = false;
+      setIsFullscreen(false);
+      return;
+    }
+
+    const request = shell.requestFullscreen ?? shell.webkitRequestFullscreen;
+    const allowed =
+      document.fullscreenEnabled ?? document.webkitFullscreenEnabled ?? true;
+    if (request && allowed) {
+      try {
+        await request.call(shell);
+        return;
+      } catch {
+        // Refused (e.g. an iframe without allow="fullscreen") — emulate below.
+      }
+    }
+
+    cssFallbackRef.current = true;
+    setIsFullscreen(true);
+  }
+
+  // Stay in sync with browser-initiated fullscreen changes (Esc, F11-style
+  // exits) so the button icon and the shell sizing follow reality.
+  useEffect(() => {
+    function sync() {
+      if (fullscreenElement() === shellRef.current) {
+        cssFallbackRef.current = false;
+        setIsFullscreen(true);
+      } else if (!cssFallbackRef.current) {
+        setIsFullscreen(false);
+      }
+    }
+    document.addEventListener("fullscreenchange", sync);
+    document.addEventListener("webkitfullscreenchange", sync);
+    return () => {
+      document.removeEventListener("fullscreenchange", sync);
+      document.removeEventListener("webkitfullscreenchange", sync);
+    };
+  }, []);
+
+  // The emulated fullscreen has no browser chrome to leave, so Esc closes it.
+  useEffect(() => {
+    if (!isFullscreen || fullscreenElement()) return undefined;
+    function onKey(event) {
+      if (event.key === "Escape") {
+        cssFallbackRef.current = false;
+        setIsFullscreen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isFullscreen]);
+
+  // MapLibre watches its container with a ResizeObserver, but redraw
+  // explicitly around the fullscreen switch anyway so the canvas never keeps
+  // the 26rem-sized backing buffer.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return undefined;
+    const frame = requestAnimationFrame(() => map.resize());
+    const timer = setTimeout(() => map.resize(), 200);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
+  }, [mapReady, isFullscreen]);
 
   // Reconcile markers with the visible rows — add, move, remove.
   useEffect(() => {
@@ -348,7 +435,34 @@ export function DispersalMap({
       )}
 
       <div className="card overflow-hidden">
-        <div className="relative h-[26rem] w-full">
+        <div
+          ref={shellRef}
+          className={
+            isFullscreen
+              ? // Emulated fullscreen (no Fullscreen API). Native fullscreen
+                // uses the same classes once the change event lands.
+                //
+                // `isolate` keeps every z-index inside this box (the
+                // fullscreen button, the loading veil) from painting over
+                // page chrome such as the sticky dashboard header when the
+                // card scrolls beneath it.
+                "cvo-map-shell fixed inset-0 z-[70] isolate bg-white"
+              : "cvo-map-shell relative isolate h-[26rem] w-full"
+          }
+        >
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="absolute left-3 top-3 z-[600] grid h-9 w-9 place-items-center rounded-md bg-white text-slate-600 shadow-md ring-1 ring-slate-900/10 transition hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+            aria-pressed={isFullscreen}
+            aria-label={isFullscreen ? "Exit map full screen" : "View map full screen"}
+            title={isFullscreen ? "Exit full screen (Esc)" : "View map full screen"}
+          >
+            <Icon
+              name={isFullscreen ? "compress" : "expand"}
+              className="h-5 w-5"
+            />
+          </button>
           {loading && (
             <div className="absolute inset-0 z-[500] grid place-items-center bg-white/70">
               <span className="text-sm text-slate-500">Loading map…</span>

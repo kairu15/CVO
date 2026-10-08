@@ -95,10 +95,12 @@ if [ "${RUN_SEEDERS:-false}" = "true" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 7. Production caches
+# 7. Caches — production builds them, development refuses them
 #
-# Only in production: config caching in dev hides .env changes and is a common
-# source of "why is my change not taking effect" confusion.
+# Production caches config/routes/views for speed (the image is immutable).
+# Development starts from a clean slate every boot: cached artifacts built
+# against older code or env are a classic "why is my change not taking effect"
+# trap, and OPcache is already off in the dev image (docker/php-dev.ini).
 # -----------------------------------------------------------------------------
 if [ "${APP_ENV:-production}" = "production" ]; then
     log "APP_ENV=production — caching config, routes and views"
@@ -106,7 +108,11 @@ if [ "${APP_ENV:-production}" = "production" ]; then
     run_as_app php artisan route:cache
     run_as_app php artisan view:cache
 else
+    log "Development mode — clearing config, route, view and app caches"
     run_as_app php artisan config:clear >/dev/null 2>&1 || true
+    run_as_app php artisan route:clear >/dev/null 2>&1 || true
+    run_as_app php artisan view:clear >/dev/null 2>&1 || true
+    run_as_app php artisan cache:clear >/dev/null 2>&1 || true
 fi
 
 # -----------------------------------------------------------------------------

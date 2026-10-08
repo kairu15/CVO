@@ -8,6 +8,7 @@ import { ButtonSpinner } from "../components/LoadingSpinner";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
+import { PaginationFooter } from "../components/PaginationFooter";
 import { Icon } from "../components/Icons";
 
 /**
@@ -20,6 +21,12 @@ import { Icon } from "../components/Icons";
 export default function TechnicianAssignmentsPage() {
   const toast = useToast();
   const [technicians, setTechnicians] = useState([]);
+  // Full technician roster for the assignment dropdown: the grid paginates,
+  // but a beneficiary must be reassignable to any technician, not just the
+  // ones shown on the current page.
+  const [technicianOptions, setTechnicianOptions] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [page, setPage] = useState(1);
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -28,24 +35,45 @@ export default function TechnicianAssignmentsPage() {
   const [pick, setPick] = useState("");
   const [saving, setSaving] = useState(false);
 
+  /**
+   * Every technician, walking the API's pages. The list endpoint caps a page
+   * at 50 rows, so the dropdown walks the pages to stay complete as the roster
+   * grows beyond one page.
+   */
+  const loadTechnicianOptions = useCallback(async () => {
+    const first = await adminApi.listUsersPage({ role: "technician", per_page: 50, page: 1 });
+    const all = [...(first?.data ?? [])];
+    const lastPage = first?.meta?.last_page ?? 1;
+
+    for (let next = 2; next <= lastPage; next += 1) {
+      const rows = await adminApi.listUsersPage({ role: "technician", per_page: 50, page: next });
+      all.push(...(rows?.data ?? []));
+    }
+
+    return all;
+  }, []);
+
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     setError(null);
 
     try {
-      const [usersRes, beneficiariesRes] = await Promise.all([
-        adminApi.listUsers({ role: "technician", per_page: 100 }),
+      const [techniciansRes, beneficiariesRes, options] = await Promise.all([
+        adminApi.listUsersPage({ role: "technician", page, per_page: 50 }),
         adminApi.listBeneficiaries({ per_page: 200 }),
+        loadTechnicianOptions(),
       ]);
 
-      setTechnicians(usersRes ?? []);
+      setTechnicians(techniciansRes?.data ?? []);
+      setMeta(techniciansRes?.meta ?? null);
       setBeneficiaries(beneficiariesRes ?? []);
+      setTechnicianOptions(options);
     } catch (err) {
       if (!quiet) setError(getErrorMessage(err));
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, []);
+  }, [page, loadTechnicianOptions]);
 
   useEffect(() => {
     load();
@@ -81,7 +109,7 @@ export default function TechnicianAssignmentsPage() {
       setAssignFor(null);
       await load();
 
-      const technicianName = technicians.find((t) => t.id === technicianId)?.name;
+      const technicianName = technicianOptions.find((t) => t.id === technicianId)?.name;
       toast.success(
         technicianName
           ? `${assignFor.name_of_farmer} assigned to ${technicianName}.`
@@ -181,6 +209,15 @@ export default function TechnicianAssignmentsPage() {
         </section>
       )}
 
+      {!loading && technicians.length > 0 && (
+        <PaginationFooter
+          meta={meta}
+          shown={technicians.length}
+          noun="technician"
+          onPageChange={setPage}
+        />
+      )}
+
       {unassigned.length > 0 && (
         <section className="card p-5">
           <h3 className="font-display text-sm font-semibold text-slate-900">
@@ -229,7 +266,7 @@ export default function TechnicianAssignmentsPage() {
           onChange={(event) => setPick(event.target.value)}
         >
           <option value="">Unassigned (no technician)</option>
-          {technicians.map((technician) => (
+          {technicianOptions.map((technician) => (
             <option key={technician.id} value={technician.id}>
               {technician.name}
             </option>

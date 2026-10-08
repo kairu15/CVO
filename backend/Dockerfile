@@ -134,6 +134,10 @@ FROM base AS dev
 
 ENV APP_ENV=local
 
+# Development is cache-free: OPcache off entirely (the file explains the zz-dev
+# conf.d name, which must sort after the shared zz-cvo.ini to win).
+COPY docker/php-dev.ini /usr/local/etc/php/conf.d/zz-dev.ini
+
 COPY composer.json composer.lock ./
 RUN composer install \
         --no-interaction \
@@ -203,6 +207,10 @@ RUN composer dump-autoload \
         bootstrap/cache \
     && chown -R app:app storage bootstrap/cache \
     && chmod -R ug+rwX storage bootstrap/cache
+
+# Production caches aggressively: the image is immutable, so OPcache never
+# re-stats source files (the file explains the zz-prod conf.d name).
+COPY docker/php-production.ini /usr/local/etc/php/conf.d/zz-prod.ini
 
 # php-fpm pool that tracks the non-root `app` user and passes container env
 # through to the workers (Laravel reads DB_* / SANCTUM_* from the environment).

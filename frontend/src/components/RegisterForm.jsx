@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { getFieldErrors } from "../api/client";
+import { getErrorMessage, getFieldErrors } from "../api/client";
+import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { Skeleton } from "./Skeleton";
 import { PasswordToggle, TextField } from "./TextField";
@@ -11,6 +12,10 @@ import { useBarangays } from "../hooks/useBarangays";
 import { site } from "../config/site";
 
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
+
+/** Coarse connectivity check — see useOnlineStatus. */
+const isOnline = () =>
+  typeof navigator === "undefined" ? true : navigator.onLine !== false;
 
 /**
  * Public registration.
@@ -62,6 +67,10 @@ export function RegisterForm({ idPrefix = "register" }) {
    * trigger a redirect from a dead component.
    */
   const [succeeded, setSucceeded] = useState(false);
+  // True when the account was queued on the device instead of created now —
+  // the form then shows "will submit when online" instead of the sign-in
+  // redirect (the account does not exist yet).
+  const [queuedOffline, setQueuedOffline] = useState(false);
   const redirectTimer = useRef(null);
   const REDIRECT_DELAY_MS = 1800;
 
@@ -119,6 +128,31 @@ export function RegisterForm({ idPrefix = "register" }) {
     return next;
   }
 
+  /**
+   * Keep the whole registration on the device instead of sending it, so a
+   * farmer signing up in a barangay with no signal is not turned away. The
+   * queue submits it (and creates the account) when the API is reachable
+   * again. The chosen password rides in IndexedDB until then, same storage the
+   * queued field work already uses, and is dropped once the account exists.
+   */
+  async function queueRegistration(payload) {
+    await enqueue({
+      kind: "registration",
+      mode: "create",
+      label: `Registration — ${payload.name}`,
+      payload,
+    });
+
+    setSucceeded(true);
+    setQueuedOffline(true);
+    toast.success(
+      t("register.queuedOffline", {
+        defaultValue:
+          "Saved on this device — your registration will be submitted automatically when you're back online.",
+      }),
+    );
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
 
@@ -128,18 +162,35 @@ export function RegisterForm({ idPrefix = "register" }) {
       return;
     }
 
+    const payload = {
+      ...form,
+      name: form.name.trim(),
+      email: form.email.trim(),
+      username: form.username.trim(),
+      name_of_farmer: form.name_of_farmer.trim(),
+      address: form.address,
+      barangay_id: selectedBarangay?.id ?? undefined,
+      animal_type: form.animal_type.trim(),
+    };
+
     setSubmitting(true);
     try {
-      await register({
-        ...form,
-        name: form.name.trim(),
-        email: form.email.trim(),
-        username: form.username.trim(),
-        name_of_farmer: form.name_of_farmer.trim(),
-        address: form.address,
-        barangay_id: selectedBarangay?.id ?? undefined,
-        animal_type: form.animal_type.trim(),
-      });
+      // No connection: queue the registration rather than losing it. The same
+      // branch catches a request that never reached the server below.
+      if (!isOnline()) {
+        await queueRegistration(payload);
+        return;
+      }
+
+      try {
+        await register(payload);
+      } catch (error) {
+        if (isNetworkError(error)) {
+          await queueRegistration(payload);
+          return;
+        }
+        throw error;
+      }
 
       // 2xx received — success is real, never optimistic. The toast is
       // global, so it stays visible across the redirect to sign-in.
@@ -375,6 +426,18 @@ export function RegisterForm({ idPrefix = "register" }) {
           </div>
         </div>
       </fieldset>
+
+      {queuedOffline && (
+        <div
+          role="status"
+          className="mt-5 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900"
+        >
+          {t("register.queuedOfflineNote", {
+            defaultValue:
+              "Your registration is saved on this device. It will be submitted automatically when you reconnect — you can then sign in with the same details.",
+          })}
+        </div>
+      )}
 
       <button
         type="submit"

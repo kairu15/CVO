@@ -190,6 +190,40 @@ describe("HealthRecordsPage", () => {
     expect(await screen.findByText("Mastitis")).toBeInTheDocument();
   });
 
+  it("keeps the entry when the beneficiary poll refreshes the list", async () => {
+    // The 30s poll (and window focus) hands the modal a fresh beneficiaries
+    // array; that must not re-seed the open form and wipe the entry.
+    beneficiariesApi.list.mockImplementation(async () => [
+      { id: 11, name_of_farmer: "Aling Nena", address: "Banay Banay", animal_type: "Carabao", sex: "F" },
+    ]);
+
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "New record" }));
+    });
+    await act(async () => {
+      await userEvent.selectOptions(screen.getByLabelText("Beneficiary"), "11");
+    });
+    await act(async () => {
+      await userEvent.type(screen.getByLabelText("Diagnosis"), "Mastitis");
+    });
+    await act(async () => {
+      await userEvent.selectOptions(screen.getByLabelText("Outcome"), "recovered");
+    });
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByLabelText("Beneficiary")).toHaveValue("11");
+    expect(screen.getByLabelText("Diagnosis")).toHaveValue("Mastitis");
+    expect(screen.getByLabelText("Outcome")).toHaveValue("recovered");
+  });
+
   it("will not save without a diagnosis", async () => {
     renderPage();
     await screen.findByText("Aling Nena");

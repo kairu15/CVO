@@ -15,17 +15,61 @@ import { NOTICE_SESSION_EXPIRED, setSessionNotice } from "../lib/sessionNotice";
 const AuthContext = createContext(null);
 
 /**
+ * Last-known session user, kept in localStorage.
+ *
+ * localStorage (not sessionStorage) on purpose: field staff relaunch the
+ * installed PWA days later, sometimes entirely offline, and the session must
+ * survive that. It is only the identity snapshot — the server still authorizes
+ * every request — and it is cleared on logout and on a real 401.
+ */
+export const USER_STORAGE_KEY = "cvo.auth.user";
+
+function readStoredUser() {
+  try {
+    const raw = localStorage.getItem(USER_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    // Unavailable storage (private browsing) or corrupt JSON: treat as guest.
+    return null;
+  }
+}
+
+function persistUser(user) {
+  try {
+    if (user) localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+    else localStorage.removeItem(USER_STORAGE_KEY);
+  } catch {
+    // Storage unavailable — the in-memory session still works this page load.
+  }
+}
+
+/**
+ * A request that never reached the server: the device is offline or the API is
+ * unreachable (axios rejects without a `response`). Distinct from a real 401:
+ * offline must NOT be treated as "your session ended", or a reload in the
+ * field would sign the technician out and hide everything they queued.
+ */
+function isOfflineError(error) {
+  return !error?.response;
+}
+
+/**
  * Wipe every trace of the previous session from the browser: the signed-in
- * user and the React Query cache. Without the cache clear, a stale dashboard
- * payload can be served from memory to the next user of a shared machine.
+ * user, the persisted snapshot and the React Query cache. Without the cache
+ * clear, a stale dashboard payload can be served from memory to the next user
+ * of a shared machine.
  */
 function clearSession(setUser) {
   setUser(null);
+  persistUser(null);
   queryClient.clear();
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+  // Seed from the last-known snapshot so an offline reload/relaunch renders
+  // the dashboard instead of bouncing to /login — the fetch below revalidates
+  // it as soon as the API is reachable again.
+  const [user, setUser] = useState(readStoredUser);
   const [loading, setLoading] = useState(true);
 
   // Read inside the 401 handler without making it depend on `user`, so the
@@ -47,12 +91,20 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
-  // Restore the session from the Sanctum cookie on first load.
+  // Restore the session from the Sanctum cookie on first load. A failed call
+  // only signs the user out when the SERVER rejected it (e.g. 401); a
+  // transport failure keeps the cached identity for offline work.
   useEffect(() => {
     authApi
       .fetchUser()
-      .then((user) => setUser(user))
-      .catch(() => setUser(null))
+      .then((fresh) => {
+        persistUser(fresh);
+        setUser(fresh);
+      })
+      .catch((error) => {
+        if (isOfflineError(error)) return;
+        clearSession(setUser);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -65,8 +117,14 @@ export function AuthProvider({ children }) {
 
       authApi
         .fetchUser()
-        .then((fresh) => setUser(fresh))
-        .catch(() => clearSession(setUser));
+        .then((fresh) => {
+          persistUser(fresh);
+          setUser(fresh);
+        })
+        .catch((error) => {
+          // Re-validate against the server; a network blip must not log out.
+          if (!isOfflineError(error)) clearSession(setUser);
+        });
     }
 
     window.addEventListener("pageshow", onPageShow);
@@ -75,7 +133,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = useCallback(async (identifier, password, remember = false) => {
-    setUser(await authApi.login({ identifier, password, remember }));
+    const fresh = await authApi.login({ identifier, password, remember });
+    persistUser(fresh);
+    setUser(fresh);
   }, []);
 
   /**
@@ -86,10 +146,12 @@ export function AuthProvider({ children }) {
   const refreshUser = useCallback(async () => {
     try {
       const fresh = await authApi.fetchUser();
+      persistUser(fresh);
       setUser(fresh);
       return fresh;
-    } catch {
-      setUser(null);
+    } catch (error) {
+      // Keep the cached identity when the failure is only a dead connection.
+      if (!isOfflineError(error)) clearSession(setUser);
       return null;
     }
   }, []);

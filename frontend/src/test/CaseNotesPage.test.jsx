@@ -174,6 +174,36 @@ describe("CaseNotesPage", () => {
     expect(await screen.findByText("Follow-up: the limp has cleared.")).toBeInTheDocument();
   });
 
+  it("keeps the note when the beneficiary poll refreshes the list", async () => {
+    // The 30s poll (and window focus) hands the modal a fresh beneficiaries
+    // array; that must not re-seed the open form and wipe the entry.
+    beneficiariesApi.list.mockImplementation(async () => [
+      { id: 11, name_of_farmer: "Aling Nena", address: "Banay Banay", animal_type: "Carabao", sex: "F" },
+    ]);
+
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "New note" }));
+    });
+    await act(async () => {
+      await userEvent.selectOptions(screen.getByLabelText("Beneficiary"), "11");
+    });
+    await act(async () => {
+      await userEvent.type(screen.getByLabelText("Note"), "Advised isolating the herd.");
+    });
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByLabelText("Beneficiary")).toHaveValue("11");
+    expect(screen.getByLabelText("Note")).toHaveValue("Advised isolating the herd.");
+  });
+
   it("will not save an empty note", async () => {
     renderPage();
     await screen.findByText("Aling Nena");

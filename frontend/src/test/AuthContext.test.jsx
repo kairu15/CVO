@@ -1,7 +1,7 @@
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { AuthProvider, useAuth } from "../context/AuthContext";
+import { AuthProvider, useAuth, USER_STORAGE_KEY } from "../context/AuthContext";
 import * as authApi from "../api/authApi";
 import { setUnauthorizedHandler } from "../api/client";
 
@@ -46,6 +46,8 @@ describe("AuthContext", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
+    // The persisted session snapshot must not leak between cases.
+    localStorage.clear();
   });
 
   it("restores the session from fetchUser on mount", async () => {
@@ -74,6 +76,36 @@ describe("AuthContext", () => {
     expect(screen.getByTestId("authed")).toHaveTextContent("false");
   });
 
+  it("keeps the cached user when session restore fails offline", async () => {
+    // A snapshot from the last online session, then the app relaunches with
+    // no connection: the identity must survive so queued work stays reachable.
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ id: 1, name: "Dr. Field" }));
+    authApi.authApi.fetchUser.mockRejectedValue({ request: {}, message: "Network Error" });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("authed")).toHaveTextContent("true"));
+    expect(screen.getByTestId("user")).toHaveTextContent("Dr. Field");
+  });
+
+  it("drops the cached user when the server rejects the session", async () => {
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ id: 1, name: "Dr. Field" }));
+    authApi.authApi.fetchUser.mockRejectedValue({ response: { status: 401, data: {} } });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("authed")).toHaveTextContent("false"));
+    expect(localStorage.getItem(USER_STORAGE_KEY)).toBeNull();
+  });
+
   it("login stores the returned user", async () => {
     authApi.authApi.fetchUser.mockRejectedValue(new Error("guest"));
     authApi.authApi.login.mockResolvedValue({ id: 2, name: "Dr. Maria Santos" });
@@ -91,6 +123,10 @@ describe("AuthContext", () => {
     });
 
     await waitFor(() => expect(screen.getByTestId("user")).toHaveTextContent("Dr. Maria Santos"));
+    // The snapshot is persisted so a later offline reload can restore it.
+    expect(JSON.parse(localStorage.getItem(USER_STORAGE_KEY))).toMatchObject({
+      name: "Dr. Maria Santos",
+    });
   });
 
   it("register does not sign the new account in", async () => {

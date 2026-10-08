@@ -72,6 +72,12 @@ export function FieldVisitFormModal({
   // retries the upload on this visit instead of logging a duplicate trip.
   const [createdVisit, setCreatedVisit] = useState(null);
 
+  // Which "session" of the form has been seeded. The beneficiaries prop is
+  // re-fetched on a 30s poll (and on window focus) and arrives as a brand-new
+  // array, so it must NOT re-run the seeding effect: doing so wipes the
+  // beneficiary chosen and the purpose/notes typed mid-entry.
+  const seededRef = useRef(null);
+
   const beneficiary = useMemo(
     () =>
       beneficiaries.find((b) => String(b.id) === String(beneficiaryId)) ??
@@ -81,7 +87,18 @@ export function FieldVisitFormModal({
   );
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      seededRef.current = null;
+      return;
+    }
+
+    // Seed once per open/record, not on every poll that hands us a new
+    // beneficiaries array (see seededRef).
+    const seedKey = visit ? `edit:${visit.id}` : "create";
+    // A poll that arrives later must not re-seed: that is exactly what wiped
+    // the technician's entry. Bail once this open/record has been seeded.
+    if (seededRef.current === seedKey) return;
+    seededRef.current = seedKey;
 
     if (visit) {
       setForm({

@@ -79,10 +79,27 @@ class SyncConflictTest extends TestCase
         $this->assertDatabaseHas('sync_conflicts', ['resolution' => SyncConflict::RESOLUTION_KEEP_SERVER]);
     }
 
+    /**
+     * Every queued kind that can conflict is accepted. Health records and
+     * monitoring records joined the vocabulary with the offline forms for the
+     * doctor and technician roles.
+     */
+    public function test_the_offline_editable_entity_vocabulary_is_accepted(): void
+    {
+        $technician = User::factory()->create(['role' => 'technician']);
+
+        foreach (['field_visit', 'case_note', 'health_record', 'monitoring_record'] as $entityType) {
+            $this->actingAs($technician)
+                ->postJson('/api/v1/sync/conflicts', $this->payload(['entity_type' => $entityType]))
+                ->assertCreated()
+                ->assertJsonPath('data.entity_type', $entityType);
+        }
+    }
+
     public function test_an_unknown_entity_type_is_rejected(): void
     {
         $this->actingAs(User::factory()->create(['role' => 'technician']))
-            ->postJson('/api/v1/sync/conflicts', $this->payload(['entity_type' => 'monitoring_record']))
+            ->postJson('/api/v1/sync/conflicts', $this->payload(['entity_type' => 'dinosaur']))
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['entity_type']);
     }

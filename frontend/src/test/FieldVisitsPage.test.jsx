@@ -253,6 +253,41 @@ describe("FieldVisitsPage", () => {
     });
   });
 
+  it("keeps what was entered when the assigned-beneficiary poll refreshes the list", async () => {
+    // The background poll replaces the picker array with a fresh one every 30s
+    // (and on window focus). That must not re-seed the open form.
+    beneficiariesApi.list.mockImplementation(async () => [
+      { id: 11, name_of_farmer: "Aling Nena", address: "Banay Banay", animal_type: "Carabao", sex: "F" },
+    ]);
+
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Log a Field Visit" }));
+    });
+    await act(async () => {
+      await userEvent.selectOptions(screen.getByLabelText("Beneficiary visited"), "11");
+    });
+    await act(async () => {
+      await userEvent.selectOptions(screen.getByLabelText("Purpose"), "follow-up");
+    });
+    await act(async () => {
+      await userEvent.type(screen.getByLabelText("Notes"), "Nobody home.");
+    });
+
+    // Simulate the auto-refresh tick / tab regaining focus.
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByLabelText("Beneficiary visited")).toHaveValue("11");
+    expect(screen.getByLabelText("Purpose")).toHaveValue("follow-up");
+    expect(screen.getByLabelText("Notes")).toHaveValue("Nobody home.");
+  });
+
   it("requires a purpose before saving", async () => {
     renderPage();
     await screen.findByText("Aling Nena");

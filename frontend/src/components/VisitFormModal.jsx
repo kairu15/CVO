@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { monitoringApi } from "../api/monitoringApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
+import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
+import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
@@ -27,6 +30,10 @@ const DATE_FIELDS = [
   ["date_calved", "Date Calved"],
 ];
 
+/** Coarse connectivity check — see useOnlineStatus. */
+const isOnline = () =>
+  typeof navigator === "undefined" ? true : navigator.onLine !== false;
+
 /**
  * Technician's "Log a Visit" form.
  *
@@ -47,9 +54,17 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [beneficiaryId, setBeneficiaryId] = useState("");
+  const toast = useToast();
+  const { user } = useAuth();
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  // Which "session" of the form has been seeded. The beneficiaries prop is
+  // re-fetched on a 30s poll (and on window focus) and arrives as a brand-new
+  // array, so it must NOT re-run the seeding effect: doing so wipes the
+  // beneficiary chosen and the fields filled in mid-entry.
+  const seededRef = useRef(null);
 
   const beneficiary = useMemo(
     () => beneficiaries.find((b) => String(b.id) === String(beneficiaryId)) ?? record?.beneficiary ?? null,
@@ -57,7 +72,18 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
   );
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      seededRef.current = null;
+      return;
+    }
+
+    // Seed once per open/record, not on every poll that hands us a new
+    // beneficiaries array (see seededRef).
+    const seedKey = record ? `edit:${record.id}` : "create";
+    // A poll that arrives later must not re-seed: that is exactly what wiped
+    // the technician's entry. Bail once this open/record has been seeded.
+    if (seededRef.current === seedKey) return;
+    seededRef.current = seedKey;
 
     if (record) {
       setForm({
@@ -89,6 +115,45 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
     };
   }
 
+  /**
+   * Keep the monitoring record on the device instead of sending it, so a
+   * technician working where there is no signal never loses an observation.
+   * The queue replays it when the API is reachable again.
+   */
+  async function queueRecord(createPayload) {
+    await enqueue({
+      kind: "monitoring",
+      mode: "create",
+      label: `Monitoring — ${beneficiary?.name_of_farmer ?? "beneficiary"}`,
+      payload: createPayload,
+      userId: user?.id ?? null,
+    });
+
+    toast.success("Saved on this device — it will sync when you're back online.");
+    onSaved?.();
+    onClose();
+  }
+
+  /**
+   * Queue an EDIT of an existing monitoring entry. Editing the SAME entry can
+   * overwrite a change someone else made — the queue checks that before
+   * applying and asks the technician to decide.
+   */
+  async function queueRecordEdit(payload) {
+    await enqueue({
+      kind: "monitoring",
+      mode: "update",
+      serverId: record.id,
+      label: `Monitoring edit — ${beneficiary?.name_of_farmer ?? "beneficiary"}`,
+      payload,
+      userId: user?.id ?? null,
+    });
+
+    toast.success("Saved on this device — it will sync when you're back online.");
+    onSaved?.();
+    onClose();
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError(null);
@@ -110,9 +175,42 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
       };
 
       if (editing) {
-        await monitoringApi.update(record.id, payload);
+        // Offline: queue the edit; the queue replays it and flags a conflict
+        // if the entry changed on the server in the meantime.
+        if (!isOnline()) {
+          await queueRecordEdit(payload);
+          return;
+        }
+
+        try {
+          await monitoringApi.update(record.id, payload);
+        } catch (editError) {
+          if (isNetworkError(editError)) {
+            await queueRecordEdit(payload);
+            return;
+          }
+          throw editError;
+        }
       } else {
-        await monitoringApi.create({ ...payload, beneficiary_id: Number(beneficiaryId) });
+        const createPayload = { ...payload, beneficiary_id: Number(beneficiaryId) };
+
+        // No connection: queue the record for later instead of failing.
+        if (!isOnline()) {
+          await queueRecord(createPayload);
+          return;
+        }
+
+        try {
+          await monitoringApi.create(createPayload);
+        } catch (createError) {
+          // The request never reached the server — queue it rather than
+          // surfacing a dead-end error.
+          if (isNetworkError(createError)) {
+            await queueRecord(createPayload);
+            return;
+          }
+          throw createError;
+        }
       }
 
       onSaved?.();

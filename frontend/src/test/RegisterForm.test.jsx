@@ -1,11 +1,16 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../context/AuthContext";
 import { ToastProvider } from "../context/ToastContext";
 import { authApi } from "../api/authApi";
 import { RegisterForm } from "../components/RegisterForm";
+import {
+  __setStoreForTests,
+  createMemoryStore,
+  getQueue,
+} from "../lib/offlineQueue";
 
 /**
  * The register form's location cascade: barangay select → payload
@@ -87,10 +92,23 @@ async function fillAccountDetails() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   mocks.fetchBarangays.mockResolvedValue(BARANGAYS);
   // Session restore always misses in these tests; registration succeeds.
   authApi.fetchUser.mockRejectedValue(new Error("guest"));
   authApi.register.mockResolvedValue({ id: 1, role: "farmer" });
+  // Offline writes go to an in-memory queue (jsdom has no IndexedDB).
+  __setStoreForTests(createMemoryStore());
+  setOnline(true);
+});
+
+/** jsdom's navigator.onLine is read-only; override it per case. */
+function setOnline(value) {
+  Object.defineProperty(window.navigator, "onLine", { configurable: true, value });
+}
+
+afterEach(() => {
+  setOnline(true);
 });
 
 describe("RegisterForm location cascade", () => {
@@ -184,6 +202,37 @@ describe("RegisterForm location cascade", () => {
       { timeout: 3000 },
     );
     expect(probe.dataset.prefill).toBe("juan@example.com");
+  });
+
+  it("queues the registration on the device when offline", async () => {
+    setOnline(false);
+
+    renderForm();
+
+    await fillAccountDetails();
+    await screen.findByRole("option", { name: "Dawis" });
+    await userEvent.selectOptions(screen.getByLabelText("Barangay"), "Dawis");
+    await userEvent.selectOptions(
+      screen.getByLabelText("Type of animal dispersed"),
+      "Carabao",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    // No request is attempted; the payload waits in the queue instead.
+    expect(authApi.register).not.toHaveBeenCalled();
+
+    await waitFor(async () => expect(await getQueue()).toHaveLength(1));
+    const [queued] = await getQueue();
+    expect(queued.kind).toBe("registration");
+    expect(queued.payload).toMatchObject({ email: "juan@example.com", address: "Dawis" });
+
+    // Explicit feedback, and no misleading success-with-redirect. Both the
+    // toast and the inline notice say it, so match on the notice's wording.
+    expect(
+      await screen.findByText(/submitted automatically when you reconnect/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create account" })).toBeDisabled();
   });
 
   it("stays on the form on a 422, keeps fields, clears passwords", async () => {

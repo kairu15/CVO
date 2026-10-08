@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { healthRecordsApi } from "../api/healthRecordsApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
+import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
@@ -20,6 +22,10 @@ const EMPTY_FORM = {
   outcome: "",
   remarks: "",
 };
+
+/** Coarse connectivity check — see useOnlineStatus. */
+const isOnline = () =>
+  typeof navigator === "undefined" ? true : navigator.onLine !== false;
 
 /**
  * Veterinarian's health record form.
@@ -49,8 +55,15 @@ export function HealthRecordFormModal({
   const [form, setForm] = useState(EMPTY_FORM);
   const [beneficiaryId, setBeneficiaryId] = useState("");
   const toast = useToast();
+  const { user } = useAuth();
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+
+  // Which "session" of the form has been seeded. The beneficiaries prop is
+  // re-fetched on a 30s poll (and on window focus) and arrives as a brand-new
+  // array, so it must NOT re-run the seeding effect: doing so wipes the
+  // beneficiary chosen and the diagnosis/treatment typed mid-entry.
+  const seededRef = useRef(null);
 
   const beneficiary = useMemo(
     () =>
@@ -61,7 +74,18 @@ export function HealthRecordFormModal({
   );
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      seededRef.current = null;
+      return;
+    }
+
+    // Seed once per open/record, not on every poll that hands us a new
+    // beneficiaries array (see seededRef).
+    const seedKey = record ? `edit:${record.id}` : "create";
+    // A poll that arrives later must not re-seed: that is exactly what wiped
+    // the vet's entry. Bail once this open/record has been seeded.
+    if (seededRef.current === seedKey) return;
+    seededRef.current = seedKey;
 
     if (record) {
       setForm({
@@ -86,6 +110,44 @@ export function HealthRecordFormModal({
       setForm((prev) => ({ ...prev, [field]: value }));
       setErrors((prev) => ({ ...prev, [field]: undefined }));
     };
+  }
+
+  /**
+   * Keep the record on the device instead of sending it, so a vet examining an
+   * animal in the field never loses a diagnosis to a dropped connection. The
+   * queue replays it when the API is reachable again.
+   */
+  async function queueRecord(createPayload) {
+    await enqueue({
+      kind: "health-record",
+      mode: "create",
+      label: `Health record — ${beneficiary?.name_of_farmer ?? "beneficiary"}`,
+      payload: createPayload,
+      userId: user?.id ?? null,
+    });
+
+    toast.success("Saved on this device — it will sync when you're back online.");
+    onSaved?.();
+    onClose();
+  }
+
+  /**
+   * Queue an EDIT of an existing record. Editing the SAME record can overwrite
+   * a change someone else made — the queue checks that before applying.
+   */
+  async function queueRecordEdit(payload) {
+    await enqueue({
+      kind: "health-record",
+      mode: "update",
+      serverId: record.id,
+      label: `Health record edit — ${beneficiary?.name_of_farmer ?? "beneficiary"}`,
+      payload,
+      userId: user?.id ?? null,
+    });
+
+    toast.success("Saved on this device — it will sync when you're back online.");
+    onSaved?.();
+    onClose();
   }
 
   async function handleSubmit(event) {
@@ -117,9 +179,42 @@ export function HealthRecordFormModal({
       };
 
       if (editing) {
-        await healthRecordsApi.update(record.id, payload);
+        // Offline: queue the edit; the queue replays it and flags a conflict
+        // if the record changed on the server in the meantime.
+        if (!isOnline()) {
+          await queueRecordEdit(payload);
+          return;
+        }
+
+        try {
+          await healthRecordsApi.update(record.id, payload);
+        } catch (editError) {
+          if (isNetworkError(editError)) {
+            await queueRecordEdit(payload);
+            return;
+          }
+          throw editError;
+        }
       } else {
-        await healthRecordsApi.create({ ...payload, beneficiary_id: Number(beneficiaryId) });
+        const createPayload = { ...payload, beneficiary_id: Number(beneficiaryId) };
+
+        // No connection: queue the record for later instead of failing.
+        if (!isOnline()) {
+          await queueRecord(createPayload);
+          return;
+        }
+
+        try {
+          await healthRecordsApi.create(createPayload);
+        } catch (createError) {
+          // The request never reached the server — queue it rather than
+          // surfacing a dead-end error.
+          if (isNetworkError(createError)) {
+            await queueRecord(createPayload);
+            return;
+          }
+          throw createError;
+        }
       }
 
       toast.success(editing ? "Health record updated." : "Health record created.");

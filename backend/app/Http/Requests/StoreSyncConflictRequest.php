@@ -12,8 +12,10 @@ use Illuminate\Validation\Rule;
  *
  * Any authenticated role may log its own conflicts (the row is always stamped
  * with the caller — a client cannot log one on someone else's behalf). The
- * entity vocabulary is the only merge that exists today; extend it here when a
- * new offline-editable record type appears.
+ * entity vocabulary is the only merge that exists today; it mirrors the
+ * queued kinds that support conflict detection in `frontend/src/lib/
+ * offlineQueue.js` — extend both together when a new offline-editable record
+ * type appears.
  */
 class StoreSyncConflictRequest extends FormRequest
 {
@@ -28,7 +30,11 @@ class StoreSyncConflictRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'entity_type' => ['required', 'string', Rule::in(['field_visit', 'case_note'])],
+            'entity_type' => [
+                'required',
+                'string',
+                Rule::in(['field_visit', 'case_note', 'health_record', 'monitoring_record']),
+            ],
             'entity_id' => ['required', 'integer', 'min:1'],
             'kind' => ['required', 'string', 'max:40'],
             'queued_at' => ['required', 'date'],

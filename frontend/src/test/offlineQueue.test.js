@@ -12,6 +12,9 @@ import {
 } from "../lib/offlineQueue";
 import { fieldVisitsApi } from "../api/fieldVisitsApi";
 import { caseNotesApi } from "../api/caseNotesApi";
+import { healthRecordsApi } from "../api/healthRecordsApi";
+import { monitoringApi } from "../api/monitoringApi";
+import { authApi } from "../api/authApi";
 import { syncApi } from "../api/syncApi";
 
 vi.mock("../api/fieldVisitsApi", () => ({
@@ -20,6 +23,18 @@ vi.mock("../api/fieldVisitsApi", () => ({
 
 vi.mock("../api/caseNotesApi", () => ({
   caseNotesApi: { create: vi.fn(), update: vi.fn(), get: vi.fn() },
+}));
+
+vi.mock("../api/healthRecordsApi", () => ({
+  healthRecordsApi: { create: vi.fn(), update: vi.fn(), get: vi.fn() },
+}));
+
+vi.mock("../api/monitoringApi", () => ({
+  monitoringApi: { create: vi.fn(), update: vi.fn(), get: vi.fn() },
+}));
+
+vi.mock("../api/authApi", () => ({
+  authApi: { register: vi.fn() },
 }));
 
 vi.mock("../api/syncApi", () => ({
@@ -189,6 +204,83 @@ describe("offlineQueue", () => {
     expect(fieldVisitsApi.create).toHaveBeenCalledTimes(1);
     expect(fieldVisitsApi.uploadPhoto).toHaveBeenCalledTimes(2);
     expect(await getQueue()).toEqual([]);
+  });
+
+  it("replays a queued health record create", async () => {
+    healthRecordsApi.create.mockResolvedValue({ id: 7 });
+
+    await enqueue({
+      kind: "health-record",
+      payload: { diagnosis: "Foot and mouth disease" },
+      label: "Health record — Aling Nena",
+    });
+
+    const summary = await flushQueue();
+
+    expect(healthRecordsApi.create).toHaveBeenCalledWith({
+      diagnosis: "Foot and mouth disease",
+    });
+    expect(summary.synced).toBe(1);
+    expect(await getQueue()).toEqual([]);
+  });
+
+  it("replays a queued monitoring create", async () => {
+    monitoringApi.create.mockResolvedValue({ id: 8 });
+
+    await enqueue({
+      kind: "monitoring",
+      payload: { date_monitored: "2026-10-01", remarks: "Healthy" },
+    });
+
+    await flushQueue();
+
+    expect(monitoringApi.create).toHaveBeenCalledWith({
+      date_monitored: "2026-10-01",
+      remarks: "Healthy",
+    });
+    expect(await getQueue()).toEqual([]);
+  });
+
+  it("replays a queued farmer registration by creating the account", async () => {
+    authApi.register.mockResolvedValue({ id: 9 });
+
+    await enqueue({
+      kind: "registration",
+      payload: { name: "Juan", email: "juan@example.com", password: "Sup3r-Secret!" },
+      label: "Registration — Juan",
+    });
+
+    const summary = await flushQueue();
+
+    expect(authApi.register).toHaveBeenCalledWith({
+      name: "Juan",
+      email: "juan@example.com",
+      password: "Sup3r-Secret!",
+    });
+    expect(summary.synced).toBe(1);
+    expect(await getQueue()).toEqual([]);
+  });
+
+  it("parks a monitoring edit as a conflict when the record changed first", async () => {
+    monitoringApi.get.mockResolvedValue({
+      updated_at: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    await enqueue({
+      kind: "monitoring",
+      mode: "update",
+      serverId: 5,
+      payload: { remarks: "edited offline" },
+      label: "monitoring edit",
+    });
+
+    const summary = await flushQueue();
+    const rows = await getQueue();
+
+    expect(summary.conflicts).toBe(1);
+    expect(monitoringApi.update).not.toHaveBeenCalled();
+    expect(rows[0].status).toBe("conflict");
+    expect(rows[0].conflict).toMatchObject({ entityType: "monitoring_record", entityId: 5 });
   });
 
   it("classifies transport errors versus server rejections", () => {

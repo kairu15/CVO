@@ -16,6 +16,7 @@ use App\Models\UserNotification;
 use App\Services\NotificationService;
 use App\Services\AuditLogger;
 use App\Services\FieldVisitService;
+use App\Services\SettingsService;
 use App\Support\ImageSanitizer;
 use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
@@ -109,14 +110,15 @@ class FieldVisitController extends Controller
     }
 
     /**
-     * The purpose vocabulary the field form offers, served from config/cvo.php
-     * so the dropdown and the server-side validation cannot drift.
+     * The purpose vocabulary the field form offers, served from
+     * SettingsService so the dropdown and the server-side validation cannot
+     * drift, and an admin-managed purpose is offered as soon as it is saved.
      */
     public function options(): JsonResponse
     {
         return response()->json([
             'data' => [
-                'purposes' => config('cvo.field_visit_purposes'),
+                'purposes' => app(SettingsService::class)->fieldVisitPurposes(),
             ],
         ]);
     }

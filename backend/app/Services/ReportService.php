@@ -114,9 +114,9 @@ class ReportService
     }
 
     /**
-     * Clinical load: outcomes vocabulary from config (the same list the
-     * health record form offers), so the report cannot name an outcome the
-     * system does not use.
+     * Clinical load: the outcome vocabulary from SettingsService (the same
+     * editable list the health record form offers), so the report cannot name
+     * an outcome the system does not use.
      */
     private function clinicalSection(?string $barangay): array
     {
@@ -124,9 +124,10 @@ class ReportService
             ->whereHas('beneficiary', $this->barangayFilter($barangay));
 
         $byOutcome = [];
-        $openOutcomes = config('cvo.health_open_outcomes', []);
+        $outcomes = app(SettingsService::class)->healthOutcomes();
+        $openOutcomes = app(SettingsService::class)->openHealthOutcomes();
 
-        foreach (config('cvo.health_outcomes', []) as $outcome) {
+        foreach ($outcomes as $outcome) {
             $byOutcome[$outcome] = (clone $health)->where('outcome', $outcome)->count();
         }
 

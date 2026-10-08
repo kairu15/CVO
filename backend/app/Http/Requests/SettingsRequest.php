@@ -51,6 +51,16 @@ class SettingsRequest extends FormRequest
             'animal_types' => ['sometimes', 'array', 'max:40'],
             'animal_types.*' => ['required', 'string', 'min:1', 'max:50', 'distinct'],
 
+            // The clinical outcome and field-visit purpose vocabularies. Same
+            // "the list is data" pattern as the animal types: saved wholesale,
+            // values distinct within the list. The API's own validation and
+            // the forms' dropdowns both read them back through SettingsService,
+            // so an edit here is the single source of truth.
+            'health_outcomes' => ['sometimes', 'array', 'max:20'],
+            'health_outcomes.*' => ['required', 'string', 'min:1', 'max:50', 'distinct'],
+            'field_visit_purposes' => ['sometimes', 'array', 'max:20'],
+            'field_visit_purposes.*' => ['required', 'string', 'min:1', 'max:50', 'distinct'],
+
             // Notification preferences: one switch per stored event type and
             // per smart-alert rule, keyed notify_*. Anything else in the
             // payload is already ignored by SettingsService::save.

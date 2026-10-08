@@ -41,14 +41,17 @@ class AnimalHealthService
         // disagree about the same animal.
         $lastVaccination = VaccinationScheduleService::lastVaccinationSql();
 
-        $openOutcomes = array_values(config('cvo.health_open_outcomes'));
+        $openOutcomes = app(SettingsService::class)->openHealthOutcomes();
         $openPlaceholders = implode(',', array_fill(0, count($openOutcomes), '?'));
 
         // An open case is a clinical record with no outcome yet, or an outcome
-        // that still means "being worked on".
+        // that still means "being worked on". A vocabulary with no open
+        // outcomes left leaves only the "no outcome yet" arm.
         $openCases = "(select count(*) from health_records hr where hr.beneficiary_id = beneficiaries.id"
             ." and hr.deleted_at is null"
-            ." and (hr.outcome is null or hr.outcome in ({$openPlaceholders})))";
+            ." and (hr.outcome is null"
+            .($openOutcomes ? " or hr.outcome in ({$openPlaceholders})" : "")
+            ."))";
 
         $query = $this->beneficiaries->scopeQueryFor($user)
             ->with(['technician', 'farmer'])

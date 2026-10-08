@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateHealthRecordRequest;
 use App\Http\Resources\HealthRecordResource;
 use App\Models\HealthRecord;
 use App\Services\HealthRecordService;
+use App\Services\SettingsService;
 use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -96,14 +97,15 @@ class HealthRecordController extends Controller
     }
 
     /**
-     * The vocabulary the doctor's form offers. Served from config/cvo.php so
-     * the dropdown and the server-side validation can never drift apart.
+     * The vocabulary the doctor's form offers. Served from SettingsService so
+     * the dropdown and the server-side validation can never drift apart, and
+     * an outcome an admin adds is offered as soon as it is saved.
      */
     public function options(): JsonResponse
     {
         return response()->json([
             'data' => [
-                'outcomes' => config('cvo.health_outcomes'),
+                'outcomes' => app(SettingsService::class)->healthOutcomes(),
             ],
         ]);
     }

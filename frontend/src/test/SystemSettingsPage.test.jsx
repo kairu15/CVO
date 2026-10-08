@@ -72,10 +72,8 @@ const SETTINGS = {
     "smart-barangay-flag": true,
   },
   barangays: BARANGAYS,
-  vocabulary: {
-    health_outcomes: ["recovered", "improving", "ongoing", "referred", "deceased"],
-    field_visit_purposes: ["routine-monitoring", "follow-up", "complaint"],
-  },
+  health_outcomes: ["recovered", "improving", "ongoing", "referred", "deceased"],
+  field_visit_purposes: ["routine-monitoring", "follow-up", "complaint"],
 };
 
 function renderPage() {
@@ -103,6 +101,8 @@ describe("SystemSettingsPage", () => {
         ...serverSettings,
         alerts: { ...serverSettings.alerts, ...("vaccination_interval_days" in values || "vaccination_due_soon_days" in values || "field_visit_overdue_days" in values ? values : {}) },
         animal_types: values.animal_types ?? serverSettings.animal_types,
+        health_outcomes: values.health_outcomes ?? serverSettings.health_outcomes,
+        field_visit_purposes: values.field_visit_purposes ?? serverSettings.field_visit_purposes,
       };
       return serverSettings;
     });
@@ -225,8 +225,10 @@ describe("SystemSettingsPage", () => {
 
     await screen.findByLabelText("Vaccination interval (days)");
 
-    await user.type(screen.getByLabelText("Add a type"), "Chicken");
-    await user.click(screen.getByRole("button", { name: /^Add$/ }));
+    const typeInput = screen.getByLabelText("Add a type");
+    await user.type(typeInput, "Chicken");
+    // Scope to the animal-type section: every vocabulary editor has an "Add".
+    await user.click(within(typeInput.closest("form")).getByRole("button", { name: /^Add$/ }));
     await user.click(screen.getByRole("button", { name: /Save animal types/ }));
 
     await vi.waitFor(() => expect(settingsApi.save).toHaveBeenCalledTimes(1));
@@ -306,11 +308,48 @@ describe("SystemSettingsPage", () => {
     );
   });
 
-  it("renders the vocabularies the forms validate against", async () => {
+  it("shows the form vocabularies the API validates against", async () => {
     renderPage();
 
-    expect(await screen.findByText("health outcomes")).toBeInTheDocument();
+    await screen.findByLabelText("Vaccination interval (days)");
+
+    expect(screen.getByText("Health outcomes")).toBeInTheDocument();
     expect(screen.getByText("recovered")).toBeInTheDocument();
+    expect(screen.getByText("Field visit purposes")).toBeInTheDocument();
+    // Slugs are shown spaced out, the way the forms read them.
     expect(screen.getByText("routine monitoring")).toBeInTheDocument();
+  });
+
+  it("adds an outcome and saves the health-outcome list", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const input = await screen.findByLabelText("Add an outcome");
+    await user.type(input, "under treatment");
+
+    const form = input.closest("form");
+    await user.click(within(form).getByRole("button", { name: "Add" }));
+    await user.click(within(form).getByRole("button", { name: /Save health outcomes/ }));
+
+    await vi.waitFor(() => expect(settingsApi.save).toHaveBeenCalledTimes(1));
+    expect(settingsApi.save.mock.calls[0][0]).toEqual({
+      health_outcomes: ["recovered", "improving", "ongoing", "referred", "deceased", "under treatment"],
+    });
+  });
+
+  it("removes a purpose and saves the field-visit-purpose list", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const input = await screen.findByLabelText("Add a purpose");
+    await user.click(screen.getByRole("button", { name: "Remove routine monitoring" }));
+    await user.click(
+      within(input.closest("form")).getByRole("button", { name: /Save field visit purposes/ }),
+    );
+
+    await vi.waitFor(() => expect(settingsApi.save).toHaveBeenCalledTimes(1));
+    expect(settingsApi.save.mock.calls[0][0]).toEqual({
+      field_visit_purposes: ["follow-up", "complaint"],
+    });
   });
 });

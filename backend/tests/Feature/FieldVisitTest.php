@@ -140,6 +140,31 @@ class FieldVisitTest extends TestCase
             ->assertJsonValidationErrors(['visited_on', 'purpose']);
     }
 
+    public function test_the_purpose_vocabulary_follows_the_saved_settings(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->patchJson('/api/v1/admin/settings', [
+                'field_visit_purposes' => ['routine-monitoring', 'emergency'],
+            ])
+            ->assertOk();
+
+        // The newly added purpose is accepted...
+        $this->actingAs($this->technician)->postJson('/api/v1/field-visits', [
+            'beneficiary_id' => $this->beneficiary->id,
+            'visited_on' => now()->toDateString(),
+            'purpose' => 'emergency',
+            'has_photo' => true,
+        ])->assertCreated()->assertJsonPath('data.purpose', 'emergency');
+
+        // ...and one the vocabulary no longer contains is refused.
+        $this->actingAs($this->technician)->postJson('/api/v1/field-visits', [
+            'beneficiary_id' => $this->beneficiary->id,
+            'visited_on' => now()->toDateString(),
+            'purpose' => 'complaint',
+            'has_photo' => true,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['purpose']);
+    }
+
     public function test_the_distance_from_the_registered_pin_is_reported(): void
     {
         // The beneficiary's registered pin.

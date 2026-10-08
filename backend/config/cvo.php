@@ -13,10 +13,11 @@ return [
     |--------------------------------------------------------------------------
     |
     | The vocabulary a veterinarian picks from when closing out a diagnosis.
-    | This list is the single source of truth: the API validates against it and
-    | serves it to the form, so adding an outcome is a change here and nowhere
-    | else. `health_records.outcome` is a string column for that reason — no
-    | migration is needed to extend the list.
+    | This is the SHIPPED DEFAULT: an administrator edits the live list in
+    | System Settings, where it is stored in the settings table. The API
+    | validates against the saved list (falling back to this one until the
+    | first save) and serves it to the form, so `health_records.outcome` stays
+    | a string column — extending the list needs no migration.
     |
     */
     'health_outcomes' => [
@@ -77,8 +78,9 @@ return [
     |--------------------------------------------------------------------------
     |
     | Which of the outcomes above mean the case is still being worked on. Used
-    | by Animal Health Monitoring to count an animal's open cases, and mirrors
-    | the vocabulary in `health_outcomes` so the two cannot drift.
+    | by Animal Health Monitoring to count an animal's open cases. It is
+    | intersected with the live (admin-editable) vocabulary at read time, so
+    | an outcome an admin removes cannot linger in the counts.
     |
     | `referred` and `deceased` are deliberately NOT open: both end this
     | clinic's involvement in the case.
@@ -95,8 +97,9 @@ return [
     | log can be summarised later (how many visits were routine monitoring vs
     | a complaint) without re-reading prose.
     |
-    | Same single-source-of-truth pattern as the outcomes above: the API
-    | validates against this list and serves it to the form.
+    | The SHIPPED DEFAULT, like the outcomes above: an administrator edits the
+    | live list in System Settings, and the API validates against the saved
+    | list (falling back to this one until the first save).
     |
     */
     'field_visit_purposes' => [

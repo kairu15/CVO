@@ -49,27 +49,35 @@ class SettingsController extends Controller
         return response()->json(['data' => $this->payload()]);
     }
 
+    /** Settings stored as a JSON list rather than a scalar string. */
+    private const LIST_KEYS = [
+        SettingsService::ANIMAL_TYPES_KEY,
+        SettingsService::HEALTH_OUTCOMES_KEY,
+        SettingsService::FIELD_VISIT_PURPOSES_KEY,
+    ];
+
     public function update(SettingsRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        // The animal-type vocabulary is stored as JSON, not as a scalar
-        // string, so it goes through its own writer; everything else is a
-        // plain key => scalar the generic save handles.
-        $types = $validated['animal_types'] ?? null;
-        unset($validated['animal_types']);
+        // List-valued settings (the vocabularies) are stored as JSON, not as a
+        // scalar string, so they go through their own writer; everything else
+        // is a plain key => scalar the generic save handles.
+        $lists = Arr::only($validated, self::LIST_KEYS);
+        $scalars = Arr::except($validated, self::LIST_KEYS);
 
-        $this->settings->save(Arr::only($validated, SettingsService::KEYS));
+        $this->settings->save(Arr::only($scalars, SettingsService::KEYS));
 
-        if (is_array($types)) {
-            $this->settings->saveAnimalTypes($types);
+        foreach ($lists as $key => $list) {
+            if (is_array($list)) {
+                $this->settings->saveList($key, $list);
+            }
         }
 
         // Which sections changed, named — the audit trail should say what an
         // administrator touched without storing every saved value.
         $this->audit->log($request->user(), 'settings_updated', null, [
             'sections' => array_keys($validated),
-            'animal_types_changed' => is_array($types),
         ]);
 
         return response()->json(['data' => $this->payload()]);
@@ -105,10 +113,12 @@ class SettingsController extends Controller
             // them (via the dedicated /admin/barangays endpoints — the
             // settings PATCH still rejects a `barangays` payload).
             'barangays' => $this->barangaysWithPuroks(),
-            'vocabulary' => [
-                'health_outcomes' => config('cvo.health_outcomes'),
-                'field_visit_purposes' => config('cvo.field_visit_purposes'),
-            ],
+            // The clinical outcome and field-visit purpose vocabularies,
+            // editable. The API validates against exactly the lists returned
+            // here — see SettingsService::healthOutcomes / fieldVisitPurposes —
+            // so the forms and the server can never disagree.
+            'health_outcomes' => $this->settings->healthOutcomes(),
+            'field_visit_purposes' => $this->settings->fieldVisitPurposes(),
         ];
     }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\FieldVisit;
+use App\Services\SettingsService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,7 +25,7 @@ class UpdateFieldVisitRequest extends FormRequest
     {
         return [
             'visited_on' => ['sometimes', 'date', 'before_or_equal:today'],
-            'purpose' => ['sometimes', 'string', Rule::in(config('cvo.field_visit_purposes'))],
+            'purpose' => ['sometimes', 'string', Rule::in(app(SettingsService::class)->fieldVisitPurposes())],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'notes' => ['nullable', 'string', 'max:2000'],

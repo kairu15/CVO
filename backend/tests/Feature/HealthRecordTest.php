@@ -97,6 +97,32 @@ class HealthRecordTest extends TestCase
             ->assertJsonValidationErrors(['diagnosis', 'outcome']);
     }
 
+    public function test_the_outcome_vocabulary_follows_the_saved_settings(): void
+    {
+        // An admin retires the shipped list and saves a new one.
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->patchJson('/api/v1/admin/settings', [
+                'health_outcomes' => ['recovered', 'under treatment'],
+            ])
+            ->assertOk();
+
+        // The newly added outcome is accepted...
+        $this->actingAs($this->doctor)->postJson('/api/v1/health-records', [
+            'beneficiary_id' => $this->beneficiary->id,
+            'date_recorded' => now()->toDateString(),
+            'diagnosis' => 'Brucellosis',
+            'outcome' => 'under treatment',
+        ])->assertCreated()->assertJsonPath('data.outcome', 'under treatment');
+
+        // ...and one the vocabulary no longer contains is refused.
+        $this->actingAs($this->doctor)->postJson('/api/v1/health-records', [
+            'beneficiary_id' => $this->beneficiary->id,
+            'date_recorded' => now()->toDateString(),
+            'diagnosis' => 'Brucellosis',
+            'outcome' => 'deceased',
+        ])->assertUnprocessable()->assertJsonValidationErrors(['outcome']);
+    }
+
     public function test_an_unknown_beneficiary_is_rejected(): void
     {
         $this->actingAs($this->doctor)

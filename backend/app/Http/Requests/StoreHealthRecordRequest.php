@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\HealthRecord;
+use App\Services\SettingsService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,7 +25,7 @@ class StoreHealthRecordRequest extends FormRequest
             'date_recorded' => ['required', 'date', 'before_or_equal:today'],
             'diagnosis' => ['required', 'string', 'max:255'],
             'treatment' => ['nullable', 'string', 'max:2000'],
-            'outcome' => ['nullable', 'string', Rule::in(config('cvo.health_outcomes'))],
+            'outcome' => ['nullable', 'string', Rule::in(app(SettingsService::class)->healthOutcomes())],
             'remarks' => ['nullable', 'string', 'max:2000'],
         ];
     }

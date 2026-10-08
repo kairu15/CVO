@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Cache;
 /**
  * System settings — the values an administrator can change without a deploy.
  *
- * Five groups, one table, one cache entry:
+ * Six groups, one table, one cache entry:
  *
  *   contact       the office contact profile. Rendered on the public landing
  *                 page, the farmer Support page and the password-reset note,
@@ -23,6 +23,9 @@ use Illuminate\Support\Facades\Cache;
  *                 suggestion — the importer keeps unknown workbook values as
  *                 their own type — but the list itself is now data, so a new
  *                 program category does not need a deploy.
+ *   vocabulary    the clinical outcome and field-visit purpose lists the
+ *                 health and field forms validate against. Editable so a CVO
+ *                 that adds an outcome or purpose does not need a deploy.
  *   notifications which stored event types and smart-alert rules actually
  *                 write notification rows. A disabled type is suppressed at
  *                 write time; for smart alerts the next scan also clears the
@@ -57,6 +60,12 @@ class SettingsService
 
     /** The suggested animal-type vocabulary, stored as a JSON list. */
     public const ANIMAL_TYPES_KEY = 'animal_types';
+
+    /** The clinical outcome vocabulary, stored as a JSON list. */
+    public const HEALTH_OUTCOMES_KEY = 'health_outcomes';
+
+    /** The field-visit purpose vocabulary, stored as a JSON list. */
+    public const FIELD_VISIT_PURPOSES_KEY = 'field_visit_purposes';
 
     /**
      * Which notification types actually write rows. Every stored event type
@@ -107,6 +116,8 @@ class SettingsService
         ...self::ALERT_KEYS,
         ...self::SESSION_KEYS,
         self::ANIMAL_TYPES_KEY,
+        self::HEALTH_OUTCOMES_KEY,
+        self::FIELD_VISIT_PURPOSES_KEY,
         ...self::NOTIFICATION_KEYS,
     ];
 
@@ -196,29 +207,77 @@ class SettingsService
      */
     public function animalTypes(): array
     {
-        $decoded = json_decode((string) ($this->values()[self::ANIMAL_TYPES_KEY] ?? ''), true);
+        return $this->listValue(self::ANIMAL_TYPES_KEY, 'cvo.animal_types');
+    }
+
+    /**
+     * The clinical outcome vocabulary — the list the health-record form offers
+     * and the API validates against. The single source of truth now, so a CVO
+     * that adds an outcome does not need a deploy.
+     *
+     * @return list<string>
+     */
+    public function healthOutcomes(): array
+    {
+        return $this->listValue(self::HEALTH_OUTCOMES_KEY, 'cvo.health_outcomes');
+    }
+
+    /**
+     * The field-visit purpose vocabulary — the list the field form offers and
+     * the API validates against.
+     *
+     * @return list<string>
+     */
+    public function fieldVisitPurposes(): array
+    {
+        return $this->listValue(self::FIELD_VISIT_PURPOSES_KEY, 'cvo.field_visit_purposes');
+    }
+
+    /**
+     * The outcomes that mean a case is still being worked on (for open-case
+     * counts), narrowed to outcomes the active vocabulary still contains — so
+     * removing an outcome cannot leave a stale identifier counting in reports.
+     *
+     * @return list<string>
+     */
+    public function openHealthOutcomes(): array
+    {
+        return array_values(array_intersect(
+            $this->healthOutcomes(),
+            config('cvo.health_open_outcomes', []),
+        ));
+    }
+
+    /**
+     * A stored JSON list, falling back to config for a key never saved.
+     *
+     * @return list<string>
+     */
+    private function listValue(string $key, string $configKey): array
+    {
+        $decoded = json_decode((string) ($this->values()[$key] ?? ''), true);
 
         if (! is_array($decoded)) {
-            return array_values(config('cvo.animal_types', []));
+            return array_values(config($configKey, []));
         }
 
         return array_values(array_filter($decoded, fn ($t) => is_string($t) && trim($t) !== ''));
     }
 
     /**
-     * Replace the suggested animal-type vocabulary.
+     * Replace a JSON-list setting: trimmed, de-duplicated, blanks dropped.
      *
-     * @param  list<string>  $types
+     * @param  list<string>  $values
      */
-    public function saveAnimalTypes(array $types): void
+    public function saveList(string $key, array $values): void
     {
         $clean = array_values(array_unique(array_map(
-            fn (string $t) => trim($t),
-            array_filter($types, fn ($t) => is_string($t) && trim($t) !== ''),
+            fn (string $v) => trim($v),
+            array_filter($values, fn ($v) => is_string($v) && trim($v) !== ''),
         )));
 
         Setting::updateOrCreate(
-            ['key' => self::ANIMAL_TYPES_KEY],
+            ['key' => $key],
             ['value' => json_encode($clean)],
         );
 
@@ -354,6 +413,8 @@ class SettingsService
             'session_idle_minutes' => (string) config('security.client_idle_minutes'),
 
             self::ANIMAL_TYPES_KEY => json_encode(array_values(config('cvo.animal_types', []))),
+            self::HEALTH_OUTCOMES_KEY => json_encode(array_values(config('cvo.health_outcomes', []))),
+            self::FIELD_VISIT_PURPOSES_KEY => json_encode(array_values(config('cvo.field_visit_purposes', []))),
 
             // Notification switches default to on: the seeded behaviour is
             // exactly today's behaviour, and an admin can only turn things

@@ -50,7 +50,8 @@ class SettingsTest extends TestCase
         // BarangayManagementTest.
         $this->assertIsList($data['barangays']);
         $this->assertSame(config('cvo.animal_types'), $data['animal_types']);
-        $this->assertSame(config('cvo.health_outcomes'), $data['vocabulary']['health_outcomes']);
+        $this->assertSame(config('cvo.health_outcomes'), $data['health_outcomes']);
+        $this->assertSame(config('cvo.field_visit_purposes'), $data['field_visit_purposes']);
     }
 
     public function test_an_admin_can_save_the_office_profile(): void
@@ -265,6 +266,46 @@ class SettingsTest extends TestCase
             ->patchJson('/api/v1/admin/settings', ['animal_types' => ['Goat', '']])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['animal_types.1']);
+    }
+
+    public function test_an_admin_can_save_the_health_outcome_vocabulary(): void
+    {
+        $list = ['recovered', 'ongoing', 'under treatment'];
+
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', ['health_outcomes' => $list])
+            ->assertOk()
+            ->assertJsonPath('data.health_outcomes', $list);
+
+        // The saved list is now the vocabulary every consumer reads.
+        $this->assertSame($list, app(\App\Services\SettingsService::class)->healthOutcomes());
+    }
+
+    public function test_an_admin_can_save_the_field_visit_purpose_vocabulary(): void
+    {
+        $list = ['routine-monitoring', 'emergency'];
+
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', ['field_visit_purposes' => $list])
+            ->assertOk()
+            ->assertJsonPath('data.field_visit_purposes', $list);
+
+        $this->assertSame($list, app(\App\Services\SettingsService::class)->fieldVisitPurposes());
+    }
+
+    public function test_an_invalid_vocabulary_list_is_rejected(): void
+    {
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', ['health_outcomes' => ['recovered', '']])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['health_outcomes.1']);
+
+        $this->actingAs($this->admin())
+            ->patchJson('/api/v1/admin/settings', [
+                'field_visit_purposes' => ['routine-monitoring', 'routine-monitoring'],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['field_visit_purposes.1']);
     }
 
     public function test_notification_preferences_default_to_everything_on(): void

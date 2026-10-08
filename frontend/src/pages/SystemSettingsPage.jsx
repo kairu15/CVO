@@ -6,6 +6,7 @@ import { InlineAlert } from "../components/InlineAlert";
 import { SkeletonList } from "../components/Skeleton";
 import { Icon } from "../components/Icons";
 import { SymptomRulesEditor } from "../components/SymptomRulesEditor";
+import { VocabularyEditor } from "../components/VocabularyEditor";
 import { useToast } from "../context/ToastContext";
 import { getRole } from "../config/roles";
 
@@ -37,7 +38,11 @@ import { getRole } from "../config/roles";
  *   while unused; beneficiaries point at them by id, so renames are safe).
  *   Barangays can be added and re-centered but not renamed — the free-text
  *   historical addresses normalize against the list, so a rename would orphan
- *   them. Form vocabularies stay read-only for the same reason.
+ *   them.
+ * - Form vocabularies — the clinical outcome and field-visit purpose lists the
+ *   health and field forms validate against. They used to be config, which
+ *   made adding an outcome a deploy; they are data now, saved whole through
+ *   the settings PATCH and read back by the API's own validation.
  *
  * Each writable section saves only its own keys, so an edit to one group can
  * never blank another.
@@ -150,6 +155,10 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
   const [session, setSession] = useState({});
   const [animalTypes, setAnimalTypes] = useState([]);
   const [newAnimalType, setNewAnimalType] = useState("");
+  const [healthOutcomes, setHealthOutcomes] = useState([]);
+  const [newHealthOutcome, setNewHealthOutcome] = useState("");
+  const [fieldVisitPurposes, setFieldVisitPurposes] = useState([]);
+  const [newFieldVisitPurpose, setNewFieldVisitPurpose] = useState("");
   const [notifications, setNotifications] = useState({});
 
   // Reference-data editor state (puroks are row operations, saved immediately
@@ -174,6 +183,8 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
     setAlerts(settings.alerts ?? {});
     setSession(settings.session ?? {});
     setAnimalTypes(settings.animal_types ?? []);
+    setHealthOutcomes(settings.health_outcomes ?? []);
+    setFieldVisitPurposes(settings.field_visit_purposes ?? []);
     setNotifications(settings.notifications ?? {});
   }, []);
 
@@ -206,6 +217,17 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
 
   function setField(setter, key, value) {
     setter((prev) => ({ ...prev, [key]: value }));
+  }
+
+  /** Append a trimmed draft to a list setting (no duplicates), clearing it. */
+  function addOption(list, setList, draft, setDraft) {
+    const trimmed = draft.trim();
+
+    if (trimmed && !list.includes(trimmed)) {
+      setList((prev) => [...prev, trimmed]);
+    }
+
+    setDraft("");
   }
 
   /**
@@ -908,42 +930,72 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
             </form>
           </section>
 
-          {/* Read-only: form vocabularies */}
-          <section className="card p-6">
-            <div className="flex items-center justify-between">
-              <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
-                Form vocabularies
-              </h3>
-              <span className="inline-flex items-center gap-1.5 rounded-pill bg-slate-100 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-slate-600 uppercase">
-                <Icon name="lock" className="h-3 w-3" />
-                Read-only
-              </span>
-            </div>
-            <p className="mt-1.5 text-xs text-slate-500">
-              The outcome and visit-purpose lists the clinical and field forms
-              validate against.
-            </p>
+          {/* Writable: the clinical outcome vocabulary */}
+          <VocabularyEditor
+            title="Health outcomes"
+            description="The list the health record form offers and the API validates against. Saved as one list; the form updates as soon as it is saved."
+            inputId="new-health-outcome"
+            addLabel="Add an outcome"
+            addHint="Shown on the health record form."
+            saveLabel="Save health outcomes"
+            values={healthOutcomes}
+            draft={newHealthOutcome}
+            onDraftChange={setNewHealthOutcome}
+            onAdd={() =>
+              addOption(healthOutcomes, setHealthOutcomes, newHealthOutcome, setNewHealthOutcome)
+            }
+            onRemove={(value) =>
+              setHealthOutcomes((prev) => prev.filter((outcome) => outcome !== value))
+            }
+            onSave={(event) => {
+              event.preventDefault();
+              save(
+                "health_outcomes",
+                ["health_outcomes"],
+                { health_outcomes: healthOutcomes },
+                "Health outcomes saved. The clinical form offers the updated list.",
+              );
+            }}
+            saving={savingSection === "health_outcomes"}
+            error={fieldErrors.health_outcomes}
+            display={(value) => value.replaceAll("-", " ")}
+          />
 
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              {Object.entries(data.vocabulary ?? {}).map(([name, options]) => (
-                <div key={name}>
-                  <p className="text-xs font-semibold text-slate-700 capitalize">
-                    {name.replaceAll("_", " ")}
-                  </p>
-                  <ul className="mt-2 space-y-1">
-                    {options.map((option) => (
-                      <li
-                        key={option}
-                        className="rounded-xl border border-slate-100 px-3 py-1.5 text-xs text-slate-600 capitalize"
-                      >
-                        {option.replaceAll("-", " ")}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </section>
+          {/* Writable: the field-visit purpose vocabulary */}
+          <VocabularyEditor
+            title="Field visit purposes"
+            description="The list the field visit form offers and the API validates against. Saved as one list; the form updates as soon as it is saved."
+            inputId="new-field-visit-purpose"
+            addLabel="Add a purpose"
+            addHint="Shown on the field visit form."
+            saveLabel="Save field visit purposes"
+            values={fieldVisitPurposes}
+            draft={newFieldVisitPurpose}
+            onDraftChange={setNewFieldVisitPurpose}
+            onAdd={() =>
+              addOption(
+                fieldVisitPurposes,
+                setFieldVisitPurposes,
+                newFieldVisitPurpose,
+                setNewFieldVisitPurpose,
+              )
+            }
+            onRemove={(value) =>
+              setFieldVisitPurposes((prev) => prev.filter((purpose) => purpose !== value))
+            }
+            onSave={(event) => {
+              event.preventDefault();
+              save(
+                "field_visit_purposes",
+                ["field_visit_purposes"],
+                { field_visit_purposes: fieldVisitPurposes },
+                "Field visit purposes saved. The field form offers the updated list.",
+              );
+            }}
+            saving={savingSection === "field_visit_purposes"}
+            error={fieldErrors.field_visit_purposes}
+            display={(value) => value.replaceAll("-", " ")}
+          />
         </>
       )}
 

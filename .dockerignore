@@ -1,0 +1,85 @@
+# =============================================================================
+# Build context for BOTH images — the context is the REPOSITORY ROOT.
+#
+# WHY THIS FILE IS AT THE ROOT
+#   Docker only reads `.dockerignore` from the root of the BUILD CONTEXT.
+#   Render builds with the repo root as the context (it is the default for
+#   `dockerContext`; `rootDir` only scopes build TRIGGERS, not the context),
+#   and the compose files now build with `context: .` too, so a
+#   `frontend/.dockerignore` / `backend/.dockerignore` was never read at all.
+#   Both images therefore share one file, with paths prefixed by service.
+#
+#   The Dockerfiles copy ONLY their own service (`COPY frontend/ .` /
+#   `COPY backend/ .`), so the other service's source being present in the
+#   context costs upload time only — it never reaches an image.
+# =============================================================================
+
+# --- Dependencies installed INSIDE the images ------------------------------
+**/node_modules
+**/vendor
+
+# --- Build artefacts produced INSIDE the images ----------------------------
+**/dist
+**/dist-ssr
+backend/public/build
+backend/public/hot
+backend/public/fonts-manifest.dev.json
+# Created at runtime by `php artisan storage:link`; a dangling symlink here
+# breaks the build context ("invalid file request public/storage").
+backend/public/storage
+
+# --- Environment files must never be baked into an image -------------------
+# VITE_API_URL reaches the frontend build as a build ARG and the API's
+# config as container env vars, so no .env file is needed in either context.
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.docker.example
+!**/.env.ngrok.example
+!**/.env.production.example
+
+# --- storage/ runtime content (backend) ------------------------------------
+# The directory skeleton (.gitignore placeholders) is kept so the framework
+# can write into it; the contents are owned by volumes at runtime.
+backend/storage/app/*
+!backend/storage/app/.gitignore
+backend/storage/app/public
+backend/storage/framework/cache/data/*
+!backend/storage/framework/cache/data/.gitignore
+backend/storage/framework/sessions/*
+!backend/storage/framework/sessions/.gitignore
+backend/storage/framework/views/*
+!backend/storage/framework/views/.gitignore
+backend/storage/logs/*
+!backend/storage/logs/.gitignore
+backend/storage/*.key
+
+# --- Local artefacts and logs ----------------------------------------------
+*.log
+*.sqlite
+**/.phpunit.result.cache
+**/.phpunit.cache
+backend/_ide_helper.php
+backend/barangay_geocode.txt
+
+# --- Not needed by either image --------------------------------------------
+# The mobile client and the puppeteer checks are separate workspaces; the
+# screenshot dir is produced by e2e scripts on the host.
+mobile
+e2e
+screenshots
+README.md
+
+# --- VCS / editor ----------------------------------------------------------
+.git
+.gitignore
+.gitattributes
+.github
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+
+# --- Container definitions are not needed inside the image -----------------
+**/Dockerfile
+**/.dockerignore

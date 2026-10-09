@@ -294,15 +294,14 @@ describe("DashboardHeader", () => {
     await vi.waitFor(() => expect(auth.logout).toHaveBeenCalledTimes(1));
   });
 
-  it("shows the always-present connectivity readout in the header", async () => {
+  it("shows no connectivity bar while the connection is up", async () => {
     renderHeader();
 
     await screen.findByRole("button", { name: "Notifications" });
 
-    // Present in the connected state too — not just when something is wrong.
-    expect(
-      screen.getByRole("button", { name: "You are connected online." }),
-    ).toBeInTheDocument();
+    // Online is announced by a transient toast, not a standing header element,
+    // so nothing offline-related renders while connected.
+    expect(screen.queryByText(/You are in offline mode/)).not.toBeInTheDocument();
   });
 
   it("closes the account menu when clicking outside the header", async () => {

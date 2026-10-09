@@ -17,6 +17,13 @@
 # NOTE ON PHP VERSION: composer.json declares ^8.3, but composer.lock pins
 # Symfony 8.1.x, which requires PHP >= 8.4.1 — so 8.3 cannot install the lock
 # file. PHP 8.4 satisfies the ^8.3 constraint and the lock, so it is the floor.
+#
+# BUILD CONTEXT = REPOSITORY ROOT
+#   Every COPY below is prefixed `backend/` because the context is the repo
+#   root, not backend/. That is Render's default (`dockerContext` is omitted
+#   from render.yaml) and it is what the compose files now pass explicitly
+#   (`context: .` + `dockerfile: backend/Dockerfile`). Building this file with
+#   a backend/ context will fail — use `docker build -f backend/Dockerfile .`
 # =============================================================================
 
 ARG PHP_VERSION=8.4
@@ -76,11 +83,11 @@ RUN addgroup -S app && adduser -S -G app -u 1000 app
 
 # CVO's php/opcache overrides. The `zz-` prefix makes it load after the image
 # defaults, so these values win.
-COPY docker/php.ini /usr/local/etc/php/conf.d/zz-cvo.ini
+COPY backend/docker/php.ini /usr/local/etc/php/conf.d/zz-cvo.ini
 
 WORKDIR /var/www/html
 
-COPY docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY backend/docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Waits for MySQL, migrates, seeds on request, then execs the stage's CMD.
@@ -100,7 +107,7 @@ FROM base AS vendor
 WORKDIR /var/www/html
 
 # Manifests first so this layer only rebuilds when dependencies change.
-COPY composer.json composer.lock ./
+COPY backend/composer.json backend/composer.lock ./
 
 # --no-scripts: artisan is not present yet; the autoload scripts run below once
 # the full source tree (and therefore artisan) has been copied in.
@@ -112,7 +119,7 @@ RUN composer install \
         --prefer-dist \
         --optimize-autoloader
 
-COPY . .
+COPY backend/ .
 
 # A classmap-authoritative autoloader is safe here because the image is
 # immutable — no files are added at runtime.
@@ -136,9 +143,9 @@ ENV APP_ENV=local
 
 # Development is cache-free: OPcache off entirely (the file explains the zz-dev
 # conf.d name, which must sort after the shared zz-cvo.ini to win).
-COPY docker/php-dev.ini /usr/local/etc/php/conf.d/zz-dev.ini
+COPY backend/docker/php-dev.ini /usr/local/etc/php/conf.d/zz-dev.ini
 
-COPY composer.json composer.lock ./
+COPY backend/composer.json backend/composer.lock ./
 RUN composer install \
         --no-interaction \
         --prefer-dist \
@@ -146,7 +153,7 @@ RUN composer install \
         --no-scripts \
         --no-autoloader
 
-COPY . .
+COPY backend/ .
 
 # Re-run autoload + Laravel's package:discover script now that artisan exists.
 RUN composer dump-autoload --optimize --no-interaction
@@ -192,7 +199,7 @@ RUN apk add --no-cache nginx supervisor
 # Production dependencies and the fully-optimised autoloader.
 COPY --from=vendor /var/www/html/vendor ./vendor
 
-COPY . .
+COPY backend/ .
 
 RUN composer dump-autoload \
         --no-dev \
@@ -210,13 +217,13 @@ RUN composer dump-autoload \
 
 # Production caches aggressively: the image is immutable, so OPcache never
 # re-stats source files (the file explains the zz-prod conf.d name).
-COPY docker/php-production.ini /usr/local/etc/php/conf.d/zz-prod.ini
+COPY backend/docker/php-production.ini /usr/local/etc/php/conf.d/zz-prod.ini
 
 # php-fpm pool that tracks the non-root `app` user and passes container env
 # through to the workers (Laravel reads DB_* / SANCTUM_* from the environment).
-COPY docker/php-fpm.conf /usr/local/etc/php-fpm.d/zz-cvo.conf
-COPY docker/nginx.conf /etc/nginx/http.d/default.conf
-COPY docker/supervisord.conf /etc/supervisord.conf
+COPY backend/docker/php-fpm.conf /usr/local/etc/php-fpm.d/zz-cvo.conf
+COPY backend/docker/nginx.conf /etc/nginx/http.d/default.conf
+COPY backend/docker/supervisord.conf /etc/supervisord.conf
 
 EXPOSE 8080
 

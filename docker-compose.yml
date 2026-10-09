@@ -59,7 +59,10 @@ services:
   # ---------------------------------------------------------------------------
   backend:
     build:
-      context: ./backend
+      # Repo root — the same context Render uses, so the Dockerfile's
+      # `COPY backend/ ...` paths resolve identically in both places.
+      context: .
+      dockerfile: backend/Dockerfile
       target: dev
     restart: unless-stopped
     environment:
@@ -114,7 +117,9 @@ services:
   # ---------------------------------------------------------------------------
   frontend:
     build:
-      context: ./frontend
+      # Repo root — see the backend service above.
+      context: .
+      dockerfile: frontend/Dockerfile
       target: dev
     restart: unless-stopped
     environment:

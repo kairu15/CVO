@@ -1,18 +1,23 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectivityStatus } from "../components/ConnectivityStatus";
+import { ToastProvider } from "../context/ToastContext";
 
 /**
- * The persistent header connectivity readout.
+ * The header connectivity indicator — two behaviors driven by one debounced
+ * signal:
  *
- * It must always be on screen (both states, not just offline), swap its icon
- * and wording with the debounced state, and keep the full message reachable
- * when collapsed to an icon on narrow header widths.
+ *   offline     a persistent bar that stays for the whole offline period
+ *   back online a success toast fired once, then auto-dismissed
+ *
+ * Both read the shared `useOnlineStatus` hook (the same one that drives the
+ * offline sync queue), so its 1.5s settle window is what these tests exercise
+ * for the anti-flicker guarantee.
  */
 
-const ONLINE = "You are connected online.";
 const OFFLINE =
-  "You are in offline mode — all changes will be synced when online.";
+  "You are in offline mode. All changes will be synced when online.";
+const ONLINE = "You are connected online.";
 
 const realDescriptor =
   Object.getOwnPropertyDescriptor(window.navigator.__proto__, "onLine") ??
@@ -25,13 +30,27 @@ function setNavigatorOnline(value) {
   });
 }
 
-/** Flip the browser signal and let the hook's 1.5s settle window elapse. */
-function goOffline() {
+/** Flip the browser signal, then let the hook's settle window elapse. */
+function flip(value, eventName) {
   act(() => {
-    setNavigatorOnline(false);
-    window.dispatchEvent(new Event("offline"));
+    setNavigatorOnline(value);
+    window.dispatchEvent(new Event(eventName));
+  });
+  act(() => {
     vi.advanceTimersByTime(2_000);
   });
+}
+
+const goOffline = () => flip(false, "offline");
+const goOnline = () => flip(true, "online");
+
+/** The indicator only needs a toast sink; the provider supplies it. */
+function renderIndicator() {
+  return render(
+    <ToastProvider>
+      <ConnectivityStatus />
+    </ToastProvider>,
+  );
 }
 
 describe("ConnectivityStatus", () => {
@@ -47,60 +66,103 @@ describe("ConnectivityStatus", () => {
     }
   });
 
-  it("starts visible and connected, with the online wording", () => {
-    render(<ConnectivityStatus />);
+  it("renders nothing persistent while connected", () => {
+    renderIndicator();
 
-    const pill = screen.getByRole("button", { name: ONLINE });
-    expect(pill).toHaveAttribute("data-connectivity", "online");
-    expect(screen.getByText(ONLINE)).toBeInTheDocument();
+    // Online is a transient toast, not a standing element — so a mount that
+    // starts connected shows neither the offline bar nor a toast.
     expect(screen.queryByText(OFFLINE)).not.toBeInTheDocument();
+    expect(screen.queryByText(ONLINE)).not.toBeInTheDocument();
   });
 
-  it("stays on screen and switches to the offline wording + icon", () => {
-    const { container } = render(<ConnectivityStatus />);
+  it("shows the persistent offline bar with the exact required wording", () => {
+    renderIndicator();
 
     goOffline();
 
-    const pill = screen.getByRole("button", { name: OFFLINE });
-    expect(pill).toHaveAttribute("data-connectivity", "offline");
+    const bar = screen.getByRole("status");
+    expect(bar).toHaveAttribute("data-connectivity", "offline");
+    expect(bar).toHaveTextContent(OFFLINE);
+  });
+
+  it("keeps the offline bar up for as long as the device is offline", () => {
+    renderIndicator();
+
+    goOffline();
+    // No dismiss button and no timer: well past any toast lifetime it is
+    // still there, because the condition it describes is still true.
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+
     expect(screen.getByText(OFFLINE)).toBeInTheDocument();
     expect(screen.queryByText(ONLINE)).not.toBeInTheDocument();
-
-    // The disconnected variant's slash is what makes the state readable
-    // without reading the text.
-    expect(container.querySelector('path[d="m4 4 16 16"]')).not.toBeNull();
   });
 
-  it("uses the exact specified wording in both states", () => {
-    render(<ConnectivityStatus />);
-    expect(screen.getByText("You are connected online.")).toBeInTheDocument();
+  it("swaps the bar for a success toast the moment the connection returns", () => {
+    renderIndicator();
 
     goOffline();
-    expect(
-      screen.getByText(
-        "You are in offline mode — all changes will be synced when online.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText(OFFLINE)).toBeInTheDocument();
+
+    goOnline();
+
+    // Neither both-at-once nor neither: the bar is gone and the toast is up.
+    expect(screen.queryByText(OFFLINE)).not.toBeInTheDocument();
+
+    const toast = screen.getByRole("status");
+    expect(toast).toHaveTextContent(ONLINE);
+    // Success variant — the green left accent, distinct from the amber bar.
+    expect(toast.className).toContain("border-l-brand-600");
   });
 
-  it("reveals the full message on tap when collapsed to an icon", () => {
-    render(<ConnectivityStatus />);
+  it("auto-dismisses the online toast after a few seconds", () => {
+    renderIndicator();
 
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    goOffline();
+    goOnline();
+    expect(screen.getByText(ONLINE)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: ONLINE }));
+    // Past the 4s lifetime plus the exit animation.
+    act(() => {
+      vi.advanceTimersByTime(4_500);
+    });
 
-    expect(screen.getByRole("tooltip")).toHaveTextContent(ONLINE);
+    expect(screen.queryByText(ONLINE)).not.toBeInTheDocument();
   });
 
-  it("closes the tapped message on Escape", () => {
-    render(<ConnectivityStatus />);
+  it("ignores a connectivity blip shorter than the settle window", () => {
+    renderIndicator();
 
-    fireEvent.click(screen.getByRole("button", { name: ONLINE }));
-    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    // A weak link renegotiates: offline then online again, back-to-back.
+    act(() => {
+      setNavigatorOnline(false);
+      window.dispatchEvent(new Event("offline"));
+      setNavigatorOnline(true);
+      window.dispatchEvent(new Event("online"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
 
-    fireEvent.keyDown(document, { key: "Escape" });
+    // The debounced state never flipped, so no bar flashed and no toast fired.
+    expect(screen.queryByText(OFFLINE)).not.toBeInTheDocument();
+    expect(screen.queryByText(ONLINE)).not.toBeInTheDocument();
+  });
 
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  it("does not re-fire the toast while the connection stays up", () => {
+    renderIndicator();
+
+    goOffline();
+    goOnline();
+    expect(screen.getByText(ONLINE)).toBeInTheDocument();
+
+    // Let the first toast expire, then a redundant `online` event arrives.
+    act(() => {
+      vi.advanceTimersByTime(4_500);
+    });
+    goOnline();
+
+    expect(screen.queryByText(ONLINE)).not.toBeInTheDocument();
   });
 });

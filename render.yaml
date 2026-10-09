@@ -6,17 +6,31 @@
 #   cvo-backend   backend/Dockerfile   `production` target — Laravel API + MySQL
 #   cvo-frontend  frontend/Dockerfile  `production` target — React/Vite SPA (nginx)
 #
-# WHY `rootDir` MATTERS (the original build failure)
-#   Both Dockerfiles are written for a build context of their own subdirectory
-#   — frontend/Dockerfile COPYs bare `package.json` and `docker/nginx.conf`;
-#   backend/Dockerfile COPYs bare `composer.json` and `docker/entrypoint.sh`.
-#   Render defaults the context to the REPOSITORY ROOT, which failed with:
-#       "/package.json": not found   "/docker/nginx.conf": not found
-#   `rootDir: frontend` (and `rootDir: backend`) makes every relative path —
-#   including the Docker build context and the default Dockerfile path — resolve
-#   from that subdirectory, exactly like the repo's own compose files
-#   (`context: ./frontend`, `context: ./backend`). It also stops a change under
-#   one service from redeploying the other.
+# WHY THE BUILD FAILED WITHOUT THIS (and why rootDir was wrong)
+#   Render's build context is `dockerContext`, and it defaults to the REPOSITORY
+#   ROOT. `rootDir` only scopes which file changes TRIGGER a build — it does not
+#   move the context, and it does not reliably move the Dockerfile path either
+#   (dockerfilePath is documented as relative to the repo root).
+#   The deploy log shows exactly that mismatch: Render loaded frontend/Dockerfile
+#   but handed it the repo root as context, so the bare
+#       COPY package.json package-lock.json ./
+#       COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+#   failed with:
+#       "/package.json": not found     "/docker/nginx.conf": not found
+#
+#   THE FIX (repo-level, so it works with Render's defaults — no dashboard
+#   settings and no rootDir/dockerContext required):
+#     * frontend/Dockerfile and backend/Dockerfile now COPY `frontend/...` and
+#       `backend/...` prefixed paths, which resolve against the repo root;
+#     * a root .dockerignore keeps the context slim (Docker only ever reads
+#       .dockerignore from the context root, so the old per-service ones were
+#       never read and have been folded into it);
+#     * docker-compose.yml / docker-compose.prod.yml build the same way
+#       (`context: .` + `dockerfile: <svc>/Dockerfile`), so a local build and a
+#       Render build are byte-for-byte the same command.
+#   `dockerfilePath` is set explicitly below because its default is ./Dockerfile,
+#   which does not exist at the repo root. For monorepo trigger scoping use
+#   `buildFilter`, not `rootDir`.
 #
 # SPLIT-ORIGIN (frontend and API on different hosts)
 #   VITE_API_URL points the SPA at the backend's public URL, and media URLs are
@@ -46,8 +60,8 @@ services:
   - type: web
     name: cvo-backend
     runtime: docker
-    # Dockerfile + build context resolve from backend/ (default ./Dockerfile).
-    rootDir: backend
+    # Relative to the repo root, which is also the build context.
+    dockerfilePath: backend/Dockerfile
     # Laravel's built-in health endpoint (backend nginx serves it via index.php).
     healthCheckPath: /up
     plan: free
@@ -107,8 +121,8 @@ services:
   - type: web
     name: cvo-frontend
     runtime: docker
-    # Dockerfile + build context resolve from frontend/ (default ./Dockerfile).
-    rootDir: frontend
+    # Relative to the repo root, which is also the build context.
+    dockerfilePath: frontend/Dockerfile
     healthCheckPath: /
     plan: free
     autoDeployTrigger: commit

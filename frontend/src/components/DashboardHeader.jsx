@@ -104,200 +104,205 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
   return (
     <header
       ref={headerRef}
-      className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/85 px-4 backdrop-blur sm:px-6"
+      className="sticky top-0 z-30 flex shrink-0 flex-col border-b border-slate-200/70 bg-white/85 backdrop-blur"
     >
-      <BackButton />
+      {/* The header row. Kept as its own flex row so the connectivity bar
+          below spans the full width without squeezing the search, sync badge,
+          bell or profile controls off the right edge. */}
+      <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
+        <BackButton />
 
-      <button
-        type="button"
-        onClick={onOpenSidebar}
-        aria-label="Open navigation"
-        className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700 lg:hidden dark:hover:bg-brand-100 dark:hover:text-brand-700"
-      >
-        <Icon name="menu" />
-      </button>
-
-      <div className="min-w-0 flex-1">
-        <h1 className="truncate font-display text-base font-bold text-slate-900 sm:text-lg">
-          {title}
-        </h1>
-        {subtitle && (
-          <p className="hidden truncate text-xs text-slate-500 sm:block">{subtitle}</p>
-        )}
-      </div>
-
-      {/* Search — queries the same role-scoped records the list pages show.
-          Nothing outside the user's own scope can come back, because the
-          scoping happens server-side, not here. */}
-      <div className="relative hidden md:block">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            setPanel("search");
-          }}
+        <button
+          type="button"
+          onClick={onOpenSidebar}
+          aria-label="Open navigation"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700 lg:hidden dark:hover:bg-brand-100 dark:hover:text-brand-700"
         >
-          <Icon
-            name="search"
-            className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400"
-          />
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
+          <Icon name="menu" />
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate font-display text-base font-bold text-slate-900 sm:text-lg">
+            {title}
+          </h1>
+          {subtitle && (
+            <p className="hidden truncate text-xs text-slate-500 sm:block">{subtitle}</p>
+          )}
+        </div>
+
+        {/* Search — queries the same role-scoped records the list pages show.
+            Nothing outside the user's own scope can come back, because the
+            scoping happens server-side, not here. */}
+        <div className="relative hidden md:block">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
               setPanel("search");
             }}
-            aria-label="Search records"
-            placeholder="Search records"
-            className="field w-60 pl-9 text-xs"
-          />
-        </form>
-
-        {panel === "search" && (
-          <>
-            <button
-              type="button"
-              aria-label="Close search"
-              onClick={close}
-              className="fixed inset-0 z-10 cursor-default"
+          >
+            <Icon
+              name="search"
+              className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400"
             />
-            <SearchPanel query={query} onNavigate={close} />
-          </>
-        )}
-      </div>
-
-      {/* Language — English / Filipino / Cebuano, persisted in localStorage. */}
-      <LanguageSwitcher className="hidden md:inline-flex" />
-
-      {/* Connectivity — the always-present ambient readout (unlike the
-          full-width banner, which only appears when something is wrong), so
-          the current online/offline state is visible at a glance. */}
-      <ConnectivityStatus />
-
-      {/* Offline sync — a persistent count of anything still to sync, so a
-          technician can verify nothing was lost even after days offline. */}
-      <SyncStatusBadge />
-
-      {/* Notifications — the live alert feed (same endpoint the farmer
-          notifications page reads), with a badge only when something needs
-          attention, so an empty feed reads as "all clear", not "broken". */}
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setPanel(panel === "notifications" ? null : "notifications")}
-          aria-label="Notifications"
-          aria-expanded={panel === "notifications"}
-          className="relative grid h-10 w-10 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700"
-        >
-          <Icon name="bell" />
-          <NotificationBadge active={panel === "notifications"} />
-        </button>
-
-        {panel === "notifications" && (
-          <>
-            <button
-              type="button"
-              aria-label="Close notifications"
-              onClick={close}
-              className="fixed inset-0 z-10 cursor-default"
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPanel("search");
+              }}
+              aria-label="Search records"
+              placeholder="Search records"
+              className="field w-60 pl-9 text-xs"
             />
-            <NotificationPanel onNavigate={close} />
-          </>
-        )}
-      </div>
+          </form>
 
-      {/* Profile */}
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setPanel(panel === "profile" ? null : "profile")}
-          aria-expanded={panel === "profile"}
-          aria-label="Account menu"
-          className="flex items-center gap-2 rounded-pill border border-slate-200 py-1.5 pr-2.5 pl-1.5 transition hover:border-brand-300 hover:bg-brand-50 dark:border-slate-200/70 dark:hover:border-brand-200/60 dark:hover:bg-brand-100/60"
-        >
-          {user?.avatar_url ? (
-            <img
-              src={user.avatar_url}
-              alt=""
-              className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-200/40"
-            />
-          ) : (
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-100 text-[11px] font-bold text-brand-800">
-              {initialsOf(user?.name)}
-            </span>
-          )}
-          <span className="hidden text-left sm:block">
-            <span className="block text-xs leading-tight font-semibold text-slate-800">
-              {user?.name}
-            </span>
-            <span className="block text-[11px] leading-tight text-slate-500">
-              {roleLabel(user?.role)}
-            </span>
-          </span>
-          <Icon name="chevron-down" className="h-4 w-4 shrink-0 text-slate-400" />
-        </button>
-
-        {panel === "profile" && (
-          <>
-            <button
-              type="button"
-              aria-label="Close account menu"
-              onClick={close}
-              className="fixed inset-0 z-10 cursor-default"
-            />
-            <div className="card absolute right-0 z-20 mt-2 w-64 p-4">
-              {/* Theme toggle — the first thing in the panel, per spec, so
-                  switching is reachable without scrolling past identity. */}
-              <ThemeToggleRow />
-
-              <div className="mt-3 h-px bg-slate-100" />
-
-              <div className="mt-3 flex items-center gap-3">
-                {user?.avatar_url ? (
-                <img
-                  src={user.avatar_url}
-                  alt=""
-                  className="h-10 w-10 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-200/40"
-                />
-              ) : (
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-100 text-xs font-bold text-brand-800">
-                  {initialsOf(user?.name)}
-                </span>
-              )}
-              <div>
-                <p className="truncate font-display text-sm font-semibold text-slate-900">
-                  {user?.name}
-                </p>
-                <p className="truncate text-xs text-slate-500">{user?.email}</p>
-              </div>
-              </div>
-              <p className="mt-2 inline-flex items-center gap-1.5 rounded-pill bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-800">
-                <Icon name="shield" className="h-3.5 w-3.5" />
-                {roleLabel(user?.role)}
-              </p>
-              <Link
-                to="/dashboard/profile"
-                onClick={close}
-                className="mt-3 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 dark:border-slate-200/70 dark:hover:border-brand-200/60 dark:hover:bg-brand-100/60 dark:hover:text-brand-700"
-              >
-                <Icon name="user" className="h-4 w-4" />
-                My Profile
-              </Link>
+          {panel === "search" && (
+            <>
               <button
                 type="button"
-                onClick={() => {
-                  close();
-                  setConfirmingLogout(true);
-                }}
-                className="mt-2 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-200/70 dark:hover:border-red-200/60 dark:hover:bg-red-100 dark:hover:text-red-700"
-              >
-                <Icon name="logout" className="h-4 w-4" />
-                Log out
-              </button>
-            </div>
-          </>
-        )}
+                aria-label="Close search"
+                onClick={close}
+                className="fixed inset-0 z-10 cursor-default"
+              />
+              <SearchPanel query={query} onNavigate={close} />
+            </>
+          )}
+        </div>
+
+        {/* Language — English / Filipino / Cebuano, persisted in localStorage. */}
+        <LanguageSwitcher className="hidden md:inline-flex" />
+
+        {/* Offline sync — a persistent count of anything still to sync, so a
+            technician can verify nothing was lost even after days offline. */}
+        <SyncStatusBadge />
+
+        {/* Notifications — the live alert feed (same endpoint the farmer
+            notifications page reads), with a badge only when something needs
+            attention, so an empty feed reads as "all clear", not "broken". */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setPanel(panel === "notifications" ? null : "notifications")}
+            aria-label="Notifications"
+            aria-expanded={panel === "notifications"}
+            className="relative grid h-10 w-10 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700"
+          >
+            <Icon name="bell" />
+            <NotificationBadge active={panel === "notifications"} />
+          </button>
+
+          {panel === "notifications" && (
+            <>
+              <button
+                type="button"
+                aria-label="Close notifications"
+                onClick={close}
+                className="fixed inset-0 z-10 cursor-default"
+              />
+              <NotificationPanel onNavigate={close} />
+            </>
+          )}
+        </div>
+
+        {/* Profile */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setPanel(panel === "profile" ? null : "profile")}
+            aria-expanded={panel === "profile"}
+            aria-label="Account menu"
+            className="flex items-center gap-2 rounded-pill border border-slate-200 py-1.5 pr-2.5 pl-1.5 transition hover:border-brand-300 hover:bg-brand-50 dark:border-slate-200/70 dark:hover:border-brand-200/60 dark:hover:bg-brand-100/60"
+          >
+            {user?.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt=""
+                className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-200/40"
+              />
+            ) : (
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-100 text-[11px] font-bold text-brand-800">
+                {initialsOf(user?.name)}
+              </span>
+            )}
+            <span className="hidden text-left sm:block">
+              <span className="block text-xs leading-tight font-semibold text-slate-800">
+                {user?.name}
+              </span>
+              <span className="block text-[11px] leading-tight text-slate-500">
+                {roleLabel(user?.role)}
+              </span>
+            </span>
+            <Icon name="chevron-down" className="h-4 w-4 shrink-0 text-slate-400" />
+          </button>
+
+          {panel === "profile" && (
+            <>
+              <button
+                type="button"
+                aria-label="Close account menu"
+                onClick={close}
+                className="fixed inset-0 z-10 cursor-default"
+              />
+              <div className="card absolute right-0 z-20 mt-2 w-64 p-4">
+                {/* Theme toggle — the first thing in the panel, per spec, so
+                    switching is reachable without scrolling past identity. */}
+                <ThemeToggleRow />
+
+                <div className="mt-3 h-px bg-slate-100" />
+
+                <div className="mt-3 flex items-center gap-3">
+                  {user?.avatar_url ? (
+                  <img
+                    src={user.avatar_url}
+                    alt=""
+                    className="h-10 w-10 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-200/40"
+                  />
+                ) : (
+                  <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-100 text-xs font-bold text-brand-800">
+                    {initialsOf(user?.name)}
+                  </span>
+                )}
+                <div>
+                  <p className="truncate font-display text-sm font-semibold text-slate-900">
+                    {user?.name}
+                  </p>
+                  <p className="truncate text-xs text-slate-500">{user?.email}</p>
+                </div>
+                </div>
+                <p className="mt-2 inline-flex items-center gap-1.5 rounded-pill bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-800">
+                  <Icon name="shield" className="h-3.5 w-3.5" />
+                  {roleLabel(user?.role)}
+                </p>
+                <Link
+                  to="/dashboard/profile"
+                  onClick={close}
+                  className="mt-3 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 dark:border-slate-200/70 dark:hover:border-brand-200/60 dark:hover:bg-brand-100/60 dark:hover:text-brand-700"
+                >
+                  <Icon name="user" className="h-4 w-4" />
+                  My Profile
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    setConfirmingLogout(true);
+                  }}
+                  className="mt-2 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-200/70 dark:hover:border-red-200/60 dark:hover:bg-red-100 dark:hover:text-red-700"
+                >
+                  <Icon name="logout" className="h-4 w-4" />
+                  Log out
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Connectivity: a persistent, full-width offline bar (visible for the
+          whole time the device is offline) plus a reconnect toast when the
+          connection returns. Sits below the row, inside the sticky header. */}
+      <ConnectivityStatus />
 
       <LogoutConfirmDialog
         open={confirmingLogout}

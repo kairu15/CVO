@@ -53,7 +53,10 @@ services:
 
   backend:
     build:
-      context: ./backend
+      # Repo root — the same context Render uses, so the Dockerfile's
+      # `COPY backend/ ...` paths resolve identically in both places.
+      context: .
+      dockerfile: backend/Dockerfile
       target: production
     restart: unless-stopped
     environment:
@@ -99,7 +102,9 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      # Repo root — see the backend service above.
+      context: .
+      dockerfile: frontend/Dockerfile
       target: production
       args:
         # Empty => the built bundle calls the API on its own origin. The

@@ -15,6 +15,13 @@
 # runtime does nothing. The dev target is different — Vite's dev server reads
 # the variable at runtime, which is why docker-compose.yml passes it as an
 # environment variable there.
+#
+# BUILD CONTEXT = REPOSITORY ROOT
+#   Every COPY below is prefixed `frontend/` because the context is the repo
+#   root, not frontend/. That is Render's default (`dockerContext` is omitted
+#   from render.yaml) and it is what the compose files now pass explicitly
+#   (`context: .` + `dockerfile: frontend/Dockerfile`). Building this file with
+#   a frontend/ context will fail — use `docker build -f frontend/Dockerfile .`
 # =============================================================================
 
 ARG NODE_VERSION=20
@@ -24,7 +31,7 @@ ARG NODE_VERSION=20
 # -----------------------------------------------------------------------------
 FROM node:${NODE_VERSION}-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 # -----------------------------------------------------------------------------
@@ -38,7 +45,7 @@ WORKDIR /app
 ENV NODE_ENV=development
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY frontend/ .
 
 EXPOSE 5173
 # Container must listen on 0.0.0.0 for the host to reach it. strictPort is set
@@ -59,7 +66,7 @@ ARG VITE_API_URL=""
 ENV VITE_API_URL=${VITE_API_URL}
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY frontend/ .
 RUN npm run build
 
 # -----------------------------------------------------------------------------
@@ -67,7 +74,7 @@ RUN npm run build
 # -----------------------------------------------------------------------------
 FROM nginx:1.27-alpine AS production
 
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80

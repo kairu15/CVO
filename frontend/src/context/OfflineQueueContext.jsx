@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -16,6 +17,7 @@ import {
 } from "../lib/offlineQueue";
 import { useOnlineStatus } from "../hooks/useOnlineStatus";
 import { useOptionalToast } from "./ToastContext";
+import { OfflineSavedDialog } from "../components/OfflineSavedDialog";
 
 /**
  * App-wide view of the offline submission queue.
@@ -28,6 +30,16 @@ import { useOptionalToast } from "./ToastContext";
  * Sync feedback is BATCHED: a flush that syncs several items fires one toast,
  * not one per item, so a reconnect after a week offline doesn't bury the
  * screen in notifications.
+ *
+ * The auto-flush is EDGE-TRIGGERED, and that is load-bearing. An earlier
+ * version flushed whenever `some(status === "pending")` was true — but every
+ * flush attempt flips an item pending → syncing → pending, so the derived
+ * boolean fell and rose again and the effect re-armed itself. With the server
+ * unreachable ("online" but no route to it — the normal field condition), that
+ * looped forever: one request to the dead endpoint every couple of seconds,
+ * attempts climbing unbounded, the app re-rendering twice per attempt. It now
+ * flushes only when something has actually changed: startup, a reconnect, or
+ * a new submission landing while online.
  */
 const OfflineQueueContext = createContext(null);
 
@@ -37,6 +49,9 @@ export function OfflineQueueProvider({ children }) {
   const toast = useOptionalToast();
   const [items, setItems] = useState([]);
   const [syncing, setSyncing] = useState(false);
+  // The explicit "saved on this device" moment for a submission made offline —
+  // { noun, label } — shown once as a dialog (see OfflineSavedDialog).
+  const [offlineSaved, setOfflineSaved] = useState(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -94,13 +109,28 @@ export function OfflineQueueProvider({ children }) {
     return unsubscribe;
   }, [refresh]);
 
-  // Flush on (re)connect, and whenever a submission lands in the queue while
-  // online — together these catch items queued in a previous session and ones
-  // queued just now by a request that never reached the server.
-  const hasPending = items.some((item) => item.status === "pending");
+  // Edge-triggered auto-flush — see the class comment for why this must not
+  // key off a derived "has pending" boolean. null marks "first run".
+  const prevOnlineRef = useRef(null);
+  const prevCountRef = useRef(null);
+
   useEffect(() => {
-    if (online && hasPending) flush();
-  }, [online, hasPending, flush]);
+    const prevOnline = prevOnlineRef.current;
+    const prevCount = prevCountRef.current;
+    prevOnlineRef.current = online;
+    prevCountRef.current = items.length;
+
+    const firstRun = prevOnline === null;
+    const cameOnline = !firstRun && online && !prevOnline;
+    const newItemQueued = !firstRun && items.length > prevCount;
+
+    if (
+      online &&
+      ((firstRun && items.length > 0) || cameOnline || newItemQueued)
+    ) {
+      flush();
+    }
+  }, [online, items, flush]);
 
   const retry = useCallback(
     async (id) => {
@@ -138,6 +168,19 @@ export function OfflineQueueProvider({ children }) {
     [refresh],
   );
 
+  /**
+   * The moment a form is submitted offline: hand the confirmation to the
+   * dialog instead of (or ahead of) any transient toast, so the technician
+   * explicitly sees that their work was saved and will sync. `noun` is the
+   * plain-language thing saved ("field visit"); `label` the specific row as
+   * the sync list shows it ("Field visit — Juan Dela Cruz").
+   */
+  const notifyOfflineSaved = useCallback(({ noun, label }) => {
+    setOfflineSaved({ noun, label });
+  }, []);
+
+  const dismissOfflineSaved = useCallback(() => setOfflineSaved(null), []);
+
   const value = useMemo(() => {
     const byStatus = (status) => items.filter((item) => item.status === status);
 
@@ -159,12 +202,27 @@ export function OfflineQueueProvider({ children }) {
       retry,
       remove,
       resolveConflict,
+      offlineSaved,
+      notifyOfflineSaved,
+      dismissOfflineSaved,
     };
-  }, [online, syncing, items, flush, retry, remove, resolveConflict]);
+  }, [
+    online,
+    syncing,
+    items,
+    flush,
+    retry,
+    remove,
+    resolveConflict,
+    offlineSaved,
+    notifyOfflineSaved,
+    dismissOfflineSaved,
+  ]);
 
   return (
     <OfflineQueueContext.Provider value={value}>
       {children}
+      <OfflineSavedDialog />
     </OfflineQueueContext.Provider>
   );
 }
@@ -175,4 +233,38 @@ export function useOfflineQueue() {
     throw new Error("useOfflineQueue must be used within an OfflineQueueProvider");
   }
   return context;
+}
+
+/**
+ * The offline-queue API when a provider MAY be present, else null.
+ *
+ * The form modals surface offline submissions through the queue's dialog, but
+ * they are also rendered in tests (and potentially standalone) without the
+ * provider mounted above them — there they keep working via the plain toast.
+ */
+export function useOptionalOfflineQueue() {
+  return useContext(OfflineQueueContext);
+}
+
+/**
+ * Fire the offline-submission confirmation through the queue provider when it
+ * is mounted, falling back to the plain toast when it is not (tests,
+ * standalone form renders) — the old behaviour.
+ *
+ * @returns {({ noun: string, label?: string }) => void}
+ */
+export function useNotifyOfflineSaved() {
+  const context = useContext(OfflineQueueContext);
+  const toast = useOptionalToast();
+
+  return useCallback(
+    ({ noun, label }) => {
+      if (context) {
+        context.notifyOfflineSaved({ noun, label });
+        return;
+      }
+      toast?.success("Saved on this device — it will sync when you're back online.");
+    },
+    [context, toast],
+  );
 }

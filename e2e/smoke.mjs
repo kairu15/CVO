@@ -56,8 +56,12 @@ try {
 
   // ---------- Login (desktop, sliding panel) ----------
   text = await visit(page, "/login", desktop, "auth-login-desktop");
-  ok("login: sign-in form", /Welcome back/.test(text));
-  ok("login: overlay offers register", /New here\?/.test(text));
+  // The guest route mounts only after the session probe resolves — wait for
+  // the form instead of racing it.
+  await page.waitForSelector("#login-identifier", { timeout: 10_000 });
+  text = await page.evaluate(() => document.body.innerText);
+  ok("login: sign-in form", /Use the account issued by/.test(text));
+  ok("login: overlay offers register", /New to the program\?/.test(text));
   ok("login: username/email field", /Username or email/i.test(text));
 
   const ids = await page.$$eval("input", (els) => els.map((e) => e.id));
@@ -67,8 +71,13 @@ try {
   );
 
   // ---------- Sliding transition to register ----------
+  // The register trigger exists twice on desktop (hidden mobile tab + overlay
+  // button) — click the one that is actually rendered.
   await page.evaluate(() => {
-    [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Register").click();
+    [...document.querySelectorAll("button")]
+      .filter((b) => b.textContent.trim() === "Register" && b.offsetParent)
+      .at(-1)
+      .click();
   });
   await page.waitForFunction(() => window.location.pathname === "/register", { timeout: 5000 });
   await new Promise((r) => setTimeout(r, 900));
@@ -84,18 +93,23 @@ try {
   ok("register: sign-up form is visible", overlayBox.visible);
 
   text = await page.evaluate(() => document.body.innerText);
-  ok("register: overlay offers sign in", /Already have an account\?/.test(text));
+  ok("register: overlay offers sign in", /Already registered\?/.test(text));
 
   // Regression: both form halves sit on the same half once slid, so each needs
-  // an opaque background or the hidden form's text bleeds through.
-  const halves = await page.evaluate(() => {
-    const panel = document.querySelector(".shadow-panel");
-    const forms = [...panel.querySelectorAll("form")].map((f) => f.parentElement);
-    return forms.map((el) => getComputedStyle(el).backgroundColor);
-  });
+  // an opaque background or the hidden form's text bleeds through. The halves
+  // are the two desktop columns (lg:w-1/2); the overlay uses plain w-1/2.
+  const halves = await page.evaluate(() =>
+    [...document.querySelectorAll('[class*="lg:w-1/2"]')].map((el) =>
+      getComputedStyle(el).backgroundColor,
+    ),
+  );
   ok(
     "register: both form halves are opaque",
-    halves.length === 2 && halves.every((c) => c === "rgb(255, 255, 255)"),
+    // In dark mode --color-white is remapped to the raised panel color, so the
+    // guarantee that matters is "identical and not transparent", not "white".
+    halves.length === 2 &&
+      halves[0] === halves[1] &&
+      halves.every((c) => !c.startsWith("rgba")),
     halves.join(" / "),
   );
 
@@ -139,17 +153,23 @@ try {
   await page.screenshot({ path: `${shots}/auth-register-validation.png`, fullPage: true });
 
   // ---------- Register route straight in ----------
-  text = await visit(page, "/register", desktop, "auth-register-direct");
+  await visit(page, "/register", desktop, "auth-register-direct");
+  await page.waitForSelector("#register-name", { timeout: 10_000 });
+  text = await page.evaluate(() => document.body.innerText);
   ok("register: direct deep link shows register form", /Create your account/.test(text));
 
   // ---------- Mobile ----------
-  text = await visit(page, "/login", phone, "auth-login-mobile");
-  ok("mobile: tab toggle present", /Login/.test(text) && /Register/.test(text));
-  ok("mobile: sign-in form", /Welcome back/.test(text));
+  await visit(page, "/login", phone, "auth-login-mobile");
+  await page.waitForSelector("#login-identifier", { timeout: 10_000 });
+  text = await page.evaluate(() => document.body.innerText);
+  ok("mobile: tab toggle present", /Sign in/.test(text) && /Register/.test(text));
+  ok("mobile: sign-in form", /Use the account issued by/.test(text));
   const tabCount = await page.$$eval('[role="tab"]', (els) => els.length);
   ok("mobile: two tabs, not a sliding panel", tabCount === 2);
 
-  text = await visit(page, "/register", phone, "auth-register-mobile");
+  await visit(page, "/register", phone, "auth-register-mobile");
+  await page.waitForSelector("#register-name", { timeout: 10_000 });
+  text = await page.evaluate(() => document.body.innerText);
   ok("mobile: register tab active", /Create your account/.test(text));
 
   text = await visit(page, "/", phone, "landing-mobile");
@@ -158,7 +178,11 @@ try {
   // ---------- Guarded route redirects a guest ----------
   await page.setViewport(desktop);
   await page.goto(`${BASE}/dashboard/admin`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 600));
+  // The redirect lands only after the session probe resolves — wait for it
+  // instead of racing a fixed delay.
+  await page.waitForFunction(() => window.location.pathname === "/login", {
+    timeout: 10_000,
+  });
   ok(
     "guest: /dashboard/admin redirects to /login",
     new URL(page.url()).pathname === "/login",

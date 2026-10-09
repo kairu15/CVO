@@ -2,10 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fieldVisitsApi } from "../api/fieldVisitsApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { useToast } from "../context/ToastContext";
+import { useNotifyOfflineSaved } from "../context/OfflineQueueContext";
 import { useAuth } from "../context/AuthContext";
 import { captureGeotag } from "../lib/geotagPhoto";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
+import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { Modal } from "./Modal";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
 import { Icon } from "./Icons";
@@ -57,9 +60,20 @@ export function FieldVisitFormModal({
   const [locating, setLocating] = useState(false);
   const [locationNote, setLocationNote] = useState(null);
   const toast = useToast();
+  const notifyOfflineSaved = useNotifyOfflineSaved();
   const { user } = useAuth();
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  // True once the technician has entered anything — the close confirmation
+  // keys off this, so a stray Escape or backdrop tap can't silently destroy
+  // minutes of field input.
+  const [dirty, setDirty] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const markDirty = () => setDirty(true);
+
+  // Last line of defence for unsaved input: a real reload or app relaunch
+  // (both routine on field devices) now asks instead of discarding.
+  useUnsavedChangesGuard({ when: open && dirty && !saving });
 
   // Geotagged photo evidence. Required for new visits (per-product decision,
   // 2026-09); existing visits are grandfathered and editing never forces a
@@ -123,13 +137,25 @@ export function FieldVisitFormModal({
     setCapture(null);
     setCaptureNote(null);
     setCreatedVisit(null);
+    setDirty(false);
+    setConfirmDiscard(false);
   }, [open, visit, beneficiaries]);
+
+  /** Close — asking first when there is unsaved input to lose. */
+  function requestClose() {
+    if (dirty && !saving) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
+  }
 
   function update(field) {
     return (event) => {
       const { value } = event.target;
       setForm((prev) => ({ ...prev, [field]: value }));
       setErrors((prev) => ({ ...prev, [field]: undefined }));
+      markDirty();
     };
   }
 
@@ -149,6 +175,7 @@ export function FieldVisitFormModal({
     setCapturing(true);
     setCaptureNote(null);
     setErrors((prev) => ({ ...prev, photo: undefined }));
+    markDirty();
 
     try {
       const result = await captureGeotag(file);
@@ -225,7 +252,13 @@ export function FieldVisitFormModal({
       photo: queuedPhoto(),
     });
 
-    toast.success("Saved on this device — it will sync when you're back online.");
+    // The explicit "you're offline and this is safe" moment — a modal the
+    // technician cannot miss, tied to the sync badge's count.
+    notifyOfflineSaved({
+      noun: "field visit",
+      label: beneficiary?.name_of_farmer ?? undefined,
+    });
+    setDirty(false);
     onSaved?.();
     onClose();
   }
@@ -246,7 +279,11 @@ export function FieldVisitFormModal({
       photo: queuedPhoto(),
     });
 
-    toast.success("Saved on this device — it will sync when you're back online.");
+    notifyOfflineSaved({
+      noun: "field visit edit",
+      label: beneficiary?.name_of_farmer ?? undefined,
+    });
+    setDirty(false);
     onSaved?.();
     onClose();
   }
@@ -322,6 +359,7 @@ export function FieldVisitFormModal({
         }
 
         toast.success("Field visit updated.");
+        setDirty(false);
         onSaved?.();
         onClose();
       } else {
@@ -380,6 +418,7 @@ export function FieldVisitFormModal({
               },
             });
             toast.success("Visit logged; the photo will upload when you're back online.");
+            setDirty(false);
             onSaved?.();
             onClose();
             return;
@@ -393,6 +432,7 @@ export function FieldVisitFormModal({
         }
 
         toast.success("Field visit recorded.");
+        setDirty(false);
         onSaved?.();
         onClose();
       }
@@ -406,7 +446,12 @@ export function FieldVisitFormModal({
   }
 
   return (
-    <Modal open={open} title={editing ? "Edit field visit" : "Log a field visit"} onClose={onClose}>
+    <>
+      <Modal
+        open={open}
+        title={editing ? "Edit field visit" : "Log a field visit"}
+        onClose={requestClose}
+      >
       <form onSubmit={handleSubmit} noValidate>
         <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4">
           <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-brand-800 uppercase">
@@ -446,6 +491,7 @@ export function FieldVisitFormModal({
               onChange={(event) => {
                 setBeneficiaryId(event.target.value);
                 setErrors((prev) => ({ ...prev, beneficiary_id: undefined }));
+                markDirty();
               }}
             >
               <option value="">Select a beneficiary…</option>
@@ -684,7 +730,7 @@ export function FieldVisitFormModal({
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="btn-secondary">
+          <button type="button" onClick={requestClose} className="btn-secondary">
             Cancel
           </button>
           <button type="submit" disabled={saving} className="btn-primary">
@@ -701,6 +747,17 @@ export function FieldVisitFormModal({
           </button>
         </div>
       </form>
-    </Modal>
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmDiscard}
+        message="This visit hasn't been saved yet. Closing the form discards what you've entered."
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          onClose();
+        }}
+        onCancel={() => setConfirmDiscard(false)}
+      />
+    </>
   );
 }

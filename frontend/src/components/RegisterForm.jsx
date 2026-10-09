@@ -3,9 +3,12 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useNotifyOfflineSaved } from "../context/OfflineQueueContext";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
+import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { ButtonSpinner } from "./LoadingSpinner";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { Skeleton } from "./Skeleton";
 import { PasswordToggle, TextField } from "./TextField";
 import { useBarangays } from "../hooks/useBarangays";
@@ -59,6 +62,7 @@ export function RegisterForm({ idPrefix = "register" }) {
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const notifyOfflineSaved = useNotifyOfflineSaved();
 
   /**
    * Success feedback before the redirect. The banner renders only after a
@@ -73,6 +77,27 @@ export function RegisterForm({ idPrefix = "register" }) {
   const [queuedOffline, setQueuedOffline] = useState(false);
   const redirectTimer = useRef(null);
   const REDIRECT_DELAY_MS = 1800;
+
+  // Unsaved input: anything typed anywhere in the (long) form. A farmer who
+  // filled this out on a phone in a barangay with one bar of signal must not
+  // lose it to a stray tap on "Sign in", the browser back button, or an
+  // accidental reload — so both SPA link navigation and real page unloads ask
+  // first, and the queued-offline state (data already safe in IndexedDB)
+  // releases the guard.
+  const dirty =
+    Boolean(
+      form.name ||
+        form.email ||
+        form.username ||
+        form.password ||
+        form.password_confirmation ||
+        form.name_of_farmer ||
+        form.address ||
+        form.animal_type,
+    ) && !succeeded;
+  const { pendingHref, stay, leave } = useUnsavedChangesGuard({
+    when: dirty && !submitting,
+  });
 
   const selectedBarangay = useMemo(
     () => barangays.find((barangay) => barangay.name === form.address) ?? null,
@@ -145,12 +170,7 @@ export function RegisterForm({ idPrefix = "register" }) {
 
     setSucceeded(true);
     setQueuedOffline(true);
-    toast.success(
-      t("register.queuedOffline", {
-        defaultValue:
-          "Saved on this device — your registration will be submitted automatically when you're back online.",
-      }),
-    );
+    notifyOfflineSaved({ noun: "registration", label: payload.name });
   }
 
   async function handleSubmit(event) {
@@ -453,6 +473,15 @@ export function RegisterForm({ idPrefix = "register" }) {
           t("register.submit")
         )}
       </button>
+
+      <ConfirmDialog
+        open={pendingHref !== null}
+        title="Leave the registration form?"
+        message="What you've filled in hasn't been submitted yet. Leaving now loses it unless it was already saved offline."
+        confirmLabel="Leave without saving"
+        onConfirm={leave}
+        onCancel={stay}
+      />
     </form>
   );
 }

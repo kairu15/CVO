@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { monitoringApi } from "../api/monitoringApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { useToast } from "../context/ToastContext";
+import { useNotifyOfflineSaved } from "../context/OfflineQueueContext";
 import { useAuth } from "../context/AuthContext";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
+import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { Modal } from "./Modal";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
 import { Icon } from "./Icons";
@@ -55,10 +58,17 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
   const [form, setForm] = useState(EMPTY_FORM);
   const [beneficiaryId, setBeneficiaryId] = useState("");
   const toast = useToast();
+  const notifyOfflineSaved = useNotifyOfflineSaved();
   const { user } = useAuth();
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Unsaved-input tracking — see FieldVisitFormModal for the full rationale.
+  const [dirty, setDirty] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const markDirty = () => setDirty(true);
+
+  useUnsavedChangesGuard({ when: open && dirty && !saving });
 
   // Which "session" of the form has been seeded. The beneficiaries prop is
   // re-fetched on a 30s poll (and on window focus) and arrives as a brand-new
@@ -105,6 +115,8 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
 
     setErrors({});
     setFormError(null);
+    setDirty(false);
+    setConfirmDiscard(false);
   }, [open, record, beneficiaries]);
 
   function update(field) {
@@ -112,7 +124,17 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
       const { value } = event.target;
       setForm((prev) => ({ ...prev, [field]: value }));
       setErrors((prev) => ({ ...prev, [field]: undefined }));
+      markDirty();
     };
+  }
+
+  /** Close — asking first when there is unsaved input to lose. */
+  function requestClose() {
+    if (dirty && !saving) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
   }
 
   /**
@@ -129,7 +151,11 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
       userId: user?.id ?? null,
     });
 
-    toast.success("Saved on this device — it will sync when you're back online.");
+    notifyOfflineSaved({
+      noun: "monitoring record",
+      label: beneficiary?.name_of_farmer ?? undefined,
+    });
+    setDirty(false);
     onSaved?.();
     onClose();
   }
@@ -149,7 +175,11 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
       userId: user?.id ?? null,
     });
 
-    toast.success("Saved on this device — it will sync when you're back online.");
+    notifyOfflineSaved({
+      noun: "monitoring record edit",
+      label: beneficiary?.name_of_farmer ?? undefined,
+    });
+    setDirty(false);
     onSaved?.();
     onClose();
   }
@@ -214,6 +244,7 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
       }
 
       onSaved?.();
+      setDirty(false);
       onClose();
     } catch (error) {
       const fields = getFieldErrors(error);
@@ -225,7 +256,12 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
   }
 
   return (
-    <Modal open={open} title={editing ? "Edit monitoring entry" : "Add monitoring record"} onClose={onClose}>
+    <>
+      <Modal
+        open={open}
+        title={editing ? "Edit monitoring entry" : "Add monitoring record"}
+        onClose={requestClose}
+      >
       <form onSubmit={handleSubmit} noValidate>
         {/* Identity block — read-only, from the beneficiary record. */}
         <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4">
@@ -275,6 +311,7 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
               onChange={(event) => {
                 setBeneficiaryId(event.target.value);
                 setErrors((prev) => ({ ...prev, beneficiary_id: undefined }));
+                markDirty();
               }}
             >
               <option value="">Select a beneficiary…</option>
@@ -345,7 +382,7 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="btn-secondary">
+          <button type="button" onClick={requestClose} className="btn-secondary">
             Cancel
           </button>
           <button type="submit" disabled={saving} className="btn-primary">
@@ -362,6 +399,17 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
           </button>
         </div>
       </form>
-    </Modal>
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmDiscard}
+        message="This entry hasn't been saved yet. Closing the form discards what you've entered."
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          onClose();
+        }}
+        onCancel={() => setConfirmDiscard(false)}
+      />
+    </>
   );
 }

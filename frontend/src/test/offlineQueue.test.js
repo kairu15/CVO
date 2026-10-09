@@ -380,4 +380,28 @@ describe("offlineQueue", () => {
     expect(caseNotesApi.create).toHaveBeenCalledTimes(1);
     expect((await getQueue())[0].status).toBe("error");
   });
+
+  it("requeues a row stranded in 'syncing' by an interrupted pass", async () => {
+    // A reload or app kill mid-flush leaves the row parked in "syncing" —
+    // success would have REMOVED it, so "syncing" with no pass running means
+    // it never finished. Every later pass used to skip it forever.
+    caseNotesApi.create.mockResolvedValue({ id: 1 });
+    const store = createMemoryStore();
+    __setStoreForTests(store);
+    await store.add({
+      kind: "case-note",
+      mode: "create",
+      payload: { body: "stuck" },
+      label: "stuck note",
+      status: "syncing",
+      attempts: 1,
+      error: null,
+      createdAt: new Date().toISOString(),
+    });
+
+    await flushQueue();
+
+    expect(caseNotesApi.create).toHaveBeenCalledWith({ body: "stuck" });
+    expect(await getQueue()).toEqual([]);
+  });
 });

@@ -4,7 +4,10 @@ import { useAutoRefresh } from "../api/queries";
 import { dispersalApi } from "../api/dispersalApi";
 import { getErrorMessage } from "../api/client";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
+import { useNotifyOfflineSaved } from "../context/OfflineQueueContext";
+import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { DispersalMap } from "../components/DispersalMap";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { InlineAlert } from "../components/InlineAlert";
 import { ButtonSpinner } from "../components/LoadingSpinner";
@@ -47,6 +50,31 @@ export default function DispersalMapPage({ roleKey }) {
   // pad; the PNG data URL travels with the record. Required in the UI — a
   // dispersal without a captured agreement is not a complete record.
   const [signature, setSignature] = useState(null);
+  // Unsaved-input guard for the re-dispersal form — see FieldVisitFormModal.
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const notifyOfflineSaved = useNotifyOfflineSaved();
+
+  const reDispersalDirty =
+    Boolean(recordOpen) &&
+    Boolean(
+      source ||
+        form.new_name_of_farmer ||
+        form.new_address ||
+        form.new_animal_type ||
+        form.date_dispersed ||
+        form.remarks ||
+        signature,
+    );
+  useUnsavedChangesGuard({ when: reDispersalDirty && !submitting });
+
+  /** Close the re-dispersal form — asking first when input would be lost. */
+  function requestCloseReDispersal() {
+    if (reDispersalDirty && !submitting) {
+      setConfirmDiscard(true);
+      return;
+    }
+    setRecordOpen(false);
+  }
 
   const isTechnician = user?.role === "technician" || roleKey === "technician";
 
@@ -150,7 +178,10 @@ export default function DispersalMapPage({ roleKey }) {
             userId: user?.id ?? null,
           });
           resetReDispersal();
-          setNotice("Saved on this device — the re-dispersal will sync when you're back online.");
+          notifyOfflineSaved({
+            noun: "re-dispersal record",
+            label: payload.new_name_of_farmer,
+          });
           await load();
           return;
         }
@@ -234,7 +265,7 @@ export default function DispersalMapPage({ roleKey }) {
       <Modal
         open={recordOpen}
         title="Record re-dispersal (pass-on)"
-        onClose={() => setRecordOpen(false)}
+        onClose={requestCloseReDispersal}
       >
         <form onSubmit={submitReDispersal} noValidate className="space-y-3">
           {formErrors.form && <InlineAlert message={formErrors.form} />}
@@ -383,6 +414,16 @@ export default function DispersalMapPage({ roleKey }) {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDiscard}
+        message="This re-dispersal hasn't been recorded yet. Closing the form discards what you've entered, including the signature."
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          setRecordOpen(false);
+        }}
+        onCancel={() => setConfirmDiscard(false)}
+      />
     </div>
   );
 }

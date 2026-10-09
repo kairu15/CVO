@@ -64,6 +64,10 @@ export default function AppRoutes() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/transparency" element={<TransparencyPage />} />
 
+          {/* Sign in / register. Two routes, one component: navigating between
+              them re-renders <AuthPage> with a different mode at the same tree
+              position (no remount, no state loss) — the forms themselves stay
+              mounted through the toggle regardless (see AuthPage). */}
           <Route
             path="/login"
             element={

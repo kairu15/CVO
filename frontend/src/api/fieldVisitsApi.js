@@ -66,6 +66,10 @@ export const fieldVisitsApi = {
     return unwrap(
       await api.post(`/api/v1/field-visits/${id}/photo`, form, {
         headers: { "Content-Type": "multipart/form-data" },
+        // The composited geotagged image is megabytes on a rural uplink — give
+        // it room beyond the client's default 30s dead-socket timeout, which
+        // exists to catch unreachable hosts, not slow uploads.
+        timeout: 120_000,
       }),
     );
   },

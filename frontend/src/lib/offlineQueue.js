@@ -422,7 +422,22 @@ export async function flushQueue() {
   try {
     const items = await getQueue();
 
+    // A pass interrupted by a reload or an app kill leaves its row parked in
+    // "syncing" forever — nothing ever revisits that status, so the item is
+    // stranded: shown in the badge, but skipped by every future pass. Success
+    // REMOVES rows (markSynced), so any "syncing" row at the start of a pass
+    // is by definition not mid-flight and can safely rejoin the queue. (A
+    // second browser tab flushing at the same instant could re-apply such a
+    // row; the queue has never been multi-tab safe and one device, one tab is
+    // how the field app runs.)
     for (const item of items) {
+      if (item.status === "syncing") await patch(item.id, { status: "pending" });
+    }
+
+    // Re-read so the pass sees the requeued rows as pending.
+    const replayable = await getQueue();
+
+    for (const item of replayable) {
       if (item.status !== "pending") continue;
 
       const consumer = consumers[item.kind];

@@ -16,6 +16,14 @@ export const api = axios.create({
   // localhost:5173 -> localhost:8005 setup.
   withXSRFToken: true,
   headers: { Accept: "application/json" },
+  // A request against a dead link (tower lost mid-flush, captive portal) must
+  // eventually REJECT, not hang forever: the offline queue's flush pass holds
+  // a module-level latch while one pass runs, so a single hung socket used to
+  // park the whole queue in "syncing" and silently freeze every later
+  // submission. 30s is far beyond a healthy round trip on a field connection
+  // while still short enough to hand control back to the queue; the photo
+  // upload overrides this upward (see fieldVisitsApi.uploadPhoto).
+  timeout: 30_000,
 });
 
 let onUnauthorized = null;

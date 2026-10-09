@@ -3,8 +3,11 @@ import { caseNotesApi } from "../api/caseNotesApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { useToast } from "../context/ToastContext";
+import { useNotifyOfflineSaved } from "../context/OfflineQueueContext";
 import { useAuth } from "../context/AuthContext";
+import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { Modal } from "./Modal";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
 import { Icon } from "./Icons";
@@ -40,9 +43,16 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
   const [form, setForm] = useState(EMPTY_FORM);
   const [beneficiaryId, setBeneficiaryId] = useState("");
   const toast = useToast();
+  const notifyOfflineSaved = useNotifyOfflineSaved();
   const { user } = useAuth();
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  // Unsaved-input tracking — see FieldVisitFormModal for the full rationale.
+  const [dirty, setDirty] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const markDirty = () => setDirty(true);
+
+  useUnsavedChangesGuard({ when: open && dirty && !saving });
 
   // Which "session" of the form has been seeded. The beneficiaries prop is
   // re-fetched on a 30s poll (and on window focus) and arrives as a brand-new
@@ -81,6 +91,8 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
     }
 
     setErrors({});
+    setDirty(false);
+    setConfirmDiscard(false);
   }, [open, note, beneficiaries]);
 
   function update(field) {
@@ -88,7 +100,17 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
       const { value } = event.target;
       setForm((prev) => ({ ...prev, [field]: value }));
       setErrors((prev) => ({ ...prev, [field]: undefined }));
+      markDirty();
     };
+  }
+
+  /** Close — asking first when there is unsaved input to lose. */
+  function requestClose() {
+    if (dirty && !saving) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
   }
 
   /**
@@ -105,7 +127,11 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
       userId: user?.id ?? null,
     });
 
-    toast.success("Saved on this device — it will sync when you're back online.");
+    notifyOfflineSaved({
+      noun: "case note",
+      label: beneficiary?.name_of_farmer ?? undefined,
+    });
+    setDirty(false);
     onSaved?.();
     onClose();
   }
@@ -125,7 +151,11 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
       userId: user?.id ?? null,
     });
 
-    toast.success("Saved on this device — it will sync when you're back online.");
+    notifyOfflineSaved({
+      noun: "case note edit",
+      label: beneficiary?.name_of_farmer ?? undefined,
+    });
+    setDirty(false);
     onSaved?.();
     onClose();
   }
@@ -193,6 +223,7 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
       }
 
       toast.success(editing ? "Case note updated." : "Case note created.");
+      setDirty(false);
       onSaved?.();
       onClose();
     } catch (error) {
@@ -205,7 +236,12 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
   }
 
   return (
-    <Modal open={open} title={editing ? "Edit case note" : "New case note"} onClose={onClose}>
+    <>
+      <Modal
+        open={open}
+        title={editing ? "Edit case note" : "New case note"}
+        onClose={requestClose}
+      >
       <form onSubmit={handleSubmit} noValidate>
         <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4">
           <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-brand-800 uppercase">
@@ -248,6 +284,7 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
               onChange={(event) => {
                 setBeneficiaryId(event.target.value);
                 setErrors((prev) => ({ ...prev, beneficiary_id: undefined }));
+                markDirty();
               }}
             >
               <option value="">Select a beneficiary…</option>
@@ -318,7 +355,7 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
         />
 
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="btn-secondary">
+          <button type="button" onClick={requestClose} className="btn-secondary">
             Cancel
           </button>
           <button type="submit" disabled={saving} className="btn-primary">
@@ -335,6 +372,17 @@ export function CaseNoteFormModal({ open, onClose, beneficiaries = [], note = nu
           </button>
         </div>
       </form>
-    </Modal>
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmDiscard}
+        message="This note hasn't been saved yet. Closing the form discards what you've written."
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          onClose();
+        }}
+        onCancel={() => setConfirmDiscard(false)}
+      />
+    </>
   );
 }

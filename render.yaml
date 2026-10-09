@@ -133,3 +133,14 @@ services:
       # Set to the API's public origin, e.g. https://cvo-backend.onrender.com.
       - key: VITE_API_URL
         sync: false
+
+      # OPTIONAL — the upstream for this service's OWN nginx proxy of /api,
+      # /sanctum, /storage and /up. The image bakes in
+      # BACKEND_UPSTREAM=http://localhost:8080, which always resolves, so nginx
+      # boots here with no config at all (the previous hardcoded
+      # `http://backend:8080` is a compose-only service name and made Render
+      # crash at boot: "host not found in upstream"). VITE_API_URL above is
+      # absolute, so the browser talks to the API directly and these proxy
+      # blocks are never hit. Uncomment only to let the FRONTEND origin proxy:
+      # - key: BACKEND_UPSTREAM
+      #   value: https://cvo-backend.onrender.com

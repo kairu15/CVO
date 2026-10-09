@@ -1,11 +1,30 @@
 # =============================================================================
-# CVO Frontend — nginx (production)
+# CVO Frontend — nginx (production) — ENVSUBST TEMPLATE
 #
-# Single-origin deployment (the recommended setup): this server serves the SPA
-# *and* proxies the backend's routes, so the browser only ever talks to one
-# origin. That keeps Sanctum's session/CSRF cookies first-party and removes
-# CORS from the equation entirely — no SANCTUM_STATEFUL_DOMAINS / CORS origin
-# mismatches to get wrong.
+# Rendered by nginx:alpine's /docker-entrypoint.d/20-envsubst-on-templates.sh
+# at CONTAINER START into /etc/nginx/conf.d/default.conf. The script only
+# substitutes variables that are actually DEFINED in the environment, so
+# nginx's own runtime variables ($host, $uri, $scheme, $remote_addr, ...)
+# are passed through untouched.
+#
+# WHY THE UPSTREAM IS A VARIABLE (the Render deploy crash)
+#   These four proxies used to say `proxy_pass http://backend:8080;` — the
+#   docker-compose service name, which only resolves on the compose network.
+#   nginx resolves a LITERAL upstream at startup, so on Render (no host called
+#   `backend`) boot died before serving anything:
+#       [emerg] host not found in upstream "backend" ... default.conf:36
+#   ${BACKEND_UPSTREAM} is substituted BEFORE nginx starts, and the image bakes
+#   in a default that resolves everywhere (http://localhost:8080), so the
+#   container boots on Render with no dashboard config at all.
+#
+#   Values:
+#     docker-compose.prod.yml  -> http://backend:8080   (single-origin proxy)
+#     Render (default)         -> http://localhost:8080 (inert; see below)
+#
+#   On Render the SPA is split-origin: VITE_API_URL points the axios instance
+#   straight at the API, so every API call already bypasses these blocks and
+#   this upstream is never contacted. Set BACKEND_UPSTREAM=https://<api-host>
+#   if you ever want the FRONTEND origin to proxy /api too.
 #
 # `backend` is the compose service name; it resolves on the compose network.
 # =============================================================================
@@ -27,13 +46,17 @@ server {
     # Matches the backend/php upload ceiling.
     client_max_body_size 12m;
 
+    # Only used when ${BACKEND_UPSTREAM} is an https:// URL (Render). Without it
+    # the upstream certificate is checked against the wrong SNI name.
+    proxy_ssl_server_name on;
+
     # -------------------------------------------------------------------------
     # Backend routes — proxied to the Laravel container (nginx + php-fpm on 8080)
     # -------------------------------------------------------------------------
 
     # Laravel API (versioned under /api/v1).
     location ^~ /api/ {
-        proxy_pass http://backend:8080;
+        proxy_pass ${BACKEND_UPSTREAM};
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -44,7 +67,7 @@ server {
 
     # Sanctum's CSRF-cookie endpoint.
     location ^~ /sanctum/ {
-        proxy_pass http://backend:8080;
+        proxy_pass ${BACKEND_UPSTREAM};
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -54,7 +77,7 @@ server {
 
     # Uploaded files served by Laravel (avatars, field-visit photos).
     location ^~ /storage/ {
-        proxy_pass http://backend:8080;
+        proxy_pass ${BACKEND_UPSTREAM};
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -66,7 +89,7 @@ server {
 
     # Laravel's built-in health endpoint (used by the backend healthcheck too).
     location = /up {
-        proxy_pass http://backend:8080;
+        proxy_pass ${BACKEND_UPSTREAM};
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
     }

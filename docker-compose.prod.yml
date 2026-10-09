@@ -112,6 +112,12 @@ services:
         # Only set an absolute URL for a split-origin deployment.
         VITE_API_URL: ${VITE_API_URL:-}
     restart: unless-stopped
+    environment:
+      # Upstream the SPA's own nginx proxies /api, /sanctum, /storage and /up
+      # to. The image defaults to http://localhost:8080 (boots anywhere); the
+      # compose service name must be set here or nginx resolves `backend` at
+      # boot and only works on the compose network.
+      BACKEND_UPSTREAM: http://backend:8080
     depends_on:
       backend:
         condition: service_started

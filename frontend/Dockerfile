@@ -74,7 +74,20 @@ RUN npm run build
 # -----------------------------------------------------------------------------
 FROM nginx:1.27-alpine AS production
 
-COPY frontend/docker/nginx.conf /etc/nginx/conf.d/default.conf
+# envsubst template, NOT a finished config: nginx:alpine's
+# /docker-entrypoint.d/20-envsubst-on-templates.sh renders it to
+# /etc/nginx/conf.d/default.conf at container start. Copying the file straight
+# into conf.d would leave ${BACKEND_UPSTREAM} literal and nginx would refuse to
+# boot wherever the host `backend` does not resolve (i.e. on Render):
+#     [emerg] host not found in upstream "backend"
+COPY frontend/docker/nginx.conf.template /etc/nginx/templates/default.conf.template
+
+# Upstream for the /api, /sanctum, /storage and /up proxies. The default
+# resolves everywhere (no DNS lookup needed — /etc/hosts), so the container
+# boots on Render with no dashboard config. docker-compose.prod.yml overrides
+# it to http://backend:8080 to keep the single-origin proxy.
+ENV BACKEND_UPSTREAM=http://localhost:8080
+
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80

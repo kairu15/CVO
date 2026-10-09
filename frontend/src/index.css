@@ -257,6 +257,33 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Header connectivity indicator (component: ConnectivityStatus.jsx)
+   --------------------------------------------------------------------------- */
+
+/*
+ * The status text is remounted (keyed by state), so this fades the new wording
+ * in rather than snapping it — paired with the pill's own 200ms colour
+ * transition, the flip from connected to offline reads as a cross-fade. */
+@keyframes connectivity-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.connectivity-fade {
+  animation: connectivity-fade 200ms var(--ease-panel) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connectivity-fade {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Dispersal map pins (element built in components/DispersalMap.jsx)
    --------------------------------------------------------------------------- */
 

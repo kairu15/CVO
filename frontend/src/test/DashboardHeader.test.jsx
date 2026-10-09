@@ -294,6 +294,17 @@ describe("DashboardHeader", () => {
     await vi.waitFor(() => expect(auth.logout).toHaveBeenCalledTimes(1));
   });
 
+  it("shows the always-present connectivity readout in the header", async () => {
+    renderHeader();
+
+    await screen.findByRole("button", { name: "Notifications" });
+
+    // Present in the connected state too — not just when something is wrong.
+    expect(
+      screen.getByRole("button", { name: "You are connected online." }),
+    ).toBeInTheDocument();
+  });
+
   it("closes the account menu when clicking outside the header", async () => {
     const user = userEvent.setup();
     renderHeader();

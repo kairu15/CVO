@@ -126,7 +126,7 @@ export default function ResetPasswordPage() {
           </Link>
 
           <div className="flex shrink-0 items-center gap-2">
-            <LanguageSwitcher />
+            <LanguageSwitcher className="inline-flex" />
             <Link
               to="/login"
               className="inline-flex shrink-0 items-center gap-2 rounded-pill px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-white hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"

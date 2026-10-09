@@ -9,12 +9,19 @@ import { Icon } from "./Icons";
  * i18n init (see src/i18n/index.js) — there is no backend involved, matching
  * the brief. Rendered as a native select so it works without extra JS and is
  * keyboard/screen-reader friendly.
+ *
+ * The root carries no display utility of its own: it used to hardcode
+ * `inline-flex`, which competed with a caller's `hidden` (the dashboard header
+ * passes `hidden md:inline-flex`) at equal specificity — and because Tailwind
+ * orders the two display utilities, the `hidden` lost and the switcher stayed
+ * visible on phones, crowding the header. Callers now supply `inline-flex`
+ * themselves, so `hidden` wins as intended.
  */
 export function LanguageSwitcher({ className = "" }) {
   const { i18n, t } = useTranslation();
 
   return (
-    <label className={`inline-flex items-center gap-1.5 ${className}`}>
+    <label className={`items-center gap-1.5 ${className}`}>
       <Icon name="globe" className="h-4 w-4 text-slate-500" />
       <span className="sr-only">{t("common.language")}</span>
       <select

@@ -15,6 +15,7 @@ import { getErrorMessage } from "../api/client";
 import { useFlashHighlight } from "../hooks/useFlashHighlight";
 import { Icon } from "./Icons";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { ConnectivityStatus } from "./ConnectivityStatus";
 import { SyncStatusBadge } from "./SyncStatusBadge";
 import { SkeletonList } from "./Skeleton";
 import { LogoutConfirmDialog } from "./LogoutConfirmDialog";
@@ -167,6 +168,11 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
 
       {/* Language — English / Filipino / Cebuano, persisted in localStorage. */}
       <LanguageSwitcher className="hidden md:inline-flex" />
+
+      {/* Connectivity — the always-present ambient readout (unlike the
+          full-width banner, which only appears when something is wrong), so
+          the current online/offline state is visible at a glance. */}
+      <ConnectivityStatus />
 
       {/* Offline sync — a persistent count of anything still to sync, so a
           technician can verify nothing was lost even after days offline. */}

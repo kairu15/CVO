@@ -212,8 +212,13 @@ RUN composer dump-autoload \
         storage/framework/views \
         storage/logs \
         bootstrap/cache \
-    && chown -R app:app storage bootstrap/cache \
-    && chmod -R ug+rwX storage bootstrap/cache
+    && chown -R app:app storage bootstrap/cache database \
+    && chmod -R ug+rwX storage bootstrap/cache database
+
+# `database` is included above so the committed, zero-byte
+# database/database.sqlite stays writable by the `app` user. Without it the
+# file is root-owned (0644) and a DB_CONNECTION=sqlite deployment fails at
+# `php artisan migrate` with "attempt to write a readonly database".
 
 # Production caches aggressively: the image is immutable, so OPcache never
 # re-stats source files (the file explains the zz-prod conf.d name).

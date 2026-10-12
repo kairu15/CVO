@@ -116,7 +116,26 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 8. Hand off to the container's main process
+# 8. nginx listen port — follow $PORT when the platform sets one
+#
+# The image's nginx.conf binds a fixed 8080 (correct for compose, where only
+# the frontend is published). PaaS platforms instead inject a port variable
+# and route to THAT port: Render defaults to PORT=10000. Render *usually*
+# detects a non-default bound port, but when detection fails the deploy dies
+# with "No open ports detected" and the edge returns 404 forever, even though
+# the app itself is healthy (supervisord running, migrations applied).
+#
+# Rebinding nginx to $PORT removes that dependency entirely. When it is unset
+# (docker compose, local `docker run`) nothing changes and the port stays
+# 8080, so the compose stack and its healthcheck are unaffected.
+# -----------------------------------------------------------------------------
+if [ -n "${PORT:-}" ] && [ "${PORT}" != "8080" ] && [ -f /etc/nginx/http.d/default.conf ]; then
+    log "PORT=${PORT} is set — rebinding nginx from 8080 to ${PORT}"
+    sed -i "s/listen 8080;/listen ${PORT};/" /etc/nginx/http.d/default.conf
+fi
+
+# -----------------------------------------------------------------------------
+# 9. Hand off to the container's main process
 # -----------------------------------------------------------------------------
 log "Starting: $*"
 exec "$@"

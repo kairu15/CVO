@@ -8,7 +8,7 @@
 # are passed through untouched.
 #
 # WHY THE UPSTREAM IS A VARIABLE (the Render deploy crash)
-#   These four proxies used to say `proxy_pass http://backend:8080;` — the
+#   These proxies used to say `proxy_pass http://backend:8080;` — the
 #   docker-compose service name, which only resolves on the compose network.
 #   nginx resolves a LITERAL upstream at startup, so on Render (no host called
 #   `backend`) boot died before serving anything:
@@ -21,10 +21,22 @@
 #     docker-compose.prod.yml  -> http://backend:8080   (single-origin proxy)
 #     Render (default)         -> http://localhost:8080 (inert; see below)
 #
-#   On Render the SPA is split-origin: VITE_API_URL points the axios instance
-#   straight at the API, so every API call already bypasses these blocks and
-#   this upstream is never contacted. Set BACKEND_UPSTREAM=https://<api-host>
-#   if you ever want the FRONTEND origin to proxy /api too.
+#   SINGLE-ORIGIN ON RENDER
+#     BACKEND_UPSTREAM=https://<api-host>.onrender.com and the SPA is built with
+#     an EMPTY VITE_API_URL, so the browser only ever talks to THIS origin and
+#     all five blocks below are live. The API is then reached over its public
+#     URL, because free Render services cannot use private networking.
+#
+#   HOST HANDLING (why the blocks say `Host $proxy_host`, not `Host $host`)
+#     An edge that routes by the Host header — Render does — would send a
+#     request stamped with this service's host straight back to THIS service
+#     and loop forever. Sending the upstream's own host ($proxy_host, which is
+#     what `proxy_pass` names) addresses the backend directly.
+#     Nothing that relies on the host breaks: a Set-Cookie with no Domain is
+#     scoped by the BROWSER to the origin it actually called (this one), and
+#     Sanctum's stateful check keys off the Origin/Referer header, which passes
+#     through unchanged. X-Forwarded-Host carries the SPA's own host for an
+#     app that trusts proxies.
 #
 # `backend` is the compose service name; it resolves on the compose network.
 # =============================================================================
@@ -52,13 +64,17 @@ server {
 
     # -------------------------------------------------------------------------
     # Backend routes — proxied to the Laravel container (nginx + php-fpm on 8080)
+    #
+    # $host        = the host the browser used (this service)
+    # $proxy_host  = the host named in proxy_pass (the Laravel service)
     # -------------------------------------------------------------------------
 
     # Laravel API (versioned under /api/v1).
     location ^~ /api/ {
         proxy_pass ${BACKEND_UPSTREAM};
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -69,17 +85,19 @@ server {
     location ^~ /sanctum/ {
         proxy_pass ${BACKEND_UPSTREAM};
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Uploaded files served by Laravel (avatars, field-visit photos).
+    # Public-disk uploads served by Laravel (the storage:link symlink).
     location ^~ /storage/ {
         proxy_pass ${BACKEND_UPSTREAM};
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -87,10 +105,27 @@ server {
         add_header Cache-Control "public";
     }
 
+    # Signed media from the API's PRIVATE disk — avatars, visit photos and
+    # dispersal signatures. App\Support\SecureMedia deliberately hands the SPA a
+    # ROOT-RELATIVE /secure-files/...?signature=... URL (the signature is valid
+    # on any host), so the browser resolves it against THIS origin. Without a
+    # block here the request falls through to the SPA fallback below and every
+    # avatar / photo renders as a broken image.
+    location ^~ /secure-files/ {
+        proxy_pass ${BACKEND_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # Laravel's built-in health endpoint (used by the backend healthcheck too).
     location = /up {
         proxy_pass ${BACKEND_UPSTREAM};
-        proxy_set_header Host $host;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 

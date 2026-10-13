@@ -32,18 +32,17 @@
 #   which does not exist at the repo root. For monorepo trigger scoping use
 #   `buildFilter`, not `rootDir`.
 #
-# SPLIT-ORIGIN (frontend and API on different hosts)
-#   VITE_API_URL points the SPA at the backend's public URL, and media URLs are
-#   already absolute (backend/config/filesystems.php builds them from APP_URL),
-#   so images load from the API host directly. Because the two hosts are
-#   cross-origin, the backend is configured with secure, same-site="none"
-#   cookies plus the frontend's origin in Sanctum/CORS.
+# SINGLE-ORIGIN (one public URL — the frontend service)
+#   The frontend's nginx serves the SPA and reverse-proxies /api, /sanctum,
+#   /storage, /secure-files and /up to the API over the API's PUBLIC URL, so
+#   the browser only ever sees one origin. Sanctum's cookies are first-party
+#   and CORS never applies. Free Render services cannot use private networking,
+#   so the proxy crosses the public internet to reach the backend — which is
+#   why the SPA is built with an EMPTY VITE_API_URL and BACKEND_UPSTREAM points
+#   at the backend's onrender.com URL.
 #
-#   NOTE ON THE ALTERNATIVE (single-origin): the repo's nginx also supports
-#   proxying /api,/sanctum,/storage to the API so everything shares one origin.
-#   On Render that requires the backend to RECEIVE private-network traffic,
-#   which FREE services cannot do — it needs a paid instance. Split-origin is
-#   used here because it works on the free plan.
+#   The API's own URL still answers on / with Laravel's default welcome page.
+#   That is expected: it is the API, not the app. Users open the FRONTEND URL.
 #
 # DATABASE
 #   Render has NO managed MySQL (only PostgreSQL), and this backend image has
@@ -75,10 +74,13 @@ services:
       # entrypoint refuses to boot if this is empty.
       - key: APP_KEY
         sync: false
-      # The API's own public origin, e.g. https://cvo-backend.onrender.com.
-      # Also the base for absolute media URLs (/secure-files), so it must be set.
+      # The app's PUBLIC origin. In this single-origin setup that is the
+      # FRONTEND service — the only URL a browser ever visits — e.g.
+      # https://cvo-frontend.onrender.com. Laravel builds absolute URLs and
+      # redirects against it, so it must be the origin users actually see
+      # (not this API service's own hostname).
       - key: APP_URL
-        sync: false
+        value: https://cvo-sampletestfinal.onrender.com
 
       # --- External MySQL (Render has no managed MySQL) ---
       - key: DB_CONNECTION
@@ -99,16 +101,26 @@ services:
       # Render terminates TLS; cookies must be Secure.
       - key: SESSION_SECURE_COOKIE
         value: "true"
-      # Split-origin: the SPA is a different origin than the API.
+      # Single-origin: the SPA and the API share the FRONTEND origin, so the
+      # session cookie is same-site. Nothing here is cross-site and CORS is
+      # not involved.
       - key: SESSION_SAME_SITE
-        value: none
+        value: lax
 
-      # The FRONTEND host (no scheme), e.g. cvo-frontend.onrender.com.
+      # The FRONTEND host (no scheme), e.g. cvo-frontend.onrender.com. Requests
+      # arrive through the frontend's nginx proxy, and Sanctum's stateful check
+      # keys off the Origin/Referer header the browser sends — the SPA's own
+      # host — so this is the frontend, not this API service.
       - key: SANCTUM_STATEFUL_DOMAINS
-        sync: false
-      # The FRONTEND origin (with scheme), e.g. https://cvo-frontend.onrender.com.
+        value: cvo-sampletestfinal.onrender.com
+      # Unused now that every call is same-origin; kept at the SPA's origin so
+      # a stray direct (cross-origin) caller is still allowed.
       - key: CORS_ALLOWED_ORIGINS
-        sync: false
+        value: https://cvo-sampletestfinal.onrender.com
+      # Password-reset and account-setup links point the recipient here
+      # (see AppServiceProvider / UserAccountService).
+      - key: FRONTEND_URL
+        value: https://cvo-sampletestfinal.onrender.com
 
       # Never seed demo accounts by default. Set to "true" for the first deploy
       # to create the demo logins, then set back to "false".
@@ -130,17 +142,21 @@ services:
       # Build-time: Vite inlines import.meta.env.* into the bundle during
       # `vite build`. Render passes a Docker service's env vars as build args,
       # which is how this reaches the Dockerfile's `ARG VITE_API_URL`.
-      # Set to the API's public origin, e.g. https://cvo-backend.onrender.com.
+      #
+      # EMPTY is the point of this single-origin setup: the SPA then calls
+      # /api, /sanctum and /secure-files on ITS OWN origin and this service's
+      # nginx proxies them. An absolute URL here reverts the app to
+      # split-origin and the proxy blocks go unused.
+      #
+      # This is a BUILD-time value, so changing it needs a REBUILD, not a
+      # restart. Empty also matches the Dockerfile default (ARG VITE_API_URL="").
       - key: VITE_API_URL
-        sync: false
+        value: ""
 
-      # OPTIONAL — the upstream for this service's OWN nginx proxy of /api,
-      # /sanctum, /storage and /up. The image bakes in
-      # BACKEND_UPSTREAM=http://localhost:8080, which always resolves, so nginx
-      # boots here with no config at all (the previous hardcoded
-      # `http://backend:8080` is a compose-only service name and made Render
-      # crash at boot: "host not found in upstream"). VITE_API_URL above is
-      # absolute, so the browser talks to the API directly and these proxy
-      # blocks are never hit. Uncomment only to let the FRONTEND origin proxy:
-      # - key: BACKEND_UPSTREAM
-      #   value: https://cvo-backend.onrender.com
+      # The upstream for this service's nginx proxy of /api, /sanctum, /storage,
+      # /secure-files and /up. Required here: the image defaults to
+      # http://localhost:8080 (inert — there is no backend inside this
+      # container), so without it every API call and every signed image fails.
+      # Point it at the Laravel service's public origin.
+      - key: BACKEND_UPSTREAM
+        value: https://cvotestfinal.onrender.com

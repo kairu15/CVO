@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\BulkDeletes;
 use App\Http\Requests\BulkDeleteRequest;
 use App\Http\Requests\IndexMonitoringRecordsRequest;
+use App\Http\Requests\SetMonitoringRecordMoaRequest;
 use App\Http\Requests\StoreMonitoringRecordRequest;
 use App\Http\Requests\UpdateMonitoringRecordRequest;
 use App\Http\Resources\MonitoringRecordResource;
@@ -154,6 +155,25 @@ class MonitoringRecordController extends Controller
 
         return new MonitoringRecordResource(
             $this->records->accept($record, $request->user())->load(['beneficiary', 'technician', 'beneficiary.technician']),
+        );
+    }
+
+    /**
+     * Set the MOA status for the dispersal behind a monitoring record.
+     *
+     * Admin-oversight only (the `monitoring.set-moa` capability, seeded
+     * admin-only) — technicians and doctors keep the existing view/edit
+     * rights on the row but cannot sign off on the program agreement. The
+     * write lands on the BENEFICIARY (MOA is per dispersal), so every visit
+     * row for that household reflects the new value.
+     */
+    public function setMoa(SetMonitoringRecordMoaRequest $request, int $id): MonitoringRecordResource
+    {
+        $record = MonitoringRecord::findOrFail($id);
+
+        return new MonitoringRecordResource(
+            $this->records->setMoa($record, (bool) $request->validated('moa_signed'), $request->user())
+                ->load(['beneficiary', 'technician', 'beneficiary.technician']),
         );
     }
 }

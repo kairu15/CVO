@@ -30,11 +30,21 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class MonitoringExcelService
 {
-    /** Header row of the generated export, in template order. */
+    /**
+     * Header row of the generated export, in the same order as the on-screen
+     * Monitoring table so the workbook matches what the admin sees.
+     *
+     * 'RSBSA #' sits directly after the farmer's name (the farmer-level
+     * registry ID), and 'MOA' + 'Ear Tag #' sit after Remarks (the dispersal
+     * agreement and the animal's physical tag) — mirroring the table columns.
+     * These are not part of the paper template, but importers ignore unknown
+     * columns, so a round-trip of an exported file stays safe.
+     */
     private const EXPORT_HEADERS = [
-        'Name of Farmer', 'Address', 'Type of Animal dispersed', 'Sex',
+        'Name of Farmer', 'RSBSA #', 'Address', 'Type of Animal dispersed', 'Sex',
         'Date monitored', ' Date of Vits Supp.', 'Deworming ', 'Vaccination',
         'Date Breed', 'Date Calved', 'BCS', 'Farmers Signature', 'Remarks',
+        'MOA', 'Ear Tag #',
         // Admin oversight columns, matching the on-screen Monitoring table:
         // who is assigned to the farmer, and when the most recent geotagged
         // field-visit photo was captured. Not part of the paper template —
@@ -244,16 +254,16 @@ class MonitoringExcelService
             $sheet = new Worksheet($spreadsheet, $label);
             $spreadsheet->addSheet($sheet);
 
-            // Title row, merged across the template width (now O with the
-            // oversight columns).
+            // Title row, merged across the full template width (R with the
+            // registry + oversight columns).
             $sheet->setCellValue('A1', 'LIVESTOCK MONTHLY MONITORING REPORT');
-            $sheet->mergeCells('A1:O1');
+            $sheet->mergeCells('A1:R1');
             $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
             $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
             // Header row.
             $sheet->fromArray(self::EXPORT_HEADERS, null, 'A2');
-            $headerStyle = $sheet->getStyle('A2:O2');
+            $headerStyle = $sheet->getStyle('A2:R2');
             $headerStyle->getFont()->setBold(true);
             $headerStyle->getFill()->setFillType(Fill::FILL_SOLID)
                 ->getStartColor()->setRGB('DCE8D9');
@@ -270,6 +280,7 @@ class MonitoringExcelService
                 $photo = $b->latestFieldVisitPhoto;
                 $sheet->fromArray([
                     $b->name_of_farmer,
+                    $b->rsbsa_number,
                     $b->address,
                     $b->animal_type,
                     $b->sex,
@@ -282,18 +293,26 @@ class MonitoringExcelService
                     $record->bcs,
                     $record->farmers_signature,
                     $record->remarks,
+                    $this->moaLabel($b->moa_signed),
+                    $b->ear_tag_number,
                     $b->technician?->name ?? 'Unassigned',
                     $photo ? $this->d($photo->capture_date).' '.substr((string) $photo->capture_time, 0, 5) : null,
                 ], null, 'A'.$rowIndex);
 
-                $sheet->getStyle('A'.$rowIndex.':O'.$rowIndex)
+                $sheet->getStyle('A'.$rowIndex.':R'.$rowIndex)
                     ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
 
                 $rowIndex++;
             }
 
-            foreach (range('A', 'O') as $col) {
-                $sheet->getColumnDimension($col)->setWidth($col === 'A' ? 24 : (in_array($col, ['M', 'O'], true) ? 30 : 14));
+            foreach (range('A', 'R') as $col) {
+                $width = match (true) {
+                    $col === 'A' => 24, // Name of Farmer
+                    $col === 'B' => 20, // RSBSA #
+                    in_array($col, ['N', 'Q', 'R'], true) => 30, // Remarks / Technician / Photo Timestamp
+                    default => 14,
+                };
+                $sheet->getColumnDimension($col)->setWidth($width);
             }
         }
 
@@ -480,6 +499,19 @@ class MonitoringExcelService
         }
 
         return (string) $date;
+    }
+
+    /**
+     * Human-readable MOA cell for the export sheet, matching the on-screen
+     * badge: null (not yet recorded) → "Not on file", otherwise Yes/No.
+     */
+    private function moaLabel(mixed $signed): string
+    {
+        if ($signed === null) {
+            return 'Not on file';
+        }
+
+        return ((bool) $signed) ? 'Yes' : 'No';
     }
 
     /** Match an existing beneficiary or create a new one from identity fields. */

@@ -79,4 +79,18 @@ export const monitoringApi = {
     await ensureCsrfCookie();
     return unwrap(await api.patch(`/api/v1/monitoring-records/${id}/accept`));
   },
+
+  /**
+   * Admin sets the MOA status for the dispersal behind a record (the
+   * monitoring table's inline toggle). The write lands on the BENEFICIARY —
+   * MOA is per dispersal — so every visit row for that household reflects
+   * the new value once the list refreshes. Server authorizes on the
+   * `monitoring.set-moa` capability (seeded admin-only).
+   */
+  setMoa: async (id, moaSigned) => {
+    await ensureCsrfCookie();
+    return unwrap(
+      await api.patch(`/api/v1/monitoring-records/${id}/moa`, { moa_signed: moaSigned }),
+    );
+  },
 };

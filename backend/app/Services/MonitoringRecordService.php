@@ -385,6 +385,35 @@ class MonitoringRecordService
     }
 
     /**
+     * Flip the MOA status recorded for the beneficiary behind a monitoring
+     * record.
+     *
+     * The agreement is per DISPERSAL, which in this system is the beneficiary
+     * (animal + household) row — so this writes the beneficiary, not the
+     * individual visit. Every visit row for that beneficiary then shows the
+     * same badge, which is why the monitoring page refreshes its rows after
+     * the save rather than patching just the clicked one.
+     *
+     * Authorized by the caller before this runs (MonitoringRecordPolicy::setMoa
+     * — the `monitoring.set-moa` capability, seeded admin-only).
+     */
+    public function setMoa(MonitoringRecord $record, bool $signed, User $actor): MonitoringRecord
+    {
+        $beneficiary = $record->beneficiary;
+
+        if ($beneficiary instanceof Beneficiary) {
+            $beneficiary->update(['moa_signed' => $signed]);
+
+            $this->audit->log($actor, 'monitoring_moa_updated', $beneficiary, [
+                'beneficiary_id' => $beneficiary->id,
+                'moa_signed' => $signed,
+            ]);
+        }
+
+        return $record->refresh();
+    }
+
+    /**
      * Midnight expiry: everything whose countdown has passed becomes `old`.
      * Covers both accepted records and `new` records nobody acted on — the
      * admin chose auto-expiry so nothing stays green unattended.

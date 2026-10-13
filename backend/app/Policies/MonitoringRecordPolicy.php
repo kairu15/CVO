@@ -71,4 +71,17 @@ class MonitoringRecordPolicy
         return $user->hasPermission('monitoring.accept-registration')
             && $record->registration_status !== MonitoringRecord::REGISTRATION_NONE;
     }
+
+    /**
+     * Setting the dispersal's MOA status is an admin-oversight action, gated
+     * on its own capability (seeded admin-only) rather than `monitoring.update`
+     * — doctors and technicians may edit monitoring records, but signing off
+     * on the program agreement is not their call. Expressing it as a
+     * capability keeps the boundary visible and adjustable on the Roles &
+     * Permissions screen.
+     */
+    public function setMoa(User $user, MonitoringRecord $record): bool
+    {
+        return $user->hasPermission('monitoring.set-moa');
+    }
 }

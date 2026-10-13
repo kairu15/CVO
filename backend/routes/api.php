@@ -175,6 +175,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::patch('monitoring-records/{id}/accept', [MonitoringRecordController::class, 'accept'])
         ->name('api.monitoring-records.accept');
 
+    // Admin flips the dispersal's MOA status (per-beneficiary) from the
+    // monitoring table's inline toggle. Same routing pattern as accept above:
+    // declared after the apiResource so the explicit path wins, and
+    // authorized by MonitoringRecordPolicy::setMoa inside the controller.
+    Route::patch('monitoring-records/{id}/moa', [MonitoringRecordController::class, 'setMoa'])
+        ->name('api.monitoring-records.moa');
+
     // Clinical health records (veterinarian-authored).
     //
     // The options route MUST come before the apiResource: apiResource registers

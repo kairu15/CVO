@@ -30,6 +30,15 @@ class MonitoringRecordResource extends JsonResource
             'animal_type' => $this->beneficiary->animal_type,
             'sex' => $this->beneficiary->sex,
 
+            // Registry / agreement fields, read from the beneficiary so the
+            // monitoring table needs no second request. RSBSA # is the
+            // farmer's national registry ID; MOA is the signed agreement for
+            // this dispersal (null = not on file); Ear Tag # is the physical
+            // tag number. All nullable — historical rows simply omit them.
+            'rsbsa_number' => $this->beneficiary->rsbsa_number,
+            'moa_signed' => $this->beneficiary->moa_signed,
+            'ear_tag_number' => $this->beneficiary->ear_tag_number,
+
             // The technician currently ASSIGNED to this beneficiary (admin's
             // assignment feature) — distinct from `technician`, which is who
             // happened to log this record. Null renders as "Unassigned".

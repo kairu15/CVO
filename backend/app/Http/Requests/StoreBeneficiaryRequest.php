@@ -39,6 +39,13 @@ class StoreBeneficiaryRequest extends FormRequest
                 },
             ],
             'animal_type' => ['required', 'string', 'max:255'],
+            // The farmer's national registry ID and the animal's physical tag
+            // number. Deliberately loose: RSBSA numbers have no single
+            // published format across LGUs/regions, and tags are issued by
+            // the office, so a regex here would only reject real data. Blank
+            // is normalised to null by prepareForValidation below.
+            'rsbsa_number' => ['nullable', 'string', 'max:255'],
+            'ear_tag_number' => ['nullable', 'string', 'max:255'],
             'sex' => ['required', Rule::in(['M', 'F'])],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
@@ -49,6 +56,22 @@ class StoreBeneficiaryRequest extends FormRequest
         }
 
         return $rules;
+    }
+
+    /**
+     * Treat a blank RSBSA # / Ear Tag # as "not provided" (null), not as the
+     * empty string — so the stored value is honest and the monitoring table's
+     * "not yet recorded" placeholder reflects a genuinely absent value.
+     */
+    protected function prepareForValidation(): void
+    {
+        foreach (['rsbsa_number', 'ear_tag_number'] as $field) {
+            if ($this->has($field)) {
+                $this->merge([
+                    $field => $this->filled($field) ? trim((string) $this->input($field)) : null,
+                ]);
+            }
+        }
     }
 
     /**

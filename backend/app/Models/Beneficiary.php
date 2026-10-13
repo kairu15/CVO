@@ -24,10 +24,18 @@ class Beneficiary extends Model
     protected $fillable = [
         'farmer_id',
         'name_of_farmer',
+        // The farmer's national registry ID (RSBSA), beside the name it
+        // belongs to. Nullable — not every farmer has one yet.
+        'rsbsa_number',
         'address',
         'barangay_id',
         'purok_id',
         'animal_type',
+        // The human-readable number printed on the animal's physical tag.
+        'ear_tag_number',
+        // Signed Memorandum of Agreement for this dispersal. Tri-state:
+        // null = not yet recorded, true = signed, false = not signed.
+        'moa_signed',
         'sex',
         'source',
         'technician_id',
@@ -43,6 +51,7 @@ class Beneficiary extends Model
             'longitude' => 'float',
             'barangay_id' => 'integer',
             'purok_id' => 'integer',
+            'moa_signed' => 'boolean',
         ];
     }
 

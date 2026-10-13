@@ -38,6 +38,11 @@ class UpdateBeneficiaryRequest extends FormRequest
                 },
             ],
             'animal_type' => ['sometimes', 'string', 'max:255'],
+            // Registry ID and physical tag number. Loose on purpose (no single
+            // RSBSA format; tags are office-issued) — see
+            // StoreBeneficiaryRequest for the rationale.
+            'rsbsa_number' => ['nullable', 'string', 'max:255'],
+            'ear_tag_number' => ['nullable', 'string', 'max:255'],
             'sex' => ['sometimes', 'in:M,F'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
@@ -45,5 +50,20 @@ class UpdateBeneficiaryRequest extends FormRequest
                 ? ['nullable', 'integer', 'exists:users,id,role,technician']
                 : ['prohibited'],
         ];
+    }
+
+    /**
+     * A blank RSBSA # / Ear Tag # clears the field (null) rather than storing
+     * an empty string — same rule the create request applies.
+     */
+    protected function prepareForValidation(): void
+    {
+        foreach (['rsbsa_number', 'ear_tag_number'] as $field) {
+            if ($this->has($field)) {
+                $this->merge([
+                    $field => $this->filled($field) ? trim((string) $this->input($field)) : null,
+                ]);
+            }
+        }
     }
 }

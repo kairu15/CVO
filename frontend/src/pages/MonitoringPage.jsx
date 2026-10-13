@@ -63,6 +63,8 @@ export default function MonitoringPage({ roleKey }) {
   const [deleting, setDeleting] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [acceptingId, setAcceptingId] = useState(null);
+  // Id of the record whose inline MOA save is in flight (admin toggle).
+  const [moaBusyId, setMoaBusyId] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
 
@@ -231,6 +233,29 @@ export default function MonitoringPage({ roleKey }) {
     }
   }
 
+  /**
+   * Admin flips the dispersal's MOA status from the table's inline switch.
+   * The value is per DISPERSAL (per beneficiary), so every visit row for the
+   * same household changes with it — the list is refreshed rather than just
+   * the clicked row patched. The switch shows an in-flight spinner (driven by
+   * `moaBusyId`) until the save settles, and a toast reports the outcome.
+   */
+  async function toggleMoa(record) {
+    setMoaBusyId(record.id);
+
+    try {
+      // null (not on file) and false both flip to signed; true flips off.
+      const next = record.moa_signed !== true;
+      await monitoringApi.setMoa(record.id, next);
+      toast.success(next ? "MOA marked as signed" : "MOA marked as not signed");
+      await load();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setMoaBusyId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="card p-6">
@@ -377,6 +402,10 @@ export default function MonitoringPage({ roleKey }) {
           acceptingId={acceptingId}
           selected={selected}
           onToggleRow={canEdit ? (record) => toggle(record.id) : undefined}
+          // MOA is a program-oversight field: only an admin gets the inline
+          // switch. Doctors and technicians see the badge read-only.
+          onToggleMoa={isAdmin ? (record) => toggleMoa(record) : undefined}
+          moaBusyId={moaBusyId}
           groupBy={groupBy}
           highlightBeneficiaryId={highlightBeneficiaryId}
           emptyState={

@@ -14,6 +14,8 @@ import { ButtonSpinner } from "./LoadingSpinner";
  */
 const COLUMNS = [
   { key: "name_of_farmer", label: "Name of Farmer" },
+  // The farmer-level registry ID, directly beside the name it belongs to.
+  { key: "rsbsa_number", label: "RSBSA #" },
   { key: "address", label: "Address" },
   { key: "animal_type", label: "Type of Animal" },
   { key: "sex", label: "Sex" },
@@ -26,6 +28,10 @@ const COLUMNS = [
   { key: "bcs", label: "BCS" },
   { key: "farmers_signature", label: "Farmer's Signature" },
   { key: "remarks", label: "Remarks" },
+  // The dispersal agreement (togglable by an admin) and the animal's
+  // human-readable physical tag number, both beside Remarks.
+  { key: "moa_signed", label: "MOA" },
+  { key: "ear_tag_number", label: "Ear Tag #" },
   // Admin oversight columns: who is assigned to this farmer, and when the
   // most recent geotagged visit photo was captured.
   { key: "assigned_technician", label: "Technician" },
@@ -88,6 +94,76 @@ function RegistrationBadge({ record }) {
 }
 
 /**
+ * The dispersal's signed-MOA badge: green "Yes", amber "No", and a muted
+ * "Not on file" when nothing has been recorded yet — never a raw boolean,
+ * matching the New/Old and role pills used elsewhere in the system.
+ */
+function MoaBadge({ signed }) {
+  if (signed === true) {
+    return (
+      <span className="inline-flex items-center rounded-pill bg-brand-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-brand-800 uppercase ring-1 ring-brand-500/30">
+        Yes
+      </span>
+    );
+  }
+
+  if (signed === false) {
+    return (
+      <span className="inline-flex items-center rounded-pill bg-amber-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-amber-800 uppercase ring-1 ring-amber-500/30">
+        No
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center rounded-pill bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500 uppercase ring-1 ring-slate-200 dark:bg-slate-200/60 dark:ring-slate-300/40">
+      Not on file
+    </span>
+  );
+}
+
+/**
+ * MOA cell. Read-only viewers get just the badge; an admin (when
+ * `onToggleMoa` is supplied) also gets a switch they can click to flip the
+ * dispersal's status without opening the edit form. A brief spinner replaces
+ * the badge while the inline save is in flight.
+ */
+function MoaCell({ record, editable, busy, onToggle }) {
+  if (!editable) {
+    return <MoaBadge signed={record.moa_signed} />;
+  }
+
+  const checked = record.moa_signed === true;
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={`Toggle MOA status for ${record.name_of_farmer}`}
+        disabled={busy}
+        onClick={() => onToggle(record)}
+        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
+          checked ? "bg-brand-600" : "bg-slate-300"
+        }`}
+      >
+        <span
+          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${
+            checked ? "translate-x-4" : "translate-x-0.5"
+          }`}
+        />
+      </button>
+      {busy ? (
+        <ButtonSpinner className="h-3.5 w-3.5 border-brand-700/30 border-t-brand-700" />
+      ) : (
+        <MoaBadge signed={record.moa_signed} />
+      )}
+    </span>
+  );
+}
+
+/**
  * Livestock monitoring table, shared by all four dashboards.
  *
  * Rows come role-scoped from the API; this component only renders. Rows are
@@ -116,6 +192,10 @@ function RegistrationBadge({ record }) {
  * @param {number|string|null} [props.highlightBeneficiaryId] tints the rows
  *   belonging to one beneficiary — the "you arrived from this notification"
  *   flash. The caller clears it after a moment, so the tint fades out.
+ * @param {(record: object) => void} [props.onToggleMoa] renders the inline
+ *   MOA switch; omitted for roles that may see the status but not change it
+ * @param {number|string|null} [props.moaBusyId] id of the record whose inline
+ *   MOA save is in flight — the switch is disabled and shows a spinner
  */
 export function MonitoringTable({
   records = [],
@@ -129,6 +209,8 @@ export function MonitoringTable({
   onToggleRow,
   groupBy = "address",
   highlightBeneficiaryId = null,
+  onToggleMoa,
+  moaBusyId = null,
 }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [photoRecord, setPhotoRecord] = useState(null);
@@ -309,6 +391,19 @@ export function MonitoringTable({
                                     {cellValue(record, col.key)}
                                   </span>
                                 </span>
+                              </td>
+                            );
+                          }
+
+                          if (col.key === "moa_signed") {
+                            return (
+                              <td key={col.key} className="px-4 py-2.5 whitespace-nowrap">
+                                <MoaCell
+                                  record={record}
+                                  editable={Boolean(onToggleMoa)}
+                                  busy={moaBusyId === record.id}
+                                  onToggle={onToggleMoa}
+                                />
                               </td>
                             );
                           }

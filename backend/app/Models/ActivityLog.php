@@ -76,6 +76,7 @@ class ActivityLog extends Model
         'monitoring_updated',
         'monitoring_deleted',
         'monitoring_accepted',
+        'monitoring_moa_updated',
         'field_visit_created',
         'field_visit_updated',
         'field_visit_deleted',

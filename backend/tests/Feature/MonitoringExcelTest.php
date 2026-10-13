@@ -171,9 +171,12 @@ class MonitoringExcelTest extends TestCase
         $this->assertSame('Dec 2025', $sheet->getTitle());
         $this->assertSame('Name of Farmer', $sheet->getCell('A2')->getValue());
         $this->assertSame('Juan Dela Cruz', $sheet->getCell('A3')->getValue());
-        $this->assertSame('2025-12-05', $sheet->getCell('E3')->getValue());
-        $this->assertSame(4, $sheet->getCell('K3')->getValue());
-        $this->assertSame('healthy', $sheet->getCell('M3')->getValue());
+        // A2 is now "Name of Farmer", B2 the RSBSA column, so the visit fields
+        // shifted one to the right (F = Date monitored, L = BCS, N = Remarks).
+        $this->assertSame('RSBSA #', $sheet->getCell('B2')->getValue());
+        $this->assertSame('2025-12-05', $sheet->getCell('F3')->getValue());
+        $this->assertSame(4, $sheet->getCell('L3')->getValue());
+        $this->assertSame('healthy', $sheet->getCell('N3')->getValue());
 
         $spreadsheet->disconnectWorksheets();
         @unlink($temporary);
@@ -227,16 +230,17 @@ class MonitoringExcelTest extends TestCase
         $spreadsheet = IOFactory::load($temporary);
         $sheet = $spreadsheet->getSheet(0);
 
-        // The two oversight columns exist in the header…
-        $this->assertSame('Technician', $sheet->getCell('N2')->getValue());
-        $this->assertSame('Photo Timestamp', $sheet->getCell('O2')->getValue());
+        // The two oversight columns exist in the header (Q/R, after the new
+        // RSBSA + MOA + Ear Tag columns)…
+        $this->assertSame('Technician', $sheet->getCell('Q2')->getValue());
+        $this->assertSame('Photo Timestamp', $sheet->getCell('R2')->getValue());
 
         // …and carry the assigned technician + latest capture per row.
         $rows = [];
         foreach (range(3, $sheet->getHighestRow()) as $row) {
             $rows[$sheet->getCell("A{$row}")->getValue()] = [
-                'technician' => $sheet->getCell("N{$row}")->getValue(),
-                'timestamp' => $sheet->getCell("O{$row}")->getValue(),
+                'technician' => $sheet->getCell("Q{$row}")->getValue(),
+                'timestamp' => $sheet->getCell("R{$row}")->getValue(),
             ];
         }
 
@@ -244,6 +248,68 @@ class MonitoringExcelTest extends TestCase
         $this->assertSame('2025-12-04 11:45', $rows['Maria Santos']['timestamp']);
         $this->assertSame('Unassigned', $rows['Unassigned Farmer']['technician']);
         $this->assertNull($rows['Unassigned Farmer']['timestamp']);
+
+        $spreadsheet->disconnectWorksheets();
+        @unlink($temporary);
+    }
+
+    public function test_export_includes_rsbsa_moa_and_ear_tag_columns(): void
+    {
+        $technician = User::factory()->create(['role' => 'technician']);
+        $complete = Beneficiary::factory()->assignedTo($technician)->create([
+            'name_of_farmer' => 'Complete Farmer',
+            'address' => 'Ali-is',
+            'rsbsa_number' => '12-34-56-789-000012',
+            'moa_signed' => true,
+            'ear_tag_number' => 'ET-0001',
+        ]);
+        $blank = Beneficiary::factory()->assignedTo($technician)->create([
+            'name_of_farmer' => 'Blank Farmer',
+            'address' => 'Ali-is',
+        ]);
+
+        MonitoringRecord::factory()->by($technician)->for($complete, 'beneficiary')->create(['date_monitored' => '2025-12-05']);
+        MonitoringRecord::factory()->by($technician)->for($blank, 'beneficiary')->create(['date_monitored' => '2025-12-06']);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson('/api/v1/admin/monitoring-records/export');
+
+        $response->assertOk();
+
+        $temporary = tempnam(sys_get_temp_dir(), 'export');
+        file_put_contents($temporary, $response->streamedContent());
+
+        $spreadsheet = IOFactory::load($temporary);
+        $sheet = $spreadsheet->getSheet(0);
+
+        // Headers match the on-screen order: RSBSA # beside the name, MOA and
+        // Ear Tag # beside Remarks.
+        $this->assertSame('RSBSA #', $sheet->getCell('B2')->getValue());
+        $this->assertSame('MOA', $sheet->getCell('O2')->getValue());
+        $this->assertSame('Ear Tag #', $sheet->getCell('P2')->getValue());
+
+        $rows = [];
+        foreach (range(3, $sheet->getHighestRow()) as $row) {
+            $name = $sheet->getCell("A{$row}")->getValue();
+            if ($name === null || $name === '') {
+                continue;
+            }
+            $rows[$name] = [
+                'rsbsa' => $sheet->getCell("B{$row}")->getValue(),
+                'moa' => $sheet->getCell("O{$row}")->getValue(),
+                'tag' => $sheet->getCell("P{$row}")->getValue(),
+            ];
+        }
+
+        $this->assertSame('12-34-56-789-000012', $rows['Complete Farmer']['rsbsa']);
+        $this->assertSame('Yes', $rows['Complete Farmer']['moa']);
+        $this->assertSame('ET-0001', $rows['Complete Farmer']['tag']);
+
+        // Missing values stay honest: blank RSBSA/tag cells and an explicit
+        // "Not on file" MOA, never a misleading empty string or "No".
+        $this->assertNull($rows['Blank Farmer']['rsbsa']);
+        $this->assertSame('Not on file', $rows['Blank Farmer']['moa']);
+        $this->assertNull($rows['Blank Farmer']['tag']);
 
         $spreadsheet->disconnectWorksheets();
         @unlink($temporary);

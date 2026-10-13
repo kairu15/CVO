@@ -15,17 +15,11 @@ namespace App\Support;
  */
 class Like
 {
-    /**
-     * Escape SQL LIKE wildcards in user input.
-     */
     public static function escape(string $term): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
     }
 
-    /**
-     * A contains-pattern for a user term, wildcards neutralized.
-     */
     public static function contains(string $term): string
     {
         return '%'.self::escape(mb_strtolower(trim($term))).'%';

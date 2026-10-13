@@ -9,9 +9,6 @@ class Barangay extends Model
 {
     protected $fillable = ['name', 'latitude', 'longitude'];
 
-    /**
-     * The puroks/sitios inside this barangay.
-     */
     public function puroks(): HasMany
     {
         return $this->hasMany(Purok::class);

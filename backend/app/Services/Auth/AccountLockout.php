@@ -36,9 +36,6 @@ class AccountLockout
         return "security:lockout:locked:{$userId}";
     }
 
-    /**
-     * Whether the account is currently locked out.
-     */
     public function isLocked(User $user): bool
     {
         return Cache::has(self::lockKey($user->id));

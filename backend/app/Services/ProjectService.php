@@ -25,9 +25,6 @@ class ProjectService
         return $user->projects()->create($data);
     }
 
-    /**
-     * Update a project.
-     */
     public function update(Project $project, array $data): Project
     {
         $project->update($data);
@@ -35,9 +32,6 @@ class ProjectService
         return $project->refresh();
     }
 
-    /**
-     * Delete a project.
-     */
     public function delete(Project $project): void
     {
         $project->delete();

@@ -74,7 +74,6 @@ export const fieldVisitsApi = {
     );
   },
 
-  /** Remove the visit's photo. */
   removePhoto: async (id) => {
     await ensureCsrfCookie();
     return unwrap(await api.delete(`/api/v1/field-visits/${id}/photo`));

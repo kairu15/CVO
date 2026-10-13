@@ -78,9 +78,6 @@ class Geo
         );
     }
 
-    /**
-     * Great-circle distance in kilometres (haversine formula).
-     */
     public static function haversineKm(float $latFrom, float $lngFrom, float $latTo, float $lngTo): float
     {
         $latFromRad = deg2rad($latFrom);

@@ -61,8 +61,6 @@ class Barangays
     }
 
     /**
-     * Center coordinates for one barangay name, or null when not covered.
-     *
      * @return array{0: float, 1: float}|null
      */
     public static function centerFor(string $name): ?array
@@ -147,9 +145,6 @@ class Barangays
             : $rows->pluck('name')->all();
     }
 
-    /**
-     * Index of the (normalized) name in the coverage list, or null.
-     */
     protected static function indexOf(string $name): ?int
     {
         $found = array_search($name, self::all(), true);

@@ -19,9 +19,6 @@ class ProjectController extends Controller
     {
     }
 
-    /**
-     * Display a paginated list of the user's projects.
-     */
     public function index(Request $request): AnonymousResourceCollection
     {
         return ProjectResource::collection(
@@ -32,9 +29,6 @@ class ProjectController extends Controller
         );
     }
 
-    /**
-     * Store a newly created project.
-     */
     public function store(StoreProjectRequest $request): JsonResponse
     {
         $project = $this->projects->create($request->user(), $request->validated());
@@ -44,9 +38,6 @@ class ProjectController extends Controller
             ->setStatusCode(Response::HTTP_CREATED);
     }
 
-    /**
-     * Display the specified project.
-     */
     public function show(Project $project): ProjectResource
     {
         $this->authorize('view', $project);
@@ -54,9 +45,6 @@ class ProjectController extends Controller
         return new ProjectResource($project);
     }
 
-    /**
-     * Update the specified project.
-     */
     public function update(UpdateProjectRequest $request, Project $project): ProjectResource
     {
         $this->authorize('update', $project);
@@ -66,9 +54,6 @@ class ProjectController extends Controller
         );
     }
 
-    /**
-     * Remove the specified project.
-     */
     public function destroy(Project $project): JsonResponse
     {
         $this->authorize('delete', $project);

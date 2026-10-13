@@ -17,9 +17,6 @@ class Purok extends Model
         ];
     }
 
-    /**
-     * The barangay this purok/sitio belongs to.
-     */
     public function barangay(): BelongsTo
     {
         return $this->belongsTo(Barangay::class);

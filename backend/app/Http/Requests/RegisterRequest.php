@@ -11,17 +11,12 @@ use Illuminate\Validation\Rules\Password;
 
 class RegisterRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
     }
 
     /**
-     * Get the validation rules that apply to the request.
-     *
      * Note there is deliberately no "role" rule: self-registration always
      * produces a farmer, so any role sent in the payload is ignored.
      *

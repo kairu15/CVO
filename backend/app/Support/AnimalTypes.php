@@ -44,10 +44,6 @@ class AnimalTypes
 
     /**
      * Fold a free-text value into its canonical display form.
-     *
-     * Trim + collapse internal whitespace, then match (case-insensitively)
-     * against the suggested vocabulary for casing. A blank value becomes
-     * "Unspecified"; anything else is kept, title-cased.
      */
     public static function normalize(mixed $value): string
     {

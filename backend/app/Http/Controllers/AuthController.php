@@ -184,9 +184,6 @@ class AuthController extends Controller
         return response()->json(['message' => 'Logged out of all devices.', 'meta' => ['tokens_revoked' => $revoked]]);
     }
 
-    /**
-     * Return the currently authenticated user.
-     */
     public function user(Request $request): UserResource
     {
         return new UserResource($request->user());

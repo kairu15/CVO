@@ -102,7 +102,7 @@ class ServerSideRoleEnforcementTest extends TestCase
             '/api/v1/admin/activity-logs',
         ];
 
-        foreach (['doctor', 'technician', 'farmer'] as $role) {
+        foreach (['doctor', 'technician'] as $role) {
             $user = User::factory()->create(['role' => $role]);
 
             foreach ($routes as $route) {
@@ -117,7 +117,10 @@ class ServerSideRoleEnforcementTest extends TestCase
     {
         $beneficiary = \App\Models\Beneficiary::factory()->create();
 
-        foreach (['technician', 'farmer'] as $role) {
+        // Every non-doctor role the system recognises — the removed
+        // `farmer` role is not one of them (it validates nowhere and holds
+        // no grants after the removal migration).
+        foreach (['admin', 'technician'] as $role) {
             $user = User::factory()->create(['role' => $role]);
 
             $this->actingAs($user)
@@ -134,7 +137,7 @@ class ServerSideRoleEnforcementTest extends TestCase
     {
         $beneficiary = \App\Models\Beneficiary::factory()->create();
 
-        foreach (['doctor', 'farmer'] as $role) {
+        foreach (['admin', 'doctor'] as $role) {
             $user = User::factory()->create(['role' => $role]);
 
             $this->actingAs($user)
@@ -148,12 +151,14 @@ class ServerSideRoleEnforcementTest extends TestCase
 
     public function test_role_scoping_hides_other_rows_even_for_valid_ids(): void
     {
-        // A farmer pointing at a beneficiary they do not own gets 404 —
-        // the row is scoped out at the QUERY level, not filtered client-side.
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $other = \App\Models\Beneficiary::factory()->create(); // belongs to someone else
+        // A role the system does not recognise gets 404 — the row is
+        // scoped out at the QUERY level, not filtered client-side. Retired
+        // `farmer` rows behave exactly like this: an unknown role with no
+        // scope, failing closed rather than falling through to "everything".
+        $unknown = User::factory()->create(['role' => 'auditor']);
+        $other = \App\Models\Beneficiary::factory()->create(); // not in anyone's scope
 
-        $this->actingAs($farmer)
+        $this->actingAs($unknown)
             ->getJson("/api/v1/beneficiaries/{$other->id}")
             ->assertNotFound();
     }

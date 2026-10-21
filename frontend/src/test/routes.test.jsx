@@ -10,7 +10,6 @@ vi.mock("../api/authApi", () => ({
   authApi: {
     fetchUser: vi.fn(),
     login: vi.fn(),
-    register: vi.fn(),
     logout: vi.fn(),
   },
 }));
@@ -72,17 +71,17 @@ describe("ProtectedRoute + RoleRoute", () => {
   });
 
   it("a scoped role cannot open another role's dashboard", async () => {
-    setUser({ id: 2, role: "farmer" });
+    setUser({ id: 2, role: "technician" });
     renderAt("/guarded", null, "admin");
 
     await waitForRole();
-    // Bounced to the farmer's own dashboard path.
+    // Bounced to the technician's own dashboard path.
     expect(screen.getByText("OWN-DASHBOARD")).toBeInTheDocument();
   });
 
   it("all-access roles may open every dashboard", async () => {
     setUser({ id: 1, role: "admin" });
-    renderAt("/guarded", null, "farmer");
+    renderAt("/guarded", null, "technician");
 
     await waitForRole();
     expect(screen.getByText("ALLOWED")).toBeInTheDocument();

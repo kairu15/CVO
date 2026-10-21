@@ -49,7 +49,7 @@ vi.mock("../api/monitoringApi", () => ({
 }));
 
 vi.mock("../api/authApi", () => ({
-  authApi: { register: vi.fn() },
+  authApi: { login: vi.fn(), logout: vi.fn() },
 }));
 
 vi.mock("../api/syncApi", () => ({

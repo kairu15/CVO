@@ -17,12 +17,12 @@ class DispersalEventTest extends TestCase
         $this->getJson('/api/v1/dispersal-events')->assertUnauthorized();
     }
 
-    public function test_farmer_can_record_initial_dispersal_with_coordinates(): void
+    public function test_assigned_technician_can_record_initial_dispersal_with_coordinates(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->create();
+        $technician = User::factory()->create(['role' => 'technician']);
+        $beneficiary = Beneficiary::factory()->assignedTo($technician)->create();
 
-        $response = $this->actingAs($farmer)->postJson('/api/v1/dispersal-events', [
+        $response = $this->actingAs($technician)->postJson('/api/v1/dispersal-events', [
             'beneficiary_id' => $beneficiary->id,
             'dispersal_type' => 'initial',
             'date_dispersed' => '2026-09-01',
@@ -92,11 +92,11 @@ class DispersalEventTest extends TestCase
 
     public function test_initial_dispersal_rejects_a_parent(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->create();
+        $technician = User::factory()->create(['role' => 'technician']);
+        $beneficiary = Beneficiary::factory()->assignedTo($technician)->create();
         $other = Beneficiary::factory()->create();
 
-        $this->actingAs($farmer)
+        $this->actingAs($technician)
             ->postJson('/api/v1/dispersal-events', [
                 'beneficiary_id' => $beneficiary->id,
                 'dispersal_type' => 'initial',
@@ -122,14 +122,14 @@ class DispersalEventTest extends TestCase
         $this->assertTrue(in_array($response->status(), [403, 422]));
     }
 
-    public function test_farmer_sees_only_their_own_dispersal_events(): void
+    public function test_a_technician_sees_only_events_touching_their_assignments(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $mine = Beneficiary::factory()->forFarmer($farmer)->create();
+        $technician = User::factory()->create(['role' => 'technician']);
+        $mine = Beneficiary::factory()->assignedTo($technician)->create();
         DispersalEvent::factory()->initial($mine)->create();
         DispersalEvent::factory()->create(); // someone else's
 
-        $this->actingAs($farmer)
+        $this->actingAs($technician)
             ->getJson('/api/v1/dispersal-events')
             ->assertOk()
             ->assertJsonCount(1, 'data');
@@ -243,22 +243,22 @@ class DispersalEventTest extends TestCase
         $this->assertSame('re-dispersal', $chain[2]['dispersal_type']);
     }
 
-    public function test_farmer_cannot_read_another_farmers_lineage(): void
+    public function test_a_technician_cannot_read_the_lineage_of_an_unassigned_household(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $beneficiary = Beneficiary::factory()->create();
+        $technician = User::factory()->create(['role' => 'technician']);
+        $beneficiary = Beneficiary::factory()->create(); // nobody's assignment
         DispersalEvent::factory()->initial($beneficiary)->create();
 
-        $this->actingAs($farmer)
+        $this->actingAs($technician)
             ->getJson("/api/v1/beneficiaries/{$beneficiary->id}/lineage")
             ->assertNotFound();
     }
 
     public function test_beneficiary_store_accepts_coordinates(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $admin = User::factory()->create(['role' => 'admin']);
 
-        $this->actingAs($farmer)
+        $this->actingAs($admin)
             ->postJson('/api/v1/beneficiaries', [
                 'name_of_farmer' => 'Geo Farmer',
                 'address' => 'Banaybanay',
@@ -274,9 +274,9 @@ class DispersalEventTest extends TestCase
 
     public function test_beneficiary_store_rejects_out_of_range_coordinates(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $admin = User::factory()->create(['role' => 'admin']);
 
-        $this->actingAs($farmer)
+        $this->actingAs($admin)
             ->postJson('/api/v1/beneficiaries', [
                 'name_of_farmer' => 'Geo Farmer',
                 'address' => 'Banaybanay',
@@ -289,12 +289,12 @@ class DispersalEventTest extends TestCase
             ->assertJsonValidationErrors(['latitude']);
     }
 
-    public function test_farmer_can_geo_tag_their_own_beneficiary(): void
+    public function test_admin_can_correct_a_beneficiarys_coordinates(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->create();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $beneficiary = Beneficiary::factory()->create();
 
-        $this->actingAs($farmer)
+        $this->actingAs($admin)
             ->putJson("/api/v1/beneficiaries/{$beneficiary->id}", [
                 'latitude' => 9.4,
                 'longitude' => 122.8,
@@ -443,21 +443,6 @@ class DispersalEventTest extends TestCase
             'id' => $event->id,
             'deleted_at' => null,
         ]);
-    }
-
-    public function test_farmer_cannot_update_or_delete_a_dispersal_event(): void
-    {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->create();
-        $event = DispersalEvent::factory()->initial($beneficiary)->create();
-
-        $this->actingAs($farmer)
-            ->patchJson("/api/v1/dispersal-events/{$event->id}", ['remarks' => 'Mine.'])
-            ->assertForbidden();
-
-        $this->actingAs($farmer)
-            ->deleteJson("/api/v1/dispersal-events/{$event->id}")
-            ->assertForbidden();
     }
 
     public function test_switching_a_re_dispersal_back_to_initial_clears_the_parent(): void

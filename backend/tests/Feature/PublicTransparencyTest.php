@@ -122,11 +122,9 @@ class PublicTransparencyTest extends TestCase
     /** The whole point of the aggregate endpoint: no identities escape. */
     public function test_transparency_leaks_no_beneficiary_identity(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer', 'name' => 'Darna Villanueva']);
         $technician = User::factory()->create(['role' => 'technician', 'name' => 'Tech Rey']);
 
         $beneficiary = Beneficiary::factory()
-            ->forFarmer($farmer)
             ->assignedTo($technician)
             ->create([
                 'name_of_farmer' => 'Darna Villanueva',
@@ -146,8 +144,8 @@ class PublicTransparencyTest extends TestCase
 
         $body = json_encode($json);
 
-        // No farmer/technician names, no per-farm coordinates, no ids, no
-        // technician key anywhere in the payload.
+        // No beneficiary/technician names, no per-farm coordinates, no ids,
+        // no technician key anywhere in the payload.
         $this->assertStringNotContainsString('Darna Villanueva', $body);
         $this->assertStringNotContainsString('Tech Rey', $body);
         $this->assertStringNotContainsString('9.47123', $body);

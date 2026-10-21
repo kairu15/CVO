@@ -209,7 +209,7 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
             title="No health records yet"
             description={
               canAuthor
-                ? "Records you author appear here, and are visible to the farmer and the assigned technician."
+                ? "Records you author appear here, and are visible to admins and the assigned technician."
                 : "Health records appear here once a veterinarian has examined an animal."
             }
           />

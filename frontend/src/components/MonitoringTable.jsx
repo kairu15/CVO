@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
+import { ButtonSpinner } from "./LoadingSpinner";
 import { EmptyState } from "./EmptyState";
 import { Icon } from "./Icons";
 import { SkeletonList } from "./Skeleton";
 import { PhotoLightbox } from "./PhotoLightbox";
-import { ButtonSpinner } from "./LoadingSpinner";
 
 /**
  * Table columns mirroring the CVO's Excel monitoring sheet, in order.
@@ -65,38 +65,9 @@ function captureTimestamp(photo) {
 }
 
 /**
- * The registration lifecycle badge: green "New" while the flag is live
- * (freshly registered, or accepted before its midnight expiry), muted gray
- * "Old" once the flag has expired. `is_new` is computed server-side from
- * the same rule, so the badge can never disagree with the highlight.
- */
-function RegistrationBadge({ record }) {
-  if (record.is_new) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-pill bg-brand-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-brand-800 uppercase ring-1 ring-brand-500/30">
-        <Icon name="map-pin" className="h-2.5 w-2.5" />
-        New
-      </span>
-    );
-  }
-
-  if (record.registration_status === "old") {
-    return (
-      <span className="inline-flex items-center rounded-pill bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500 uppercase ring-1 ring-slate-200 dark:bg-slate-200/60 dark:text-slate-500 dark:ring-slate-300/40">
-        Old
-      </span>
-    );
-  }
-
-  // `none` (ordinary technician-logged record) and `accepted`-just-expired
-  // edge: no badge at all.
-  return null;
-}
-
-/**
  * The dispersal's signed-MOA badge: green "Yes", amber "No", and a muted
  * "Not on file" when nothing has been recorded yet — never a raw boolean,
- * matching the New/Old and role pills used elsewhere in the system.
+ * matching the role pills used elsewhere in the system.
  */
 function MoaBadge({ signed }) {
   if (signed === true) {
@@ -164,7 +135,7 @@ function MoaCell({ record, editable, busy, onToggle }) {
 }
 
 /**
- * Livestock monitoring table, shared by all four dashboards.
+ * Livestock monitoring table, shared by every dashboard.
  *
  * Rows come role-scoped from the API; this component only renders. Rows are
  * grouped by barangay (Address) with collapsible headers, matching how the
@@ -175,10 +146,6 @@ function MoaCell({ record, editable, busy, onToggle }) {
  * @param {boolean} [props.loading]
  * @param {(record: object) => void} [props.onEdit] renders an actions column when given
  * @param {(record: object) => void} [props.onDelete] renders a Delete action beside Edit
- * @param {(record: object) => Promise<void>} [props.onAccept] renders an Accept
- *   action on rows flagged `new`; must reject on failure so the row keeps
- *   its in-flight spinner state until the toast reports the outcome
- * @param {number} [props.acceptingId] id of the record whose Accept is in flight
  * @param {{title: string, description: string}} [props.emptyState] replaces the
  *   default "no records yet" empty state when the caller knows a more specific
  *   reason the table is empty (e.g. a month tab with no records)
@@ -202,8 +169,6 @@ export function MonitoringTable({
   loading = false,
   onEdit,
   onDelete,
-  onAccept,
-  acceptingId = null,
   emptyState,
   selected,
   onToggleRow,
@@ -216,7 +181,7 @@ export function MonitoringTable({
   const [photoRecord, setPhotoRecord] = useState(null);
 
   const hasSelection = Boolean(onToggleRow);
-  const hasActions = Boolean(onEdit || onDelete || onAccept);
+  const hasActions = Boolean(onEdit || onDelete);
 
   const groups = useMemo(() => {
     const byBarangay = new Map();
@@ -267,12 +232,6 @@ export function MonitoringTable({
     <div className="divide-y divide-slate-100 dark:divide-slate-200/60">
       {groups.map(([barangay, rows]) => {
         const isCollapsed = collapsed.has(barangay);
-        // Per-barangay "new" counter — the header is where an admin scans
-        // before expanding a group, so surface the actionable count there.
-        // Counts only un-accepted records: an accepted row keeps its green
-        // flag until midnight, but it is no longer waiting on anyone, so it
-        // stops counting the moment Accept is clicked.
-        const newCount = rows.filter((record) => record.registration_status === "new").length;
 
         return (
           <section key={barangay}>
@@ -296,12 +255,6 @@ export function MonitoringTable({
               <span className="rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500 uppercase ring-1 ring-slate-200 dark:bg-white/70 dark:ring-slate-300/40">
                 {rows.length} {rows.length === 1 ? "record" : "records"}
               </span>
-              {newCount > 0 && (
-                <span className="rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase ring-1 ring-red-200">
-                  <span className="font-bold text-red-600">{newCount}</span>
-                  <span className="ml-1 text-slate-500">new</span>
-                </span>
-              )}
             </button>
 
             {!isCollapsed && (
@@ -344,13 +297,8 @@ export function MonitoringTable({
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-200/60">
                     {rows.map((record) => {
-                      // Fresh registration: light brand-green tint (the
-                      // palette's own light green, not a new color). Stays
-                      // through `accepted` until the midnight expiry.
-                      const isNew = Boolean(record.is_new);
                       // Arrived-from-a-notification flash: a light sky tint
-                      // that outranks the "new" tint while it is on, then
-                      // fades back once the caller clears the id.
+                      // that fades back once the caller clears the id.
                       const isHighlighted =
                         highlightBeneficiaryId !== null &&
                         highlightBeneficiaryId !== undefined &&
@@ -360,11 +308,7 @@ export function MonitoringTable({
                       <tr
                         key={record.id}
                         className={`transition-colors duration-700 hover:bg-brand-50/60 dark:hover:bg-brand-100/40 ${
-                          isHighlighted
-                            ? "bg-sky-50 dark:bg-sky-100/60"
-                            : isNew
-                              ? "bg-brand-50 dark:bg-brand-100/70"
-                              : ""
+                          isHighlighted ? "bg-sky-50 dark:bg-sky-100/60" : ""
                         }`}
                       >
                         {hasSelection && (
@@ -380,16 +324,10 @@ export function MonitoringTable({
                         )}
                         {COLUMNS.map((col) => {
                           if (col.key === "name_of_farmer") {
-                            // The registration badge leads the farmer's name —
-                            // the first thing the eye lands on when scanning
-                            // for rows that need action.
                             return (
                               <td key={col.key} className="px-4 py-2.5 whitespace-nowrap">
-                                <span className="inline-flex items-center gap-2">
-                                  <RegistrationBadge record={record} />
-                                  <span className="font-medium text-slate-900">
-                                    {cellValue(record, col.key)}
-                                  </span>
+                                <span className="font-medium text-slate-900">
+                                  {cellValue(record, col.key)}
                                 </span>
                               </td>
                             );
@@ -472,21 +410,6 @@ export function MonitoringTable({
                         })}
                         {hasActions && (
                           <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                            {/* Only on an un-accepted new registration. Once
-                                accepted the button disappears — the row keeps
-                                its highlight and badge until midnight, but
-                                there is nothing left to accept. */}
-                            {onAccept && record.is_new && record.registration_status === "new" && (
-                              <button
-                                type="button"
-                                onClick={() => onAccept(record)}
-                                disabled={acceptingId !== null}
-                                className="mr-1 inline-flex items-center gap-1 rounded-pill bg-brand-100 px-3 py-1 text-[11px] font-bold text-brand-800 transition hover:bg-brand-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {acceptingId === record.id && <ButtonSpinner />}
-                                Accept
-                              </button>
-                            )}
                             {onEdit && (
                               <button
                                 type="button"
@@ -521,8 +444,8 @@ export function MonitoringTable({
       <PhotoLightbox
         open={photoRecord !== null}
         imageUrl={photoRecord?.latest_field_visit_photo?.image_url}
-        alt={`Geotagged visit photo for ${photoRecord?.name_of_farmer ?? "farmer"}`}
-        title={`Visit photo — ${photoRecord?.name_of_farmer ?? "farmer"}`}
+        alt={`Geotagged visit photo for ${photoRecord?.name_of_farmer ?? "beneficiary"}`}
+        title={`Visit photo — ${photoRecord?.name_of_farmer ?? "beneficiary"}`}
         onClose={() => setPhotoRecord(null)}
         caption={
           photoRecord?.latest_field_visit_photo && (

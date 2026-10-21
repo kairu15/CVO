@@ -39,11 +39,9 @@ class UserAccountService
     /**
      * Create a staff account.
      *
-     * Staff roles only: the request layer rejects `farmer` here. Public
-     * self-registration is the farmer path (it also creates the beneficiary
-     * record that monitoring auto-fills from), so manufacturing a farmer
-     * account from this screen would produce an account with no dispersal
-     * attached — a state the rest of the system does not expect.
+     * Every account in the system is staff — there is no farmer role, and
+     * beneficiaries are program records the admin enters on the
+     * Beneficiaries screen, not login accounts.
      *
      * INVITES: `password` is optional. When the admin does not type one, the
      * account starts with an unguessable random value it cannot sign in with
@@ -185,6 +183,17 @@ class UserAccountService
      */
     public function reactivate(User $actor, User $target): User
     {
+        // A retired farmer row is soft-deleted history, not a dormant
+        // account: restoring one would hand a login back to the removed role
+        // with its old password. Staff is the only reactivatable kind —
+        // defense in depth, since the admin list already hides non-staff rows
+        // and `role` never validates to `farmer` anywhere else.
+        if (! in_array($target->role, User::STAFF_ROLES, true)) {
+            throw ValidationException::withMessages([
+                'user' => 'Only staff accounts can be reactivated.',
+            ]);
+        }
+
         $target->restore();
 
         $this->audit->log($actor, 'user_reactivated', $target, [

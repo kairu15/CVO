@@ -4,7 +4,6 @@ import { healthRecordsApi } from "../api/healthRecordsApi";
 import { monitoringApi } from "../api/monitoringApi";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { dispersalApi } from "../api/dispersalApi";
-import { authApi } from "../api/authApi";
 import { syncApi } from "../api/syncApi";
 
 /**
@@ -155,7 +154,7 @@ function notify() {
  *
  * @param {object} entry
  * @param {string} entry.kind      "field-visit" | "case-note" | "health-record" |
- *                                 "monitoring" | "beneficiary" | "dispersal" | "registration"
+ *                                 "monitoring" | "beneficiary" | "dispersal"
  * @param {"create"|"update"} [entry.mode]  creates are append-only; updates can conflict
  * @param {object|null} entry.payload  request body for the create/update call
  * @param {object|null} [entry.photo]  { blob, meta } for photo-bearing items
@@ -341,17 +340,6 @@ const consumers = {
   dispersal: {
     async apply(item) {
       return dispersalApi.create(item.payload);
-    },
-  },
-
-  // Farmer self-registration. Creates an account rather than editing one, so
-  // it is append-only and never conflicts. The payload (including the chosen
-  // password) rides in IndexedDB until it syncs — the same local storage that
-  // already holds the queued field evidence, and it is dropped the moment the
-  // account is created.
-  registration: {
-    async apply(item) {
-      return authApi.register(item.payload);
     },
   },
 };

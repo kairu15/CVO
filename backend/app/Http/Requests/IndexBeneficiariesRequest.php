@@ -33,6 +33,15 @@ class IndexBeneficiariesRequest extends FormRequest
             'per_page' => ['sometimes', 'integer', 'min:1'],
 
             'page' => ['sometimes', 'integer', 'min:1'],
+
+            // Free-text search over the fields an administrator actually
+            // searches by: the farmer's name, their RSBSA number, the
+            // barangay address and the animal type.
+            'search' => ['sometimes', 'nullable', 'string', 'max:100'],
+
+            // Exact barangay filter (canonical name), paired with the search
+            // box so a large directory narrows by place as well as by term.
+            'barangay' => ['sometimes', 'nullable', 'string', 'max:255'],
         ];
     }
 }

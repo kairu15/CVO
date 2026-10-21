@@ -32,7 +32,7 @@ export default function RoleDashboard({ roleKey }) {
   const [error, setError] = useState(null);
 
   // Admin and doctor have city-wide oversight, so the dashboard opens with
-  // the live dispersal map. Technician/farmer keep scaffold modules for now.
+  // the live dispersal map. Technician keeps scaffold modules for now.
   const showMap = roleKey === "admin" || roleKey === "doctor";
 
   const load = useCallback(
@@ -60,7 +60,7 @@ export default function RoleDashboard({ roleKey }) {
     load();
   }, [load]);
 
-  // Quietly re-fetch so the dashboard map tracks registrations made elsewhere.
+  // Quietly re-fetch so the dashboard map tracks beneficiary additions made elsewhere.
   useAutoRefresh(load);
 
   if (!config) {

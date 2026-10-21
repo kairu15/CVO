@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\LoginRequest;
-use App\Http\Requests\RegisterRequest;
 use App\Http\Requests\TokenLoginRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
@@ -23,36 +22,6 @@ class AuthController extends Controller
         private readonly AccountLockout $lockout,
         private readonly AuditLogger $audit,
     ) {}
-
-    /**
-     * Register a new user and start a cookie session (SPA).
-     */
-    public function register(RegisterRequest $request): JsonResponse
-    {
-        $validated = $request->validated();
-
-        $user = $this->auth->register(
-            name: $request->string('name')->toString(),
-            username: $request->string('username')->toString(),
-            email: $request->string('email')->toString(),
-            password: $request->string('password')->toString(),
-            dispersal: $validated['dispersal'] ?? null,
-        );
-
-        if ($request->hasSession()) {
-            Auth::guard('web')->login($user);
-
-            $request->session()->regenerate();
-
-            // Item 1: stamp the login time for AbsoluteSessionExpiry — the
-            // ABSOLUTE ceiling on the session (the regenerated session id
-            // guarantees the stamp belongs to this authentication, and the
-            // idle lifetime governed by SESSION_LIFETIME starts fresh too).
-            $request->session()->put(\App\Http\Middleware\AbsoluteSessionExpiry::LOGIN_AT, now()->toIso8601String());
-        }
-
-        return (new UserResource($user))->response()->setStatusCode(Response::HTTP_CREATED);
-    }
 
     /**
      * Log in and start a cookie session (SPA).

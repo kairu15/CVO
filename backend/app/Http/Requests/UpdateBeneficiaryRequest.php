@@ -44,6 +44,10 @@ class UpdateBeneficiaryRequest extends FormRequest
             'rsbsa_number' => ['nullable', 'string', 'max:255'],
             'ear_tag_number' => ['nullable', 'string', 'max:255'],
             'sex' => ['sometimes', 'in:M,F'],
+            // Same tri-state as enrolment: null clears the recorded status,
+            // true/false records it. The monitoring table's inline toggle
+            // writes the same column.
+            'moa_signed' => ['nullable', 'boolean'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'technician_id' => $this->user()?->hasPermission('assign_technicians')

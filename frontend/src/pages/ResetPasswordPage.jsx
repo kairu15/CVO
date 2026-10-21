@@ -64,7 +64,7 @@ export default function ResetPasswordPage() {
   function validate() {
     const next = {};
 
-    if (!form.password) next.password = t("register.errors.passwordRequired");
+    if (!form.password) next.password = t("resetPassword.errors.passwordRequired");
     else if (
       form.password.length < 8 ||
       !/[a-z]/.test(form.password) ||
@@ -72,10 +72,10 @@ export default function ResetPasswordPage() {
       !/[0-9]/.test(form.password) ||
       !/[^A-Za-z0-9]/.test(form.password)
     )
-      next.password = t("register.errors.passwordWeak");
+      next.password = t("resetPassword.errors.passwordWeak");
 
     if (form.password_confirmation !== form.password)
-      next.password_confirmation = t("register.errors.passwordMismatch");
+      next.password_confirmation = t("resetPassword.errors.passwordMismatch");
 
     return next;
   }
@@ -185,7 +185,7 @@ export default function ResetPasswordPage() {
                     value={form.password}
                     onChange={update("password")}
                     error={errors.password}
-                    hint={t("register.passwordHint")}
+                    hint={t("resetPassword.passwordHint")}
                     trailing={
                       <PasswordToggle shown={show} onToggle={() => setShow((s) => !s)} />
                     }

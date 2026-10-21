@@ -177,7 +177,7 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
             technician can verify nothing was lost even after days offline. */}
         <SyncStatusBadge />
 
-        {/* Notifications — the live alert feed (same endpoint the farmer
+        {/* Notifications — the live alert feed (same endpoint the
             notifications page reads), with a badge only when something needs
             attention, so an empty feed reads as "all clear", not "broken". */}
         <div className="relative">

@@ -24,33 +24,21 @@ class User extends Authenticatable
     /**
      * Every role the CVO system recognises.
      *
+     * There is no `farmer` role: beneficiaries are program records the admin
+     * manages, not login accounts. Every account is a staff account, created
+     * by an administrator — new rows always carry an explicit role, so there
+     * is deliberately no default.
+     *
      * @var list<string>
      */
-    public const ROLES = ['admin', 'doctor', 'technician', 'farmer'];
+    public const ROLES = ['admin', 'doctor', 'technician'];
 
     /**
-     * Roles an administrator must assign — these can never be self-registered.
+     * Roles an administrator may assign from the User Management screen.
      *
      * @var list<string>
      */
     public const STAFF_ROLES = ['admin', 'doctor', 'technician'];
-
-    /**
-     * The role granted to public self-registration.
-     */
-    public const DEFAULT_ROLE = 'farmer';
-
-    /**
-     * Attributes applied when a new model instance has none set.
-     *
-     * Keeps the application independent of the column default, which may
-     * still read "member" on databases migrated from the starter template.
-     *
-     * @var array<string, mixed>
-     */
-    protected $attributes = [
-        'role' => self::DEFAULT_ROLE,
-    ];
 
     /**
      * Get the attributes that should be cast.
@@ -68,8 +56,9 @@ class User extends Authenticatable
 
     /**
      * The administrator who created this account (User Management's invite
-     * trail). Null for self-registered farmers; withTrashed because the
-     * creator may already be deactivated — the fact survives them.
+     * trail). Null for seeded accounts and any row predating the trail;
+     * withTrashed because the creator may already be deactivated — the fact
+     * survives them.
      */
     public function creator(): BelongsTo
     {
@@ -79,11 +68,6 @@ class User extends Authenticatable
     public function projects(): HasMany
     {
         return $this->hasMany(Project::class);
-    }
-
-    public function isFarmer(): bool
-    {
-        return $this->role === self::DEFAULT_ROLE;
     }
 
     /**
@@ -131,14 +115,6 @@ class User extends Authenticatable
                 )
                 : null,
         );
-    }
-
-    /**
-     * Dispersed animals registered under this account (always as the farmer).
-     */
-    public function beneficiaries(): HasMany
-    {
-        return $this->hasMany(Beneficiary::class, 'farmer_id');
     }
 
     /**

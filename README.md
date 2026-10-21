@@ -3,13 +3,13 @@ CVO — Livestock & Poultry Dispersal Tracking System
 A full-stack information system built for a City Veterinary Office (CVO) to manage the geo-tagging, dispersal, and re-dispersal of livestock and poultry to beneficiary farmers, replacing manual, paper-based record keeping with a centralized digital workflow.
 
 Overview
-Local government veterinary offices run livestock and poultry dispersal programs that provide animals to farmer-beneficiaries across multiple barangays, with a compliance requirement to track offspring and re-dispersal over time. This system digitizes that process end-to-end: registering beneficiaries and animals, recording their location down to the barangay level, tracking the lifecycle of each dispersal, and giving CVO staff a role-appropriate view into program status across the city.
+Local government veterinary offices run livestock and poultry dispersal programs that provide animals to farmer-beneficiaries across multiple barangays, with a compliance requirement to track offspring and re-dispersal over time. This system digitizes that process end-to-end: enrolling beneficiaries and their animals (admin-entered records, not accounts), recording their location down to the barangay level, tracking the lifecycle of each dispersal, and giving CVO staff a role-appropriate view into program status across the city.
 
 Key Features
 - Beneficiary & animal registry — structured records for farmer-beneficiaries and the livestock/poultry dispersed to them
 - Geo-tagging — location data down to the barangay level for every beneficiary and dispersal record
 - Dispersal & re-dispersal tracking — full lifecycle tracking, including offspring and pass-on compliance
-- Role-based dashboards — separate views and permissions for administrators, veterinary/technical staff, and farmer-beneficiaries
+- Role-based dashboards — separate views and permissions for administrators, veterinarians, and field technicians
 - Hierarchical navigation — drill-down from city → barangay → beneficiary
 - In-system notifications — alerts for dispersal, vaccination, and re-dispersal milestones
 - Mobile companion app — field-friendly access for staff conducting on-site visits
@@ -33,9 +33,11 @@ CVO/
 
 User Roles
 The system supports distinct roles reflecting how a CVO actually operates:
-- **Administrator** — full system access, staff account management, configuration
-- **Veterinary/technical staff** — health records, field visits, dispersal and case management
-- **Farmer-beneficiary** — self-registration and access to their own dispersal record
+- **Administrator** — full system access, staff account management, beneficiary enrolment, configuration
+- **Veterinarian** — health records, vaccination schedule, case notes, animal health monitoring
+- **Field technician** — geo-tagging, field visits, dispersal records for assigned beneficiaries
+
+There are no farmer login accounts: beneficiaries are program records the administrator enters on the admin Beneficiaries screen. Every account in the system is staff, created by an administrator — there is no public self-registration path.
 
 Access to every module is enforced consistently across the API and the interface, so a role's permissions can't be bypassed by navigating directly to a page.
 
@@ -94,7 +96,8 @@ On first boot the backend container waits for MySQL and runs `php artisan migrat
 | admin@example.com        | admin      |
 | doctor@example.com       | doctor     |
 | technician@example.com   | technician |
-| farmer@example.com       | farmer     |
+
+There is deliberately no `farmer@example.com` account — beneficiaries are records the admin manages, never logins (see the migration `2026_10_14_000000_remove_farmer_accounts_and_registration_lifecycle`).
 
 ### How it works
 

@@ -49,10 +49,8 @@ class FieldVisitService
         return match ($user->role) {
             'admin', 'doctor' => $query,
             'technician' => $query->where('technician_id', $user->id),
-            default => $query->whereIn(
-                'beneficiary_id',
-                Beneficiary::query()->where('farmer_id', $user->id)->select('id'),
-            ),
+            // No other role exists; fail closed.
+            default => $query->whereRaw('0 = 1'),
         };
     }
 

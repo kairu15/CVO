@@ -26,8 +26,7 @@ class StoreDispersalEventRequest extends FormRequest
      *
      * Beneficiary references are scoped by role — mirroring the query-level
      * scoping in BeneficiaryService — so a technician can never attach an
-     * event to a beneficiary they are not assigned to, and a farmer never to
-     * one they do not own.
+     * event to a beneficiary they are not assigned to.
      */
     /**
      * Store the canonical barangay spelling ("banaybanay" -> "Banay Banay"),
@@ -98,10 +97,6 @@ class StoreDispersalEventRequest extends FormRequest
             // the registration and store requests enforce — and the pin is
             // resolved from that name server-side, never from typed numbers.
             'register_new' => ['sometimes', 'boolean'],
-            'new_farmer_id' => [
-                'nullable',
-                Rule::exists('users', 'id')->where('role', 'farmer'),
-            ],
             'new_name_of_farmer' => ['required_with:register_new', 'string', 'max:255'],
             'new_address' => [
                 'required_with:register_new',
@@ -129,7 +124,8 @@ class StoreDispersalEventRequest extends FormRequest
         match ($user->role) {
             'admin', 'doctor' => null,
             'technician' => $query->where('technician_id', $user->id),
-            default => $query->where('farmer_id', $user->id),
+            // No other role exists; scope to nothing rather than everything.
+            default => $query->whereRaw('0 = 1'),
         };
     }
 }

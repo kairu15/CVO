@@ -52,11 +52,6 @@ export function AuthProvider({ children }) {
     await AsyncStorage.setItem(USER_KEY, JSON.stringify(res.data.user));
   }, []);
 
-  const register = useCallback(async (payload) => {
-    await authApi.register(payload);
-    await login(payload.email, payload.password);
-  }, []);
-
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
@@ -73,10 +68,9 @@ export function AuthProvider({ children }) {
       bootstrapping,
       isAuthenticated: Boolean(user),
       login,
-      register,
       logout,
     }),
-    [user, bootstrapping, login, register, logout],
+    [user, bootstrapping, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

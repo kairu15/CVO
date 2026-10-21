@@ -32,11 +32,7 @@ class HealthRecordPolicy
             return true;
         }
 
-        if ($user->role === 'technician') {
-            return $record->beneficiary->technician_id === $user->id;
-        }
-
-        return $record->beneficiary->farmer_id === $user->id;
+        return $user->role === 'technician' && $record->beneficiary->technician_id === $user->id;
     }
 
     /**

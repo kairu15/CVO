@@ -25,7 +25,7 @@ class BulkDeleteTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
         $records = MonitoringRecord::factory()
             ->count(3)
-            ->create(['registration_status' => MonitoringRecord::REGISTRATION_NONE]);
+            ->create();
 
         $this->actingAs($admin)
             ->postJson('/api/v1/monitoring-records/bulk-delete', [
@@ -47,7 +47,6 @@ class BulkDeleteTest extends TestCase
             ->count(2)
             ->create([
                 'technician_id' => $technician->id,
-                'registration_status' => MonitoringRecord::REGISTRATION_NONE,
             ]);
 
         $this->actingAs($technician)
@@ -64,7 +63,6 @@ class BulkDeleteTest extends TestCase
         $other = User::factory()->create(['role' => 'technician']);
         $record = MonitoringRecord::factory()->create([
             'technician_id' => $owner->id,
-            'registration_status' => MonitoringRecord::REGISTRATION_NONE,
         ]);
 
         $this->actingAs($other)
@@ -82,7 +80,6 @@ class BulkDeleteTest extends TestCase
     {
         $admin = User::factory()->create(['role' => 'admin']);
         $record = MonitoringRecord::factory()->create([
-            'registration_status' => MonitoringRecord::REGISTRATION_NONE,
         ]);
 
         $this->actingAs($admin)

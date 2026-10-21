@@ -13,8 +13,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * beneficiaries.technician_id; this table records every assign/reassign/clear
  * event with who made it and what it replaced, so responsibility can be
  * reconstructed for any date. Rows are never updated, and are only ever
- * SOFT-deleted — together with the household they describe — when a farmer is
- * removed; the history stays in the database for audit.
+ * SOFT-deleted — together with the household they describe — when the
+ * beneficiary is removed; the history stays in the database for audit.
  *
  * @property int $id
  * @property int $beneficiary_id

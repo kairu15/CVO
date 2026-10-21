@@ -22,7 +22,6 @@ vi.mock("../api/monitoringApi", () => ({
     list: vi.fn(),
     months: vi.fn(),
     animalTypes: vi.fn(),
-    acceptRegistration: vi.fn(),
     remove: vi.fn(),
   },
 }));
@@ -35,7 +34,6 @@ vi.mock("../api/authApi", () => ({
   authApi: {
     fetchUser: vi.fn(),
     login: vi.fn(),
-    register: vi.fn(),
     logout: vi.fn(),
   },
 }));
@@ -49,8 +47,6 @@ const RECORD_JUN_2024 = {
   date_monitored: "2024-06-15",
   assigned_technician: null,
   latest_field_visit_photo: null,
-  registration_status: "none",
-  is_new: false,
 };
 
 const RECORDS_SEP_2026 = [
@@ -69,8 +65,6 @@ const RECORDS_SEP_2026 = [
       capture_time: "08:30:00",
       address: "Dawis, Bayawan City",
     },
-    registration_status: "none",
-    is_new: false,
   },
   {
     id: 22,
@@ -81,8 +75,6 @@ const RECORDS_SEP_2026 = [
     date_monitored: "2026-09-21",
     assigned_technician: null,
     latest_field_visit_photo: null,
-    registration_status: "none",
-    is_new: false,
   },
 ];
 

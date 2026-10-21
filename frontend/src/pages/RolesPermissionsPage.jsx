@@ -40,12 +40,12 @@ import { ROLE_KEYS, getRole, roles, roleLabel } from "../config/roles";
 const RULES = [
   {
     title: "Workspace access",
-    body: "Admin is an all-access role: it can open every dashboard. The other three roles see only their own workspace — even by typing another dashboard's URL.",
+    body: "Admin is an all-access role: it can open every dashboard. The other two roles see only their own workspace — even by typing another dashboard's URL.",
     enforced: "RoleRoute guard in the SPA (canAccessDashboard), re-checked per endpoint server-side.",
   },
   {
     title: "Beneficiaries & monitoring",
-    body: "Admin and doctors see every household. Technicians see only households assigned to them. Farmers see only their own.",
+    body: "Admin and doctors see every household. Technicians see only households assigned to them.",
     enforced: "BeneficiaryService::scopeQueryFor — applied at the query on every list and search, not after the fact.",
   },
   {
@@ -75,12 +75,12 @@ const RULES = [
  * view() methods. Values are the shorthand the legend below defines.
  */
 const READ_SCOPE = [
-  { label: "Beneficiaries", admin: "all", doctor: "all", technician: "assigned", farmer: "own" },
-  { label: "Monitoring records", admin: "all", doctor: "all", technician: "assigned", farmer: "own" },
-  { label: "Health records", admin: "all", doctor: "all", technician: "assigned", farmer: "own" },
-  { label: "Case notes", admin: "all", doctor: "all", technician: "assigned", farmer: "own" },
-  { label: "Field visits", admin: "all", doctor: "all", technician: "own", farmer: "own" },
-  { label: "Dispersal events", admin: "all", doctor: "all", technician: "assigned", farmer: "own" },
+  { label: "Beneficiaries", admin: "all", doctor: "all", technician: "assigned" },
+  { label: "Monitoring records", admin: "all", doctor: "all", technician: "assigned" },
+  { label: "Health records", admin: "all", doctor: "all", technician: "assigned" },
+  { label: "Case notes", admin: "all", doctor: "all", technician: "assigned" },
+  { label: "Field visits", admin: "all", doctor: "all", technician: "own" },
+  { label: "Dispersal events", admin: "all", doctor: "all", technician: "assigned" },
   { label: "Accounts, settings & reports", admin: "all" },
 ];
 

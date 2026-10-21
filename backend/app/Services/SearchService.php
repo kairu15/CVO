@@ -20,13 +20,12 @@ use Illuminate\Support\Facades\DB;
  * the truth to keep warm.
  *
  * Every query is scoped through the same services the list pages use, so a
- * technician can never search their way to another technician's household and
- * a farmer never sees anyone's records but their own. Search adds no new
- * visibility; it only shortcuts to rows the user could already list.
+ * technician can never search their way to another technician's household.
+ * Search adds no new visibility; it only shortcuts to rows the user could
+ * already list.
  *
- * Accounts appear for staff only: farmers and technicians have no screen a
- * user row could link to, and a farmer's search naming other people's
- * accounts would itself be a disclosure.
+ * Accounts appear for admin/doctor only: technicians have no screen a user row
+ * could link to, and a broader account search would itself be a disclosure.
  */
 class SearchService
 {
@@ -225,16 +224,12 @@ class SearchService
     }
 
     /**
-     * Where a household result should land. Staff open the household's
-     * lineage on the map; a farmer is redirected to their own monitoring page,
-     * the one screen that shows their animals' detail today.
+     * Where a household result should land: the household's lineage on the
+     * caller's own dashboard (every account is staff now, so the role prefix
+     * is the only per-caller part).
      */
     private function beneficiaryLink(User $user, int $id): string
     {
-        if ($user->role === 'farmer') {
-            return '/dashboard/farmer/monitoring';
-        }
-
         return "/dashboard/{$user->role}/beneficiaries/{$id}/lineage";
     }
 }

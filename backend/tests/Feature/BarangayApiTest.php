@@ -4,12 +4,16 @@ namespace Tests\Feature;
 
 use App\Models\Barangay;
 use App\Models\Purok;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
- * The public location cascade — GET /barangays, GET /barangays/{id}/puroks —
- * and the registration-side purok validation that depends on it.
+ * The location cascade — GET /barangays, GET /barangays/{id}/puroks — and the
+ * admin Beneficiaries-form purok validation that depends on it. The cascade
+ * itself stays session-free; the enrolment side is now the authenticated
+ * admin create-beneficiary flow (there is no public registration form).
  */
 class BarangayApiTest extends TestCase
 {
@@ -72,31 +76,38 @@ class BarangayApiTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // Registration-side validation
+    // Admin Beneficiaries-form validation
     // -------------------------------------------------------------------------
 
-    private function registrationPayload(array $overrides = []): array
+    private function admin(): User
+    {
+        return User::factory()->create(['role' => 'admin']);
+    }
+
+    private function enrolPayload(array $overrides = []): array
     {
         return array_merge([
-            'name' => 'Juan Dela Cruz',
-            'username' => 'juan-'.bin2hex(random_bytes(4)),
-            'email' => bin2hex(random_bytes(4)).'@example.com',
-            'password' => 'Sup3r-Secret!',
-            'password_confirmation' => 'Sup3r-Secret!',
+            'name_of_farmer' => 'Juan Dela Cruz',
             'address' => 'Dawis',
             'animal_type' => 'Carabao',
             'sex' => 'F',
         ], $overrides);
     }
 
-    public function test_registration_stores_the_resolved_barangay_and_chosen_purok(): void
+    private function postEnrol(array $overrides = []): TestResponse
+    {
+        return $this->actingAs($this->admin())
+            ->postJson('/api/v1/beneficiaries', $this->enrolPayload($overrides));
+    }
+
+    public function test_an_enrolment_stores_the_resolved_barangay_and_chosen_purok(): void
     {
         $barangay = Barangay::create(['name' => 'Dawis', 'latitude' => 9.5766683, 'longitude' => 122.8819134]);
         $purok = Purok::create(['barangay_id' => $barangay->id, 'name' => 'Purok 2 (placeholder)', 'is_placeholder' => true]);
 
-        $this->postJson('/api/v1/register', $this->registrationPayload([
+        $this->postEnrol([
             'purok_id' => $purok->id,
-        ]))->assertCreated();
+        ])->assertCreated();
 
         $this->assertDatabaseHas('beneficiaries', [
             'address' => 'Dawis',
@@ -105,11 +116,11 @@ class BarangayApiTest extends TestCase
         ]);
     }
 
-    public function test_registration_resolves_the_barangay_id_without_a_purok(): void
+    public function test_an_enrolment_resolves_the_barangay_id_without_a_purok(): void
     {
         $barangay = Barangay::create(['name' => 'Dawis', 'latitude' => 9.5766683, 'longitude' => 122.8819134]);
 
-        $this->postJson('/api/v1/register', $this->registrationPayload())
+        $this->postEnrol()
             ->assertCreated();
 
         $this->assertDatabaseHas('beneficiaries', [
@@ -119,36 +130,32 @@ class BarangayApiTest extends TestCase
         ]);
     }
 
-    public function test_registration_rejects_a_purok_from_another_barangay(): void
+    public function test_an_enrolment_rejects_a_purok_from_another_barangay(): void
     {
         $foreign = Barangay::create(['name' => 'Tayawan', 'latitude' => 9.4995966, 'longitude' => 122.7398316]);
         $purok = Purok::create(['barangay_id' => $foreign->id, 'name' => 'Purok 1 (placeholder)', 'is_placeholder' => true]);
 
-        $this->postJson('/api/v1/register', $this->registrationPayload([
+        $this->postEnrol([
             'purok_id' => $purok->id,
-        ]))->assertUnprocessable()
+        ])->assertUnprocessable()
             ->assertJsonValidationErrors(['purok_id']);
     }
 
-    public function test_registration_rejects_an_unknown_purok(): void
+    public function test_an_enrolment_rejects_an_unknown_purok(): void
     {
-        $this->postJson('/api/v1/register', $this->registrationPayload([
+        $this->postEnrol([
             'purok_id' => 99999,
-        ]))->assertUnprocessable()
+        ])->assertUnprocessable()
             ->assertJsonValidationErrors(['purok_id']);
     }
 
-    public function test_registration_rejects_a_purok_without_a_barangay(): void
+    public function test_an_enrolment_rejects_a_purok_without_a_barangay(): void
     {
         // A purok is meaningless without the barangay it lives in — and
         // accepting it would create a beneficiary whose location cannot
         // resolve — so a stray purok_id alone is a validation error.
-        $this->postJson('/api/v1/register', [
-            'name' => 'Plain',
-            'username' => 'plain-'.bin2hex(random_bytes(4)),
-            'email' => bin2hex(random_bytes(4)).'@example.com',
-            'password' => 'Sup3r-Secret!',
-            'password_confirmation' => 'Sup3r-Secret!',
+        $this->postEnrol([
+            'name_of_farmer' => 'Plain',
             'purok_id' => 99999,
         ])->assertUnprocessable()
             ->assertJsonValidationErrors(['purok_id']);
@@ -235,17 +242,17 @@ class BarangayApiTest extends TestCase
             ->assertJsonPath('data', null);
     }
 
-    public function test_registration_records_the_location_source(): void
+    public function test_an_enrolment_records_the_location_source(): void
     {
         $barangay = Barangay::create(['name' => 'Dawis', 'latitude' => 9.5766683, 'longitude' => 122.8819134]);
         $purok = Purok::create(['barangay_id' => $barangay->id, 'name' => 'Purok 1 (placeholder)']);
 
-        $this->postJson('/api/v1/register', $this->registrationPayload([
+        $this->postEnrol([
             'purok_id' => $purok->id,
             'latitude' => 9.5771,
             'longitude' => 122.8821,
             'location_source' => 'gps',
-        ]))->assertCreated();
+        ])->assertCreated();
 
         $this->assertDatabaseHas('beneficiaries', [
             'barangay_id' => $barangay->id,
@@ -255,17 +262,17 @@ class BarangayApiTest extends TestCase
         ]);
 
         // A manual dropdown choice (or any older client) records as manual.
-        $this->postJson('/api/v1/register', $this->registrationPayload())
+        $this->postEnrol()
             ->assertCreated();
 
         $this->assertDatabaseHas('beneficiaries', ['location_source' => 'manual']);
     }
 
-    public function test_registration_rejects_an_unknown_location_source(): void
+    public function test_an_enrolment_rejects_an_unknown_location_source(): void
     {
-        $this->postJson('/api/v1/register', $this->registrationPayload([
+        $this->postEnrol([
             'location_source' => 'psychic',
-        ]))->assertUnprocessable()
+        ])->assertUnprocessable()
             ->assertJsonValidationErrors(['location_source']);
     }
 }

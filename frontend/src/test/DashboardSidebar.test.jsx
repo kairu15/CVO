@@ -108,14 +108,19 @@ describe("DashboardSidebar", () => {
   });
 
   it("scopes each role's sidebar to its own modules", () => {
-    // Grouping is labelling, not permissions: a farmer's sidebar must never
-    // name an admin module, and the admin items stay admin-only in the config.
-    const farmerLabels = flatNav("farmer").map((item) => item.label);
-    expect(farmerLabels).toEqual(
-      expect.arrayContaining(["My Animals", "Dispersal Status", "Support / Contact CVO"]),
+    // Grouping is labelling, not permissions: a technician's sidebar must
+    // never name an admin module, and the admin items stay admin-only in the
+    // config. (There is deliberately no `farmer` sidebar: beneficiaries are
+    // records, not accounts.)
+    const technicianLabels = flatNav("technician").map((item) => item.label);
+    expect(technicianLabels).toEqual(
+      expect.arrayContaining(["Monitoring Records", "Geo-Tagging Map", "Field Visits"]),
     );
     for (const forbidden of ["User Management", "Roles & Permissions", "System Settings", "Reports"]) {
-      expect(farmerLabels).not.toContain(forbidden);
+      expect(technicianLabels).not.toContain(forbidden);
     }
+
+    // The farmer role is fully gone from the config: flatNav answers empty.
+    expect(flatNav("farmer")).toEqual([]);
   });
 });

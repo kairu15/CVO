@@ -36,7 +36,6 @@ class MonitoringImportCleanupTest extends TestCase
     private function importedBeneficiary(): Beneficiary
     {
         return Beneficiary::factory()->create([
-            'farmer_id' => $this->admin->id,
             'source' => Beneficiary::SOURCE_IMPORT,
         ]);
     }
@@ -132,7 +131,8 @@ class MonitoringImportCleanupTest extends TestCase
 
     public function test_a_registered_beneficiary_is_never_deleted_with_its_record(): void
     {
-        // source = 'registration' (the default) — farmer signup or staff entry.
+        // source = 'registration' (the legacy column default) — a staff-entered
+        // household, which used to mean a farmer signup.
         $beneficiary = Beneficiary::factory()->create();
         $record = MonitoringRecord::factory()->by($this->admin)->for($beneficiary, 'beneficiary')->create();
 

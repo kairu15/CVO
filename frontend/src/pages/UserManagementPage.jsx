@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../api/adminApi";
-import { fetchBarangays } from "../api/beneficiariesApi";
 import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { Modal } from "../components/Modal";
@@ -21,7 +20,7 @@ import { ROLE_KEYS, STAFF_ROLE_KEYS, roleLabel } from "../config/roles";
 /**
  * Admin "User Management" screen — the account lifecycle, not just roles.
  *
- * Lists every account (search + role + barangay + status filters, all
+ * Lists every account (search + role + status filters, all
  * server-side so the table can paginate) and offers the write actions the API
  * exposes: create a staff account (with a password now, or an emailed setup
  * link the new staff member completes themselves), edit name/email/role,
@@ -108,8 +107,6 @@ export default function UserManagementPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [barangayFilter, setBarangayFilter] = useState("");
-  const [barangays, setBarangays] = useState([]);
   const debouncedSearch = useDebouncedValue(search, 300);
 
   // Account being edited / created, plus the field errors the server returned.
@@ -149,7 +146,6 @@ export default function UserManagementPage() {
         per_page: 50,
         page,
         role: roleFilter === "all" ? undefined : roleFilter,
-        barangay: barangayFilter || undefined,
         search: debouncedSearch || undefined,
         // `all` keeps deactivated accounts visible so they can be brought
         // back; the API's own default is `active` for the picker endpoints.
@@ -163,7 +159,7 @@ export default function UserManagementPage() {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [roleFilter, statusFilter, barangayFilter, debouncedSearch, page]);
+  }, [roleFilter, statusFilter, debouncedSearch, page]);
 
   useEffect(() => {
     load();
@@ -171,23 +167,6 @@ export default function UserManagementPage() {
 
   // Quietly re-fetch so accounts registered or changed elsewhere appear live.
   useAutoRefresh(load);
-
-  // The barangay filter's options — the same covered list registration uses.
-  useEffect(() => {
-    let active = true;
-
-    fetchBarangays()
-      .then((rows) => {
-        if (active) setBarangays(rows);
-      })
-      .catch(() => {
-        /* the filter simply offers no options; the list itself still loads */
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const counts = useMemo(() => {
     const tally = Object.fromEntries(ROLE_KEYS.map((key) => [key, 0]));
@@ -391,8 +370,7 @@ export default function UserManagementPage() {
               User Management
             </h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              Every account registered with the program. Self-registration
-              always creates a farmer — staff accounts are created here, and
+              Every staff account in the program is created here, and
               deactivating an account keeps its records while blocking sign-in.
             </p>
           </div>
@@ -492,35 +470,6 @@ export default function UserManagementPage() {
             </button>
           ))}
         </div>
-
-        {/* Barangay filter — the farmer slice: who holds households where. */}
-        <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <label
-            htmlFor="barangay-filter"
-            className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase"
-          >
-            Barangay
-          </label>
-          <select
-            id="barangay-filter"
-            value={barangayFilter}
-            onChange={(event) => {
-              setBarangayFilter(event.target.value);
-              setPage(1);
-            }}
-            className="field w-56 text-xs"
-          >
-            <option value="">All barangays</option>
-            {barangays.map((barangay) => (
-              <option key={barangay.id} value={barangay.name}>
-                {barangay.name}
-              </option>
-            ))}
-          </select>
-          <span className="text-[11px] text-slate-400">
-            Filters farmer accounts by the barangay of their registered households.
-          </span>
-        </div>
       </section>
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
@@ -534,7 +483,7 @@ export default function UserManagementPage() {
             description={
               debouncedSearch
                 ? "No account matches that search. Try a different name, username or email."
-                : "Accounts appear here as staff and farmers register."
+                : "Accounts appear here once an administrator creates them."
             }
           />
         ) : (
@@ -1029,7 +978,7 @@ export default function UserManagementPage() {
                   Created by
                 </dt>
                 <dd className="mt-1 text-sm text-slate-800">
-                  {activity.user.created_by_name ?? "Self-registration"}
+                  {activity.user.created_by_name ?? "—"}
                 </dd>
               </div>
               <div className="rounded-xl border border-slate-200 px-3 py-2.5">

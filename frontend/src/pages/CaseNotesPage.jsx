@@ -197,7 +197,7 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
             title="No case notes yet"
             description={
               canAuthor
-                ? "Notes you write appear here, and are visible to the farmer and the assigned technician."
+                ? "Notes you write appear here, and are visible to admins and the assigned technician."
                 : "Notes appear here once a veterinarian has written one up."
             }
           />

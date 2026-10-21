@@ -11,9 +11,10 @@ import { AuthProvider } from "../context/AuthContext";
 import { ToastProvider } from "../context/ToastContext";
 
 /**
- * The delete action is guarded by a confirmation modal whose wording depends
- * on what is actually being deleted. A registration row removes the whole
- * farmer (soft-deleted, archived), an ordinary visit row removes only itself.
+ * The delete action is guarded by a confirmation modal. There is no
+ * registration-row special case anymore: beneficiaries are records the admin
+ * enters (no farmer account to remove), so every row uses the same
+ * record-delete wording.
  */
 
 vi.mock("../api/monitoringApi", () => ({
@@ -21,7 +22,6 @@ vi.mock("../api/monitoringApi", () => ({
     list: vi.fn(),
     months: vi.fn(),
     animalTypes: vi.fn(),
-    acceptRegistration: vi.fn(),
     remove: vi.fn(),
   },
 }));
@@ -34,7 +34,6 @@ vi.mock("../api/authApi", () => ({
   authApi: {
     fetchUser: vi.fn(),
     login: vi.fn(),
-    register: vi.fn(),
     logout: vi.fn(),
   },
 }));
@@ -44,7 +43,7 @@ vi.mock("../hooks/useDebouncedValue", async (importOriginal) => {
   return { ...actual, useDebouncedValue: (value) => value };
 });
 
-const REGISTRATION_RECORD = {
+const ORDINARY_RECORD = {
   id: 41,
   name_of_farmer: "Brand New Farmer",
   address: "Ali-is",
@@ -53,16 +52,12 @@ const REGISTRATION_RECORD = {
   date_monitored: null,
   assigned_technician: null,
   latest_field_visit_photo: null,
-  registration_status: "new",
-  is_new: true,
 };
 
-const ORDINARY_RECORD = {
-  ...REGISTRATION_RECORD,
+const DELETABLE_RECORD = {
+  ...ORDINARY_RECORD,
   id: 42,
   name_of_farmer: "Established Farmer",
-  registration_status: "none",
-  is_new: false,
   date_monitored: "2026-09-20",
 };
 
@@ -91,43 +86,47 @@ function renderPage() {
   );
 }
 
-describe("MonitoringPage farmer delete confirmation", () => {
+describe("MonitoringPage delete confirmation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authApi.fetchUser.mockResolvedValue({ id: 1, name: "Admin", role: "admin" });
     beneficiariesApi.list.mockResolvedValue([]);
     monitoringApi.months.mockResolvedValue([]);
     monitoringApi.animalTypes.mockResolvedValue([]);
-    monitoringApi.list.mockResolvedValue(envelope([REGISTRATION_RECORD]));
+    monitoringApi.list.mockResolvedValue(envelope([ORDINARY_RECORD]));
   });
 
-  it("warns that a registration delete removes the whole farmer", async () => {
+  it("uses the same record-delete wording for a freshly added beneficiary", async () => {
+    // A record created through the admin Beneficiaries screen gets no
+    // special dialog — there is no farmer account to remove, only this
+    // monitoring row.
+    monitoringApi.list.mockResolvedValue(envelope([ORDINARY_RECORD]));
     const user = userEvent.setup();
     renderPage();
 
     const row = (await screen.findByText("Brand New Farmer")).closest("tr");
     await user.click(within(row).getByRole("button", { name: "Delete" }));
 
-    const dialog = await screen.findByRole("dialog", { name: /remove farmer/i });
+    const dialog = await screen.findByRole("dialog", { name: /delete monitoring record/i });
     expect(within(dialog).getByText(/Brand New Farmer/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/health records/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/archived/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/cannot be undone/i)).toBeInTheDocument();
     expect(
-      within(dialog).getByRole("button", { name: /remove farmer/i }),
+      within(dialog).getByRole("button", { name: /delete record/i }),
     ).toBeInTheDocument();
   });
 
-  it("confirms removal through the API for a registration row", async () => {
+  it("confirms removal through the API for that row", async () => {
     monitoringApi.remove.mockResolvedValue({});
+    monitoringApi.list.mockResolvedValue(envelope([ORDINARY_RECORD]));
     const user = userEvent.setup();
     renderPage();
 
     const row = (await screen.findByText("Brand New Farmer")).closest("tr");
     await user.click(within(row).getByRole("button", { name: "Delete" }));
     await user.click(
-      within(await screen.findByRole("dialog", { name: /remove farmer/i })).getByRole(
+      within(await screen.findByRole("dialog", { name: /delete monitoring record/i })).getByRole(
         "button",
-        { name: /remove farmer/i },
+        { name: /delete record/i },
       ),
     );
 
@@ -135,7 +134,7 @@ describe("MonitoringPage farmer delete confirmation", () => {
   });
 
   it("keeps the single-record wording for an ordinary visit row", async () => {
-    monitoringApi.list.mockResolvedValue(envelope([ORDINARY_RECORD]));
+    monitoringApi.list.mockResolvedValue(envelope([DELETABLE_RECORD]));
     const user = userEvent.setup();
     renderPage();
 

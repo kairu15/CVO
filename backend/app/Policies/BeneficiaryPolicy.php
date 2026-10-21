@@ -17,7 +17,6 @@ class BeneficiaryPolicy
      * admin: all beneficiaries (program oversight).
      * doctor: all beneficiaries (health oversight).
      * technician: only beneficiaries assigned to them.
-     * farmer: only their own beneficiaries.
      */
     public function viewAny(User $user): bool
     {
@@ -34,16 +33,11 @@ class BeneficiaryPolicy
             return true;
         }
 
-        if ($user->role === 'technician') {
-            return $beneficiary->technician_id === $user->id;
-        }
-
-        return $beneficiary->farmer_id === $user->id;
+        return $user->role === 'technician' && $beneficiary->technician_id === $user->id;
     }
 
     /**
-     * Farmers create their own beneficiary records (registration flow);
-     * staff may register on behalf of a farmer.
+     * Staff enrol beneficiaries from the admin Beneficiaries screen.
      */
     public function create(User $user): bool
     {
@@ -51,19 +45,12 @@ class BeneficiaryPolicy
     }
 
     /**
-     * Farmers keep their own beneficiary details accurate; admin fixes the rest.
+     * Correcting a beneficiary's details is an admin action: it is the
+     * program's own record, not something an account owns.
      */
     public function update(User $user, Beneficiary $beneficiary): bool
     {
-        if (! $user->hasPermission('beneficiaries.update')) {
-            return false;
-        }
-
-        if ($user->role === 'admin') {
-            return true;
-        }
-
-        return $user->role === 'farmer' && $beneficiary->farmer_id === $user->id;
+        return $user->hasPermission('beneficiaries.update');
     }
 
     public function delete(User $user, Beneficiary $beneficiary): bool

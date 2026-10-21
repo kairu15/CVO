@@ -30,15 +30,15 @@ import { useFlashHighlight } from "../hooks/useFlashHighlight";
 import { useRowSelection } from "../hooks/useRowSelection";
 
 /**
- * Livestock Monthly Monitoring — one shared page for all four dashboards.
+ * Livestock Monthly Monitoring — one shared page for every dashboard.
  *
  * The API scopes every response server-side (admin: all, doctor: all,
- * technician: assigned beneficiaries, farmer: own animals); this page only
- * adapts which actions are offered.
+ * technician: assigned beneficiaries); this page only adapts which actions
+ * are offered.
  *
  * Data arrives through the polled React Query hooks: the table refreshes
- * itself every 20s and on tab focus, so new registrations, technician
- * entries and acceptances from other users appear without a manual reload.
+ * itself every 20s and on tab focus, so beneficiaries added by the admin and
+ * technician entries appear without a manual reload.
  *
  * @param {string} roleKey dashboard this instance is rendered in (the signed-in
  *   admin sees the same page through the all-access switcher)
@@ -62,7 +62,6 @@ export default function MonitoringPage({ roleKey }) {
   const [editingRecord, setEditingRecord] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [removing, setRemoving] = useState(false);
-  const [acceptingId, setAcceptingId] = useState(null);
   // Id of the record whose inline MOA save is in flight (admin toggle).
   const [moaBusyId, setMoaBusyId] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -127,8 +126,8 @@ export default function MonitoringPage({ roleKey }) {
   const load = useCallback(async () => {
     invalidate.monitoring();
     invalidate.notifications();
-    // A farmer delete also removes them from the assigned-farmer picker and
-    // every other beneficiary-derived view, so refresh those immediately
+    // Deleting an import-created record can also remove its auto-created
+    // beneficiary, so refresh the beneficiary-derived views immediately
     // rather than waiting for the next poll.
     invalidate.beneficiaries();
   }, [invalidate]);
@@ -155,14 +154,6 @@ export default function MonitoringPage({ roleKey }) {
     setFormOpen(true);
   }
 
-  // A registration row IS the farmer's registration: the backend soft-deletes
-  // the whole farmer (household, account, history) behind it, so the modal and
-  // the toast must say so instead of pretending only one row goes away.
-  const deletingFarmer =
-    deleting !== null &&
-    deleting.registration_status !== undefined &&
-    deleting.registration_status !== "none";
-
   /** Delete the technician's own record (admin may delete any) — policy mirrors FieldVisit. */
   async function confirmDelete() {
     if (!deleting) return;
@@ -171,11 +162,7 @@ export default function MonitoringPage({ roleKey }) {
 
     try {
       await monitoringApi.remove(deleting.id);
-      toast.success(
-        deletingFarmer
-          ? `${deleting.name_of_farmer} removed from the system.`
-          : "Monitoring record deleted.",
-      );
+      toast.success("Monitoring record deleted.");
       setDeleting(null);
       await load();
     } catch (err) {
@@ -185,10 +172,7 @@ export default function MonitoringPage({ roleKey }) {
     }
   }
 
-  /**
-   * Bulk delete for the selected rows. A registration row still removes the
-   * whole farmer server-side, so the confirmation warns before this runs.
-   */
+  /** Bulk delete for the selected rows; each row is authorized individually. */
   async function confirmBulkDelete() {
     if (selected.size === 0) return;
 
@@ -216,21 +200,6 @@ export default function MonitoringPage({ roleKey }) {
   function openEdit(record) {
     setEditingRecord(record);
     setFormOpen(true);
-  }
-
-  /** Admin accepts a registration-created record — keeps "New" until midnight. */
-  async function confirmAccept(record) {
-    setAcceptingId(record.id);
-
-    try {
-      await monitoringApi.acceptRegistration(record.id);
-      toast.success("Marked as accepted");
-      await load();
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setAcceptingId(null);
-    }
   }
 
   /**
@@ -266,11 +235,9 @@ export default function MonitoringPage({ roleKey }) {
               Monitoring records
             </h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              {viewerRole === "farmer"
-                ? "Your animal's visit history — vitamins, deworming, vaccination and condition scores logged by the CVO field team."
-                : viewerRole === "doctor"
-                  ? "All monitoring records across barangays for health oversight. Add clinical remarks or flag concerns on any entry."
-                  : "Visit history grouped per barangay, mirroring the CVO monitoring sheets. Farmer identity details flow from registration — they are never retyped."}
+              {viewerRole === "doctor"
+                ? "All monitoring records across barangays for health oversight. Add clinical remarks or flag concerns on any entry."
+                : "Visit history grouped per barangay, mirroring the CVO monitoring sheets. Beneficiary identity details flow from the enrolled record — they are never retyped."}
             </p>
           </div>
 
@@ -398,8 +365,6 @@ export default function MonitoringPage({ roleKey }) {
           loading={loading}
           onEdit={canEdit ? openEdit : undefined}
           onDelete={canEdit ? (record) => setDeleting(record) : undefined}
-          onAccept={isAdmin ? (record) => confirmAccept(record) : undefined}
-          acceptingId={acceptingId}
           selected={selected}
           onToggleRow={canEdit ? (record) => toggle(record.id) : undefined}
           // MOA is a program-oversight field: only an admin gets the inline
@@ -448,30 +413,14 @@ export default function MonitoringPage({ roleKey }) {
 
       <Modal
         open={deleting !== null}
-        title={deletingFarmer ? "Remove farmer" : "Delete monitoring record"}
+        title="Delete monitoring record"
         onClose={() => setDeleting(null)}
       >
-        {deletingFarmer ? (
-          <div className="space-y-3 text-sm text-slate-600">
-            <p>
-              This removes <strong>{deleting?.name_of_farmer}</strong> and all
-              associated records — monitoring history, health records, case
-              notes, field visits, visit photos, technician assignments and
-              notifications.
-            </p>
-            <p>
-              The farmer will disappear from every list, report and alert. The
-              records are archived (not erased) for the office's audit and
-              retention, and can only be restored by a database administrator.
-            </p>
-          </div>
-        ) : (
-          <p className="text-sm text-slate-600">
-            Delete the {deleting?.date_monitored ?? ""} monitoring entry for{" "}
-            <strong>{deleting?.name_of_farmer}</strong>? This removes it from the
-            monitoring sheet and cannot be undone.
-          </p>
-        )}
+        <p className="text-sm text-slate-600">
+          Delete the {deleting?.date_monitored ?? ""} monitoring entry for{" "}
+          <strong>{deleting?.name_of_farmer}</strong>? This removes it from the
+          monitoring sheet and cannot be undone.
+        </p>
 
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={() => setDeleting(null)}>
@@ -481,10 +430,8 @@ export default function MonitoringPage({ roleKey }) {
             {removing ? (
               <>
                 <ButtonSpinner />
-                {deletingFarmer ? "Removing…" : "Deleting…"}
+                Deleting…
               </>
-            ) : deletingFarmer ? (
-              "Remove farmer"
             ) : (
               "Delete record"
             )}
@@ -502,18 +449,6 @@ export default function MonitoringPage({ roleKey }) {
             Delete <strong>{selected.size}</strong> selected monitoring
             record{selected.size === 1 ? "" : "s"}? This cannot be undone.
           </p>
-          {records.some(
-            (record) =>
-              selected.has(record.id) &&
-              record.registration_status &&
-              record.registration_status !== "none",
-          ) && (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-amber-900">
-              Some selected rows are farmer registrations. Deleting those removes
-              the whole farmer and all associated records, not just the row — use
-              the single-row Delete for those if that is not intended.
-            </p>
-          )}
         </div>
 
         <div className="mt-5 flex justify-end gap-2">

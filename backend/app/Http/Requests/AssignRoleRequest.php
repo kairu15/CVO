@@ -14,8 +14,8 @@ class AssignRoleRequest extends FormRequest
     }
 
     /**
-     * Admin-only role assignment. Self-registration creates farmers; only
-     * this request may elevate an account to a staff role.
+     * Admin-only role assignment between the staff roles — there is no
+     * farmer role, so every account moving through here stays staff.
      */
     public function rules(): array
     {

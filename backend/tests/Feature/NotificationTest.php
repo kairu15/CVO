@@ -25,15 +25,16 @@ class NotificationTest extends TestCase
         $this->window = (int) config('cvo.vaccination_due_soon_days');
     }
 
-    private function farmer(): User
+    /** The role whose feed is scoped to assigned households. */
+    private function technician(): User
     {
-        return User::factory()->create(['role' => 'farmer']);
+        return User::factory()->create(['role' => 'technician']);
     }
 
-    /** A beneficiary of this farmer whose last vaccination was $daysAgo ago. */
-    private function vaccinatedDaysAgo(User $farmer, int $daysAgo): Beneficiary
+    /** A beneficiary of this technician whose last vaccination was $daysAgo ago. */
+    private function vaccinatedDaysAgo(User $tech, int $daysAgo): Beneficiary
     {
-        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->create();
+        $beneficiary = Beneficiary::factory()->assignedTo($tech)->create();
 
         MonitoringRecord::factory()
             ->for($beneficiary, 'beneficiary')
@@ -62,11 +63,11 @@ class NotificationTest extends TestCase
         $this->getJson('/api/v1/notifications')->assertUnauthorized();
     }
 
-    public function test_a_new_farmer_with_no_records_gets_an_empty_feed(): void
+    public function test_a_new_technician_with_no_records_gets_an_empty_feed(): void
     {
         // Not an error, and not silent either: the counts still come back so
         // the bell can render "nothing to show" without special-casing a 404.
-        $this->actingAs($this->farmer())
+        $this->actingAs($this->technician())
             ->getJson('/api/v1/notifications')
             ->assertOk()
             ->assertJsonPath('data', [])
@@ -77,10 +78,10 @@ class NotificationTest extends TestCase
 
     public function test_an_overdue_vaccination_raises_an_urgent_alert(): void
     {
-        $farmer = $this->farmer();
-        $animal = $this->vaccinatedDaysAgo($farmer, $this->interval + 32);
+        $tech = $this->technician();
+        $animal = $this->vaccinatedDaysAgo($tech, $this->interval + 32);
 
-        $response = $this->actingAs($farmer)->getJson('/api/v1/notifications');
+        $response = $this->actingAs($tech)->getJson('/api/v1/notifications');
 
         $response->assertOk()
             ->assertJsonPath('data.0.type', 'vaccination-overdue')
@@ -100,10 +101,10 @@ class NotificationTest extends TestCase
         // is registered, so alerting on it would fire for the whole program at
         // once. The schedule and the health rollup report it instead — both
         // list never-vaccinated animals first.
-        $farmer = $this->farmer();
-        Beneficiary::factory()->forFarmer($farmer)->create();
+        $tech = $this->technician();
+        Beneficiary::factory()->assignedTo($tech)->create();
 
-        $this->actingAs($farmer)
+        $this->actingAs($tech)
             ->getJson('/api/v1/notifications')
             ->assertOk()
             ->assertJsonPath('data', [])
@@ -111,7 +112,7 @@ class NotificationTest extends TestCase
 
         // Same animal, still visible on the schedule — the fact is not lost,
         // it just is not a notification.
-        $this->actingAs($farmer)
+        $this->actingAs($tech)
             ->getJson('/api/v1/vaccination-schedule')
             ->assertOk()
             ->assertJsonPath('data.0.status', 'never');
@@ -119,11 +120,11 @@ class NotificationTest extends TestCase
 
     public function test_a_vaccination_coming_due_is_a_warning(): void
     {
-        $farmer = $this->farmer();
+        $tech = $this->technician();
         // Interval minus half the warning window: inside "due soon", not past.
-        $this->vaccinatedDaysAgo($farmer, $this->interval - (int) ($this->window / 2));
+        $this->vaccinatedDaysAgo($tech, $this->interval - (int) ($this->window / 2));
 
-        $response = $this->actingAs($farmer)->getJson('/api/v1/notifications');
+        $response = $this->actingAs($tech)->getJson('/api/v1/notifications');
 
         $response->assertOk()
             ->assertJsonPath('data.0.type', 'vaccination-due-soon')
@@ -136,26 +137,26 @@ class NotificationTest extends TestCase
     {
         // The feed is for what needs attention, not a restatement of the whole
         // schedule: an animal due in six months is not a notification.
-        $farmer = $this->farmer();
-        $this->vaccinatedDaysAgo($farmer, 1);
+        $tech = $this->technician();
+        $this->vaccinatedDaysAgo($tech, 1);
 
-        $this->actingAs($farmer)
+        $this->actingAs($tech)
             ->getJson('/api/v1/notifications')
             ->assertOk()
             ->assertJsonPath('data', [])
             ->assertJsonPath('meta.total', 0);
     }
 
-    public function test_a_dispersal_to_the_farmers_animal_raises_an_alert(): void
+    public function test_a_dispersal_to_an_assigned_animal_raises_an_alert(): void
     {
-        $farmer = $this->farmer();
-        $animal = Beneficiary::factory()->forFarmer($farmer)->create(['animal_type' => 'Carabao', 'sex' => 'F']);
+        $tech = $this->technician();
+        $animal = Beneficiary::factory()->assignedTo($tech)->create(['animal_type' => 'Carabao', 'sex' => 'F']);
 
         DispersalEvent::factory()->initial($animal)->create([
             'date_dispersed' => now()->subDays(9)->toDateString(),
         ]);
 
-        $response = $this->actingAs($farmer)->getJson('/api/v1/notifications');
+        $response = $this->actingAs($tech)->getJson('/api/v1/notifications');
 
         $response->assertOk()
             ->assertJsonPath('data.0.type', 'dispersal')
@@ -163,34 +164,34 @@ class NotificationTest extends TestCase
             ->assertJsonPath('data.0.title', 'Animal dispersed')
             ->assertJsonPath('data.0.date', now()->subDays(9)->toDateString())
             // The programme released the animal, so there is no source household.
-            ->assertJsonPath('data.0.message', "Carabao (F) was released to {$farmer->name} in {$animal->address}.");
+            ->assertJsonPath('data.0.message', "Carabao (F) was released to {$animal->name_of_farmer} in {$animal->address}.");
     }
 
-    public function test_a_re_dispersal_of_the_farmers_offspring_raises_an_alert(): void
+    public function test_a_re_dispersal_of_an_offspring_raises_an_alert(): void
     {
-        $farmer = $this->farmer();
-        $parent = Beneficiary::factory()->forFarmer($farmer)->create(['animal_type' => 'Carabao', 'sex' => 'F']);
+        $tech = $this->technician();
+        $parent = Beneficiary::factory()->assignedTo($tech)->create(['animal_type' => 'Carabao', 'sex' => 'F']);
         $recipient = Beneficiary::factory()->create(['animal_type' => 'Carabao', 'sex' => 'M']);
 
         DispersalEvent::factory()->reDispersal($recipient, $parent)->create([
             'date_dispersed' => now()->subDays(3)->toDateString(),
         ]);
 
-        $response = $this->actingAs($farmer)->getJson('/api/v1/notifications');
+        $response = $this->actingAs($tech)->getJson('/api/v1/notifications');
 
         $response->assertOk()
             ->assertJsonPath('data.0.type', 're-dispersal')
             ->assertJsonPath('data.0.title', 'Re-dispersal recorded')
-            ->assertJsonPath('data.0.message', "Carabao (M) from {$farmer->name} in {$parent->address} went to {$recipient->name_of_farmer} in {$recipient->address}.");
+            ->assertJsonPath('data.0.message', "Carabao (M) from {$parent->name_of_farmer} in {$parent->address} went to {$recipient->name_of_farmer} in {$recipient->address}.");
     }
 
     public function test_alerts_are_worded_from_the_record_not_the_reader(): void
     {
-        // The same alert is read by the farmer whose animal it is and by an
-        // all-access admin. "You received an animal" would be false for one of
-        // them, so the wording never addresses the reader.
-        $farmer = $this->farmer();
-        $animal = Beneficiary::factory()->forFarmer($farmer)->create();
+        // The same alert is read by the technician whose assignment it is and
+        // by an all-access admin. "You received an animal" would be false for
+        // one of them, so the wording never addresses the reader.
+        $tech = $this->technician();
+        $animal = Beneficiary::factory()->assignedTo($tech)->create();
 
         DispersalEvent::factory()->initial($animal)->create();
 
@@ -198,25 +199,25 @@ class NotificationTest extends TestCase
             ->for($animal, 'beneficiary')
             ->create(['vaccination_date' => now()->subDays($this->interval + 5)->toDateString()]);
 
-        foreach ($this->alerts($farmer) as $alert) {
+        foreach ($this->alerts($tech) as $alert) {
             $this->assertStringNotContainsString(' you', strtolower($alert['message']));
             $this->assertStringNotContainsString('your', strtolower($alert['message']));
         }
 
-        $this->assertNotEmpty($this->alerts($farmer));
+        $this->assertNotEmpty($this->alerts($tech));
     }
 
     public function test_urgency_bands_order_the_feed_with_overdue_first(): void
     {
-        $farmer = $this->farmer();
-        $animal = Beneficiary::factory()->forFarmer($farmer)->create();
+        $tech = $this->technician();
+        $animal = Beneficiary::factory()->assignedTo($tech)->create();
 
         DispersalEvent::factory()->initial($animal)->create(['date_dispersed' => now()->toDateString()]);
-        $this->vaccinatedDaysAgo($farmer, $this->interval - (int) ($this->window / 2)); // warning
-        $this->vaccinatedDaysAgo($farmer, $this->interval + 2); // urgent
-        $this->vaccinatedDaysAgo($farmer, $this->interval + 40); // urgent, worse
+        $this->vaccinatedDaysAgo($tech, $this->interval - (int) ($this->window / 2)); // warning
+        $this->vaccinatedDaysAgo($tech, $this->interval + 2); // urgent
+        $this->vaccinatedDaysAgo($tech, $this->interval + 40); // urgent, worse
 
-        $alerts = $this->alerts($farmer);
+        $alerts = $this->alerts($tech);
 
         // Urgent first, then warning, then the informational movement — even
         // though the movement is the most recent thing that happened.
@@ -231,19 +232,19 @@ class NotificationTest extends TestCase
         $this->assertSame([-40, -2], array_column($overdue, 'days_until_due'));
     }
 
-    public function test_the_feed_only_covers_the_callers_own_animals(): void
+    public function test_the_feed_only_covers_the_callers_assigned_animals(): void
     {
-        $farmer = $this->farmer();
-        $other = $this->farmer();
+        $tech = $this->technician();
+        $other = $this->technician();
 
-        $mine = Beneficiary::factory()->forFarmer($farmer)->create();
-        $theirs = Beneficiary::factory()->forFarmer($other)->create();
+        $mine = Beneficiary::factory()->assignedTo($tech)->create();
+        $theirs = Beneficiary::factory()->assignedTo($other)->create();
 
         DispersalEvent::factory()->initial($mine)->create();
         DispersalEvent::factory()->initial($theirs)->create();
         $this->vaccinatedDaysAgo($other, $this->interval + 10);
 
-        $alerts = $this->alerts($farmer);
+        $alerts = $this->alerts($tech);
 
         $this->assertSame([$mine->id], array_unique(array_column($alerts, 'beneficiary_id')));
     }
@@ -281,42 +282,44 @@ class NotificationTest extends TestCase
 
     public function test_alerts_link_to_the_page_that_owns_the_record_for_that_role(): void
     {
-        $farmer = $this->farmer();
-        $animal = Beneficiary::factory()->forFarmer($farmer)->create();
+        $tech = $this->technician();
+        $animal = Beneficiary::factory()->assignedTo($tech)->create();
 
         DispersalEvent::factory()->initial($animal)->create();
         MonitoringRecord::factory()
             ->for($animal, 'beneficiary')
             ->create(['vaccination_date' => now()->subDays($this->interval + 1)->toDateString()]);
 
-        $byType = collect($this->alerts($farmer))->keyBy('type');
+        $byType = collect($this->alerts($tech))->keyBy('type');
 
-        // A farmer's movements live on Dispersal Status; their animals on the
-        // monitoring page their own sidebar calls "My Animals".
-        $this->assertSame('/dashboard/farmer/dispersal-status', $byType['dispersal']['link']);
-        $this->assertSame('/dashboard/farmer/monitoring', $byType['vaccination-overdue']['link']);
+        // Movements live on the technician's dispersal map; vaccinations on
+        // the monitoring table that owns the record.
+        $this->assertSame('/dashboard/technician/map', $byType['dispersal']['link']);
+        $this->assertSame('/dashboard/technician/monitoring', $byType['vaccination-overdue']['link']);
 
-        // Staff read the same movements on the dispersal map instead — the
-        // farmer's Dispersal Status screen has no equivalent for them.
-        $technician = User::factory()->create(['role' => 'technician']);
-        $assigned = Beneficiary::factory()->assignedTo($technician)->create();
+        // An admin reads every movement, on their own map.
+        $admin = User::factory()->create(['role' => 'admin']);
+        $assigned = Beneficiary::factory()->assignedTo($tech)->create();
         DispersalEvent::factory()->initial($assigned)->create();
 
-        $technicianAlerts = $this->alerts($technician);
+        $adminAlerts = collect($this->alerts($admin))->where('type', 'dispersal');
 
-        $this->assertCount(1, $technicianAlerts);
-        $this->assertSame('/dashboard/technician/map', $technicianAlerts[0]['link']);
+        $this->assertCount(2, $adminAlerts);
+        $this->assertSame(
+            ['/dashboard/admin/map', '/dashboard/admin/map'],
+            $adminAlerts->pluck('link')->values()->all(),
+        );
     }
 
     public function test_an_alert_id_is_stable_for_the_same_record(): void
     {
         // Both presentations of the feed read the same ids, so the bell and the
         // page cannot disagree about which alert is which.
-        $farmer = $this->farmer();
-        $animal = $this->vaccinatedDaysAgo($farmer, $this->interval + 5);
+        $tech = $this->technician();
+        $animal = $this->vaccinatedDaysAgo($tech, $this->interval + 5);
 
-        $first = $this->alerts($farmer);
-        $second = $this->alerts($farmer);
+        $first = $this->alerts($tech);
+        $second = $this->alerts($tech);
 
         $this->assertSame($first[0]['id'], $second[0]['id']);
         $this->assertSame("vaccination-overdue-{$animal->id}", $first[0]['id']);
@@ -326,13 +329,13 @@ class NotificationTest extends TestCase
     {
         // A truncated page must still report how much is behind it, or the
         // badge would understate what needs attention.
-        $farmer = $this->farmer();
+        $tech = $this->technician();
 
         foreach (range(1, 3) as $ignored) {
-            $this->vaccinatedDaysAgo($farmer, $this->interval + 7);
+            $this->vaccinatedDaysAgo($tech, $this->interval + 7);
         }
 
-        $response = $this->actingAs($farmer)->getJson('/api/v1/notifications?limit=1');
+        $response = $this->actingAs($tech)->getJson('/api/v1/notifications?limit=1');
 
         $response->assertOk()
             ->assertJsonCount(1, 'data')
@@ -342,14 +345,14 @@ class NotificationTest extends TestCase
 
     public function test_the_limit_is_bounded(): void
     {
-        $farmer = $this->farmer();
+        $tech = $this->technician();
 
-        $this->actingAs($farmer)->getJson('/api/v1/notifications?limit=0')->assertInvalid(['limit']);
-        $this->actingAs($farmer)->getJson('/api/v1/notifications?limit=abc')->assertInvalid(['limit']);
+        $this->actingAs($tech)->getJson('/api/v1/notifications?limit=0')->assertInvalid(['limit']);
+        $this->actingAs($tech)->getJson('/api/v1/notifications?limit=abc')->assertInvalid(['limit']);
 
         // An over-limit page size is clamped to the system-wide 50, not
         // rejected, so an older caller keeps getting a full page.
-        $this->actingAs($farmer)
+        $this->actingAs($tech)
             ->getJson('/api/v1/notifications?limit=500')
             ->assertOk()
             ->assertJsonPath('meta.per_page', 50);
@@ -359,21 +362,21 @@ class NotificationTest extends TestCase
     {
         // Nothing to mark as read: the alert resolves when the record it
         // describes is recorded, and there is no table to write to.
-        $farmer = $this->farmer();
+        $tech = $this->technician();
 
-        $this->actingAs($farmer)->postJson('/api/v1/notifications', [])->assertMethodNotAllowed();
-        $this->actingAs($farmer)->patchJson('/api/v1/notifications', [])->assertMethodNotAllowed();
-        $this->actingAs($farmer)->deleteJson('/api/v1/notifications')->assertMethodNotAllowed();
+        $this->actingAs($tech)->postJson('/api/v1/notifications', [])->assertMethodNotAllowed();
+        $this->actingAs($tech)->patchJson('/api/v1/notifications', [])->assertMethodNotAllowed();
+        $this->actingAs($tech)->deleteJson('/api/v1/notifications')->assertMethodNotAllowed();
     }
 
     public function test_the_feed_carries_no_read_state(): void
     {
         // Guards the decision, not just the implementation: a `read_at` here
         // would mean a stored feed, which is exactly what this module avoided.
-        $farmer = $this->farmer();
-        $this->vaccinatedDaysAgo($farmer, $this->interval + 3);
+        $tech = $this->technician();
+        $this->vaccinatedDaysAgo($tech, $this->interval + 3);
 
-        $alert = $this->alerts($farmer)[0];
+        $alert = $this->alerts($tech)[0];
 
         $this->assertArrayNotHasKey('read_at', $alert);
         $this->assertArrayNotHasKey('read', $alert);

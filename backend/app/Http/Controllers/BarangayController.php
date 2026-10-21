@@ -167,7 +167,7 @@ class BarangayController extends Controller
      *
      * IMPORTANT: this is NOT boundary containment — the program stores
      * center points, not polygons (see App\Support\Geo). The client must
-     * present the result as a suggestion the farmer confirms, never as a
+     * present the result as a suggestion the admin confirms, never as a
      * silent assignment. `distance_km` lets the client show how far the
      * fix sat from the matched center, a hint at how much to trust it.
      */
@@ -181,7 +181,7 @@ class BarangayController extends Controller
         );
 
         // A miss (no covered center within reach) is a normal outcome —
-        // the farmer may stand outside the seeded city or on a bad fix —
+        // the device may be outside the seeded city or on a bad fix —
         // so it answers 200 with null data, not an error.
         return response()->json(['data' => $match]);
     }

@@ -38,13 +38,14 @@ class BeneficiaryController extends Controller
             $this->beneficiaries->listFor(
                 $request->user(),
                 Pagination::perPage($request->validated('per_page') ?? null),
+                $request->safe()->only(['search', 'barangay']),
             ),
         );
     }
 
     /**
-     * Create a beneficiary (farmer registration / staff registering on
-     * behalf of a farmer).
+     * Add a beneficiary — the admin asserting this household is enrolled.
+     * Auto-creates the linked monitoring record (see BeneficiaryService).
      */
     public function store(StoreBeneficiaryRequest $request): JsonResponse
     {
@@ -75,14 +76,14 @@ class BeneficiaryController extends Controller
     public function show(Request $request, int $id): BeneficiaryResource
     {
         $beneficiary = $this->beneficiaries->findFor($request->user(), $id);
-        $beneficiary->load(['technician', 'farmer'])
+        $beneficiary->load('technician')
             ->loadCount('monitoringRecords');
 
         return new BeneficiaryResource($beneficiary);
     }
 
     /**
-     * Admin reassigns technicians; farmers may correct their own details.
+     * Staff maintain the record; the admin also reassigns technicians.
      */
     public function update(UpdateBeneficiaryRequest $request, int $id): BeneficiaryResource
     {
@@ -118,12 +119,11 @@ class BeneficiaryController extends Controller
         $this->authorize('delete', $beneficiary);
 
         // Soft-deletes the household AND its whole history (visits, clinical
-        // records, monitoring rows, assignments, notifications) plus the
-        // farmer account when it has no other households — all in one
+        // records, monitoring rows, assignments, notifications) in one
         // transaction. A bare $beneficiary->delete() left every related row
         // orphaned (and failed outright on any monitoring record, whose FK
         // carries no cascade).
-        $this->beneficiaries->deleteFarmer($request->user(), $beneficiary);
+        $this->beneficiaries->deleteBeneficiary($request->user(), $beneficiary);
 
         return response()->json([], Response::HTTP_NO_CONTENT);
     }
@@ -138,7 +138,7 @@ class BeneficiaryController extends Controller
         return $this->bulkDelete(
             $request,
             \App\Models\Beneficiary::class,
-            fn (\App\Models\Beneficiary $beneficiary) => $this->beneficiaries->deleteFarmer($request->user(), $beneficiary),
+            fn (\App\Models\Beneficiary $beneficiary) => $this->beneficiaries->deleteBeneficiary($request->user(), $beneficiary),
         );
     }
 }

@@ -12,6 +12,7 @@ use App\Models\MonitoringRecord;
 use App\Models\TechnicianAssignment;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Support\Barangays;
 use App\Support\Pagination;
 use Database\Factories\BeneficiaryFactory;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -30,7 +31,7 @@ class BeneficiaryService
      * Role-scoped beneficiary list.
      *
      * admin/doctor: everything. technician: only assigned beneficiaries.
-     * farmer: only their own. The scoping is applied at the query level so
+     * The scoping is applied at the query level so
      * the API can never leak rows the client merely failed to filter.
      *
      * `$perPage` is caller-controlled and clamped to
@@ -38,11 +39,29 @@ class BeneficiaryService
      * carry more than 50 households; callers that need the whole set walk the
      * pages. The default is the same 50.
      */
-    public function listFor(User $user, int $perPage = Pagination::DEFAULT_PER_PAGE): LengthAwarePaginator
-    {
+    public function listFor(
+        User $user,
+        int $perPage = Pagination::DEFAULT_PER_PAGE,
+        array $filters = [],
+    ): LengthAwarePaginator {
+        $search = trim((string) ($filters['search'] ?? ''));
+        $barangay = trim((string) ($filters['barangay'] ?? ''));
+
         return $this->scopeQueryFor($user)
-            ->with(['technician', 'farmer'])
+            ->with('technician')
             ->withCount('monitoringRecords')
+            // Search runs INSIDE the role scope above, so a technician can
+            // never widen their view by typing a name they are not assigned.
+            ->when($search !== '', fn (Builder $query) => $query->where(
+                fn (Builder $group) => $group
+                    ->whereLike('name_of_farmer', "%{$search}%")
+                    ->orWhereLike('rsbsa_number', "%{$search}%")
+                    ->orWhereLike('address', "%{$search}%")
+                    ->orWhereLike('animal_type', "%{$search}%"),
+            ))
+            // Canonical barangay spelling, so "dawis" and "Dawis" agree.
+            ->when($barangay !== '', fn (Builder $query) => $query
+                ->where('address', Barangays::normalize($barangay)))
             ->latest()
             ->paginate($perPage);
     }
@@ -63,14 +82,16 @@ class BeneficiaryService
         return match ($user->role) {
             'admin', 'doctor' => $query,
             'technician' => $query->where('technician_id', $user->id),
-            default => $query->where('farmer_id', $user->id),
+            // No other role exists. An unknown role sees nothing rather than
+            // falling through to "everything" — fail closed.
+            default => $query->whereRaw('0 = 1'),
         };
     }
 
     /**
      * Fetch ONE beneficiary with role-appropriate failure modes.
      *
-     * admin/doctor/farmer: a record outside their scope is simply not found
+     * admin/doctor: a record outside their scope is simply not found
      * for them — 404, exactly as before. A TECHNICIAN pointing at a
      * beneficiary they are not assigned to is a permissions boundary, not a
      * missing row, so it answers 403 — a silent 404 there would read as a
@@ -172,56 +193,64 @@ class BeneficiaryService
             }
         }
 
-        if ($beneficiary->farmer_id !== null) {
-            $farmer = User::find($beneficiary->farmer_id);
-
-            if ($farmer && $technicianId !== null) {
-                $technician = User::find($technicianId);
-                $notifications->create($farmer, [
-                    'type' => $type,
-                    'actor_id' => $actor->id,
-                    'beneficiary_id' => $beneficiary->id,
-                    'title' => 'Your technician was updated',
-                    'message' => $technician
-                        ? "{$technician->name} is now the technician monitoring {$household}."
-                        : "A technician was assigned to {$household}.",
-                    'link' => '/dashboard/farmer/monitoring',
-                ]);
-            }
-        }
-
         return $beneficiary->refresh();
     }
 
+    /**
+     * Create a beneficiary record directly — the admin-managed enrolment
+     * path that replaced public self-registration.
+     *
+     * No account, no password, no pending state: the staff member entering it
+     * is asserting this is a real enrolled beneficiary.
+     *
+     * An initial monitoring record is created in the same transaction, so the
+     * household lands on the Monitoring table immediately (exactly what
+     * registration used to trigger). A technician who enrols a household owns
+     * that record; otherwise it is unassigned until the admin assigns one.
+     */
     public function create(User $actor, array $data): Beneficiary
     {
-        // Farmers create their own records; staff may register on behalf of a
-        // farmer via farmer_id (validated to hold the farmer role).
-        $farmerId = $data['farmer_id'] ?? null;
+        return DB::transaction(function () use ($actor, $data): Beneficiary {
+            // No pin captured in the field? Resolve the address to real
+            // coordinates so the dispersal map shows it in the right place.
+            if (! isset($data['latitude'], $data['longitude'])) {
+                $geo = $this->geocodeFor($data['address'] ?? null);
 
-        if ($actor->role === 'farmer') {
-            $farmerId = $actor->id;
-        }
+                $data['latitude'] = $geo['lat'] ?? null;
+                $data['longitude'] = $geo['lng'] ?? null;
+            }
 
-        $farmerId ??= $actor->id;
+            $beneficiary = Beneficiary::create($data);
 
-        // No pin captured in the field? Resolve the address to real
-        // coordinates so the dispersal map shows it in the right place.
-        if (! isset($data['latitude'], $data['longitude'])) {
-            $geo = $this->geocodeFor($data['address'] ?? null);
+            $record = $beneficiary->monitoringRecords()->create([
+                'technician_id' => $actor->role === 'technician' ? $actor->id : null,
+            ]);
 
-            $data['latitude'] = $geo['lat'] ?? null;
-            $data['longitude'] = $geo['lng'] ?? null;
-        }
+            $this->audit->log($actor, 'beneficiary_created', $beneficiary);
 
-        $beneficiary = Beneficiary::create([
-            ...$data,
-            'farmer_id' => $farmerId,
-        ]);
+            // Tell the OTHER administrators a beneficiary was added — the
+            // trigger that replaced "a new farmer registered". Resolved lazily
+            // through the container: NotificationService depends on services
+            // that depend on THIS one, so a constructor injection would be a
+            // resolution cycle (same reason assignTechnician resolves it late).
+            $notifications = app(NotificationService::class);
 
-        $this->audit->log($actor, 'beneficiary_created', $beneficiary);
+            User::query()
+                ->where('role', 'admin')
+                ->where('id', '!=', $actor->id)
+                ->get()
+                ->each(fn (User $admin) => $notifications->create($admin, [
+                    'type' => UserNotification::TYPE_BENEFICIARY_ADDED,
+                    'actor_id' => $actor->id,
+                    'beneficiary_id' => $beneficiary->id,
+                    'monitoring_record_id' => $record->id,
+                    'title' => 'Beneficiary added',
+                    'message' => "{$beneficiary->name_of_farmer} in {$beneficiary->address} was added to the program.",
+                    'link' => '/dashboard/admin/beneficiaries',
+                ]));
 
-        return $beneficiary;
+            return $beneficiary->refresh();
+        });
     }
 
     /**
@@ -258,9 +287,8 @@ class BeneficiaryService
     }
 
     /**
-     * Remove a registered farmer completely — the household, its whole
-     * clinical/visit/assignment history, and the account behind it — inside
-     * one transaction.
+     * Remove a beneficiary record completely — the household and its whole
+     * clinical/visit/assignment/dispersal history — inside one transaction.
      *
      * Everything is SOFT-deleted (the tables carry `deleted_at`), so the rows
      * vanish from every normal list, report and alert while remaining in the
@@ -269,24 +297,17 @@ class BeneficiaryService
      * schedule / smart-alert services carry an explicit `deleted_at is null`
      * filter for the same reason.
      *
-     * The account is only removed when it has no other households left AND
-     * that account is actually a farmer: a farmer who registered several
-     * animals keeps their login, while a freshly-registered one (the case the
-     * monitoring-table delete fixes) is fully removed. A staff account is
-     * NEVER removed this way — staff may register a beneficiary on a farmer's
-     * behalf, and that row's farmer_id then points at the staff member, so
-     * deleting the household would otherwise soft-delete the staff login.
+     * There is no account to remove — a beneficiary is a record, not a login.
      *
      * Notifications are the one exception: `user_notifications.dedupe_key` is
      * UNIQUE and the daily Smart Alerts scan re-creates rows by that key, so
      * they cannot be soft-deleted without a re-insert collision. They are
      * transient events and are deleted outright.
      */
-    public function deleteFarmer(User $actor, Beneficiary $beneficiary): void
+    public function deleteBeneficiary(User $actor, Beneficiary $beneficiary): void
     {
         DB::transaction(function () use ($actor, $beneficiary): void {
             $beneficiaryId = $beneficiary->id;
-            $farmerId = $beneficiary->farmer_id;
 
             // Collect the ids first: once the rows are soft-deleted the
             // default scope can no longer see them.
@@ -318,41 +339,21 @@ class BeneficiaryService
                 })
                 ->delete();
 
-            // The household's whole monitoring history, including the
-            // registration row whose delete triggered this.
+            // The household's whole monitoring history.
             MonitoringRecord::query()->where('beneficiary_id', $beneficiaryId)->delete();
 
             TechnicianAssignment::query()->where('beneficiary_id', $beneficiaryId)->delete();
 
             UserNotification::query()
-                ->where(function (Builder $q) use ($beneficiaryId, $farmerId, $recordIds): void {
+                ->where(function (Builder $q) use ($beneficiaryId, $recordIds): void {
                     $q->where('beneficiary_id', $beneficiaryId)
                         ->orWhereIn('monitoring_record_id', $recordIds);
-
-                    if ($farmerId !== null) {
-                        $q->orWhere('user_id', $farmerId);
-                    }
                 })
                 ->delete();
 
             $beneficiary->delete();
 
-            $farmer = $farmerId !== null ? User::find($farmerId) : null;
-
-            // Only a FARMER account goes with its last household. A staff
-            // member's login must survive: staff can register beneficiaries
-            // on a farmer's behalf and end up as their farmer_id, and
-            // deleting the household once soft-deleted the seeded admin
-            // account (locking everyone out of the demo).
-            if ($farmer !== null && $farmer->isFarmer() && $farmer->beneficiaries()->count() === 0) {
-                UserNotification::query()->where('user_id', $farmer->id)->delete();
-                $farmer->delete();
-            }
-
-            $this->audit->log($actor, 'beneficiary_deleted', $beneficiary, [
-                'farmer_id' => $farmerId,
-                'farmer_account_removed' => $farmer !== null && $farmer->trashed(),
-            ]);
+            $this->audit->log($actor, 'beneficiary_deleted', $beneficiary);
         });
     }
 }

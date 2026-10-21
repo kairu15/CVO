@@ -10,9 +10,9 @@ use Illuminate\Validation\ValidationException;
  * Role assignment for accounts.
  *
  * Role changes are the only way an administrator can be created or removed —
- * self-registration always produces a farmer and there is no delete-account
- * endpoint — so this is the one place that can strand the system without an
- * administrator, and the guard belongs here rather than only in the SPA.
+ * there is no delete-account endpoint — so this is the one place that can
+ * strand the system without an administrator, and the guard belongs here
+ * rather than only in the SPA.
  */
 class UserRoleService
 {

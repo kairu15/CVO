@@ -21,7 +21,6 @@ vi.mock("../api/monitoringApi", () => ({
     list: vi.fn(),
     months: vi.fn(),
     animalTypes: vi.fn(),
-    acceptRegistration: vi.fn(),
     remove: vi.fn(),
   },
 }));
@@ -34,7 +33,6 @@ vi.mock("../api/authApi", () => ({
   authApi: {
     fetchUser: vi.fn(),
     login: vi.fn(),
-    register: vi.fn(),
     logout: vi.fn(),
   },
 }));
@@ -54,8 +52,6 @@ const RECORD_NENA = {
   date_monitored: "2026-09-20",
   assigned_technician: null,
   latest_field_visit_photo: null,
-  registration_status: "none",
-  is_new: false,
 };
 
 const RECORD_DOYLE = {
@@ -67,8 +63,6 @@ const RECORD_DOYLE = {
   date_monitored: "2026-09-21",
   assigned_technician: null,
   latest_field_visit_photo: null,
-  registration_status: "none",
-  is_new: false,
 };
 
 const MONTHS = ["2026-09"];

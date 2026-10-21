@@ -15,16 +15,17 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Deleting a farmer from the admin Monitoring Records table must remove the
- * farmer's data across the WHOLE system, not just the monitoring_records row.
+ * Deleting a household from the admin screens must remove the beneficiary's
+ * data across the WHOLE system, not just one table's row.
  *
- * The delete is a SOFT delete (LGU retention/audit): the farmer, their
- * household and every related row are marked deleted and vanish from every
- * list, report and alert — but remain in the database. Only registration rows
- * (registration_status != none) trigger the full removal; an ordinary visit
- * row stays a record-only delete.
+ * Beneficiaries are standalone program records (no login account), so the
+ * delete is a SOFT delete (LGU retention/audit): the household and every
+ * related row are marked deleted and vanish from every list, report and
+ * alert — but remain in the database. Deleting a single ordinary monitoring
+ * record stays a record-only delete; only the beneficiaries delete endpoint
+ * removes the entire household.
  */
-class FarmerDeletionTest extends TestCase
+class BeneficiaryDeletionTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -37,37 +38,33 @@ class FarmerDeletionTest extends TestCase
         $this->admin = User::factory()->create(['role' => 'admin']);
     }
 
-    /** Register a farmer through the real endpoint (creates user + beneficiary + record). */
-    private function registerFarmer(): array
+    /** Enroll a household through the real admin endpoint. */
+    private function enrollHousehold(): array
     {
         $name = 'Del Farmer '.uniqid();
 
-        $this->postJson('/api/v1/register', [
-            'name' => $name,
-            'username' => 'farmer'.uniqid(),
-            'email' => 'farmer'.uniqid().'@test.dev',
-            'password' => 'Sup3r-Secret!',
-            'password_confirmation' => 'Sup3r-Secret!',
-            'address' => 'Ali-is',
-            'animal_type' => 'Goat',
-            'sex' => 'F',
-        ])->assertCreated();
+        $this->actingAs($this->admin)
+            ->postJson('/api/v1/beneficiaries', [
+                'name_of_farmer' => $name,
+                'address' => 'Ali-is',
+                'animal_type' => 'Goat',
+                'sex' => 'F',
+            ])->assertCreated();
 
-        $farmer = User::where('name', $name)->firstOrFail();
-        $beneficiary = Beneficiary::where('farmer_id', $farmer->id)->firstOrFail();
+        $beneficiary = Beneficiary::where('name_of_farmer', $name)->firstOrFail();
         $record = MonitoringRecord::where('beneficiary_id', $beneficiary->id)->firstOrFail();
 
-        return [$farmer, $beneficiary, $record];
+        return [$beneficiary, $record];
     }
 
     /**
-     * A farmer with one of every related record the system can hold.
+     * A household with one of every related record the system can hold.
      *
      * @return array<string, mixed>
      */
-    private function farmerWithEverything(): array
+    private function householdWithEverything(): array
     {
-        [$farmer, $beneficiary, $record] = $this->registerFarmer();
+        [$beneficiary, $record] = $this->enrollHousehold();
 
         $technician = User::factory()->create(['role' => 'technician', 'name' => 'Tech '.uniqid()]);
         $doctor = User::factory()->create(['role' => 'doctor']);
@@ -110,24 +107,23 @@ class FarmerDeletionTest extends TestCase
             ->create();
 
         return compact(
-            'farmer', 'beneficiary', 'record', 'technician', 'assignment',
+            'beneficiary', 'record', 'technician', 'assignment',
             'visit', 'photo', 'health', 'note', 'dispersal', 'extraRecord',
         );
     }
 
-    public function test_deleting_a_registration_row_soft_deletes_every_related_record(): void
+    public function test_deleting_a_household_soft_deletes_every_related_record(): void
     {
-        $data = $this->farmerWithEverything();
+        $data = $this->householdWithEverything();
 
         $this->actingAs($this->admin)
-            ->deleteJson("/api/v1/monitoring-records/{$data['record']->id}")
+            ->deleteJson("/api/v1/beneficiaries/{$data['beneficiary']->id}")
             ->assertNoContent();
 
-        // The row the admin clicked AND every other row across the system.
+        // Every row across the system.
+        $this->assertSoftDeleted('beneficiaries', ['id' => $data['beneficiary']->id]);
         $this->assertSoftDeleted('monitoring_records', ['id' => $data['record']->id]);
         $this->assertSoftDeleted('monitoring_records', ['id' => $data['extraRecord']->id]);
-        $this->assertSoftDeleted('beneficiaries', ['id' => $data['beneficiary']->id]);
-        $this->assertSoftDeleted('users', ['id' => $data['farmer']->id]);
         $this->assertSoftDeleted('technician_assignments', ['id' => $data['assignment']->id]);
         $this->assertSoftDeleted('field_visits', ['id' => $data['visit']->id]);
         $this->assertSoftDeleted('field_visit_photos', ['id' => $data['photo']->id]);
@@ -138,30 +134,15 @@ class FarmerDeletionTest extends TestCase
         // Notifications are the deliberate exception (unique dedupe_key):
         // they are removed outright, not soft-deleted.
         $this->assertDatabaseMissing('user_notifications', ['beneficiary_id' => $data['beneficiary']->id]);
-        $this->assertDatabaseMissing('user_notifications', ['user_id' => $data['farmer']->id]);
     }
 
-    public function test_a_deleted_farmer_cannot_log_in(): void
+    public function test_a_deleted_household_disappears_from_every_list_and_report(): void
     {
-        [$farmer, , $record] = $this->registerFarmer();
-
-        $this->actingAs($this->admin)
-            ->deleteJson("/api/v1/monitoring-records/{$record->id}")
-            ->assertNoContent();
-
-        $this->postJson('/api/v1/login', [
-            'identifier' => $farmer->email,
-            'password' => 'Sup3r-Secret!',
-        ])->assertUnprocessable();
-    }
-
-    public function test_a_soft_deleted_farmer_disappears_from_every_list_and_report(): void
-    {
-        $data = $this->farmerWithEverything();
+        $data = $this->householdWithEverything();
         $name = $data['beneficiary']->name_of_farmer;
 
         $this->actingAs($this->admin)
-            ->deleteJson("/api/v1/monitoring-records/{$data['record']->id}")
+            ->deleteJson("/api/v1/beneficiaries/{$data['beneficiary']->id}")
             ->assertNoContent();
 
         // Admin views.
@@ -194,30 +175,22 @@ class FarmerDeletionTest extends TestCase
         $this->assertStringNotContainsString($name, $feed->getContent());
     }
 
-    public function test_the_beneficiaries_delete_endpoint_removes_the_whole_farmer(): void
+    public function test_deleting_a_household_never_touches_a_staff_account(): void
     {
-        $data = $this->farmerWithEverything();
-
-        $this->actingAs($this->admin)
-            ->deleteJson("/api/v1/beneficiaries/{$data['beneficiary']->id}")
-            ->assertNoContent();
-
-        $this->assertSoftDeleted('beneficiaries', ['id' => $data['beneficiary']->id]);
-        $this->assertSoftDeleted('users', ['id' => $data['farmer']->id]);
-        $this->assertSoftDeleted('monitoring_records', ['id' => $data['record']->id]);
-        $this->assertSoftDeleted('field_visits', ['id' => $data['visit']->id]);
-        $this->assertSoftDeleted('health_records', ['id' => $data['health']->id]);
-        $this->assertSoftDeleted('case_notes', ['id' => $data['note']->id]);
-    }
-
-    public function test_deleting_a_household_never_removes_a_staff_account(): void
-    {
-        // Staff can register a beneficiary on a farmer's behalf, and that
-        // row's farmer_id then points at the STAFF account. Deleting the
-        // household must not soft-delete the staff login — this once removed
-        // the seeded admin and locked everyone out of the demo.
+        // Staff can enroll a beneficiary, and the audit trail links the actor
+        // to the row. Deleting the household must never touch the staff
+        // login — this once removed the seeded admin and locked everyone out.
         $staff = User::factory()->create(['role' => 'admin']);
-        $beneficiary = Beneficiary::factory()->forFarmer($staff)->create();
+
+        $this->actingAs($staff)
+            ->postJson('/api/v1/beneficiaries', [
+                'name_of_farmer' => 'Staff Enrolled '.uniqid(),
+                'address' => 'Ali-is',
+                'animal_type' => 'Goat',
+                'sex' => 'F',
+            ])->assertCreated();
+
+        $beneficiary = Beneficiary::latest('id')->firstOrFail();
 
         $this->actingAs($this->admin)
             ->deleteJson("/api/v1/beneficiaries/{$beneficiary->id}")
@@ -227,29 +200,12 @@ class FarmerDeletionTest extends TestCase
         $this->assertDatabaseHas('users', ['id' => $staff->id, 'deleted_at' => null]);
     }
 
-    public function test_a_farmer_owning_several_households_keeps_their_account(): void
+    public function test_deleting_an_ordinary_monitoring_record_keeps_the_household(): void
     {
-        [$farmer, $beneficiary, $record] = $this->registerFarmer();
-
-        // A second household under the same login. Deleting one must not
-        // remove the account, only the household that was deleted.
-        $other = Beneficiary::factory()->forFarmer($farmer)->create();
-
-        $this->actingAs($this->admin)
-            ->deleteJson("/api/v1/monitoring-records/{$record->id}")
-            ->assertNoContent();
-
-        $this->assertSoftDeleted('beneficiaries', ['id' => $beneficiary->id]);
-        $this->assertDatabaseHas('users', ['id' => $farmer->id, 'deleted_at' => null]);
-        $this->assertDatabaseHas('beneficiaries', ['id' => $other->id, 'deleted_at' => null]);
-    }
-
-    public function test_deleting_an_ordinary_visit_row_does_not_delete_the_farmer(): void
-    {
-        [$farmer, $beneficiary] = $this->registerFarmer();
+        [$beneficiary] = $this->enrollHousehold();
         $technician = User::factory()->create(['role' => 'technician']);
 
-        // A normal technician visit — registration_status defaults to `none`.
+        // A normal technician-created record (not an import row).
         $visitRecord = MonitoringRecord::factory()
             ->for($beneficiary, 'beneficiary')
             ->by($technician)
@@ -261,6 +217,5 @@ class FarmerDeletionTest extends TestCase
 
         $this->assertSoftDeleted('monitoring_records', ['id' => $visitRecord->id]);
         $this->assertDatabaseHas('beneficiaries', ['id' => $beneficiary->id, 'deleted_at' => null]);
-        $this->assertDatabaseHas('users', ['id' => $farmer->id, 'deleted_at' => null]);
     }
 }

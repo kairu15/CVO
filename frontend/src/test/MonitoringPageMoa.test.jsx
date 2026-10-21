@@ -22,7 +22,6 @@ vi.mock("../api/monitoringApi", () => ({
     list: vi.fn(),
     months: vi.fn(),
     animalTypes: vi.fn(),
-    acceptRegistration: vi.fn(),
     remove: vi.fn(),
     bulkRemove: vi.fn(),
     setMoa: vi.fn(),
@@ -44,7 +43,6 @@ vi.mock("../api/authApi", () => ({
   authApi: {
     fetchUser: vi.fn(),
     login: vi.fn(),
-    register: vi.fn(),
     logout: vi.fn(),
   },
 }));
@@ -62,8 +60,6 @@ const RECORD = {
   moa_signed: null,
   assigned_technician: null,
   latest_field_visit_photo: null,
-  registration_status: "none",
-  is_new: false,
 };
 
 const ASSIGNED_BENEFICIARY = {

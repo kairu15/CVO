@@ -72,7 +72,6 @@ class DispersalEventService
 
             if (! empty($data['register_new'])) {
                 $recipient = Beneficiary::create([
-                    'farmer_id' => $data['new_farmer_id'] ?? null,
                     'name_of_farmer' => $data['new_name_of_farmer'],
                     'address' => $data['new_address'],
                     'animal_type' => $data['new_animal_type'],
@@ -190,7 +189,7 @@ class DispersalEventService
     public function lineageFor(User $user, int $beneficiaryId): ?array
     {
         $current = $this->beneficiaries->scopeQueryFor($user)
-            ->with(['technician', 'farmer'])
+            ->with('technician')
             ->find($beneficiaryId);
 
         if (! $current) {
@@ -304,8 +303,9 @@ class DispersalEventService
      * is decided by whether the caller can view the ANCHOR beneficiary (see
      * lineageFor), after which the animal's whole recorded line — including
      * households outside the caller's own scope — is shown. That is the point
-     * of a lineage view (a farmer seeing where their animal's offspring went),
-     * so the tree deliberately does not re-scope per node. A visited set and a
+     * of a lineage view (seeing where an animal's offspring went, without
+     * needing to have ever signed in — beneficiaries are records, not
+     * accounts), so the tree deliberately does not re-scope per node. A visited set and a
      * depth cap protect against corrupted data (a cycle would otherwise
      * recurse forever).
      *

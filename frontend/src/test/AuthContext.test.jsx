@@ -6,7 +6,7 @@ import * as authApi from "../api/authApi";
 import { setUnauthorizedHandler } from "../api/client";
 
 function Probe() {
-  const { user, isAuthenticated, login, register, logout } = useAuth();
+  const { user, isAuthenticated, login, logout } = useAuth();
 
   return (
     <div>
@@ -14,12 +14,6 @@ function Probe() {
       <span data-testid="authed">{String(isAuthenticated)}</span>
       <button type="button" onClick={() => login("admin@example.com", "password", true)}>
         login
-      </button>
-      <button
-        type="button"
-        onClick={() => register({ name: "New Farmer", email: "n@e.com" })}
-      >
-        register
       </button>
       <button type="button" onClick={() => logout()}>logout</button>
     </div>
@@ -30,7 +24,6 @@ vi.mock("../api/authApi", () => ({
   authApi: {
     fetchUser: vi.fn(),
     login: vi.fn(),
-    register: vi.fn(),
     logout: vi.fn(),
   },
 }));
@@ -129,9 +122,10 @@ describe("AuthContext", () => {
     });
   });
 
-  it("register does not sign the new account in", async () => {
+  it("there is no register action on the context anymore", async () => {
+    // Self-registration was removed: the context exposes login/logout only,
+    // and no `register` function can be called by any caller.
     authApi.authApi.fetchUser.mockRejectedValue(new Error("guest"));
-    authApi.authApi.register.mockResolvedValue({ id: 3, name: "New Farmer" });
 
     render(
       <AuthProvider>
@@ -141,16 +135,8 @@ describe("AuthContext", () => {
 
     await waitFor(() => expect(screen.getByTestId("authed")).toHaveTextContent("false"));
 
-    await act(async () => {
-      await userEvent.click(screen.getByRole("button", { name: "register" }));
-    });
-
-    // Registration ends on the sign-in panel (the register form hands the
-    // email over via route state), so no session is established here — the
-    // payload must still reach the API.
-    await waitFor(() => expect(authApi.authApi.register).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("button", { name: "register" })).toBeNull();
     expect(screen.getByTestId("user")).toHaveTextContent("none");
-    expect(screen.getByTestId("authed")).toHaveTextContent("false");
   });
 
   it("forwards remember-me to the login endpoint", async () => {

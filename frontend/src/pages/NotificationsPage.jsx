@@ -12,7 +12,7 @@ import { useFlashHighlight } from "../hooks/useFlashHighlight";
 import { getRole } from "../config/roles";
 
 /**
- * Farmer "Notifications" screen.
+ * Staff "Notifications" screen.
  *
  * Read-only, and with no "mark as read" — because there is nothing to write.
  * Every alert restates a dispersal or a vaccination already on record, so an
@@ -55,10 +55,9 @@ const BANDS = [
 
 /** Per-role intro copy — the feed is the same endpoint, the framing differs. */
 const ROLE_COPY = {
-  admin: "New registrations, acceptances, field-visit photos and every dispersal or vaccination alert across the city, most needing action first.",
+  admin: "New beneficiary additions, technician assignments, field-visit photos and every dispersal or vaccination alert across the city, most needing action first.",
   doctor: "Field-visit photo submissions and every vaccination or dispersal alert for the animals under veterinary care.",
   technician: "Your assignments, plus dispersal and vaccination alerts for the households you monitor.",
-  farmer: "Dispersal, vaccination and re-dispersal alerts for the animals on your account, most needing action first.",
 };
 
 function formatDate(value) {
@@ -83,7 +82,7 @@ function dueHint(days) {
   return `due in ${days} ${days === 1 ? "day" : "days"}`;
 }
 
-export default function NotificationsPage({ roleKey = "farmer" }) {
+export default function NotificationsPage({ roleKey = "admin" }) {
   const config = getRole(roleKey);
   const invalidate = useInvalidate();
   const navigate = useNavigate();
@@ -150,11 +149,11 @@ export default function NotificationsPage({ roleKey = "farmer" }) {
   return (
     <div className="space-y-6">
       <section className="card p-6">
-        <p className="eyebrow">{config?.label ?? "Farmer / Beneficiary"}</p>
+        <p className="eyebrow">{config?.label ?? "Staff"}</p>
         <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl">
           Notifications
         </h2>            <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              {ROLE_COPY[roleKey] ?? ROLE_COPY.farmer}
+              {ROLE_COPY[roleKey] ?? ROLE_COPY.admin}
             </p>
 
         {canSeeSmart && (

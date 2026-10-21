@@ -98,18 +98,6 @@ class SearchTest extends TestCase
         $this->assertSame('Banay Farms Inc', $results[0]['title']);
     }
 
-    public function test_a_farmer_cannot_see_other_farmers_households(): void
-    {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $mine = Beneficiary::factory()->forFarmer($farmer)->create(['name_of_farmer' => 'Shared Name']);
-        Beneficiary::factory()->create(['name_of_farmer' => 'Shared Name']);
-
-        $body = $this->searchAs($farmer, 'shared');
-
-        $this->assertSame(1, $body['total']);
-        $this->assertSame($mine->id, $body['groups'][0]['results'][0]['id']);
-    }
-
     public function test_a_technician_only_searches_their_assigned_households(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
@@ -137,34 +125,33 @@ class SearchTest extends TestCase
         $this->assertSame('/dashboard/admin/monitoring', $body['groups'][0]['results'][0]['link']);
     }
 
-    public function test_a_farmer_searching_a_remark_finds_only_their_own_visit(): void
+    public function test_a_technician_searching_a_remark_finds_only_their_own_visits(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $mine = Beneficiary::factory()->forFarmer($farmer)->create();
+        $technician = User::factory()->create(['role' => 'technician']);
+        $mine = Beneficiary::factory()->assignedTo($technician)->create();
         $theirs = Beneficiary::factory()->create();
 
         MonitoringRecord::factory()->for($mine, 'beneficiary')->create(['remarks' => 'Follow up soon']);
         MonitoringRecord::factory()->for($theirs, 'beneficiary')->create(['remarks' => 'Follow up soon']);
 
-        $body = $this->searchAs($farmer, 'follow up');
+        $body = $this->searchAs($technician, 'follow up');
 
         $this->assertSame(1, $body['total']);
         $this->assertSame($mine->id, $body['groups'][0]['results'][0]['id']);
     }
 
-    public function test_accounts_group_is_staff_only(): void
+    public function test_accounts_group_is_admin_and_doctor_only(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        User::factory()->create(['role' => 'farmer', 'name' => 'Aling Nena Farmer', 'email' => 'nena@example.com']);
+        User::factory()->create(['name' => 'Aling Nena Staff', 'email' => 'nena@example.com']);
 
         $adminBody = $this->searchAs($admin, 'nena');
         $this->assertContains('account', $this->groupTypes($adminBody));
 
-        // Same term as a farmer: the account group must not appear at all —
-        // and neither may the other farmer's household (scoped out).
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $farmerBody = $this->searchAs($farmer, 'nena');
-        $this->assertNotContains('account', $this->groupTypes($farmerBody));
+        // Same term as a technician: the account group must not appear at all.
+        $technician = User::factory()->create(['role' => 'technician']);
+        $technicianBody = $this->searchAs($technician, 'nena');
+        $this->assertNotContains('account', $this->groupTypes($technicianBody));
     }
 
     public function test_an_account_search_never_lists_the_caller(): void
@@ -202,14 +189,19 @@ class SearchTest extends TestCase
         );
     }
 
-    public function test_a_farmer_household_result_links_to_their_monitoring_page(): void
+    public function test_a_household_result_links_to_the_lineage_page_for_every_role(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        Beneficiary::factory()->forFarmer($farmer)->create(['name_of_farmer' => 'My Own Household']);
+        // Every account is staff now: a household result always lands on the
+        // lineage screen, never a farmer dashboard (that role is gone).
+        $technician = User::factory()->create(['role' => 'technician']);
+        $beneficiary = Beneficiary::factory()->assignedTo($technician)->create(['name_of_farmer' => 'My Own Household']);
 
-        $body = $this->searchAs($farmer, 'my own');
+        $body = $this->searchAs($technician, 'my own');
 
-        $this->assertSame('/dashboard/farmer/monitoring', $body['groups'][0]['results'][0]['link']);
+        $this->assertSame(
+            "/dashboard/technician/beneficiaries/{$beneficiary->id}/lineage",
+            $body['groups'][0]['results'][0]['link'],
+        );
     }
 
     public function test_an_empty_result_set_is_a_200_with_no_groups(): void

@@ -11,8 +11,8 @@ use Illuminate\Support\Facades\Cache;
  * Six groups, one table, one cache entry:
  *
  *   contact       the office contact profile. Rendered on the public landing
- *                 page, the farmer Support page and the password-reset note,
- *                 so it is read on nearly every anonymous request.
+ *                 page and the password-reset note, so it is read on nearly
+ *                 every anonymous request.
  *   alerts        the vaccination cycle (how long after a vaccination an
  *                 animal is due again, how far ahead it warns) and the
  *                 field-visit overdue window the smart-alert scan uses.
@@ -75,8 +75,7 @@ class SettingsService
      * @var list<string>
      */
     public const NOTIFICATION_KEYS = [
-        'notify_registration_new',
-        'notify_registration_accepted',
+        'notify_beneficiary_added',
         'notify_technician_assigned',
         'notify_technician_reassigned',
         'notify_field_visit_photo',
@@ -95,8 +94,7 @@ class SettingsService
      * @var array<string, string>
      */
     public const NOTIFICATION_KEY_FOR_TYPE = [
-        'registration-new' => 'notify_registration_new',
-        'registration-accepted' => 'notify_registration_accepted',
+        'beneficiary-added' => 'notify_beneficiary_added',
         'technician-assigned' => 'notify_technician_assigned',
         'technician-reassigned' => 'notify_technician_reassigned',
         'field-visit-photo' => 'notify_field_visit_photo',

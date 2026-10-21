@@ -18,17 +18,6 @@ class BeneficiaryTest extends TestCase
         $this->getJson('/api/v1/beneficiaries')->assertUnauthorized();
     }
 
-    public function test_farmers_see_only_their_own_beneficiaries(): void
-    {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        Beneficiary::factory()->count(2)->forFarmer($farmer)->create();
-        Beneficiary::factory()->create(); // someone else's
-
-        $response = $this->actingAs($farmer)->getJson('/api/v1/beneficiaries');
-
-        $response->assertOk()->assertJsonCount(2, 'data');
-    }
-
     public function test_technicians_see_only_assigned_beneficiaries(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
@@ -175,14 +164,12 @@ class BeneficiaryTest extends TestCase
             ->assertJsonValidationErrors(['per_page']);
     }
 
-    public function test_farmer_registration_can_create_a_beneficiary(): void
+    public function test_staff_can_create_a_beneficiary(): void
     {
-        $response = $this->postJson('/api/v1/register', [
-            'name' => 'Juan Dela Cruz',
-            'username' => 'juan',
-            'email' => 'juan@example.com',
-            'password' => 'Sup3r-Secret!',
-            'password_confirmation' => 'Sup3r-Secret!',
+        $technician = User::factory()->create(['role' => 'technician']);
+
+        $response = $this->actingAs($technician)->postJson('/api/v1/beneficiaries', [
+            'name_of_farmer' => 'Juan Dela Cruz',
             'address' => 'Banaybanay',
             'animal_type' => 'Carabao',
             'sex' => 'F',
@@ -198,32 +185,36 @@ class BeneficiaryTest extends TestCase
         ]);
     }
 
-    public function test_registration_without_dispersal_details_creates_no_beneficiary(): void
+    public function test_a_create_without_animal_details_is_rejected_and_creates_nothing(): void
     {
-        $this->postJson('/api/v1/register', [
-            'name' => 'Plain',
-            'username' => 'plain',
-            'email' => 'plain@example.com',
-            'password' => 'Sup3r-Secret!',
-            'password_confirmation' => 'Sup3r-Secret!',
-        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
 
-        $this->assertDatabaseMissing('beneficiaries', [
-            'address' => null,
-        ]);
+        // The identity fields are required: an admin entering a household
+        // must say what animal is being tracked.
+        $this->actingAs($admin)->postJson('/api/v1/beneficiaries', [
+            'name_of_farmer' => 'Plain',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['address', 'animal_type', 'sex']);
+
+        $this->assertDatabaseCount('beneficiaries', 0);
+        $this->assertDatabaseCount('monitoring_records', 0);
     }
 
-    public function test_farmers_cannot_assign_technicians(): void
+    public function test_technicians_cannot_assign_technicians(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->create();
-        $technician = User::factory()->create(['role' => 'technician']);
+        $beneficiary = Beneficiary::factory()->create();
+        $other = User::factory()->create(['role' => 'technician']);
 
-        $this->actingAs($farmer)
+        $this->actingAs($this->technicianUser())
             ->patchJson("/api/v1/admin/beneficiaries/{$beneficiary->id}/assign-technician", [
-                'technician_id' => $technician->id,
+                'technician_id' => $other->id,
             ])
             ->assertForbidden();
+    }
+
+    private function technicianUser(): User
+    {
+        return User::factory()->create(['role' => 'technician']);
     }
 
     public function test_admin_can_assign_a_technician(): void
@@ -249,13 +240,112 @@ class BeneficiaryTest extends TestCase
     {
         $admin = User::factory()->create(['role' => 'admin']);
         $beneficiary = Beneficiary::factory()->create();
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $doctor = User::factory()->create(['role' => 'doctor']);
 
         $this->actingAs($admin)
             ->patchJson("/api/v1/admin/beneficiaries/{$beneficiary->id}/assign-technician", [
-                'technician_id' => $farmer->id,
+                'technician_id' => $doctor->id,
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['technician_id']);
+    }
+
+    /**
+     * The admin directory's search box: one term matches the farmer's name,
+     * their RSBSA number, the barangay address or the animal type.
+     */
+    public function test_the_list_searches_by_name_rsbsa_and_animal_type(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $nena = Beneficiary::factory()->create([
+            'name_of_farmer' => 'Aling Nena',
+            'rsbsa_number' => 'RSBSA-0042',
+            'animal_type' => 'Carabao',
+            'address' => 'Dawis',
+        ]);
+        Beneficiary::factory()->create([
+            'name_of_farmer' => 'Ima Johnston',
+            'rsbsa_number' => 'RSBSA-9999',
+            'animal_type' => 'Goat',
+            'address' => 'Banaybanay',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/beneficiaries?search=Nena')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $nena->id);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/beneficiaries?search=RSBSA-9999')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name_of_farmer', 'Ima Johnston');
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/beneficiaries?search=carabao')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name_of_farmer', 'Aling Nena');
+    }
+
+    public function test_the_list_filters_by_barangay_ignoring_case(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        Beneficiary::factory()->create(['address' => 'Dawis']);
+        Beneficiary::factory()->create(['address' => 'Banaybanay']);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/beneficiaries?barangay=dawis')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.address', 'Dawis');
+    }
+
+    /**
+     * Search is applied INSIDE the role scope: a technician typing a name
+     * they are not assigned to must not see that household.
+     */
+    public function test_search_cannot_widen_a_technicians_scope(): void
+    {
+        $technician = $this->technicianUser();
+
+        Beneficiary::factory()->create([
+            'name_of_farmer' => 'Assigned Household',
+            'technician_id' => $technician->id,
+        ]);
+        Beneficiary::factory()->create([
+            'name_of_farmer' => 'Someone Elses Household',
+            'technician_id' => null,
+        ]);
+
+        $this->actingAs($technician)
+            ->getJson('/api/v1/beneficiaries?search=Someone')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
+    /**
+     * MOA status is captured at enrolment too — the admin entering the record
+     * often has the signed paper in hand.
+     */
+    public function test_moa_status_can_be_recorded_at_enrolment(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/v1/beneficiaries', [
+            'name_of_farmer' => 'Juan Dela Cruz',
+            'address' => 'Banaybanay',
+            'animal_type' => 'Carabao',
+            'sex' => 'F',
+            'moa_signed' => true,
+        ])->assertCreated()->assertJsonPath('data.moa_signed', true);
+
+        $this->assertDatabaseHas('beneficiaries', [
+            'name_of_farmer' => 'Juan Dela Cruz',
+            'moa_signed' => true,
+        ]);
     }
 }

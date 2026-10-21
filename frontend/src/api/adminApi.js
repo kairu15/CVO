@@ -18,17 +18,17 @@ export const adminApi = {
   listUsersPage: async (params = {}) =>
     unwrap.page(await api.get("/api/v1/admin/users", { params })),
 
-  /** Set a user's role (self-registration stays farmer-only; this is the elevation path). */
+  /** Set a user's role between the staff roles. */
   assignRole: async (userId, role) => {
     await ensureCsrfCookie();
     return unwrap(await api.patch(`/api/v1/admin/users/${userId}/role`, { role }));
   },
 
   /**
-   * Create a staff account (admin/doctor/technician). Farmer accounts come
-   * from public self-registration, so the server rejects that role here.
+   * Create a staff account (admin/doctor/technician) — every account is
+   * staff; beneficiaries are program records, not login accounts.
    *
-   * With `password` + `password_confirmation` (matching the registration
+   * With `password` + `password_confirmation` (matching the password policy
    * policy), the account signs in with them immediately. WITHOUT a password
    * the account is invited: the server emails a one-time setup link (when a
    * mailer is configured) and ALWAYS returns `setup_url` on the response so

@@ -36,30 +36,7 @@ class ProfileService
             ],
         ];
 
-        if ($user->role === 'farmer') {
-            // The household location twins live on the beneficiary records;
-            // show them so the farmer can see (and correct) where monitoring
-            // pinpoints them. Dispersal status is implied by the records.
-            $data['farmer'] = [
-                'beneficiaries' => $user->beneficiaries()
-                    ->with(['barangay:id,name', 'purok:id,name'])
-                    ->withCount('dispersalEvents')
-                    ->get()
-                    ->map(fn ($b) => [
-                        'id' => $b->id,
-                        'name_of_farmer' => $b->name_of_farmer,
-                        'animal_type' => $b->animal_type,
-                        'sex' => $b->sex,
-                        'address' => $b->address,
-                        'barangay' => $b->barangay?->only(['id', 'name']),
-                        'purok' => $b->purok?->only(['id', 'name']),
-                        'latitude' => $b->latitude,
-                        'longitude' => $b->longitude,
-                        'location_source' => $b->location_source,
-                        'dispersal_events_count' => $b->dispersal_events_count,
-                    ])->all(),
-            ];
-        } elseif ($user->role === 'technician') {
+        if ($user->role === 'technician') {
             $data['technician'] = [
                 'assigned_farmers' => $user->assignedBeneficiaries()->count(),
             ];
@@ -76,8 +53,11 @@ class ProfileService
     }
 
     /**
-     * Update the account (name/email) and, for farmers, the household
-     * location across their beneficiary records in one transaction.
+     * Update the signed-in account's profile (name/email).
+     *
+     * There is no household location to edit here: beneficiaries are program
+     * records managed by staff, not things an account owns — the admin
+     * Beneficiaries screen is where a household's location is corrected.
      *
      * @param  array<string, mixed>  $validated  output of UpdateProfileRequest::validated()
      */
@@ -88,17 +68,6 @@ class ProfileService
 
             if ($account !== []) {
                 $user->fill($account)->save();
-            }
-
-            $location = collect($validated)
-                ->only(['address', 'barangay_id', 'purok_id', 'latitude', 'longitude', 'location_source'])
-                ->all();
-
-            if ($location !== [] && $user->isFarmer()) {
-                // One household, one location: the edit applies to every
-                // beneficiary row the account owns, keeping barangay/purok
-                // and the free-text address string in sync.
-                $user->beneficiaries()->update($this->normalizeLocation($validated, $location));
             }
 
             return $this->profile($user->refresh());
@@ -136,24 +105,4 @@ class ProfileService
         return $this->profile($user->refresh());
     }
 
-    /**
-     * Drop the barangay id (resolved in the request) alongside the payload
-     * keys the beneficiary table actually has.
-     *
-     * @param  array<string, mixed>  $validated
-     * @param  array<string, mixed>  $location
-     * @return array<string, mixed>
-     */
-    private function normalizeLocation(array $validated, array $location): array
-    {
-        unset($location['barangay_id']);
-
-        if (array_key_exists('address', $location)) {
-            // Keep the barangay id column in step with the address string —
-            // same pairing rule registration enforces.
-            $location['barangay_id'] = $validated['barangay_id'];
-        }
-
-        return $location;
-    }
 }

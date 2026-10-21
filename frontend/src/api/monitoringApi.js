@@ -74,12 +74,6 @@ export const monitoringApi = {
     return unwrap(await api.post("/api/v1/monitoring-records/bulk-delete", { ids }));
   },
 
-  /** Admin accepts a registration-created record (starts the midnight countdown). */
-  acceptRegistration: async (id) => {
-    await ensureCsrfCookie();
-    return unwrap(await api.patch(`/api/v1/monitoring-records/${id}/accept`));
-  },
-
   /**
    * Admin sets the MOA status for the dispersal behind a record (the
    * monitoring table's inline toggle). The write lands on the BENEFICIARY —

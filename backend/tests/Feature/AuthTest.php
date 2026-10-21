@@ -11,8 +11,11 @@ class AuthTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_users_can_register_and_receive_session(): void
+    public function test_there_is_no_public_registration_endpoint(): void
     {
+        // Accounts are staff-only, created by an administrator. The old
+        // public /register route is gone — not throttled, not disabled:
+        // removed. A caller who tries it gets a plain 404.
         $response = $this->postJson('/api/v1/register', [
             'name' => 'Kylle',
             'username' => 'kylle',
@@ -21,61 +24,28 @@ class AuthTest extends TestCase
             'password_confirmation' => 'Sup3r-Secret!',
         ]);
 
-        $response->assertCreated()
-            ->assertJsonPath('data.email', 'kylle@example.com')
-            ->assertJsonPath('data.username', 'kylle')
-            ->assertJsonPath('data.role', 'farmer');
+        $response->assertNotFound();
 
-        $this->assertDatabaseHas('users', [
-            'email' => 'kylle@example.com',
-            'role' => 'farmer',
-        ]);
+        $this->assertDatabaseMissing('users', ['email' => 'kylle@example.com']);
     }
 
-    public function test_self_registration_always_creates_a_farmer(): void
+    public function test_a_farmer_account_cannot_be_created_by_any_flow(): void
     {
-        $response = $this->postJson('/api/v1/register', [
+        // The `farmer` role no longer exists in User::ROLES; the admin
+        // create-account endpoint rejects it outright.
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/v1/admin/users', [
             'name' => 'Sneaky',
             'username' => 'sneaky',
             'email' => 'sneaky@example.com',
             'password' => 'Sup3r-Secret!',
             'password_confirmation' => 'Sup3r-Secret!',
-            'role' => 'admin',
-        ]);
+            'role' => 'farmer',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['role']);
 
-        $response->assertCreated()->assertJsonPath('data.role', 'farmer');
-
-        $this->assertDatabaseMissing('users', ['email' => 'sneaky@example.com', 'role' => 'admin']);
-    }
-
-    public function test_registration_requires_a_unique_username(): void
-    {
-        User::factory()->create(['username' => 'taken']);
-
-        $response = $this->postJson('/api/v1/register', [
-            'name' => 'Copycat',
-            'username' => 'taken',
-            'email' => 'copycat@example.com',
-            'password' => 'Sup3r-Secret!',
-            'password_confirmation' => 'Sup3r-Secret!',
-        ]);
-
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['username']);
-    }
-
-    public function test_registration_requires_a_strong_password(): void
-    {
-        $response = $this->postJson('/api/v1/register', [
-            'name' => 'Weak',
-            'username' => 'weak',
-            'email' => 'weak@example.com',
-            'password' => 'password',
-            'password_confirmation' => 'password',
-        ]);
-
-        $response->assertUnprocessable()
-            ->assertJsonValidationErrors(['password']);
+        $this->assertDatabaseMissing('users', ['email' => 'sneaky@example.com']);
     }
 
     public function test_users_can_login_with_valid_credentials(): void

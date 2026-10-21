@@ -52,8 +52,7 @@ export const site = {
 
   /**
    * The password-reset policy, shared verbatim by the sign-in form's
-   * "Forgot password?" note and the farmer Support page — defined once so
-   * the two screens cannot drift apart.
+   * "Forgot password?" note — defined in one place so no screen drifts.
    */
   passwordResetPolicy: `Password resets are handled by the CVO administrator for security reasons. Contact the office at ${CONTACT_EMAIL} or ${CONTACT_PHONE} to request a new password.`,
 };

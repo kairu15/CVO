@@ -6,7 +6,7 @@ import { fetchBarangays } from "../api/beneficiariesApi";
  *
  * Fetched once from `GET /api/v1/barangays` so the server stays the single
  * source of truth; falls back to the known names (config/barangays.php) when
- * the API is unreachable so the registration form still works offline —
+ * the API is unreachable so the Beneficiaries screen still works offline —
  * without ids, only the structured barangay_id in the payload is degraded.
  */
 const FALLBACK_NAMES = [

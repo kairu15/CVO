@@ -32,7 +32,7 @@ class UserResource extends JsonResource
             'deactivated_at' => $this->deleted_at?->toIso8601String(),
             // Account metadata for the management screen: the stamp every
             // successful sign-in rewrites, and the administrator who created
-            // the account (null for self-registered farmers).
+            // the account (null for seeded accounts, which have no creator).
             'last_login_at' => $this->last_login_at?->toIso8601String(),
             'created_by' => $this->created_by,
             'created_by_name' => $this->whenLoaded('creator', fn () => $this->creator?->name),

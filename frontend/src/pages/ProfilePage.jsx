@@ -17,10 +17,9 @@ import { PasswordToggle, TextField } from "../components/TextField";
  *
  * Common account section (name, email, avatar, username, member-since,
  * password) plus a role-specific section fed by GET /api/v1/profile:
- * farmers see their household location (editable via the same barangay
- * dropdown registration uses), technicians their assigned-farmer count with
- * a link to monitoring, doctors their clinical footprint. There is no
- * license/credential field in the data model, so none is shown.
+ * technicians their assigned-household count with a link to monitoring,
+ * doctors their clinical footprint. There is no license/credential field in
+ * the data model, so none is shown.
  */
 export function ProfilePage() {
   const { refreshUser } = useAuth();
@@ -338,151 +337,12 @@ function AccountForm({ account, onSaved }) {
 
 /** Role-specific section — fed entirely by the profile payload. */
 function RoleSection({ profile }) {
-  if (profile.farmer) return <FarmerSection farmer={profile.farmer} />;
   if (profile.technician) return <TechnicianSection technician={profile.technician} />;
   if (profile.doctor) return <DoctorSection doctor={profile.doctor} />;
   return null; // admin: nothing beyond the common sections
 }
 
-const LOCATION_SOURCE_LABELS = {
-  gps: "GPS fix",
-  map_pin: "Map pin",
-  manual: "Chosen from list",
-};
 
-/** Farmer household location — editable barangay + read-only purok/coords. */
-function FarmerSection({ farmer }) {
-  const toast = useToast();
-  const [barangays, barangaysStatus] = useBarangays();
-  const [address, setAddress] = useState(farmer.beneficiaries[0]?.barangay?.name ?? "");
-  const [errors, setErrors] = useState({});
-  const [saving, setSaving] = useState(false);
-
-  const primary = farmer.beneficiaries[0] ?? null;
-  const selected = useMemo(
-    () => barangays.find((barangay) => barangay.name === address) ?? null,
-    [barangays, address],
-  );
-  const dirty = Boolean(address) && address !== primary?.barangay?.name;
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      await profileApi.update({
-        address,
-        barangay_id: selected?.id ?? undefined,
-      });
-      toast.success("Barangay updated. Your monitoring records now point here.");
-      window.location.reload(); // rare edit; a reload re-fetches everything cleanly
-    } catch (err) {
-      const fields = getFieldErrors(err);
-      if (fields) setErrors(fields);
-      else toast.error(getErrorMessage(err));
-      setSaving(false);
-    }
-  }
-
-  if (!primary) {
-    return (
-      <section className="card p-6">
-        <h3 className="font-display text-base font-bold text-slate-900">My location</h3>
-        <p className="mt-2 text-sm text-slate-500">
-          No dispersal record is linked to your account yet — location details
-          appear here once the CVO registers your animal.
-        </p>
-      </section>
-    );
-  }
-
-  return (
-    <section className="card p-6">
-      <h3 className="font-display text-base font-bold text-slate-900">My location</h3>
-      <p className="mt-1 text-sm text-slate-500">
-        Where your farm is — used to pre-fill monitoring records and schedule
-        visits.
-      </p>
-
-      <form onSubmit={handleSubmit} noValidate className="mt-4 grid gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="profile-barangay" className="block text-sm font-medium text-slate-700">
-            Barangay
-          </label>
-          {barangaysStatus === "loading" ? (
-            <Skeleton className="field mt-1.5 h-11" />
-          ) : (
-            <select
-              id="profile-barangay"
-              className="field mt-1.5"
-              value={address}
-              onChange={(event) => {
-                setAddress(event.target.value);
-                setErrors((prev) => ({ ...prev, address: undefined }));
-              }}
-            >
-              <option value="">Select barangay…</option>
-              {barangays.map((barangay) => (
-                <option key={barangay.id ?? barangay.name} value={barangay.name}>
-                  {barangay.name}
-                </option>
-              ))}
-            </select>
-          )}
-          {errors.address ? (
-            <p className="mt-1.5 text-xs font-medium text-red-600">{errors.address}</p>
-          ) : (
-            <p className="mt-1.5 text-xs text-slate-500">
-              Same coverage list as registration.
-            </p>
-          )}
-        </div>
-
-        <TextField
-          id="profile-purok"
-          label="Purok / Sitio"
-          value={primary.purok?.name ?? "Not set"}
-          disabled
-          hint="Ask the CVO office to update your purok if this is wrong."
-        />
-
-        <TextField
-          id="profile-location-source"
-          label="Location source"
-          value={LOCATION_SOURCE_LABELS[primary.location_source] ?? "Chosen from list"}
-          disabled
-          hint="How the farm's coordinates were captured."
-        />
-
-        <TextField
-          id="profile-coordinates"
-          label="Coordinates"
-          value={
-            primary.latitude != null
-              ? `${primary.latitude.toFixed(5)}, ${primary.longitude.toFixed(5)}`
-              : "—"
-          }
-          disabled
-        />
-
-        <div className="flex items-end sm:col-span-2">
-          <SaveButton busy={saving} disabled={!dirty}>
-            Update barangay
-          </SaveButton>
-        </div>
-      </form>
-
-      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-sm">
-        <p className="font-semibold text-slate-900">Dispersal record</p>
-        <p className="mt-1 text-slate-600">
-          {primary.animal_type} ({primary.sex}) ·{" "}
-          {primary.dispersal_events_count > 0
-            ? `${primary.dispersal_events_count} dispersal movement${primary.dispersal_events_count === 1 ? "" : "s"} recorded`
-            : "No dispersal movements recorded yet"}
-        </p>
-      </div>
-    </section>
-  );
-}
 
 /** Technician: assignment count + link to their monitoring dashboard. */
 function TechnicianSection({ technician }) {

@@ -95,10 +95,9 @@ class MonitoringMoaTest extends TestCase
         }
     }
 
-    public function test_doctor_technician_and_farmer_cannot_set_moa(): void
+    public function test_doctor_and_technician_cannot_set_moa(): void
     {
         $doctor = User::factory()->create(['role' => 'doctor']);
-        $farmer = User::factory()->create(['role' => 'farmer']);
 
         $this->actingAs($doctor)
             ->patchJson("/api/v1/monitoring-records/{$this->record->id}/moa", ['moa_signed' => true])
@@ -106,10 +105,6 @@ class MonitoringMoaTest extends TestCase
 
         // Even the technician who logged the visit cannot flip the agreement.
         $this->actingAs($this->technician)
-            ->patchJson("/api/v1/monitoring-records/{$this->record->id}/moa", ['moa_signed' => true])
-            ->assertForbidden();
-
-        $this->actingAs($farmer)
             ->patchJson("/api/v1/monitoring-records/{$this->record->id}/moa", ['moa_signed' => true])
             ->assertForbidden();
 

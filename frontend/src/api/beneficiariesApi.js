@@ -12,7 +12,7 @@ export const geocodeAddress = async (address) =>
   );
 
 /**
- * The barangays the program covers — drives the registration dropdown.
+ * The barangays the program covers — drives the Beneficiaries dropdown.
  * Returns reference rows ({ id, name, latitude, longitude }), not names:
  * the map zooms to the coordinates and the purok fetch keys off the id.
  */
@@ -21,7 +21,7 @@ export const fetchBarangays = async () =>
 
 /**
  * The puroks/sitios inside one barangay — the second select in the
- * registration cascade. `is_placeholder` flags seeded stand-ins that are
+ * location cascade. `is_placeholder` flags seeded stand-ins that are
  * waiting on the CVO's real purok list.
  */
 export const fetchPuroks = async (barangayId) =>
@@ -31,11 +31,10 @@ export const fetchPuroks = async (barangayId) =>
  * Nearest-centroid barangay match for a GPS fix or dropped map pin.
  * Returns { id, name, latitude, longitude, distance_km } or null when no
  * covered barangay center lies within reach. A SUGGESTION only — the
- * server stores centers, not boundaries, so the farmer confirms it.
+ * server stores centers, not boundaries, so the admin confirms it.
  */
 export const findNearestBarangay = async (latitude, longitude) => {
-  // POST verb => CSRF applies even though this is semantically a read, and the
-  // registration form calls it before any session exists.
+  // POST verb => CSRF applies even though this is semantically a read.
   await ensureCsrfCookie();
 
   return unwrap(await api.post("/api/v1/barangays/nearest", { latitude, longitude }));
@@ -43,7 +42,7 @@ export const findNearestBarangay = async (latitude, longitude) => {
 
 /**
  * Nearest purok center within ONE barangay for a moved map pin — the
- * purok auto-fill of the registration cascade. Null when that barangay
+ * purok auto-fill of the location cascade. Null when that barangay
  * has no purok coordinates yet (nothing to guess from).
  */
 export const findNearestPurok = async (barangayId, latitude, longitude) => {
@@ -58,14 +57,15 @@ export const findNearestPurok = async (barangayId, latitude, longitude) => {
  * Beneficiaries — the dispersed animals and their households.
  *
  * The identity fields (name_of_farmer, address, animal_type, sex) live here
- * and are read-only everywhere in the UI: they are captured once, at
- * registration, and every monitoring record auto-fills from them.
+ * and are read-only everywhere in the UI: they are captured once, when the
+ * admin enrols the household, and every monitoring record auto-fills from
+ * them.
  *
  * Every method returns already-unwrapped data (see `unwrap` in client.js).
  */
 
 export const beneficiariesApi = {
-  /** Role-scoped: admin/doctor see all, technician sees assigned, farmer sees own. */
+  /** Role-scoped: admin/doctor see all, technician sees assigned only. */
   list: async (params = {}) => unwrap.list(await api.get("/api/v1/beneficiaries", { params })),
 
   get: async (id) => unwrap(await api.get(`/api/v1/beneficiaries/${id}`)),

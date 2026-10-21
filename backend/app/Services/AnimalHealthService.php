@@ -54,7 +54,7 @@ class AnimalHealthService
             ."))";
 
         $query = $this->beneficiaries->scopeQueryFor($user)
-            ->with(['technician', 'farmer'])
+            ->with('technician')
             ->select('beneficiaries.*')
             ->selectRaw("{$lastVaccination} as last_vaccination_date")
             // date() around every max() of a cast date column: the cast writes

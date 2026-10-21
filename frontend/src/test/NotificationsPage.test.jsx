@@ -25,7 +25,7 @@ const ALERTS = [
     date: "2026-08-20",
     beneficiary_id: 11,
     days_until_due: -34,
-    link: "/dashboard/farmer/monitoring",
+    link: "/dashboard/technician/monitoring",
   },
   {
     id: "vaccination-due-soon-12",
@@ -36,14 +36,14 @@ const ALERTS = [
     date: "2026-10-06",
     beneficiary_id: 12,
     days_until_due: 13,
-    link: "/dashboard/farmer/monitoring",
+    link: "/dashboard/technician/monitoring",
   },
   {
     id: "event-21",
-    type: "registration-new",
+    type: "beneficiary-added",
     urgency: "info",
-    title: "New farmer registered",
-    message: "Pickle in Narra registered a new dispersal — awaiting review.",
+    title: "Beneficiary added",
+    message: "Pickle in Narra was added to the program.",
     date: "2026-09-26T08:00:00+08:00",
     read: false,
     link: "/dashboard/admin/monitoring",
@@ -57,7 +57,7 @@ const ALERTS = [
     date: "2026-02-10",
     beneficiary_id: 11,
     days_until_due: null,
-    link: "/dashboard/farmer/dispersal-status",
+    link: "/dashboard/technician/map",
   },
 ];
 
@@ -71,7 +71,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <NotificationsPage roleKey="farmer" />
+        <NotificationsPage roleKey="technician" />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -102,7 +102,7 @@ describe("NotificationsPage", () => {
     expect(band("Needs attention").getByText("Vaccination due soon")).toBeInTheDocument();
     expect(band("Needs attention").queryByText("Animal dispersed")).not.toBeInTheDocument();
     expect(band("Recent activity").getByText("Animal dispersed")).toBeInTheDocument();
-    expect(band("Recent activity").getByText("New farmer registered")).toBeInTheDocument();
+    expect(band("Recent activity").getByText("Beneficiary added")).toBeInTheDocument();
   });
 
   it("summarises the feed and how much of it needs action", async () => {
@@ -143,13 +143,13 @@ describe("NotificationsPage", () => {
 
     const links = screen.getAllByRole("link", { name: "View" });
 
-    expect(links[0]).toHaveAttribute("href", "/dashboard/farmer/monitoring");
-    expect(links[3]).toHaveAttribute("href", "/dashboard/farmer/dispersal-status");
+    expect(links[0]).toHaveAttribute("href", "/dashboard/technician/monitoring");
+    expect(links[3]).toHaveAttribute("href", "/dashboard/technician/map");
   });
 
   it("offers mark-as-read for unread stored events and hides it when none", async () => {
     const first = renderPage();
-    await screen.findByText("New farmer registered");
+    await screen.findByText("Beneficiary added");
 
     // The stored-event half has read state; mark-all-read writes through.
     const button = screen.getByRole("button", { name: /Mark 1 as read/ });
@@ -172,10 +172,10 @@ describe("NotificationsPage", () => {
 
   it("marks an opened stored event read without touching derived alerts", async () => {
     renderPage();
-    await screen.findByText("New farmer registered");
+    await screen.findByText("Beneficiary added");
 
     // The event row's own View link is what "opening" it means.
-    const row = screen.getByText("New farmer registered").closest("li");
+    const row = screen.getByText("Beneficiary added").closest("li");
     await userEvent.click(within(row).getByRole("link", { name: "View" }));
 
     await vi.waitFor(() => expect(notificationsApi.markRead).toHaveBeenCalledWith(21));

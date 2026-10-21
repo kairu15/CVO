@@ -157,7 +157,7 @@ class ReportService
             ->selectRaw('address as barangay, count(*) as households')
             // Every correlated count carries an explicit deleted_at filter:
             // these subqueries bypass Eloquent, so the SoftDeletes global
-            // scope does not reach them and a deleted farmer's rows would
+            // scope does not reach them and a deleted household's rows would
             // otherwise keep inflating the barangay totals.
             ->selectRaw('(select count(*) from monitoring_records mr join beneficiaries b2 on b2.id = mr.beneficiary_id where b2.address = beneficiaries.address and mr.deleted_at is null and b2.deleted_at is null) as monitoring_visits')
             ->selectRaw('(select count(*) from field_visits fv join beneficiaries b3 on b3.id = fv.beneficiary_id where b3.address = beneficiaries.address and fv.deleted_at is null and b3.deleted_at is null) as field_visits')

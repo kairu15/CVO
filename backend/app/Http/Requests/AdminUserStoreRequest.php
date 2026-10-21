@@ -34,11 +34,11 @@ class AdminUserStoreRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email:rfc', 'max:255', Rule::unique(User::class)],
-            // Staff roles only — self-registration is the farmer path, and it
-            // creates the beneficiary record this screen cannot.
+            // Staff roles only — every account is staff; beneficiaries are
+            // program records the admin enters, never login accounts.
             'role' => ['required', 'string', Rule::in(User::STAFF_ROLES)],
             // OPTIONAL — the invite path. Sent: the account signs in with it
-            // (same policy as registration: min 8, mixed case, number,
+            // (same policy as password reset: min 8, mixed case, number,
             // symbol, confirmed so a typo cannot lock the person out).
             // Omitted: the account is created passwordless and receives a
             // one-time setup link to set their own password.

@@ -551,7 +551,6 @@ class MonitoringExcelService
         $center = $normalizedAddress !== '' ? \App\Support\Barangays::centerFor($normalizedAddress) : null;
 
         $beneficiary = Beneficiary::create([
-            'farmer_id' => $actor->id, // owned by the importer until reassigned
             'name_of_farmer' => $name,
             'address' => $address !== '' ? $address : 'Unlisted',
             // Normalized above so the same type never splits into several
@@ -560,7 +559,7 @@ class MonitoringExcelService
             'sex' => in_array($sex, ['M', 'F'], true) ? $sex : null,
             // Origin tag: lets the delete path clean these auto-created rows
             // up (see MonitoringRecordService::delete) without ever touching
-            // households a farmer or staff member registered.
+            // households the admin entered.
             'source' => Beneficiary::SOURCE_IMPORT,
             'latitude' => $center[0] ?? null,
             'longitude' => $center[1] ?? null,

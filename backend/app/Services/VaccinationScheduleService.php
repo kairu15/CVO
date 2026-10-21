@@ -68,7 +68,7 @@ class VaccinationScheduleService
         $last = self::lastVaccinationSql();
 
         $query = $this->beneficiaries->scopeQueryFor($user)
-            ->with(['technician', 'farmer'])
+            ->with('technician')
             ->select('beneficiaries.*')
             ->selectRaw("{$last} as last_vaccination_date")
             ->orderByRaw("{$last} is null desc")

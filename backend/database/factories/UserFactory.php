@@ -26,7 +26,9 @@ class UserFactory extends Factory
     {
         return [
             'name' => fake()->name(),
-            'role' => User::DEFAULT_ROLE,
+            // Every account is staff now (there is no `farmer` role); tests
+            // that need a specific role pass it explicitly.
+            'role' => 'technician',
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),

@@ -32,29 +32,23 @@ class ProfileTest extends TestCase
         $this->purok = Purok::create(['barangay_id' => $this->barangay->id, 'name' => 'Purok 1']);
     }
 
-    public function test_farmer_profile_includes_their_beneficiaries_and_location(): void
+    public function test_the_profile_carries_no_farmer_section(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $farmer->beneficiaries()->create([
-            'name_of_farmer' => $farmer->name,
-            'address' => 'Dawis',
-            'barangay_id' => $this->barangay->id,
-            'purok_id' => $this->purok->id,
-            'animal_type' => 'Carabao',
-            'sex' => 'F',
-            'location_source' => 'manual',
-        ]);
+        // Beneficiaries are records, not profiles: the endpoint answers with
+        // the staff account's own data and (per role) a staff-only section.
+        // There is no `farmer` section because there is no farmer account.
+        $technician = User::factory()->create(['role' => 'technician']);
 
-        $this->actingAs($farmer)->getJson('/api/v1/profile')
+        $this->actingAs($technician)->getJson('/api/v1/profile')
             ->assertOk()
-            ->assertJsonPath('data.user.email', $farmer->email)
-            ->assertJsonPath('data.user.role', 'farmer')
+            ->assertJsonPath('data.user.role', 'technician')
             ->assertJsonStructure([
                 'data' => [
                     'user' => ['id', 'name', 'username', 'email', 'role', 'avatar_url', 'created_at'],
-                    'farmer' => ['beneficiaries' => [['barangay' => ['id', 'name'], 'purok' => ['id', 'name']]]],
+                    'technician' => ['assigned_farmers'],
                 ],
-            ]);
+            ])
+            ->assertJsonMissingPath('data.farmer');
     }
 
     public function test_technician_and_doctor_sections_report_existing_counts(): void
@@ -112,51 +106,21 @@ class ProfileTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('email');
     }
 
-    public function test_farmer_location_update_syncs_beneficiaries(): void
+    public function test_location_fields_are_not_writable_from_the_profile(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $beneficiary = $farmer->beneficiaries()->create([
-            'name_of_farmer' => $farmer->name,
-            'address' => 'Dawis',
-            'barangay_id' => $this->barangay->id,
-            'animal_type' => 'Goat',
-        ]);
+        // Household location is corrected on the admin Beneficiaries screen,
+        // never from a personal profile: the address fields are not accepted
+        // inputs at all, and writing them changes nothing.
+        $user = User::factory()->create(['role' => 'technician']);
 
-        $this->actingAs($farmer)->patchJson('/api/v1/profile', [
-            'address' => 'Dawis',
-            'purok_id' => $this->purok->id,
+        $this->actingAs($user)->patchJson('/api/v1/profile', [
+            'address' => 'Not A Barangay',
+            'purok_id' => 999,
             'latitude' => 9.57,
             'longitude' => 122.88,
-            'location_source' => 'map_pin',
         ])->assertOk();
 
-        $this->assertDatabaseHas('beneficiaries', [
-            'id' => $beneficiary->id,
-            'purok_id' => $this->purok->id,
-            'latitude' => 9.57,
-            'location_source' => 'map_pin',
-        ]);
-    }
-
-    public function test_purok_must_belong_to_the_submitted_barangay(): void
-    {
-        $other = Barangay::create(['name' => 'Tayawan', 'latitude' => 9.4995966, 'longitude' => 122.7398316]);
-        $foreignPurok = Purok::create(['barangay_id' => $other->id, 'name' => 'Purok A']);
-        $farmer = User::factory()->create(['role' => 'farmer']);
-
-        $this->actingAs($farmer)->patchJson('/api/v1/profile', [
-            'address' => 'Dawis',
-            'purok_id' => $foreignPurok->id,
-        ])->assertUnprocessable()->assertJsonValidationErrors('purok_id');
-    }
-
-    public function test_address_must_be_a_covered_barangay(): void
-    {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-
-        $this->actingAs($farmer)->patchJson('/api/v1/profile', [
-            'address' => 'Not A Barangay',
-        ])->assertUnprocessable()->assertJsonValidationErrors('address');
+        $this->assertNull($user->fresh()->latitude ?? null);
     }
 
     public function test_password_change_requires_the_current_password(): void

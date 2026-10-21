@@ -10,8 +10,8 @@ use App\Models\User;
  *
  * Scoping here is by VISITING TECHNICIAN, not by assigned beneficiary — unlike
  * monitoring and health records. A visit is the technician's own activity log,
- * so "my visits" is the meaningful slice for that role. Farmers see the visits
- * made to their animals, and admin/doctor see everything for oversight.
+ * so "my visits" is the meaningful slice for that role; admin/doctor see
+ * everything for oversight.
  */
 class FieldVisitPolicy
 {
@@ -30,11 +30,7 @@ class FieldVisitPolicy
             return true;
         }
 
-        if ($user->role === 'technician') {
-            return $visit->technician_id === $user->id;
-        }
-
-        return $visit->beneficiary->farmer_id === $user->id;
+        return $user->role === 'technician' && $visit->technician_id === $user->id;
     }
 
     /**

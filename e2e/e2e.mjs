@@ -7,6 +7,11 @@
  *   database  php artisan migrate --seed  (provides the demo accounts below)
  *
  *   node e2e.mjs
+ *
+ * There is deliberately no registration flow here anymore: public
+ * self-registration was removed. Accounts are staff-only, created by an
+ * administrator, and beneficiaries are records — not logins — so the only
+ * public auth surface is the sign-in form itself.
  */
 import puppeteer from "puppeteer-core";
 import fs from "node:fs";
@@ -14,9 +19,8 @@ import fs from "node:fs";
 const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const BASE = "http://localhost:5173";
 
-const PASSWORD = "Sup3r-Secret!";
+const PASSWORD = "password"; // seeded demo accounts all use "password"
 const stamp = Date.now();
-const EMAIL = `e2e${stamp}@test.dev`;
 const USERNAME = `e2e${stamp}`;
 
 /** Seeded accounts — see backend/database/seeders/DatabaseSeeder.php */
@@ -24,13 +28,15 @@ const DEMO = [
   { role: "admin", email: "admin@example.com", title: "Admin Dashboard", module: "User Management" },
   { role: "doctor", email: "doctor@example.com", title: "Doctor Dashboard", module: "Vaccination Schedule" },
   { role: "technician", email: "technician@example.com", title: "Technician Dashboard", module: "Geo-Tagging Map" },
-  { role: "farmer", email: "farmer@example.com", title: "Farmer Dashboard", module: "Dispersal Status" },
 ];
 
 const shots = "screenshots";
 fs.mkdirSync(shots, { recursive: true });
 
 const consoleErrors = [];
+// Status of every SPA login POST — the auth endpoints are capped at
+// 6 attempts/minute/IP, so a throttled run is diagnosable from this alone.
+const authStatuses = [];
 let failures = 0;
 
 function ok(label, cond, extra = "") {
@@ -45,58 +51,67 @@ async function shot(page, name) {
 }
 
 async function pathIs(page, path) {
-  await page.waitForFunction((want) => window.location.pathname === want, { timeout: 15000 }, path);
+  // Generous budget: logout re-bootstraps the whole SPA (session teardown +
+  // /api/v1/user probe) and this stack answers each request in seconds.
+  await page.waitForFunction((want) => window.location.pathname === want, { timeout: 30000 }, path);
 }
 
 async function goto(page, path, waitFor) {
-  await page.goto(`${BASE}${path}`, { waitUntil: "networkidle2" });
-  if (waitFor) await page.waitForSelector(waitFor, { timeout: 10000 });
+  // Two attempts on purpose: the Vite dev server occasionally hard-reloads a
+  // tab while it re-optimizes dependencies, which lands on a blank document
+  // (empty body, no #root content). A reload picks up the finished bundle.
+  for (let attempt = 1; ; attempt++) {
+    await page.goto(`${BASE}${path}`, { waitUntil: "networkidle2" });
+    if (!waitFor) return;
+    try {
+      await page.waitForSelector(waitFor, { timeout: 15000 });
+      return;
+    } catch (err) {
+      if (attempt >= 2) throw err;
+      await sleep(1000);
+    }
+  }
 }
 
 async function signIn(page, identifier) {
   await goto(page, "/login", "#login-identifier");
   await page.type("#login-identifier", identifier);
   await page.type("#login-password", PASSWORD);
-  await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {}),
-    page.click('form:has(#login-identifier) button[type="submit"]'),
-  ]);
+  await page.click('form:has(#login-identifier) button[type="submit"]');
   await page.waitForFunction(
     () => window.location.pathname.startsWith("/dashboard"),
-    { timeout: 15000 },
+    { timeout: 20000 },
   );
-}
-
-/**
- * Which half the green overlay currently covers.
- *
- * "right" = login form on the left, "left" = register form on the right.
- */
-async function overlaySide(page) {
-  return page.evaluate(() => {
-    const panel = document.querySelector(".shadow-panel");
-    const p = panel.getBoundingClientRect();
-    const overlay = [...panel.children].find(
-      (c) => /translate-x/.test(c.className) && !c.querySelector("form"),
-    );
-    const o = overlay.getBoundingClientRect();
-    if (Math.abs(o.right - p.right) < 3) return "right";
-    if (Math.abs(o.left - p.left) < 3) return "left";
-    return "between";
-  });
-}
-
-/** Clicks the overlay's toggle button (the only visible one). */
-async function toggleAuthPanel(page) {
-  await page.click('[aria-hidden="false"] .btn-on-brand');
-  await sleep(900);
+  // The pathname flips while AuthContext is still probing the session (the
+  // shell renders a spinner with no h1/aside yet) — wait for the dashboard
+  // chrome itself, otherwise reading h1 races the spinner.
+  await page.waitForSelector("aside", { timeout: 15000 });
+  await page.waitForSelector("h1", { timeout: 15000 });
 }
 
 async function signOut(page) {
+  // The sidebar's "Log out" opens an are-you-sure dialog; the session only
+  // ends when the dialog's own button ("Yes, log out") is pressed.
+  await page.waitForFunction(
+    () => [...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Log out"),
+    { timeout: 15000 },
+  );
   await page.evaluate(() => {
     [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Log out").click();
   });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Yes, log out"),
+    { timeout: 30000 },
+  );
+  await page.evaluate(() => {
+    [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Yes, log out").click();
+  });
   await pathIs(page, "/login");
+  // Wait for the login FORM, not just the URL. The pathname flips while the
+  // SPA is still tearing the session down; driving the tab in that window
+  // wedges headless Chrome's input routing for the rest of the tab's life
+  // (every later click is silently dropped).
+  await page.waitForSelector("#login-identifier", { timeout: 15000 });
 }
 
 const browser = await puppeteer.launch({
@@ -106,100 +121,88 @@ const browser = await puppeteer.launch({
   defaultViewport: { width: 1440, height: 1000 },
 });
 
-try {
-  const page = await browser.newPage();
+// Fresh tab so each sign-in/out cycle drives a page whose input pipeline has
+// not been through a previous session teardown. Headless Chrome can wedge a
+// tab's input routing after a couple of logout transitions: the DOM stays
+// healthy (elements are visible and enabled, evaluate() works, synthetic
+// clicks fire) while every CDP mouse event is dropped on the floor. A brand
+// new tab always accepts input again, so the harness rotates tabs instead of
+// blaming the app for a browser-level stall.
+let page;
+async function freshPage() {
+  if (page && !page.isClosed()) await page.close();
+  page = await browser.newPage();
   page.on("console", (msg) => {
     if (msg.type() === "error") consoleErrors.push(msg.text());
   });
   page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
+  // Record every login response (method + status) so a throttle-limited run
+  // says so plainly instead of looking broken: the CAPS preflight rides the
+  // same URL as the POST, and a 429 here means the per-IP budget ran out.
+  page.on("response", (res) => {
+    if (res.url().includes("/api/v1/login")) {
+      authStatuses.push(`${res.request().method()} ${res.status()}`);
+    }
+  });
+  return page;
+}
+
+try {
+  await freshPage();
 
   // ---------------------------------------------------------------- Landing
   await goto(page, "/");
   let text = await page.evaluate(() => document.body.innerText);
   ok("landing page renders the system title", /Geo-Tagging of Livestock and Poultry/.test(text));
   ok("landing page has the program overview", /About the program/i.test(text));
-  ok("landing page lists the four roles", /Four roles, one shared record/i.test(text));
+  ok("landing page lists the three roles", /Three roles, one shared record/i.test(text));
+  // No self-registration promise anywhere on the public surface.
+  ok("landing page offers no self-registration", !/register yourself|self-registration/i.test(text));
   await shot(page, "01-landing");
 
-  // ------------------------------------------------------- Sliding auth panel
+  // ------------------------------------------------------------------- Login
   await goto(page, "/login", "#login-identifier");
   text = await page.evaluate(() => document.body.innerText);
-  ok("login: sign-in form is the default panel", /Welcome back/.test(text));
-  ok("login: overlay invites registration", /New here\?/.test(text));
+  ok("login: sign-in form renders", /Use the account issued by/.test(text));
+  // The sliding register panel is gone: no "New here?" invite, no toggle.
+  ok("login: no registration invite", !/New here\?/.test(text));
+  const registerToggle = await page.$('[aria-hidden="false"] .btn-on-brand');
+  ok("login: no panel toggle remains", registerToggle === null);
   await shot(page, "02-login-panel");
 
-  ok("login: overlay covers the right half", (await overlaySide(page)) === "right");
-
-  await toggleAuthPanel(page);
-  await pathIs(page, "/register");
-  ok("register: overlay slid to the left half", (await overlaySide(page)) === "left");
-  text = await page.evaluate(() => document.body.innerText);
-  ok("register: overlay invites sign-in", /Already have an account\?/.test(text));
-
-  // Client-side validation with an empty form.
-  await page.click('form:has(#register-name) button[type="submit"]');
-  await sleep(300);
-  const invalid = await page.$$eval('[aria-invalid="true"]', (els) => els.length);
-  ok("register: empty submit flags invalid fields", invalid >= 5, `${invalid} fields`);
-  await shot(page, "03-register-validation");
-
-  // Sliding back restores the sign-in panel.
-  await toggleAuthPanel(page);
-  await pathIs(page, "/login");
-  ok("login: overlay slides back to the right half", (await overlaySide(page)) === "right");
-
-  // ------------------------------------------------------------- Registration
-  await goto(page, "/register", "#register-name");
-  await sleep(900);
-  await page.type("#register-name", "E2E Tester");
-  await page.type("#register-email", EMAIL);
-  await page.type("#register-username", USERNAME);
-  await page.type("#register-password", PASSWORD);
-  await page.type("#register-password_confirmation", PASSWORD);
-
-  const roleLocked = await page.$eval("#register-role", (el) => el.disabled && el.value === "farmer");
-  ok("register: role field is locked to farmer", roleLocked);
-
-  await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {}),
-    page.click('form:has(#register-name) button[type="submit"]'),
-  ]);
-  await pathIs(page, "/dashboard/farmer");
-  ok("register: new account lands on the farmer dashboard", true);
-
-  text = await page.evaluate(() => document.body.innerText);
-  ok("farmer dashboard: shows its module list", /My Animals/.test(text) && /Dispersal Status/.test(text));
-  ok("farmer dashboard: shows the empty state", /No data yet/.test(text));
-  await shot(page, "04-farmer-dashboard");
-
-  // ------------------------------------------------------- RBAC + persistence
-  await goto(page, "/dashboard/admin");
-  await sleep(500);
+  // The /register route itself no longer exists: it 404s in the SPA (no
+  // matching route) and lands back on /login through the catch-all.
+  await goto(page, "/register");
   ok(
-    "rbac: farmer is redirected away from /dashboard/admin",
-    new URL(page.url()).pathname === "/dashboard/farmer",
+    "register: the route no longer exists",
+    new URL(page.url()).pathname !== "/register",
     new URL(page.url()).pathname,
   );
 
-  await page.reload({ waitUntil: "networkidle2" });
-  await sleep(500);
+  // Client-side validation with an empty form still guards the login fields.
+  await goto(page, "/login", "#login-identifier");
+  await page.click('form:has(#login-identifier) button[type="submit"]');
+  await sleep(300);
+  const invalid = await page.$$eval('[aria-invalid="true"]', (els) => els.length);
+  ok("login: empty submit flags invalid fields", invalid >= 1, `${invalid} fields`);
+
+  // Wrong credentials are refused without leaking which half was wrong.
+  // The rejection comes back over the API (session + login round trip), so
+  // wait for the message rather than for a fixed beat.
+  await goto(page, "/login", "#login-identifier");
+  await page.type("#login-identifier", `ghost${stamp}@test.dev`);
+  await page.type("#login-password", "wrong-password");
+  await page.click('form:has(#login-identifier) button[type="submit"]');
+  await page.waitForFunction(() => /No account found/.test(document.body.innerText), {
+    timeout: 15000,
+  }).catch(() => {});
   text = await page.evaluate(() => document.body.innerText);
-  ok("session survives a reload", text.includes(EMAIL));
-
-  // ------------------------------------------------------------------ Logout
-  await signOut(page);
-  ok("logout returns to /login", true);
-  await shot(page, "05-logged-out");
-
-  // ------------------------------------------------- Login by username again
-  await signIn(page, USERNAME);
-  await pathIs(page, "/dashboard/farmer");
-  ok("login works with a username", true);
-
-  await signOut(page);
+  ok("login: unknown account is refused", /No account found/i.test(text));
+  await shot(page, "03-login-rejected");
 
   // -------------------------------------------------------- Seeded demo roles
   for (const demo of DEMO) {
+    await freshPage();
     await signIn(page, demo.email);
     await pathIs(page, `/dashboard/${demo.role}`);
 
@@ -212,8 +215,8 @@ try {
     ok(`${demo.role}: sidebar lists "${demo.module}"`, state.nav.includes(demo.module));
 
     if (demo.role === "admin") {
-      // The administrator is the all access account: every dashboard opens.
-      for (const target of ["doctor", "technician", "farmer"]) {
+      // The administrator is the all-access account: every dashboard opens.
+      for (const target of ["doctor", "technician"]) {
         await goto(page, `/dashboard/${target}`);
         await sleep(400);
         ok(
@@ -222,10 +225,31 @@ try {
           new URL(page.url()).pathname,
         );
       }
-    } else {
-      // Every other role is scoped to its own dashboard.
-      await goto(page, "/dashboard/admin");
+      // The farmer dashboard is gone entirely — that URL must not resolve.
+      await goto(page, "/dashboard/farmer");
       await sleep(400);
+      ok(
+        "the farmer dashboard no longer exists",
+        new URL(page.url()).pathname !== "/dashboard/farmer",
+        new URL(page.url()).pathname,
+      );
+      // …and the miss lands on the public landing page (catch-all), which
+      // has no session controls — come back to a dashboard before signing
+      // out below.
+      await goto(page, "/dashboard/admin");
+      await page.waitForSelector("aside", { timeout: 15000 });
+    } else {
+      // Every other role is scoped to its own dashboard. The redirect waits on
+      // the auth probe, and this stack answers API calls in seconds, so wait
+      // for the path rather than for a fixed beat.
+      await goto(page, "/dashboard/admin");
+      await page
+        .waitForFunction(
+          (want) => window.location.pathname === want,
+          { timeout: 30000 },
+          `/dashboard/${demo.role}`,
+        )
+        .catch(() => {});
       ok(
         `${demo.role}: cannot open /dashboard/admin`,
         new URL(page.url()).pathname === `/dashboard/${demo.role}`,
@@ -237,9 +261,33 @@ try {
     await signOut(page);
   }
 
+  // RBAC against the admin workspace with a non-all-access role.
+  await freshPage();
+  await signIn(page, "technician@example.com");
+  await goto(page, "/dashboard/admin/beneficiaries");
+  // The guard only decides after the session probe resolves, which on this
+  // stack is seconds — wait for the redirect instead of guessing at a beat.
+  await page
+    .waitForFunction(
+      (want) => window.location.pathname === want,
+      { timeout: 30000 },
+      "/dashboard/technician",
+    )
+    .catch(() => {});
+  ok(
+    "rbac: technician is redirected away from the admin beneficiaries screen",
+    new URL(page.url()).pathname === "/dashboard/technician",
+    new URL(page.url()).pathname,
+  );
+  await signOut(page);
+
   // ------------------------------------------------------------ Guest guard
-  await goto(page, "/dashboard/farmer");
-  await sleep(500);
+  await freshPage();
+  await goto(page, "/dashboard/admin");
+  // Same probe race: a guest is only bounced once the session check returns.
+  await page
+    .waitForFunction(() => window.location.pathname === "/login", { timeout: 30000 })
+    .catch(() => {});
   ok(
     "guest: protected route redirects to /login",
     new URL(page.url()).pathname === "/login",
@@ -248,10 +296,10 @@ try {
 
   // ------------------------------------------------------------------ Mobile
   await page.setViewport({ width: 390, height: 844 });
-  await goto(page, "/register", "#register-name");
+  await goto(page, "/login", "#login-identifier");
   const tabs = await page.$$eval('[role="tab"]', (els) => els.length);
-  ok("mobile: auth panel collapses to two tabs", tabs === 2, `${tabs} tabs`);
-  await shot(page, "07-mobile-register");
+  ok("mobile: no sliding auth tabs remain", tabs === 0, `${tabs} tabs`);
+  await shot(page, "07-mobile-login");
 
   await goto(page, "/");
   const overflow = await page.evaluate(() => ({
@@ -259,6 +307,14 @@ try {
     win: window.innerWidth,
   }));
   ok("mobile: landing page does not overflow horizontally", overflow.doc <= overflow.win + 1);
+
+  console.log(`\nLogin responses (server cap: 6/min/IP): ${authStatuses.join(", ")}`);
+  if (authStatuses.some((s) => s.includes(" 429"))) {
+    console.log(
+      "NOTE — a login was rate-limited (429). Wait a minute and re-run; " +
+        "repeated runs share the same per-IP budget.",
+    );
+  }
 
   if (consoleErrors.length) {
     console.log("\nConsole errors captured:");
@@ -269,9 +325,17 @@ try {
 } catch (err) {
   failures++;
   console.error("ERROR:", err.message);
+  // Where did the run actually stop? A hang on a signed-out shell looks just
+  // like a hang on a dashboard without this.
+  const active = page && !page.isClosed() ? page : (await browser.pages()).at(-1);
   try {
-    const pages = await browser.pages();
-    await pages[pages.length - 1].screenshot({ path: "screenshots/99-failure.png" });
+    console.error(`URL at failure: ${active.url()}`);
+    const body = await active.evaluate(() => document.body.innerText.replace(/\s+/g, " ").slice(0, 300));
+    console.error(`Body at failure: ${body}`);
+  } catch {}
+  console.error(`Login responses so far: ${authStatuses.join(", ")}`);
+  try {
+    await active.screenshot({ path: "screenshots/99-failure.png" });
     console.error("screenshot: screenshots/99-failure.png");
   } catch {}
 } finally {

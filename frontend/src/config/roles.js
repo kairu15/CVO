@@ -5,32 +5,34 @@
  * returned by `GET /api/v1/user` is used directly to look up an entry here.
  *
  * The sidebar is GROUPED: `nav` is a list of `{ group, items }` bands, where
- * `group: null` renders without a header (Overview leads, Notifications and
- * Support close every sidebar). Groups are LABELS, not permissions — the
- * items themselves are unchanged per role, and a farmer's sidebar still never
- * names an admin module. Give an item a `to` value once its route exists and
+ * `group: null` renders without a header (Overview leads, Notifications close
+ * every sidebar). Groups are LABELS, not permissions — the items themselves
+ * are unchanged per role. Give an item a `to` value once its route exists and
  * the sidebar will start linking to it; items without one still render with a
  * "Soon" tag.
+ *
+ * There is deliberately no `farmer` role: beneficiaries are program records the
+ * administrator maintains (see the Beneficiaries screen), never login accounts.
  */
 
-export const ROLE_KEYS = ["admin", "doctor", "technician", "farmer"];
+export const ROLE_KEYS = ["admin", "doctor", "technician"];
 
 /**
  * Roles an administrator creates — mirrors `User::STAFF_ROLES` on the server.
  *
- * Farmer accounts come from public self-registration, which also creates the
- * beneficiary record the monitoring modules auto-fill from; the admin "create
- * account" form deliberately offers only these three.
+ * Every account in the system is one of these three; there is no
+ * self-registration path, and the admin "create account" form offers exactly
+ * this list.
  */
 export const STAFF_ROLE_KEYS = ["admin", "doctor", "technician"];
 
 /**
  * Roles allowed into *every* dashboard, not just their own.
  *
- * The CVO administrator oversees all four workspaces, so it is the "all
- * access" account — a single login can review the vet, field and farmer views
- * without signing in and out. This is what makes admin@example.com an all
- * access account after seeding.
+ * The CVO administrator oversees all three workspaces, so it is the "all
+ * access" account — a single login can review the vet and field views without
+ * signing in and out. This is what makes admin@example.com an all access
+ * account after seeding.
  *
  * NOTE: this only guards routing in the SPA. The same rules are enforced
  * server-side per endpoint (the role_permissions matrix + Policies) — a
@@ -137,33 +139,6 @@ export const roles = {
         group: null,
         items: [
           { label: "Notifications", icon: "bell", to: "/dashboard/technician/notifications", badge: "notifications" },
-        ],
-      },
-    ],
-  },
-  farmer: {
-    key: "farmer",
-    label: "Farmer / Beneficiary",
-    shortLabel: "Farmer",
-    dashboardLabel: "Farmer Dashboard",
-    path: "/dashboard/farmer",
-    blurb: "Sees the animals received and the status of each dispersal.",
-    icon: "livestock",
-    nav: [
-      { group: null, items: [{ label: "Overview", icon: "grid", to: "/dashboard/farmer" }] },
-      {
-        group: "Monitoring",
-        items: [{ label: "My Animals", icon: "livestock", to: "/dashboard/farmer/monitoring" }],
-      },
-      {
-        group: "Program",
-        items: [{ label: "Dispersal Status", icon: "truck", to: "/dashboard/farmer/dispersal-status" }],
-      },
-      {
-        group: null,
-        items: [
-          { label: "Notifications", icon: "bell", to: "/dashboard/farmer/notifications", badge: "notifications" },
-          { label: "Support / Contact CVO", icon: "life-buoy", to: "/dashboard/farmer/support" },
         ],
       },
     ],

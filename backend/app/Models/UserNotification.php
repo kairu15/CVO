@@ -34,9 +34,13 @@ class UserNotification extends Model
     /** @use HasFactory<UserNotificationFactory> */
     use HasFactory;
 
-    public const TYPE_REGISTRATION_NEW = 'registration-new';
-
-    public const TYPE_REGISTRATION_ACCEPTED = 'registration-accepted';
+    /**
+     * An administrator enrolled a beneficiary. This replaced the old
+     * `registration-new` event when public self-registration was removed —
+     * historical rows may still carry that string, which is why the column is
+     * a plain string rather than an enum.
+     */
+    public const TYPE_BENEFICIARY_ADDED = 'beneficiary-added';
 
     public const TYPE_TECHNICIAN_ASSIGNED = 'technician-assigned';
 
@@ -68,8 +72,7 @@ class UserNotification extends Model
     ];
 
     public const TYPES = [
-        self::TYPE_REGISTRATION_NEW,
-        self::TYPE_REGISTRATION_ACCEPTED,
+        self::TYPE_BENEFICIARY_ADDED,
         self::TYPE_TECHNICIAN_ASSIGNED,
         self::TYPE_TECHNICIAN_REASSIGNED,
         self::TYPE_FIELD_VISIT_PHOTO,

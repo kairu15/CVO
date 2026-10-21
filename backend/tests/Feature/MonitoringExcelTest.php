@@ -111,7 +111,6 @@ class MonitoringExcelTest extends TestCase
     {
         $technician = User::factory()->create(['role' => 'technician']);
         Beneficiary::factory()
-            ->forFarmer(User::factory()->create(['role' => 'farmer']))
             ->create([
                 'name_of_farmer' => 'Juan Dela Cruz',
                 'address' => 'Ali-is',

@@ -16,8 +16,8 @@ import { getRole } from "../config/roles";
  * Sections with three different natures, grouped rather than listed flat:
  *
  * - Office contact profile — DATA. The office edits it (the phone number
- *   changes when the office moves), and the public landing page, the farmer
- *   Support page and the password-reset note read it back through
+ *   changes when the office moves), and the public landing page and the
+ *   password-reset note read it back through
  *   `GET /api/v1/site`.
  * - Alerts & thresholds — POLICY. The vaccination cycle and the field-visit
  *   overdue window used to be config values, which made a clinical decision a
@@ -108,8 +108,7 @@ const NOTIFICATION_PREFERENCES = [
   {
     group: "Events",
     items: [
-      { key: "notify_registration_new", type: "registration-new", label: "New registration submitted" },
-      { key: "notify_registration_accepted", type: "registration-accepted", label: "Registration accepted" },
+      { key: "notify_beneficiary_added", type: "beneficiary-added", label: "Beneficiary added to the program" },
       { key: "notify_technician_assigned", type: "technician-assigned", label: "Technician assigned" },
       { key: "notify_technician_reassigned", type: "technician-reassigned", label: "Technician reassigned" },
       { key: "notify_field_visit_photo", type: "field-visit-photo", label: "Field visit photo uploaded" },
@@ -376,8 +375,8 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
               Contact info
             </h3>
             <p className="mt-1.5 text-xs text-slate-500">
-              Rendered on the public landing page, the farmer Support page and
-              the password-reset note on the sign-in form. Values shown before
+              Rendered on the public landing page and the password-reset note
+              on the sign-in form. Values shown before
               the first save are the shipped defaults.
             </p>
 
@@ -730,7 +729,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
             <p className="mt-1.5 text-xs text-slate-500">
               The barangays the program covers and the puroks inside them.
               Puroks can be added, renamed and deleted while no household is
-              registered in them — the registration form's dropdown follows
+              registered in them — the Beneficiaries form's dropdown follows
               immediately. Barangays can be added but not renamed: renaming one
               would orphan every historical address that spells it the old way.
             </p>

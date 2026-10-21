@@ -15,8 +15,12 @@ import { Icon } from "./Icons";
  * @param {[number, number]|null} props.value selected [lat, lng]
  * @param {(value: [number, number]|null) => void} props.onChange
  * @param {string} props.address barangay name the pin belongs to
+ * @param {boolean} [props.autoResolve] resolve the barangay-center pin from
+ *   `address` automatically. Edit forms seed an existing pin and switch this
+ *   off until the admin changes the barangay, so opening the dialog cannot
+ *   silently move a saved farm pin back to the barangay center.
  */
-export function CoordinatePicker({ value, onChange, address = "" }) {
+export function CoordinatePicker({ value, onChange, address = "", autoResolve = true }) {
   const [status, setStatus] = useState(null);
   const [locating, setLocating] = useState(false);
   const [finding, setFinding] = useState(false);
@@ -25,6 +29,9 @@ export function CoordinatePicker({ value, onChange, address = "" }) {
   // manual fine-tune exists yet.
   useEffect(() => {
     let cancelled = false;
+
+    // Caller owns the pin (edit mode): do not overwrite it on mount.
+    if (!autoResolve) return undefined;
 
     if (!address.trim()) {
       onChange(null);
@@ -55,7 +62,7 @@ export function CoordinatePicker({ value, onChange, address = "" }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onChange is a fresh closure each render; reacting to it would re-fire the lookup every render
-  }, [address]);
+  }, [address, autoResolve]);
 
   function useMyLocation() {
     if (!("geolocation" in navigator)) {

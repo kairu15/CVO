@@ -211,24 +211,6 @@ class VaccinationScheduleTest extends TestCase
             ->assertJsonValidationErrors(['status']);
     }
 
-    public function test_a_farmer_sees_only_their_own_animals(): void
-    {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $own = Beneficiary::factory()->forFarmer($farmer)->create();
-
-        MonitoringRecord::factory()->for($own, 'beneficiary')->create([
-            'vaccination_date' => now()->subDays(5)->toDateString(),
-        ]);
-
-        $this->vaccinatedDaysAgo(5);
-
-        $this->actingAs($farmer)
-            ->getJson('/api/v1/vaccination-schedule')
-            ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $own->id);
-    }
-
     public function test_a_technician_sees_only_assigned_animals(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);

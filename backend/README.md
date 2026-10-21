@@ -55,7 +55,6 @@ php artisan test             # uses sqlite in-memory automatically
 
 | Method | URI                    | Auth           | Description                          |
 |--------|------------------------|----------------|--------------------------------------|
-| POST   | `/api/v1/register`     | -              | Register + start session             |
 | POST   | `/api/v1/login`        | -              | Login (cookie session for SPA)       |
 | POST   | `/api/v1/token-login`  | -              | Login (returns bearer token, mobile) |
 | GET    | `/api/v1/user`         | session/token  | Current user                         |
@@ -66,7 +65,11 @@ php artisan test             # uses sqlite in-memory automatically
 | PUT    | `/api/v1/projects/{id}`| session/token  | Update project (owner only)          |
 | DELETE | `/api/v1/projects/{id}`| session/token  | Delete project (owner only)          |
 
-SPA clients must first hit `GET /sanctum/csrf-cookie` before `login`/`register`.
+There is no `/api/v1/register` endpoint: accounts are staff-only, created by
+an administrator via the `/admin/users` routes, and beneficiaries are program
+records entered on the admin Beneficiaries screen — never logins.
+
+SPA clients must first hit `GET /sanctum/csrf-cookie` before `login`.
 
 ## Structure notes
 

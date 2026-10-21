@@ -9,8 +9,7 @@ class DispersalEventPolicy
 {
     /**
      * Mirrors the beneficiary scoping: admin/doctor have program-wide
-     * oversight, technicians see the chains they are assigned to, farmers
-     * only their own animals.
+     * oversight, technicians see the chains they are assigned to.
      */
     public function viewAny(User $user): bool
     {
@@ -27,19 +26,14 @@ class DispersalEventPolicy
             return true;
         }
 
-        if ($user->role === 'technician') {
-            return $this->touchesTechnician($event, $user->id);
-        }
-
-        return $this->touchesFarmer($event, $user->id);
+        return $user->role === 'technician' && $this->touchesTechnician($event, $user->id);
     }
 
     /**
-     * Farmers record the initial dispersal of the animal they received;
-     * technicians record dispersals in the field (including re-dispersals);
-     * admin may backfill records. Scope enforcement ("own"/"assigned")
-     * happens in the FormRequest's scoped exists rules, mirroring the
-     * BeneficiaryPolicy pattern.
+     * Technicians record dispersals in the field (including re-dispersals);
+     * admin may backfill records. Scope enforcement ("assigned") happens in
+     * the FormRequest's scoped exists rules, mirroring the BeneficiaryPolicy
+     * pattern.
      */
     public function create(User $user): bool
     {
@@ -82,13 +76,4 @@ class DispersalEventPolicy
             || $event->newBeneficiary?->technician_id === $technicianId;
     }
 
-    /**
-     * True when the farmer owns any beneficiary the event touches.
-     */
-    private function touchesFarmer(DispersalEvent $event, int $farmerId): bool
-    {
-        return $event->beneficiary->farmer_id === $farmerId
-            || $event->parentBeneficiary?->farmer_id === $farmerId
-            || $event->newBeneficiary?->farmer_id === $farmerId;
-    }
 }

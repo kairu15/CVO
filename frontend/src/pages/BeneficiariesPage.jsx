@@ -4,6 +4,7 @@ import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { Modal } from "../components/Modal";
 import { BeneficiaryDetailModal } from "../components/BeneficiaryDetailModal";
+import { BeneficiaryFormModal } from "../components/BeneficiaryFormModal";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
@@ -14,15 +15,18 @@ import { BulkActionBar } from "../components/BulkActionBar";
 import { PaginationFooter } from "../components/PaginationFooter";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useBarangays } from "../hooks/useBarangays";
 import { useToast } from "../context/ToastContext";
 
 /**
- * Admin "Beneficiaries" screen — the full directory with per-row and bulk
- * (per-barangay) technician assignment.
+ * Admin "Beneficiaries" screen — the directory administrators enrol and
+ * maintain, with per-row and bulk (per-barangay) technician assignment.
  *
- * The search box is debounced (300ms) so typing does not fire a request per
- * keystroke, and bulk assignment is one transactional API call whose
- * partial failures are surfaced per row.
+ * Beneficiaries are program records, not accounts: "Add beneficiary" creates
+ * the household (and its first monitoring record) with no login, no password
+ * and no approval step. The search box is debounced (300ms) so typing does not
+ * fire a request per keystroke, and bulk assignment is one transactional API
+ * call whose partial failures are surfaced per row.
  */
 export default function BeneficiariesPage() {
   const toast = useToast();
@@ -34,6 +38,14 @@ export default function BeneficiariesPage() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
+  const [barangayFilter, setBarangayFilter] = useState("");
+
+  // The add/edit dialog. `editing` null means "add" — the form then creates
+  // the record and its monitoring row server-side.
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+
+  const [barangays] = useBarangays();
 
   const [selected, setSelected] = useState(() => new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -55,6 +67,7 @@ export default function BeneficiariesPage() {
           per_page: 50,
           page,
           search: debouncedSearch || undefined,
+          barangay: barangayFilter || undefined,
         }),
         adminApi.listUsers({ role: "technician", per_page: 50 }),
       ]);
@@ -67,7 +80,7 @@ export default function BeneficiariesPage() {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [debouncedSearch, page]);
+  }, [debouncedSearch, barangayFilter, page]);
 
   useEffect(() => {
     load();
@@ -214,6 +227,17 @@ export default function BeneficiariesPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
+              <Icon name="plus" className="h-4 w-4" />
+              Add beneficiary
+            </button>
             {beneficiaries.length > 0 && (
               <label className="mr-1 flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
                 <SelectAllCheckbox
@@ -225,6 +249,23 @@ export default function BeneficiariesPage() {
                 Select all
               </label>
             )}
+            <select
+              className="field w-full sm:w-44"
+              value={barangayFilter}
+              onChange={(event) => {
+                setBarangayFilter(event.target.value);
+                setSelected(new Set());
+                setPage(1);
+              }}
+              aria-label="Filter by barangay"
+            >
+              <option value="">All barangays</option>
+              {barangays.map((barangay) => (
+                <option key={barangay.name} value={barangay.name}>
+                  {barangay.name}
+                </option>
+              ))}
+            </select>
             <div className="relative">
               <Icon name="search" className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400" />
               <input
@@ -234,7 +275,7 @@ export default function BeneficiariesPage() {
                   setSearch(event.target.value);
                   setPage(1);
                 }}
-                placeholder="Search farmer or barangay…"
+                placeholder="Search name, RSBSA #, barangay…"
                 className="field w-64 pl-9"
                 aria-label="Search beneficiaries"
               />
@@ -277,7 +318,7 @@ export default function BeneficiariesPage() {
         ) : beneficiaries.length === 0 ? (
           <EmptyState
             title="No beneficiaries yet"
-            description="Beneficiaries appear here when farmers register their dispersed animals."
+            description="Beneficiaries appear here once an administrator enrols them."
           />
         ) : (
           <>
@@ -307,18 +348,22 @@ export default function BeneficiariesPage() {
                 <table className="w-full text-left text-xs">
                   <colgroup>
                     <col className="w-10" />
-                    <col className="w-[38%]" />
-                    <col className="w-[24%]" />
-                    <col className="w-[12%]" />
+                    <col className="w-[30%]" />
+                    <col className="w-[18%]" />
+                    <col className="w-[18%]" />
+                    <col className="w-[8%]" />
                     <col />
+                    <col className="w-20" />
                   </colgroup>
                   <thead>
                     <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
                       <th scope="col" className="px-4 py-2" />
                       <th scope="col" className="px-4 py-2.5 font-semibold">Name of Farmer</th>
+                      <th scope="col" className="px-4 py-2.5 font-semibold">RSBSA #</th>
                       <th scope="col" className="px-4 py-2.5 font-semibold">Animal</th>
                       <th scope="col" className="px-4 py-2.5 font-semibold">Sex</th>
                       <th scope="col" className="px-4 py-2.5 font-semibold">Technician</th>
+                      <th scope="col" className="px-4 py-2.5 font-semibold">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -344,6 +389,9 @@ export default function BeneficiariesPage() {
                           </button>
                         </td>
                         <td className="truncate px-4 py-2.5 text-slate-600">
+                          {beneficiary.rsbsa_number || <span className="text-slate-400">—</span>}
+                        </td>
+                        <td className="truncate px-4 py-2.5 text-slate-600">
                           {beneficiary.animal_type}
                         </td>
                         <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
@@ -353,6 +401,19 @@ export default function BeneficiariesPage() {
                           {beneficiary.technician_id
                             ? technicianName(beneficiary.technician_id)
                             : <span className="font-medium text-amber-700">Unassigned</span>}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditing(beneficiary);
+                              setFormOpen(true);
+                            }}
+                            className="text-xs font-semibold text-brand-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                            aria-label={`Edit ${beneficiary.name_of_farmer}`}
+                          >
+                            Edit
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -378,6 +439,17 @@ export default function BeneficiariesPage() {
         onClose={() => setDetail(null)}
         technicianName={technicianName}
       />
+
+      {/* Mounted only while open: the form pulls auth/offline context and the
+          map picker, neither of which the directory itself needs. */}
+      {formOpen && (
+        <BeneficiaryFormModal
+          open
+          beneficiary={editing}
+          onClose={() => setFormOpen(false)}
+          onSaved={load}
+        />
+      )}
 
       <Modal
         open={bulkOpen}

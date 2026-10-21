@@ -4,12 +4,12 @@ import { Icon } from "./Icons";
 
 /**
  * Floating details window for one beneficiary — opened by clicking the
- * farmer's name in the admin directory.
+ * beneficiary's name in the admin directory.
  *
  * Renders from the row the list already loaded (the admin endpoint includes
- * technician, farmer account, coordinates and location_source), so opening
- * it never fires another request. Wraps the shared Modal for the overlay,
- * Escape handling and scroll lock.
+ * technician, coordinates and location_source), so opening it never fires
+ * another request. Wraps the shared Modal for the overlay, Escape handling
+ * and scroll lock.
  *
  * @param {object} props
  * @param {object|null} props.beneficiary the clicked row, or null (closed)
@@ -35,10 +35,6 @@ export function BeneficiaryDetailModal({ beneficiary, onClose, technicianName })
       beneficiary.sex === "M" ? "Male" : beneficiary.sex === "F" ? "Female" : beneficiary.sex,
     ],
     [
-      "Farmer account",
-      beneficiary.farmer?.email ?? beneficiary.farmer?.name ?? null,
-    ],
-    [
       "Assigned technician",
       beneficiary.technician_id
         ? (beneficiary.technician?.name ?? technicianName?.(beneficiary.technician_id) ?? null)
@@ -52,7 +48,7 @@ export function BeneficiaryDetailModal({ beneficiary, onClose, technicianName })
         ? `${beneficiary.latitude}, ${beneficiary.longitude}`
         : null,
     ],
-    ["Registered", beneficiary.created_at ? beneficiary.created_at.slice(0, 10) : null],
+    ["Enrolled", beneficiary.created_at ? beneficiary.created_at.slice(0, 10) : null],
   ].filter(([, value]) => value !== null && value !== undefined && value !== "");
 
   return (
@@ -62,8 +58,9 @@ export function BeneficiaryDetailModal({ beneficiary, onClose, technicianName })
       onClose={onClose}
     >
       <p className="-mt-2 text-xs text-slate-500">
-        Everything on this record was captured at registration and is read-only
-        here; monitoring records fill it in over time.
+        Everything on this record was entered by the CVO staff when the
+        beneficiary was enrolled and is read-only here; monitoring records
+        fill it in over time.
       </p>
 
       <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">

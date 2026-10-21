@@ -14,7 +14,6 @@ import { fieldVisitsApi } from "../api/fieldVisitsApi";
 import { caseNotesApi } from "../api/caseNotesApi";
 import { healthRecordsApi } from "../api/healthRecordsApi";
 import { monitoringApi } from "../api/monitoringApi";
-import { authApi } from "../api/authApi";
 import { syncApi } from "../api/syncApi";
 
 vi.mock("../api/fieldVisitsApi", () => ({
@@ -31,10 +30,6 @@ vi.mock("../api/healthRecordsApi", () => ({
 
 vi.mock("../api/monitoringApi", () => ({
   monitoringApi: { create: vi.fn(), update: vi.fn(), get: vi.fn() },
-}));
-
-vi.mock("../api/authApi", () => ({
-  authApi: { register: vi.fn() },
 }));
 
 vi.mock("../api/syncApi", () => ({
@@ -241,24 +236,23 @@ describe("offlineQueue", () => {
     expect(await getQueue()).toEqual([]);
   });
 
-  it("replays a queued farmer registration by creating the account", async () => {
-    authApi.register.mockResolvedValue({ id: 9 });
-
+  it("never replays a legacy registration item — that queue kind is gone", async () => {
+    // Farmer self-registration was removed from the product: the queue no
+    // longer defines a `registration` consumer, so an item of that kind (left
+    // behind by an older client version) is parked forever rather than
+    // replayed against an endpoint that no longer exists.
     await enqueue({
       kind: "registration",
-      payload: { name: "Juan", email: "juan@example.com", password: "Sup3r-Secret!" },
+      payload: { name: "Juan", email: "juan@example.com" },
       label: "Registration — Juan",
     });
 
     const summary = await flushQueue();
 
-    expect(authApi.register).toHaveBeenCalledWith({
-      name: "Juan",
-      email: "juan@example.com",
-      password: "Sup3r-Secret!",
-    });
-    expect(summary.synced).toBe(1);
-    expect(await getQueue()).toEqual([]);
+    expect(summary.synced).toBe(0);
+    const remaining = await getQueue();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].kind).toBe("registration");
   });
 
   it("parks a monitoring edit as a conflict when the record changed first", async () => {

@@ -43,7 +43,7 @@ class ReportChartTest extends TestCase
     {
         $this->getJson('/api/v1/admin/report/charts/dispersal-trend')->assertUnauthorized();
 
-        foreach (['doctor', 'technician', 'farmer'] as $role) {
+        foreach (['doctor', 'technician'] as $role) {
             $this->actingAs(User::factory()->create(['role' => $role]))
                 ->getJson('/api/v1/admin/report/charts/dispersal-trend')
                 ->assertForbidden();

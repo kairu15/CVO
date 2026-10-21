@@ -36,16 +36,29 @@ describe("i18n", () => {
     });
 
     await waitFor(() => expect(i18n.language).toBe("fil"));
-    expect(i18n.t("support.title")).toBe("Suporta / Kontakin ang CVO");
+    // A key whose Filipino wording differs from English — proves the bundle
+    // load is real, not a silent fallback.
+    expect(i18n.t("common.backToHome")).toBe("Bumalik sa home");
     expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("fil");
   });
 
   it("falls back to English for a key a language has not translated yet", async () => {
     await i18n.changeLanguage("ceb");
 
-    // `support.online` is deliberately absent from ceb.json — a partial
-    // translation must degrade to English rather than showing a raw key.
-    expect(i18n.t("support.online")).toBe("Online");
-    expect(i18n.t("support.title")).toBe("Suporta / Kontaka ang CVO");
+    // Strip one Cebuano key in memory to simulate the moment before a new
+    // string is translated: it must degrade to English, not show a raw key.
+    // getResourceBundle() hands back the LIVE bundle object, so mutate it
+    // and restore afterwards — and restore even if the assertion fails.
+    const bundle = i18n.getResourceBundle("ceb", "translation");
+    const original = bundle.common.backToHome;
+    delete bundle.common.backToHome;
+
+    try {
+      expect(i18n.t("common.backToHome")).toBe("Back to home");
+    } finally {
+      bundle.common.backToHome = original;
+    }
+
+    expect(i18n.t("common.backToHome")).toBe("Balik sa home");
   });
 });

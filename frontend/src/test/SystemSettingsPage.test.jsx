@@ -61,8 +61,7 @@ const SETTINGS = {
   },
   animal_types: ["Carabao", "Cattle", "Goat"],
   notifications: {
-    "registration-new": true,
-    "registration-accepted": true,
+    "beneficiary-added": true,
     "technician-assigned": true,
     "technician-reassigned": true,
     "field-visit-photo": true,
@@ -250,8 +249,8 @@ describe("SystemSettingsPage", () => {
 
     const payload = settingsApi.save.mock.calls[0][0];
     expect(payload.notify_smart_no_recent_visit).toBe(false);
-    expect(payload.notify_registration_new).toBe(true);
-    expect(Object.keys(payload)).toHaveLength(9);
+    expect(payload.notify_beneficiary_added).toBe(true);
+    expect(Object.keys(payload)).toHaveLength(8);
   });
 
   it("manages puroks: add, rename, delete with confirm", async () => {

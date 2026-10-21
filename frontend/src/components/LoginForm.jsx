@@ -24,8 +24,8 @@ const NOTICE_KEYS = {
 
 /**
  * @param {object} props
- * @param {string} [props.idPrefix] namespace for element ids — the sign-up form
- *   shares the page with this one on desktop, so ids must not collide.
+ * @param {string} [props.idPrefix] namespace for element ids, so an embedding
+ *   page can mount more than one auth surface without duplicate ids.
  */
 export function LoginForm({ idPrefix = "login" }) {
   const { t } = useTranslation();
@@ -37,8 +37,8 @@ export function LoginForm({ idPrefix = "login" }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Route state prefill: the register form hands over the just-registered
-  // email so the farmer doesn't retype it. Falls back to the redirect-target
+  // Route state prefill: a hand-off (e.g. the account-setup link) can pass
+  // the email in so it isn't retyped. Falls back to the redirect-target
   // capture used by ProtectedRoute.
   const [form, setForm] = useState(() => {
     // "Remember me" from a previous visit: pre-fill the identifier and reflect

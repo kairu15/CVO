@@ -20,14 +20,6 @@ vi.mock("../api/adminApi", () => ({
   },
 }));
 
-// The barangay filter's option list loads on mount; give it a stub.
-vi.mock("../api/beneficiariesApi", () => ({
-  fetchBarangays: vi.fn().mockResolvedValue([
-    { id: 1, name: "Dawis", latitude: 9.57, longitude: 122.88 },
-    { id: 2, name: "Tayawan", latitude: 9.49, longitude: 122.73 },
-  ]),
-}));
-
 // Instant debounce — the debounce behaviour itself is covered in the hook test.
 vi.mock("../hooks/useDebouncedValue", async (importOriginal) => {
   const actual = await importOriginal();
@@ -162,7 +154,11 @@ describe("UserManagementPage", () => {
     });
   });
 
-  it("creates a staff account with a typed password when that mode is chosen", async () => {
+  // The create-account modal mounts the whole form and typing through
+  // userEvent is slow; under a full-suite parallel load this brushed against
+  // the 5s default (the "2-test flake" noted in vitest.config.js). Same
+  // assertions — just room for contention.
+  it("creates a staff account with a typed password when that mode is chosen", { timeout: 10_000 }, async () => {
     adminApi.createUser.mockResolvedValue({
       id: 9,
       name: "Doc Reyes",
@@ -215,7 +211,7 @@ describe("UserManagementPage", () => {
     );
   });
 
-  it("invites by default: no password is sent and the setup link is shown", async () => {
+  it("invites by default: no password is sent and the setup link is shown", { timeout: 10_000 }, async () => {
     adminApi.createUser.mockResolvedValue({
       id: 10,
       name: "Doc Reyes",
@@ -333,20 +329,6 @@ describe("UserManagementPage", () => {
     expect(screen.getByText(/Last sign-in/i)).toBeInTheDocument();
     expect(screen.getByText("Role changed")).toBeInTheDocument();
     expect(screen.getByText(/technician → doctor/)).toBeInTheDocument();
-  });
-
-  it("re-queries the API when a barangay filter is chosen", async () => {
-    renderPage();
-    await screen.findByText("Jun Technician");
-
-    await act(async () => {
-      await userEvent.selectOptions(screen.getByLabelText("Barangay"), "Dawis");
-    });
-
-    await waitFor(() => {
-      const calls = adminApi.listUsersPage.mock.calls;
-      expect(calls[calls.length - 1]?.[0]?.barangay).toBe("Dawis");
-    });
   });
 
   it("shows server validation errors against the field that failed", async () => {

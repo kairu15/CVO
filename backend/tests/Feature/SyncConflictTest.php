@@ -131,7 +131,7 @@ class SyncConflictTest extends TestCase
             'resolution' => 'overwrite',
         ]);
 
-        foreach (['doctor', 'technician', 'farmer'] as $role) {
+        foreach (['doctor', 'technician'] as $role) {
             $this->actingAs(User::factory()->create(['role' => $role]))
                 ->getJson('/api/v1/admin/sync-conflicts')
                 ->assertForbidden();

@@ -4,7 +4,37 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import BeneficiariesPage from "../pages/BeneficiariesPage";
 import { adminApi } from "../api/adminApi";
+import { beneficiariesApi, fetchBarangays, fetchPuroks } from "../api/beneficiariesApi";
 import { ToastProvider } from "../context/ToastContext";
+
+// The add/edit dialog mounts auth + offline context and the map picker. Only
+// the directory is under test here, so those collaborators are stubbed.
+vi.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ user: { id: 1, role: "admin" } }),
+}));
+
+vi.mock("../context/OfflineQueueContext", () => ({
+  useNotifyOfflineSaved: () => vi.fn(),
+}));
+
+vi.mock("../components/CoordinatePicker", () => ({
+  CoordinatePicker: () => <div data-testid="coordinate-picker" />,
+}));
+
+vi.mock("../api/beneficiariesApi", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    fetchBarangays: vi.fn(),
+    fetchPuroks: vi.fn(),
+    beneficiariesApi: {
+      ...actual.beneficiariesApi,
+      create: vi.fn(),
+      update: vi.fn(),
+      bulkRemove: vi.fn(),
+    },
+  };
+});
 
 vi.mock("../api/adminApi", () => ({
   adminApi: {
@@ -57,6 +87,11 @@ const BENEFICIARIES = [
 function mockList(beneficiaries = BENEFICIARIES) {
   adminApi.listBeneficiariesPage.mockResolvedValue({ data: beneficiaries, meta: null });
   adminApi.listUsers.mockResolvedValue(TECHNICIANS);
+  fetchBarangays.mockResolvedValue([
+    { id: 1, name: "Dawis", latitude: 9.1, longitude: 122.8 },
+    { id: 2, name: "Banay Banay", latitude: 9.2, longitude: 122.9 },
+  ]);
+  fetchPuroks.mockResolvedValue([{ id: 7, name: "Purok 1", is_placeholder: false }]);
 }
 
 function renderPage() {
@@ -79,8 +114,9 @@ describe("BeneficiariesPage search", () => {
     renderPage();
 
     expect(await screen.findByText("Aling Nena")).toBeInTheDocument();
-    expect(screen.getByText("Banay Banay")).toBeInTheDocument();
-    expect(screen.getByText("Dawis")).toBeInTheDocument();
+    // The barangay filter lists the same names, so scope to group headings.
+    expect(screen.getByText("Banay Banay", { selector: "span.font-display" })).toBeInTheDocument();
+    expect(screen.getByText("Dawis", { selector: "span.font-display" })).toBeInTheDocument();
   });
 
   it("re-queries with the search term after typing", async () => {
@@ -218,5 +254,125 @@ describe("BeneficiariesPage directory scope", () => {
     const params = adminApi.listBeneficiariesPage.mock.calls[0]?.[0];
     expect(params?.per_page).toBe(50);
     expect(params?.page).toBe(1);
+  });
+});
+
+describe("BeneficiariesPage barangay filter", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockList();
+  });
+
+  it("sends the chosen barangay and resets to the first page", async () => {
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    await act(async () => {
+      await userEvent.selectOptions(screen.getByLabelText("Filter by barangay"), "Dawis");
+    });
+
+    await waitFor(() => {
+      const calls = adminApi.listBeneficiariesPage.mock.calls;
+      const last = calls[calls.length - 1]?.[0];
+      expect(last?.barangay).toBe("Dawis");
+      expect(last?.page).toBe(1);
+    });
+  });
+
+  it("shows the RSBSA number in the directory", async () => {
+    mockList([{ ...BENEFICIARIES[0], rsbsa_number: "RSBSA-0042" }]);
+
+    renderPage();
+
+    expect(await screen.findByText("RSBSA-0042")).toBeInTheDocument();
+  });
+});
+
+describe("BeneficiariesPage enrolment", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockList();
+  });
+
+  it("adds a beneficiary as a record — no account fields, no approval step", async () => {
+    beneficiariesApi.create.mockResolvedValue({ id: 99 });
+
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: /add beneficiary/i }));
+    });
+
+    const dialog = screen.getByRole("dialog", { name: "Add beneficiary" });
+    expect(within(dialog).queryByLabelText(/password/i)).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText(/email/i)).not.toBeInTheDocument();
+
+    await act(async () => {
+      await userEvent.type(within(dialog).getByLabelText("Name of farmer"), "Juan Dela Cruz");
+    });
+    await act(async () => {
+      await userEvent.type(within(dialog).getByLabelText("RSBSA number (optional)"), "RSBSA-0042");
+    });
+    await act(async () => {
+      await userEvent.selectOptions(within(dialog).getByLabelText("Barangay"), "Dawis");
+    });
+    await act(async () => {
+      await userEvent.selectOptions(within(dialog).getByLabelText("Type of animal"), "Carabao");
+    });
+    await act(async () => {
+      await userEvent.selectOptions(within(dialog).getByLabelText("MOA status"), "true");
+    });
+
+    // The purok list for the chosen barangay arrives from the cascade.
+    await waitFor(() => expect(fetchPuroks).toHaveBeenCalledWith(1));
+
+    await act(async () => {
+      await userEvent.click(within(dialog).getByRole("button", { name: "Add beneficiary" }));
+    });
+
+    await waitFor(() => expect(beneficiariesApi.create).toHaveBeenCalledTimes(1));
+    expect(beneficiariesApi.create).toHaveBeenCalledWith({
+      name_of_farmer: "Juan Dela Cruz",
+      rsbsa_number: "RSBSA-0042",
+      ear_tag_number: null,
+      animal_type: "Carabao",
+      sex: "F",
+      address: "Dawis",
+      purok_id: null,
+      moa_signed: true,
+      latitude: null,
+      longitude: null,
+      location_source: "manual",
+    });
+  });
+
+  it("prefills the edit dialog and saves through the update endpoint", async () => {
+    beneficiariesApi.update.mockResolvedValue({ id: 11 });
+
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Edit Aling Nena" }));
+    });
+
+    const dialog = screen.getByRole("dialog", { name: "Edit beneficiary" });
+    expect(within(dialog).getByLabelText("Name of farmer")).toHaveValue("Aling Nena");
+
+    await act(async () => {
+      await userEvent.clear(within(dialog).getByLabelText("Name of farmer"));
+      await userEvent.type(within(dialog).getByLabelText("Name of farmer"), "Aling Nena Cruz");
+    });
+    await act(async () => {
+      await userEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+    });
+
+    await waitFor(() => expect(beneficiariesApi.update).toHaveBeenCalledTimes(1));
+    expect(beneficiariesApi.update.mock.calls[0][0]).toBe(11);
+    expect(beneficiariesApi.update.mock.calls[0][1]).toMatchObject({
+      name_of_farmer: "Aling Nena Cruz",
+      address: "Banay Banay",
+    });
   });
 });

@@ -20,8 +20,8 @@ class HealthRecordService
      * Role-scoped health records, most recent first.
      *
      * Scoping rides on the beneficiary scoping — the same rule the monitoring
-     * records use — so a technician only ever receives records for assigned
-     * beneficiaries and a farmer only their own, server-side.
+     * records use — so a technician only ever receives records for their
+     * assigned beneficiaries, server-side.
      */
     public function listFor(User $user, int $perPage = Pagination::DEFAULT_PER_PAGE): LengthAwarePaginator
     {

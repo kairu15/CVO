@@ -15,14 +15,15 @@ class Beneficiary extends Model
     /** @use HasFactory<BeneficiaryFactory> */
     use HasFactory, SoftDeletes;
 
-    /** Row origin: a farmer signed up / staff registered the household. */
-    public const SOURCE_REGISTRATION = 'registration';
-
-    /** Row origin: auto-created by the admin's monitoring Excel import. */
+    /**
+     * Row origin: auto-created by the admin's monitoring Excel import.
+     * The other origin is the column's legacy 'registration' default —
+     * the value public self-signups once wrote; admin-entered households
+     * still carry it and the import-cleanup rule only keys off 'import'.
+     */
     public const SOURCE_IMPORT = 'import';
 
     protected $fillable = [
-        'farmer_id',
         'name_of_farmer',
         // The farmer's national registry ID (RSBSA), beside the name it
         // belongs to. Nullable — not every farmer has one yet.
@@ -53,14 +54,6 @@ class Beneficiary extends Model
             'purok_id' => 'integer',
             'moa_signed' => 'boolean',
         ];
-    }
-
-    /**
-     * The farmer user account that owns this dispersed animal.
-     */
-    public function farmer(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'farmer_id');
     }
 
     /**

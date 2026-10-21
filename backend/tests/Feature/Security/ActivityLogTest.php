@@ -108,20 +108,20 @@ class ActivityLogTest extends TestCase
     public function test_role_changes_are_recorded_with_previous_and_new_role(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $target = User::factory()->create(['role' => 'technician']);
 
         $this->actingAs($admin)
-            ->patchJson("/api/v1/admin/users/{$farmer->id}/role", ['role' => 'doctor'])
+            ->patchJson("/api/v1/admin/users/{$target->id}/role", ['role' => 'doctor'])
             ->assertOk();
 
         $row = ActivityLog::query()
             ->where('actor_id', $admin->id)
             ->where('action', 'role_changed')
-            ->where('target_id', $farmer->id)
+            ->where('target_id', $target->id)
             ->first();
 
         $this->assertNotNull($row);
-        $this->assertSame('farmer', $row->context['previous_role']);
+        $this->assertSame('technician', $row->context['previous_role']);
         $this->assertSame('doctor', $row->context['new_role']);
     }
 
@@ -139,14 +139,14 @@ class ActivityLogTest extends TestCase
 
         $this->assertNotNull($row->ip_address);
         $this->assertNotNull($row->actor_role);
-        $this->assertSame('farmer', $row->actor_role);
+        $this->assertSame('technician', $row->actor_role);
     }
 
     public function test_the_log_endpoint_is_admin_only(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
 
-        foreach (['doctor', 'technician', 'farmer'] as $role) {
+        foreach (['doctor', 'technician'] as $role) {
             $this->actingAs(User::factory()->create(['role' => $role]))
                 ->getJson('/api/v1/admin/activity-logs')
                 ->assertForbidden();

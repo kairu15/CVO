@@ -19,8 +19,8 @@ class CaseNoteService
      * Role-scoped notes, newest first.
      *
      * Scoping rides on the beneficiary scoping — the same rule monitoring and
-     * health records use — so a technician only receives notes for assigned
-     * beneficiaries and a farmer only their own, server-side.
+     * health records use — so a technician only receives notes for their
+     * assigned beneficiaries, server-side.
      */
     public function listFor(User $user, int $perPage = Pagination::DEFAULT_PER_PAGE): LengthAwarePaginator
     {

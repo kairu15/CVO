@@ -21,7 +21,7 @@ export function ProtectedRoute({ children }) {
 }
 
 /**
- * Guest-only pages (login, register). An authenticated user is sent straight
+ * Guest-only page (login). An authenticated user is sent straight
  * to their own dashboard instead of being shown the auth panel again.
  */
 export function GuestRoute({ children }) {

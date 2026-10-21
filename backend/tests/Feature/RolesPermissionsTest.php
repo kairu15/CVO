@@ -54,7 +54,7 @@ class RolesPermissionsTest extends TestCase
             ->json('data');
 
         $roles = collect($data['roles'])->pluck('key')->all();
-        $this->assertSame(['admin', 'doctor', 'technician', 'farmer'], $roles);
+        $this->assertSame(['admin', 'doctor', 'technician'], $roles);
 
         $grants = collect($data['groups'])
             ->flatMap(fn (array $group) => $group['permissions'])
@@ -67,9 +67,9 @@ class RolesPermissionsTest extends TestCase
         $this->assertTrue($grants['health_records.create']['doctor']);
         $this->assertFalse($grants['health_records.create']['admin']);
         $this->assertTrue($grants['monitoring.create']['technician']);
-        $this->assertTrue($grants['beneficiaries.view']['farmer']);
+        $this->assertTrue($grants['beneficiaries.view']['technician']);
         $this->assertFalse($grants['beneficiaries.delete']['doctor']);
-        $this->assertTrue($grants['dispersals.create']['farmer']);
+        $this->assertTrue($grants['dispersals.create']['technician']);
 
         // Lockout inputs ride along for the SPA's warning.
         $this->assertSame(1, $data['manage_roles_holders']['admin']);

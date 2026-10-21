@@ -57,17 +57,14 @@ class AdminController extends Controller
 
         $users = User::query()
             ->with('creator:id,name')
+            // Retired `farmer` rows (soft-deleted by the account-removal
+            // migration) are program history, not dormant accounts: they
+            // never list here — under any status filter — so no screen can
+            // edit or reactivate one back into a login.
+            ->whereIn('role', User::STAFF_ROLES)
             ->when($status === 'deactivated', fn ($q) => $q->onlyTrashed())
             ->when($status === 'all', fn ($q) => $q->withTrashed())
             ->when($validated['role'] ?? null, fn ($q, $role) => $q->where('role', $role))
-            ->when($validated['barangay'] ?? null, function ($q, $barangay): void {
-                // The farmer slice: accounts owning a household in the given
-                // barangay. Beneficiary addresses are normalized to the
-                // canonical barangay name at registration, so an exact match
-                // is the honest join — no fuzzy matching that could silently
-                // pull in the wrong households.
-                $q->whereHas('beneficiaries', fn ($b) => $b->where('address', $barangay));
-            })
             ->when($validated['search'] ?? null, function ($q, $search): void {
                 $pattern = Like::contains($search);
 
@@ -84,9 +81,9 @@ class AdminController extends Controller
     }
 
     /**
-     * Create a staff account (admin/doctor/technician). Farmer accounts are
-     * created by public self-registration, which also creates the beneficiary
-     * record — see UserAccountService.
+     * Create a staff account (admin/doctor/technician). Staff is the ONLY
+     * kind of account: beneficiaries are entered on the admin Beneficiaries
+     * screen and never authenticate — see UserAccountService.
      */
     public function storeUser(AdminUserStoreRequest $request): JsonResponse
     {
@@ -288,7 +285,7 @@ class AdminController extends Controller
         $validated = $request->validated();
 
         $beneficiaries = Beneficiary::query()
-            ->with(['technician', 'farmer'])
+            ->with('technician')
             ->withCount('monitoringRecords')
             ->when($validated['search'] ?? null, function ($q, $search): void {
                 $pattern = Like::contains($search);

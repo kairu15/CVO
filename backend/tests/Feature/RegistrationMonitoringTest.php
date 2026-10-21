@@ -9,9 +9,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * The registration → monitoring-record pipeline: a farmer who registers with
- * dispersal details gets a monitoring record automatically, in the same
- * transaction, flagged `new` until midnight (accepted or not).
+ * The admin add-beneficiary → monitoring-record pipeline: when an
+ * administrator enrols a household on the Beneficiaries screen, a monitoring
+ * record is created in the same transaction so the household lands on the
+ * Monitoring table immediately. There is no New/Old accept lifecycle — the
+ * admin entering the data is the trust assertion.
  */
 class RegistrationMonitoringTest extends TestCase
 {
@@ -20,11 +22,7 @@ class RegistrationMonitoringTest extends TestCase
     private function payload(array $overrides = []): array
     {
         return [
-            'name' => 'Kylle Farmer',
-            'username' => 'kylle'.uniqid(),
-            'email' => 'kylle'.uniqid().'@test.dev',
-            'password' => 'Sup3r-Secret!',
-            'password_confirmation' => 'Sup3r-Secret!',
+            'name_of_farmer' => 'Kylle Farmer',
             'address' => 'Ali-is',
             'animal_type' => 'Goat',
             'sex' => 'F',
@@ -32,102 +30,82 @@ class RegistrationMonitoringTest extends TestCase
         ];
     }
 
-    public function test_registration_creates_a_new_monitoring_record_transactionally(): void
+    public function test_admin_adding_a_beneficiary_creates_a_monitoring_record_transactionally(): void
     {
-        $response =         $this->postJson('/api/v1/register', $this->payload());
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($admin)
+            ->postJson('/api/v1/beneficiaries', $this->payload());
 
         $response->assertCreated();
 
-        $user = User::where('email', 'like', 'kylle%@test.dev')->latest('id')->first();
-        $beneficiary = Beneficiary::where('farmer_id', $user->id)->first();
-
+        $beneficiary = Beneficiary::where('name_of_farmer', 'Kylle Farmer')->first();
         $this->assertNotNull($beneficiary);
 
         $record = MonitoringRecord::where('beneficiary_id', $beneficiary->id)->first();
-        $this->assertNotNull($record, 'monitoring record must exist right after registration');
-        $this->assertSame(MonitoringRecord::REGISTRATION_NEW, $record->registration_status);
-        $this->assertNull($record->technician_id);
-        $this->assertNotNull($record->registered_at);
-        // Countdown is set at creation: midnight, app timezone.
-        $this->assertNotNull($record->status_expires_at);
-        $this->assertTrue($record->status_expires_at->isTomorrow() || $record->status_expires_at->isMidnight());
+        $this->assertNotNull($record, 'monitoring record must exist right after the beneficiary is added');
 
+        // Admin-added records are trusted immediately: no pending state, no
+        // status columns, no countdown.
+        $this->assertNull($record->technician_id);
         $this->assertSame(1, MonitoringRecord::where('beneficiary_id', $beneficiary->id)->count());
     }
 
-    public function test_registration_without_dispersal_still_creates_one_record(): void
-    {
-        // Registration always provisions a beneficiary (pre-existing behavior:
-        // location_source defaults survive the payload filter), so every new
-        // farmer lands on the monitoring table — exactly one record, flagged
-        // new, even with no dispersal details filled in.
-        $this->postJson('/api/v1/register', $this->payload([
-            'address' => null,
-            'animal_type' => null,
-            'sex' => null,
-        ]))->assertCreated();
-
-        $this->assertSame(1, MonitoringRecord::count());
-        $this->assertSame('new', MonitoringRecord::first()->registration_status);
-    }
-
-    public function test_a_failed_registration_leaves_no_partial_rows(): void
-    {
-        // Duplicate username → the user create fails inside the transaction;
-        // neither user, beneficiary, nor monitoring record may survive.
-        $payload = $this->payload();
-        $this->postJson('/api/v1/register', $payload)->assertCreated();
-
-        $countBefore = MonitoringRecord::count();
-
-        $this->postJson('/api/v1/register', $payload)->assertUnprocessable();
-
-        $this->assertSame($countBefore, MonitoringRecord::count());
-    }
-
-    public function test_admin_can_accept_a_new_record(): void
-    {
-        $this->postJson('/api/v1/register', $this->payload())->assertCreated();
-        $record = MonitoringRecord::latest('id')->first();
-
-        $response = $this->actingAs(User::factory()->create(['role' => 'admin']))
-            ->patchJson("/api/v1/monitoring-records/{$record->id}/accept");
-
-        $response->assertOk()
-            ->assertJsonPath('data.registration_status', 'accepted')
-            ->assertJsonPath('data.is_new', true); // still "New" until midnight
-
-        $record->refresh();
-        $this->assertSame(MonitoringRecord::REGISTRATION_ACCEPTED, $record->registration_status);
-        $this->assertNotNull($record->accepted_at);
-        $this->assertTrue($record->status_expires_at->isTomorrow() || $record->status_expires_at->isMidnight());
-    }
-
-    public function test_non_admins_cannot_accept(): void
-    {
-        $this->postJson('/api/v1/register', $this->payload())->assertCreated();
-        $record = MonitoringRecord::latest('id')->first();
-
-        $this->actingAs(User::factory()->create(['role' => 'technician']))
-            ->patchJson("/api/v1/monitoring-records/{$record->id}/accept")
-            ->assertForbidden();
-
-        $this->actingAs(User::factory()->create(['role' => 'doctor']))
-            ->patchJson("/api/v1/monitoring-records/{$record->id}/accept")
-            ->assertForbidden();
-
-        $record->refresh();
-        $this->assertSame(MonitoringRecord::REGISTRATION_NEW, $record->registration_status);
-    }
-
-    public function test_ordinary_records_cannot_be_accepted(): void
+    public function test_a_technician_adding_a_beneficiary_owns_the_monitoring_record(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
-        $beneficiary = Beneficiary::factory()->assignedTo($technician)->create();
-        $record = MonitoringRecord::factory()->by($technician)->for($beneficiary, 'beneficiary')->create();
 
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs($technician)
+            ->postJson('/api/v1/beneficiaries', $this->payload())
+            ->assertCreated();
+
+        $record = MonitoringRecord::latest('id')->first();
+        $this->assertNotNull($record);
+        $this->assertSame($technician->id, $record->technician_id);
+    }
+
+    public function test_a_failed_create_leaves_no_partial_rows(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        // Duplicate-free first call succeeds; the second is fine too — force a
+        // failure with an invalid animal payload instead: an uncovered
+        // barangay fails validation before anything is written.
+        $this->actingAs($admin)
+            ->postJson('/api/v1/beneficiaries', $this->payload())
+            ->assertCreated();
+
+        $beneficiariesBefore = Beneficiary::count();
+        $recordsBefore = MonitoringRecord::count();
+
+        $this->actingAs($admin)
+            ->postJson('/api/v1/beneficiaries', $this->payload([
+                'address' => 'Not A Barangay',
+            ]))->assertUnprocessable();
+
+        $this->assertSame($beneficiariesBefore, Beneficiary::count());
+        $this->assertSame($recordsBefore, MonitoringRecord::count());
+    }
+
+    public function test_the_accept_workflow_is_gone(): void
+    {
+        // The New/Old registration lifecycle was removed along with
+        // self-registration: the accept endpoint no longer exists at all.
+        $admin = User::factory()->create(['role' => 'admin']);
+        $technician = User::factory()->create(['role' => 'technician']);
+
+        $this->actingAs($admin)
+            ->postJson('/api/v1/beneficiaries', $this->payload())
+            ->assertCreated();
+
+        $record = MonitoringRecord::latest('id')->first();
+
+        $this->actingAs($admin)
             ->patchJson("/api/v1/monitoring-records/{$record->id}/accept")
-            ->assertForbidden();
+            ->assertNotFound();
+
+        $this->actingAs($technician)
+            ->patchJson("/api/v1/monitoring-records/{$record->id}/accept")
+            ->assertNotFound();
     }
 }

@@ -229,19 +229,6 @@ class AnimalHealthTest extends TestCase
             ->assertJsonValidationErrors(['filter']);
     }
 
-    public function test_a_farmer_sees_only_their_own_animals(): void
-    {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $own = Beneficiary::factory()->forFarmer($farmer)->create();
-        $this->animal();
-
-        $this->actingAs($farmer)
-            ->getJson('/api/v1/animal-health')
-            ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $own->id);
-    }
-
     public function test_a_technician_sees_only_assigned_animals(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);

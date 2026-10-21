@@ -24,10 +24,8 @@ import CaseNotesPage from "../pages/CaseNotesPage";
 import AnimalHealthPage from "../pages/AnimalHealthPage";
 import FieldVisitsPage from "../pages/FieldVisitsPage";
 import { ProfilePage } from "../pages/ProfilePage";
-import DispersalStatusPage from "../pages/DispersalStatusPage";
 import NotificationsPage from "../pages/NotificationsPage";
 import ResetPasswordPage from "../pages/ResetPasswordPage";
-import SupportPage from "../pages/SupportPage";
 
 // The map bundle (MapLibre GL) is heavy — load it only when a map page opens.
 const DispersalMapPage = lazy(() => import("../pages/DispersalMapPage"));
@@ -64,23 +62,14 @@ export default function AppRoutes() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/transparency" element={<TransparencyPage />} />
 
-          {/* Sign in / register. Two routes, one component: navigating between
-              them re-renders <AuthPage> with a different mode at the same tree
-              position (no remount, no state loss) — the forms themselves stay
-              mounted through the toggle regardless (see AuthPage). */}
+          {/* Sign in. Accounts are issued by the CVO administrator — there is
+              no public registration route (beneficiaries are records, not
+              logins), so the panel is sign-in only. */}
           <Route
             path="/login"
             element={
               <GuestRoute>
-                <AuthPage mode="login" />
-              </GuestRoute>
-            }
-          />
-          <Route
-            path="/register"
-            element={
-              <GuestRoute>
-                <AuthPage mode="register" />
+                <AuthPage />
               </GuestRoute>
             }
           />
@@ -135,15 +124,6 @@ export default function AppRoutes() {
                 </RoleRoute>
               }
             />
-            <Route
-              path="/dashboard/farmer"
-              element={
-                <RoleRoute dashboard="farmer">
-                  <RoleDashboard roleKey="farmer" />
-                </RoleRoute>
-              }
-            />
-
             {/* Livestock monitoring — shared page, role-scoped data */}
             <Route
               path="/dashboard/admin/monitoring"
@@ -169,15 +149,6 @@ export default function AppRoutes() {
                 </RoleRoute>
               }
             />
-            <Route
-              path="/dashboard/farmer/monitoring"
-              element={
-                <RoleRoute dashboard="farmer">
-                  <MonitoringPage roleKey="farmer" />
-                </RoleRoute>
-              }
-            />
-
             {/* Admin management screens */}
             <Route
               path="/dashboard/admin/technicians"
@@ -284,15 +255,6 @@ export default function AppRoutes() {
               }
             />
 
-            {/* Farmer read-only modules — no authoring surface */}
-            <Route
-              path="/dashboard/farmer/dispersal-status"
-              element={
-                <RoleRoute dashboard="farmer">
-                  <DispersalStatusPage roleKey="farmer" />
-                </RoleRoute>
-              }
-            />
             {/* Notifications — one shared page for every role; the feed is
                 role-scoped server-side, so each dashboard sees its own. */}
             <Route
@@ -316,22 +278,6 @@ export default function AppRoutes() {
               element={
                 <RoleRoute dashboard="technician">
                   <NotificationsPage roleKey="technician" />
-                </RoleRoute>
-              }
-            />
-            <Route
-              path="/dashboard/farmer/notifications"
-              element={
-                <RoleRoute dashboard="farmer">
-                  <NotificationsPage roleKey="farmer" />
-                </RoleRoute>
-              }
-            />
-            <Route
-              path="/dashboard/farmer/support"
-              element={
-                <RoleRoute dashboard="farmer">
-                  <SupportPage />
                 </RoleRoute>
               }
             />

@@ -23,7 +23,6 @@ const NAMES = {
   admin: "CVO Administrator",
   doctor: "Dr. Maria Santos",
   technician: "Jun Technician",
-  farmer: "Aling Nena Farmer",
 };
 
 let currentRole = "admin";
@@ -33,7 +32,7 @@ let currentRole = "admin";
 const ACCOUNTS = [
   { id: 1, name: "CVO Administrator", username: "admin", email: "admin@example.com", role: "admin" },
   { id: 2, name: "Jun Technician", username: "technician", email: "technician@example.com", role: "technician" },
-  { id: 3, name: "Aling Nena Farmer", username: "farmer", email: "farmer@example.com", role: "farmer" },
+  { id: 3, name: "Dr. Maria Santos", username: "doctor", email: "doctor@example.com", role: "doctor" },
 ];
 
 /** Served by the stubbed /health-records/options endpoint, so the modal's
@@ -74,8 +73,8 @@ const HEALTH_RECORDS = [
 ];
 
 /**
- * Dispersal movements touching the signed-in farmer's animals: one received,
- * one passed on. The session user is id 1 and its animals are ids 1 and 2.
+ * Dispersal movements touching the signed-in household's animals: one
+ * received, one passed on.
  */
 const DISPERSAL_EVENTS = [
   {
@@ -119,11 +118,10 @@ const DISPERSAL_EVENTS = [
 ];
 
 /**
- * The signed-in farmer's own animals. `/api/v1/beneficiaries` is role-scoped
- * server-side, so a farmer only ever receives their own rows — which is what
- * the Dispersal Status page relies on to decide which household is "you".
- * Doyle Walter (id 9) is deliberately absent: he received an animal from this
- * farmer, and must therefore not be marked as the farmer's household.
+ * A technician's assigned animals. `/api/v1/beneficiaries` is role-scoped
+ * server-side, so a technician only ever receives their own assigned rows.
+ * Doyle Walter (id 9) is deliberately absent: a different household that must
+ * never appear in the scoped list.
  */
 const BENEFICIARIES = [
   { id: 1, name_of_farmer: "Aling Nena", address: "Banay Banay", animal_type: "Carabao", sex: "F" },
@@ -147,7 +145,7 @@ const NOTIFICATIONS = [
     animal_type: "Carabao",
     address: "Banay Banay",
     days_until_due: -34,
-    link: "/dashboard/farmer/monitoring",
+    link: "/dashboard/technician/monitoring",
   },
   {
     id: "vaccination-due-soon-2",
@@ -160,7 +158,7 @@ const NOTIFICATIONS = [
     animal_type: "Goat",
     address: "Banay Banay",
     days_until_due: 13,
-    link: "/dashboard/farmer/monitoring",
+    link: "/dashboard/technician/monitoring",
   },
   {
     id: "initial-1",
@@ -173,7 +171,7 @@ const NOTIFICATIONS = [
     animal_type: "Carabao",
     address: "Banay Banay",
     days_until_due: null,
-    link: "/dashboard/farmer/dispersal-status",
+    link: "/dashboard/technician/map",
   },
 ];
 
@@ -537,13 +535,13 @@ try {
       if (url.includes("/api/v1/field-visits/options")) {
         return json({ data: { purposes: PURPOSES } });
       }
-      // Dispersal Status (farmer) needs the farmer's own animals to decide
-      // which household is "you". Deliberately empty for every other role:
-      // admin/doctor open the dashboard's live MapLibre map, and handing it
-      // markers makes it fetch basemap tiles over the internet, which stalls
-      // `waitUntil: "networkidle2"` into a 30s navigation timeout.
+      // Deliberately empty for every role: admin/doctor open the dashboard's
+      // live MapLibre map, and handing it markers makes it fetch basemap
+      // tiles over the internet, which stalls `waitUntil: "networkidle2"`
+      // into a 30s navigation timeout. (BENEFICIARIES remains as the scoped
+      // fixture shape if a screen needs it later.)
       if (url.includes("/api/v1/beneficiaries")) {
-        return json({ data: currentRole === "farmer" ? BENEFICIARIES : [] });
+        return json({ data: [] });
       }
       if (url.includes("/api/v1/notifications")) {
         return json({ data: NOTIFICATIONS, meta: NOTIFICATION_META });
@@ -665,13 +663,13 @@ try {
   }
 
   // ---------- RBAC ----------
-  currentRole = "farmer";
-  for (const target of ["admin", "doctor", "technician"]) {
+  currentRole = "technician";
+  for (const target of ["admin", "doctor"]) {
     await page.goto(`${BASE}/dashboard/${target}`, { waitUntil: "networkidle2" });
     await new Promise((r) => setTimeout(r, 400));
     ok(
-      `rbac: farmer cannot open /dashboard/${target}`,
-      new URL(page.url()).pathname === "/dashboard/farmer",
+      `rbac: technician cannot open /dashboard/${target}`,
+      new URL(page.url()).pathname === "/dashboard/technician",
       new URL(page.url()).pathname,
     );
   }
@@ -752,12 +750,12 @@ try {
   );
   // innerText returns rendered text, and the label is uppercased via CSS.
   ok(
-    "all access: switcher lists all four dashboards",
-    /all access/i.test(switcherText) && /4 dashboards/i.test(switcherText),
+    "all access: switcher lists all three dashboards",
+    /all access/i.test(switcherText) && /3 dashboards/i.test(switcherText),
   );
   ok(
     "all access: switcher lists each workspace",
-    ["Admin", "Doctor", "Technician", "Farmer"].every((s) => switcherText.includes(s)),
+    ["Admin", "Doctor", "Technician"].every((s) => switcherText.includes(s)),
   );
 
   // ---------- User Management (admin) ----------
@@ -1210,88 +1208,13 @@ try {
   await page.keyboard.press("Escape");
   await new Promise((r) => setTimeout(r, 250));
 
-  // ---------- Farmer read-only modules ----------
-  currentRole = "farmer";
-  await page.goto(`${BASE}/dashboard/farmer/dispersal-status`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 500));
-
-  const ds = await page.evaluate(() => {
-    const rows = [...document.querySelectorAll("main table tbody tr")];
-
-    // The "you" marker is a badge in the household cell. Matched on
-    // textContent rather than innerText: innerText can reflect the badge's
-    // CSS text-transform, so the rendered case is not something to assert on.
-    const markedCells = rows.flatMap((tr) =>
-      [...tr.querySelectorAll("td")]
-        .filter((td) =>
-          [...td.querySelectorAll("span")].some((s) => /^you$/i.test(s.textContent.trim())),
-        )
-        .map((td) => td.textContent.trim()),
-    );
-
-    return {
-      path: window.location.pathname,
-      heading: document.querySelector("main h2")?.textContent?.trim(),
-      rows: rows.length,
-      body: document.querySelector("main")?.innerText ?? "",
-      links: [...document.querySelectorAll("main table a")].map((a) => a.getAttribute("href")),
-      markedCells,
-    };
-  });
-
-  ok("dispersal status: farmer can open the page", ds.path === "/dashboard/farmer/dispersal-status", ds.path);
-  ok('dispersal status: page heading reads "Dispersal Status"', ds.heading === "Dispersal Status", ds.heading);
-  ok("dispersal status: every movement is listed", ds.rows === DISPERSAL_EVENTS.length, String(ds.rows));
-  ok("dispersal status: an arrival from the programme is shown", /city veterinary office/i.test(ds.body));
-  ok("dispersal status: the receiving household is shown", /Doyle Walter/.test(ds.body));
-  // Both sides of the farmer's own movements are marked (the animal received,
-  // and the one passed on) — but not the household it went on to, which is a
-  // different farmer (Doyle Walter) and must never read as "yours".
-  ok(
-    "dispersal status: the farmer's own household is marked",
-    ds.markedCells.length === 2,
-    String(ds.markedCells.length),
-  );
-  ok(
-    "dispersal status: only the farmer's own household is marked",
-    ds.markedCells.every((cell) => /Aling Nena/.test(cell)),
-    JSON.stringify(ds.markedCells),
-  );
-  ok("dispersal status: counts distinguish received from passed on", /1 received/.test(ds.body) && /1 passed on/.test(ds.body), "counts");
-  ok(
-    "dispersal status: lineage links point at the farmer's own animal",
-    ds.links.length === 2 && ds.links.every((h) => h === "/dashboard/farmer/beneficiaries/1/lineage"),
-    JSON.stringify(ds.links),
-  );
-  // Read-only: dispersal records are written by the CVO, not the farmer.
-  ok("dispersal status: no authoring control is offered", !/Log a Visit|New record|New note/.test(ds.body));
-
-  await page.screenshot({ path: `${shots}/farmer-dispersal-status.png`, fullPage: true });
-
-  // ---------- Support / Contact CVO (farmer, static) ----------
-  await page.goto(`${BASE}/dashboard/farmer/support`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 400));
-
-  const sup = await page.evaluate(() => ({
-    path: window.location.pathname,
-    heading: document.querySelector("main h2")?.textContent?.trim(),
-    body: document.querySelector("main")?.innerText ?? "",
-    mailtos: [...document.querySelectorAll('main a[href^="mailto:"]')].map((a) => a.getAttribute("href")),
-  }));
-
-  ok("support: farmer can open the page", sup.path === "/dashboard/farmer/support", sup.path);
-  ok('support: page heading reads "Support / Contact CVO"', sup.heading === "Support / Contact CVO", sup.heading);
-  ok("support: the office address is shown", /City Hall Compound/.test(sup.body));
-  ok("support: the office hours are shown", /Monday to Friday/.test(sup.body));
-  // Values come from config/site.js — rendered as-is, placeholders included.
-  ok("support: the contact email is rendered as a mailto link", sup.mailtos.length > 0, JSON.stringify(sup.mailtos));
-  ok("support: the password policy is stated in place of a reset form", /Password resets are handled/.test(sup.body));
-  ok("support: no self-service reset control is offered", !/Reset password/i.test(sup.body));
-
-  await page.screenshot({ path: `${shots}/farmer-support.png`, fullPage: true });
-
-  // ---------- Notifications (farmer, derived feed) ----------
-  await page.goto(`${BASE}/dashboard/farmer/notifications`, { waitUntil: "networkidle2" });
+  // ---------- Notifications (technician, derived + stored feed) ----------
+  //
+  // The farmer-only pages this script used to check here (Dispersal Status,
+  // Support / Contact CVO) were removed along with farmer accounts: every
+  // remaining role reads notifications on its own dashboard.
+  currentRole = "technician";
+  await page.goto(`${BASE}/dashboard/technician/notifications`, { waitUntil: "networkidle2" });
   await new Promise((r) => setTimeout(r, 500));
 
   const notif = await page.evaluate(() => ({
@@ -1306,7 +1229,7 @@ try {
     buttons: document.querySelectorAll("main button").length,
   }));
 
-  ok("notifications: farmer can open the page", notif.path === "/dashboard/farmer/notifications", notif.path);
+  ok("notifications: technician can open the page", notif.path === "/dashboard/technician/notifications", notif.path);
   ok('notifications: page heading reads "Notifications"', notif.heading === "Notifications", notif.heading);
   ok("notifications: every alert is listed", notif.rows === NOTIFICATIONS.length, String(notif.rows));
   // Case-insensitive: the band headings are uppercased by CSS, and innerText
@@ -1319,7 +1242,7 @@ try {
   ok("notifications: the summary reports the API's counts", /7 alerts/.test(notif.body) && /4 needing action/.test(notif.body), "meta");
   ok(
     "notifications: each alert links to the page that owns the record",
-    notif.links.length === 3 && notif.links.every((h) => h.startsWith("/dashboard/farmer/")),
+    notif.links.length === 3 && notif.links.every((h) => h.startsWith("/dashboard/technician/")),
     JSON.stringify(notif.links),
   );
   ok(
@@ -1330,7 +1253,7 @@ try {
   ok("notifications: no dismiss or mark-as-read control is offered", notif.buttons === 0, String(notif.buttons));
   ok("notifications: the page says why there is nothing to dismiss", /nothing to mark as read here/i.test(notif.body));
 
-  await page.screenshot({ path: `${shots}/farmer-notifications.png`, fullPage: true });
+  await page.screenshot({ path: `${shots}/technician-notifications.png`, fullPage: true });
 
   // ---------- Header search + notification bell (live panels) ----------
   currentRole = "admin";
@@ -1414,12 +1337,12 @@ try {
   await page.click('button[aria-label="Close notifications"]');
 
   // A record must not be reachable by a role it does not belong to.
-  currentRole = "farmer";
+  currentRole = "technician";
   await page.goto(`${BASE}/dashboard/doctor/health-records`, { waitUntil: "networkidle2" });
   await new Promise((r) => setTimeout(r, 400));
   ok(
-    "health records: farmer cannot open the doctor records page",
-    new URL(page.url()).pathname === "/dashboard/farmer",
+    "health records: technician cannot open the doctor records page",
+    new URL(page.url()).pathname === "/dashboard/technician",
     new URL(page.url()).pathname,
   );
 

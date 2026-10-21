@@ -21,11 +21,7 @@ class MonitoringRecordPolicy
             return true;
         }
 
-        if ($user->role === 'technician') {
-            return $record->beneficiary->technician_id === $user->id;
-        }
-
-        return $record->beneficiary->farmer_id === $user->id;
+        return $user->role === 'technician' && $record->beneficiary->technician_id === $user->id;
     }
 
     /**
@@ -60,16 +56,6 @@ class MonitoringRecordPolicy
 
         return $user->role === 'admin'
             || ($user->role === 'technician' && $record->technician_id === $user->id);
-    }
-
-    /**
-     * Accepting a registration-created record is an admin-oversight action —
-     * it tracks onboarding, not a technician's visit entry.
-     */
-    public function acceptRegistration(User $user, MonitoringRecord $record): bool
-    {
-        return $user->hasPermission('monitoring.accept-registration')
-            && $record->registration_status !== MonitoringRecord::REGISTRATION_NONE;
     }
 
     /**

@@ -50,19 +50,31 @@ try {
   ok("landing: hero title", /Geo-Tagging of Livestock and Poultry/.test(text));
   ok("landing: about section", /About the program/i.test(text));
   ok("landing: services", /What the system does/i.test(text));
-  ok("landing: roles", /Four roles, one shared record/i.test(text));
+  ok("landing: roles", /Three roles, one shared record/i.test(text));
+  // No self-registration promise anywhere on the public surface.
+  ok("landing: no self-registration invite", !/register yourself|self-registration/i.test(text));
   ok("landing: footer contact", /Contact the office/i.test(text));
   ok("landing: footer address", /Bayawan City/.test(text));
 
-  // ---------- Login (desktop, sliding panel) ----------
-  text = await visit(page, "/login", desktop, "auth-login-desktop");
+  // ---------- Login (desktop, single sign-in card) ----------
   // The guest route mounts only after the session probe resolves — wait for
   // the form instead of racing it.
+  await page.setViewport(desktop);
+  await page.goto(`${BASE}/login`, { waitUntil: "networkidle2" });
   await page.waitForSelector("#login-identifier", { timeout: 10_000 });
+  await page.screenshot({ path: `${shots}/auth-login-desktop.png`, fullPage: true });
   text = await page.evaluate(() => document.body.innerText);
   ok("login: sign-in form", /Use the account issued by/.test(text));
-  ok("login: overlay offers register", /New to the program\?/.test(text));
   ok("login: username/email field", /Username or email/i.test(text));
+  // The sliding register panel was removed with self-registration: no
+  // "New to the program?" invite, no Register button, no tabs.
+  ok("login: no register invite", !/New to the program\?/.test(text));
+  const registerButtons = await page.$$eval("button", (els) =>
+    els.filter((b) => /register/i.test(b.textContent)).length,
+  );
+  ok("login: no register button", registerButtons === 0, `${registerButtons} buttons`);
+  const tabCount = await page.$$eval('[role="tab"]', (els) => els.length);
+  ok("login: no tabs — one sign-in card", tabCount === 0, `${tabCount} tabs`);
 
   const ids = await page.$$eval("input", (els) => els.map((e) => e.id));
   ok(
@@ -70,107 +82,28 @@ try {
     new Set(ids).size === ids.filter(Boolean).length,
   );
 
-  // ---------- Sliding transition to register ----------
-  // The register trigger exists twice on desktop (hidden mobile tab + overlay
-  // button) — click the one that is actually rendered.
-  await page.evaluate(() => {
-    [...document.querySelectorAll("button")]
-      .filter((b) => b.textContent.trim() === "Register" && b.offsetParent)
-      .at(-1)
-      .click();
-  });
-  await page.waitForFunction(() => window.location.pathname === "/register", { timeout: 5000 });
-  await new Promise((r) => setTimeout(r, 900));
-  await page.screenshot({ path: `${shots}/auth-register-desktop.png`, fullPage: true });
-
-  const overlayBox = await page.evaluate(() => {
-    const forms = [...document.querySelectorAll("form")];
-    const signup = forms.find((f) => f.querySelector("#register-name"));
-    const r = signup.getBoundingClientRect();
-    return { left: r.left, visible: r.opacity !== "0" };
-  });
-  ok("register: sign-up form slid into view on the right", overlayBox.left > 500);
-  ok("register: sign-up form is visible", overlayBox.visible);
-
-  text = await page.evaluate(() => document.body.innerText);
-  ok("register: overlay offers sign in", /Already registered\?/.test(text));
-
-  // Regression: both form halves sit on the same half once slid, so each needs
-  // an opaque background or the hidden form's text bleeds through. The halves
-  // are the two desktop columns (lg:w-1/2); the overlay uses plain w-1/2.
-  const halves = await page.evaluate(() =>
-    [...document.querySelectorAll('[class*="lg:w-1/2"]')].map((el) =>
-      getComputedStyle(el).backgroundColor,
-    ),
-  );
-  ok(
-    "register: both form halves are opaque",
-    // In dark mode --color-white is remapped to the raised panel color, so the
-    // guarantee that matters is "identical and not transparent", not "white".
-    halves.length === 2 &&
-      halves[0] === halves[1] &&
-      halves.every((c) => !c.startsWith("rgba")),
-    halves.join(" / "),
-  );
-
-  const bleed = await page.evaluate(() => {
-    const loginForm = document.querySelector("form:has(#login-identifier)");
-    const p = loginForm.querySelector("p");
-    const r = p.getBoundingClientRect();
-    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    return {
-      covered: !loginForm.contains(hit),
-      topmost: hit ? `${hit.tagName}.${String(hit.className).slice(0, 40)}` : "none",
-    };
-  });
-  ok(
-    "register: hidden login form does not bleed through",
-    bleed.covered,
-    bleed.topmost,
-  );
-
-  // ...and the register form itself must be the thing on top there.
-  const onTop = await page.evaluate(() => {
-    const signupForm = document.querySelector("form:has(#register-name)");
-    const h = signupForm.querySelector("h2");
-    const r = h.getBoundingClientRect();
-    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    return signupForm.contains(hit);
-  });
-  ok("register: the register form is the topmost layer", onTop);
-
-  const roleField = await page.$eval("#register-role", (el) => ({
-    disabled: el.disabled,
-    value: el.value,
-  }));
-  ok("register: role field locked to farmer", roleField.disabled && roleField.value === "farmer");
-
   // ---------- Client-side validation ----------
-  await page.click('form:has(#register-name) button[type="submit"]');
+  await page.click('form:has(#login-identifier) button[type="submit"]');
   await new Promise((r) => setTimeout(r, 300));
   const errCount = await page.$$eval('[aria-invalid="true"]', (els) => els.length);
-  ok("register: empty submit surfaces field errors", errCount >= 5);
-  await page.screenshot({ path: `${shots}/auth-register-validation.png`, fullPage: true });
+  ok("login: empty submit surfaces field errors", errCount >= 1, `${errCount} fields`);
+  await page.screenshot({ path: `${shots}/auth-login-validation.png`, fullPage: true });
 
-  // ---------- Register route straight in ----------
-  await visit(page, "/register", desktop, "auth-register-direct");
-  await page.waitForSelector("#register-name", { timeout: 10_000 });
-  text = await page.evaluate(() => document.body.innerText);
-  ok("register: direct deep link shows register form", /Create your account/.test(text));
+  // ---------- /register route is gone ----------
+  await visit(page, "/register", desktop, "auth-register-gone");
+  ok(
+    "register: the route no longer exists",
+    new URL(page.url()).pathname !== "/register",
+    new URL(page.url()).pathname,
+  );
 
   // ---------- Mobile ----------
   await visit(page, "/login", phone, "auth-login-mobile");
   await page.waitForSelector("#login-identifier", { timeout: 10_000 });
   text = await page.evaluate(() => document.body.innerText);
-  ok("mobile: tab toggle present", /Sign in/.test(text) && /Register/.test(text));
   ok("mobile: sign-in form", /Use the account issued by/.test(text));
-  const tabCount = await page.$$eval('[role="tab"]', (els) => els.length);
-  ok("mobile: two tabs, not a sliding panel", tabCount === 2);
-
-  await visit(page, "/register", phone, "auth-register-mobile");
-  await page.waitForSelector("#register-name", { timeout: 10_000 });
-  text = await page.evaluate(() => document.body.innerText);
-  ok("mobile: register tab active", /Create your account/.test(text));
+  const mobileTabs = await page.$$eval('[role="tab"]', (els) => els.length);
+  ok("mobile: no tabs — plain sign-in card", mobileTabs === 0, `${mobileTabs} tabs`);
 
   text = await visit(page, "/", phone, "landing-mobile");
   ok("mobile: landing renders", /Geo-Tagging of Livestock and Poultry/.test(text));
@@ -198,6 +131,7 @@ try {
     for (const e of errors) console.log("  -", e);
   }
   await browser.close();
-  console.log(`\n${failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`}`);
+
+  console.log(`\n${failures === 0 ? "SMOKE OK" : `${failures} SMOKE CHECK(S) FAILED`}`);
   process.exit(failures === 0 ? 0 : 1);
 }

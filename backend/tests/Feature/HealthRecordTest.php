@@ -74,7 +74,7 @@ class HealthRecordTest extends TestCase
             'diagnosis' => 'Mastitis',
         ];
 
-        foreach (['technician', 'farmer', 'admin'] as $role) {
+        foreach (['technician', 'admin'] as $role) {
             $user = $role === 'technician'
                 ? $this->technician
                 : User::factory()->create(['role' => $role]);
@@ -204,27 +204,6 @@ class HealthRecordTest extends TestCase
         $this->assertSoftDeleted('health_records', ['id' => $record->id]);
     }
 
-    public function test_a_farmer_sees_only_records_for_their_own_animals(): void
-    {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $own = Beneficiary::factory()->forFarmer($farmer)->create();
-        HealthRecord::factory()->by($this->doctor)->forBeneficiary($own)->create();
-
-        HealthRecord::factory()->count(3)
-            ->by($this->doctor)
-            ->forBeneficiary($this->beneficiary)
-            ->create();
-
-        $this->actingAs($farmer)
-            ->getJson('/api/v1/health-records')
-            ->assertOk()
-            ->assertJsonCount(1, 'data');
-
-        $this->actingAs($farmer)
-            ->getJson('/api/v1/health-records')
-            ->assertJsonPath('data.0.beneficiary_id', $own->id);
-    }
-
     public function test_a_technician_sees_only_records_for_assigned_beneficiaries(): void
     {
         HealthRecord::factory()->by($this->doctor)->forBeneficiary($this->beneficiary)->create();
@@ -239,13 +218,13 @@ class HealthRecordTest extends TestCase
             ->assertJsonCount(1, 'data');
     }
 
-    public function test_a_farmer_cannot_read_another_farmers_record_by_id(): void
+    public function test_a_technician_cannot_read_a_record_on_an_unassigned_beneficiary_by_id(): void
     {
-        $record = HealthRecord::factory()->by($this->doctor)->forBeneficiary($this->beneficiary)->create();
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $unassigned = Beneficiary::factory()->create(); // nobody's assignment
+        $record = HealthRecord::factory()->by($this->doctor)->forBeneficiary($unassigned)->create();
 
         // Out of scope, so it must not even confirm the record exists.
-        $this->actingAs($farmer)
+        $this->actingAs($this->technician)
             ->getJson("/api/v1/health-records/{$record->id}")
             ->assertNotFound();
     }

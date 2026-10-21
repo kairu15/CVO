@@ -8,8 +8,8 @@ export const profileApi = {
   get: async () => unwrap(await api.get("/api/v1/profile")),
 
   /**
-   * Update the account (name/email) and, for farmers, the household
-   * location (address = barangay name, purok_id, coordinates, source).
+   * Update the account (name/email) and the household location
+   * (address = barangay name, purok_id, coordinates, source).
    * Returns the fresh profile payload.
    */
   update: async (payload) => {

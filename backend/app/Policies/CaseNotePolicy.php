@@ -30,11 +30,7 @@ class CaseNotePolicy
             return true;
         }
 
-        if ($user->role === 'technician') {
-            return $note->beneficiary->technician_id === $user->id;
-        }
-
-        return $note->beneficiary->farmer_id === $user->id;
+        return $user->role === 'technician' && $note->beneficiary->technician_id === $user->id;
     }
 
     /**

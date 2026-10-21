@@ -98,24 +98,6 @@ class MonitoringRecordTest extends TestCase
             ->assertJsonPath('data.remarks', 'Flagged for checkup');
     }
 
-    public function test_farmer_sees_only_own_records_and_cannot_edit(): void
-    {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $own = Beneficiary::factory()->forFarmer($farmer)->create();
-        $record = MonitoringRecord::factory()->by($this->technician)->for($own, 'beneficiary')->create();
-
-        MonitoringRecord::factory()->count(3)->for($this->beneficiary, 'beneficiary')->create();
-
-        $this->actingAs($farmer)
-            ->getJson('/api/v1/monitoring-records')
-            ->assertOk()
-            ->assertJsonCount(1, 'data');
-
-        $this->actingAs($farmer)
-            ->patchJson("/api/v1/monitoring-records/{$record->id}", ['remarks' => 'self-edit'])
-            ->assertForbidden();
-    }
-
     public function test_technician_sees_only_records_of_assigned_beneficiaries(): void
     {
         $record = MonitoringRecord::factory()->by($this->technician)->for($this->beneficiary, 'beneficiary')->create();

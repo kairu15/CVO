@@ -108,13 +108,6 @@ export default function LandingPage() {
             >
               Transparency
             </Link>
-            <Link
-              to="/register"
-              onClick={() => setMenuOpen(false)}
-              className="btn-secondary mt-2 w-full"
-            >
-              Create an account
-            </Link>
           </nav>
         )}
       </header>
@@ -143,18 +136,20 @@ export default function LandingPage() {
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3">
-                <Link to="/register" className="btn-primary">
-                  Get started
+                <Link to="/login" className="btn-primary">
+                  Sign in to your dashboard
                   <Icon name="arrow-right" className="h-4 w-4" />
                 </Link>
-                <Link to="/login" className="btn-secondary">
-                  Sign in to your dashboard
+                <Link to="/transparency" className="btn-secondary">
+                  View public transparency
                 </Link>
               </div>
 
               <p className="mt-6 flex items-center gap-2 text-sm text-slate-500">
                 <Icon name="info" className="h-4 w-4 shrink-0 text-brand-600" />
-                Built for CVO staff, field technicians and farmer-beneficiaries.
+                Built for the CVO's administrators, veterinarians and field
+                technicians; beneficiaries are records the office maintains,
+                not logins.
               </p>
             </div>
 
@@ -272,16 +267,17 @@ export default function LandingPage() {
             <div className="max-w-2xl">
               <p className="eyebrow">Who uses it</p>
               <h2 className="mt-3 font-display text-2xl font-bold text-slate-900 sm:text-3xl">
-                Four roles, one shared record
+                Three roles, one shared record
               </h2>
               <p className="mt-4 text-base text-slate-600">
                 Each role signs in to a dashboard scoped to what it needs. Staff
                 accounts are created by the City Veterinary Office administrator;
-                farmers can register themselves.
+                beneficiaries are program records the office maintains, not
+                accounts of their own.
               </p>
             </div>
 
-            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {publicRoles.map((role) => (
                 <article
                   key={role.key}
@@ -335,8 +331,8 @@ export default function LandingPage() {
                 Ready to encode your first dispersal?
               </h2>
               <p className="mx-auto mt-3 max-w-xl text-sm text-white/90 sm:text-base">
-                Sign in with your CVO account, or register as a farmer to follow
-                the status of the animals you receive.
+                Sign in with your CVO account to encode dispersals, monitor
+                beneficiaries and keep the program's records current.
               </p>
               <div className="mt-7 flex flex-wrap justify-center gap-3">
                 <Link
@@ -345,8 +341,11 @@ export default function LandingPage() {
                 >
                   Sign in
                 </Link>
-                <Link to="/register" className="btn-on-brand">
-                  Create account
+                <Link
+                  to="/transparency"
+                  className="btn-on-brand"
+                >
+                  Transparency dashboard
                 </Link>
               </div>
             </div>
@@ -414,11 +413,6 @@ export default function LandingPage() {
               <li>
                 <Link to="/login" className="text-slate-600 hover:text-brand-800">
                   Sign in
-                </Link>
-              </li>
-              <li>
-                <Link to="/register" className="text-slate-600 hover:text-brand-800">
-                  Register
                 </Link>
               </li>
             </ul>

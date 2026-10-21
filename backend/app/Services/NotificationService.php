@@ -107,8 +107,8 @@ class NotificationService
      * Record an event notification for a user at the moment it happens.
      *
      * This is the stored half of the module: the derived feed (vaccination /
-     * dispersal) recomputes from records, but events like "a farmer
-     * registered" have no record to re-derive from — they must be written
+     * dispersal) recomputes from records, but events like "an admin added a
+     * beneficiary" have no record to re-derive from — they must be written
      * here, once, with read state, or they never existed.
      *
      * An event type switched off in System Settings (Notification Preferences)
@@ -424,9 +424,9 @@ class NotificationService
     /**
      * Dispersal movements touching the animals this user can see.
      *
-     * Scoping is `DispersalEventService`'s, so a farmer sees only movements of
-     * their own animals and a technician only those of their assigned
-     * beneficiaries.
+     * Scoping is `DispersalEventService`'s, so a technician sees only
+     * movements of their assigned beneficiaries, while admin and doctor see
+     * every movement city-wide.
      *
      * @return list<array<string, mixed>>
      */
@@ -506,14 +506,9 @@ class NotificationService
         return "/dashboard/{$user->role}/monitoring";
     }
 
-    /**
-     * Dispersal movements have two homes in the SPA: the farmer follows them on
-     * Dispersal Status, every other role on the dispersal map.
-     */
+    /** Dispersal movements live on the dispersal map for every staff role. */
     private function dispersalLink(User $user): string
     {
-        return $user->role === 'farmer'
-            ? '/dashboard/farmer/dispersal-status'
-            : "/dashboard/{$user->role}/map";
+        return "/dashboard/{$user->role}/map";
     }
 }

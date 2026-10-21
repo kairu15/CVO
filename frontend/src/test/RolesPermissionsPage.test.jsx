@@ -21,7 +21,7 @@ vi.mock("../api/adminApi", () => ({
 
 function granted(...rolesWithGrant) {
   return Object.fromEntries(
-    ["admin", "doctor", "technician", "farmer"].map((role) => [role, rolesWithGrant.includes(role)]),
+    ["admin", "doctor", "technician"].map((role) => [role, rolesWithGrant.includes(role)]),
   );
 }
 
@@ -30,7 +30,6 @@ const MATRIX = {
     { key: "admin", label: "Admin" },
     { key: "doctor", label: "Doctor" },
     { key: "technician", label: "Technician" },
-    { key: "farmer", label: "Farmer" },
   ],
   groups: [
     {
@@ -44,7 +43,7 @@ const MATRIX = {
     {
       group: "Health records",
       permissions: [
-        { key: "health_records.view", label: "View health records", granted: granted("admin", "doctor", "technician", "farmer") },
+        { key: "health_records.view", label: "View health records", granted: granted("admin", "doctor", "technician") },
         { key: "health_records.create", label: "Write health records", granted: granted("doctor") },
       ],
     },
@@ -86,7 +85,7 @@ describe("RolesPermissionsPage", () => {
     // everyone reads them.
     expect(cell("Doctor", "Write health records")).toBeChecked();
     expect(cell("Admin", "Write health records")).not.toBeChecked();
-    expect(cell("Farmer", "View health records")).toBeChecked();
+    expect(cell("Technician", "View health records")).toBeChecked();
 
     // Group headings render for each capability group. ("Health records"
     // also appears as a read-scope row further down, hence the heading role.)
@@ -169,8 +168,10 @@ describe("RolesPermissionsPage", () => {
         .find((row) => within(row).queryByText("Beneficiaries")),
     ).getAllByRole("cell");
     expect(beneficiaries[1]).toHaveTextContent("All"); // admin
+    expect(beneficiaries[2]).toHaveTextContent("All"); // doctor
     expect(beneficiaries[3]).toHaveTextContent("Assigned"); // technician
-    expect(beneficiaries[4]).toHaveTextContent("Own"); // farmer
+    // There is no farmer column: beneficiaries are records, not accounts.
+    expect(beneficiaries).toHaveLength(4);
   });
 
   it("states where each rule is enforced", async () => {

@@ -16,7 +16,6 @@ class BeneficiaryResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'farmer_id' => $this->farmer_id,
             'name_of_farmer' => $this->name_of_farmer,
             // Farmer-level government ID (nullable), captured once here and
             // read-only everywhere it is displayed.
@@ -37,7 +36,6 @@ class BeneficiaryResource extends JsonResource
             'location_source' => $this->location_source,
             'technician_id' => $this->technician_id,
             'technician' => new UserResource($this->whenLoaded('technician')),
-            'farmer' => new UserResource($this->whenLoaded('farmer')),
             'monitoring_records_count' => $this->whenCounted('monitoringRecords'),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),

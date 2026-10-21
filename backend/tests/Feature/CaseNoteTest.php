@@ -92,7 +92,7 @@ class CaseNoteTest extends TestCase
             'body' => 'Should not be allowed.',
         ];
 
-        foreach (['technician', 'farmer', 'admin'] as $role) {
+        foreach (['technician', 'admin'] as $role) {
             $user = $role === 'technician'
                 ? $this->technician
                 : User::factory()->create(['role' => $role]);
@@ -182,24 +182,6 @@ class CaseNoteTest extends TestCase
         $this->assertSoftDeleted('case_notes', ['id' => $note->id]);
     }
 
-    public function test_a_farmer_sees_only_notes_for_their_own_animals(): void
-    {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $own = Beneficiary::factory()->forFarmer($farmer)->create();
-        CaseNote::factory()->by($this->doctor)->forBeneficiary($own)->create();
-
-        CaseNote::factory()->count(3)
-            ->by($this->doctor)
-            ->forBeneficiary($this->beneficiary)
-            ->create();
-
-        $this->actingAs($farmer)
-            ->getJson('/api/v1/case-notes')
-            ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.beneficiary_id', $own->id);
-    }
-
     public function test_a_technician_sees_only_notes_for_assigned_beneficiaries(): void
     {
         CaseNote::factory()->by($this->doctor)->forBeneficiary($this->beneficiary)->create();
@@ -214,12 +196,12 @@ class CaseNoteTest extends TestCase
             ->assertJsonCount(1, 'data');
     }
 
-    public function test_a_farmer_cannot_read_another_farmers_note_by_id(): void
+    public function test_a_technician_cannot_read_a_note_on_an_unassigned_beneficiary(): void
     {
-        $note = CaseNote::factory()->by($this->doctor)->forBeneficiary($this->beneficiary)->create();
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $unassigned = Beneficiary::factory()->create(); // nobody's assignment
+        $note = CaseNote::factory()->by($this->doctor)->forBeneficiary($unassigned)->create();
 
-        $this->actingAs($farmer)
+        $this->actingAs($this->technician)
             ->getJson("/api/v1/case-notes/{$note->id}")
             ->assertNotFound();
     }

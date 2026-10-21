@@ -22,9 +22,9 @@ class AdminUserManagementTest extends TestCase
 
     public function test_only_admins_can_manage_accounts(): void
     {
-        $target = User::factory()->create(['role' => 'farmer']);
+        $target = User::factory()->create(['role' => 'technician']);
 
-        foreach (['doctor', 'technician', 'farmer'] as $role) {
+        foreach (['doctor', 'technician'] as $role) {
             $user = User::factory()->create(['role' => $role]);
 
             $this->actingAs($user)
@@ -111,9 +111,9 @@ class AdminUserManagementTest extends TestCase
 
     public function test_creating_a_farmer_account_is_rejected(): void
     {
-        // Farmer accounts come from public self-registration, which also
-        // creates the beneficiary record. Manufacturing one here would leave
-        // an account with no dispersal attached.
+        // The `farmer` role no longer exists: beneficiaries are records the
+        // admin maintains, never accounts. The create-account endpoint
+        // rejects the role outright.
         $admin = User::factory()->create(['role' => 'admin']);
 
         $this->actingAs($admin)->postJson('/api/v1/admin/users', [
@@ -173,7 +173,7 @@ class AdminUserManagementTest extends TestCase
     public function test_editing_an_account_can_change_its_role(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $target = User::factory()->create(['role' => 'farmer']);
+        $target = User::factory()->create(['role' => 'doctor']);
 
         $this->actingAs($admin)
             ->patchJson("/api/v1/admin/users/{$target->id}", [
@@ -199,7 +199,7 @@ class AdminUserManagementTest extends TestCase
             ->patchJson("/api/v1/admin/users/{$admin->id}", [
                 'name' => $admin->name,
                 'email' => $admin->email,
-                'role' => 'farmer',
+                'role' => 'doctor',
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['role']);
@@ -399,7 +399,7 @@ class AdminUserManagementTest extends TestCase
     public function test_admin_can_bulk_deactivate_accounts(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $targets = User::factory()->count(3)->create(['role' => 'farmer']);
+        $targets = User::factory()->count(3)->create(['role' => 'technician']);
 
         $this->actingAs($admin)
             ->postJson('/api/v1/admin/users/bulk-deactivate', ['ids' => $targets->pluck('id')->all()])
@@ -434,7 +434,7 @@ class AdminUserManagementTest extends TestCase
     public function test_bulk_deactivation_rejects_unknown_and_deactivated_ids(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $gone = User::factory()->create(['role' => 'farmer']);
+        $gone = User::factory()->create(['role' => 'technician']);
         $gone->delete();
 
         $this->actingAs($admin)
@@ -507,21 +507,33 @@ class AdminUserManagementTest extends TestCase
 
     // ── Barangay filter ─────────────────────────────────────────────────────
 
-    public function test_the_list_filters_farmers_by_barangay(): void
+    public function test_the_list_filters_accounts_by_role(): void
     {
+        // The old barangay filter sliced accounts by the household they owned
+        // (the farmer slice). With no farmer accounts that filter is gone;
+        // the role filter is the remaining slice.
         $admin = User::factory()->create(['role' => 'admin']);
-        $here = User::factory()->create(['role' => 'farmer']);
-        $there = User::factory()->create(['role' => 'farmer']);
-        \App\Models\Beneficiary::factory()->forFarmer($here)->create(['address' => 'Dawis']);
-        \App\Models\Beneficiary::factory()->forFarmer($there)->create(['address' => 'Tayawan']);
+        $doctor = User::factory()->create(['role' => 'doctor']);
+        $tech = User::factory()->create(['role' => 'technician']);
 
         $ids = $this->actingAs($admin)
-            ->getJson('/api/v1/admin/users?role=farmer&barangay=Dawis')
+            ->getJson('/api/v1/admin/users?role=doctor')
             ->assertOk()
             ->collect('data.*.id');
 
-        $this->assertContains($here->id, $ids);
-        $this->assertNotContains($there->id, $ids);
+        $this->assertContains($doctor->id, $ids);
+        $this->assertNotContains($admin->id, $ids);
+        $this->assertNotContains($tech->id, $ids);
+    }
+
+    public function test_the_list_rejects_the_removed_farmer_role_filter(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/admin/users?role=farmer')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['role']);
     }
 
     // ── Invite flow (passwordless staff account) ────────────────────────────
@@ -593,5 +605,45 @@ class AdminUserManagementTest extends TestCase
             ->assertStatus(201);
 
         $this->assertDatabaseHas('activity_logs', ['action' => 'user_invited']);
+    }
+
+    // ── Retired farmer rows (history — never accounts again) ───────────────
+
+    public function test_retired_farmer_rows_never_appear_in_the_account_list(): void
+    {
+        // The account-removal migration soft-deletes farmer rows so their
+        // history survives for audit. They are records, not dormant
+        // accounts: no status filter may surface one as an editable,
+        // reactivatable row.
+        $admin = User::factory()->create(['role' => 'admin']);
+        $farmer = User::factory()->create(['role' => 'farmer']);
+        DB::table('users')->where('id', $farmer->id)->update(['deleted_at' => now()]);
+
+        foreach (['active', 'deactivated', 'all'] as $status) {
+            $ids = $this->actingAs($admin)
+                ->getJson("/api/v1/admin/users?status={$status}")
+                ->assertOk()
+                ->collect('data.*.id');
+
+            $this->assertNotContains($farmer->id, $ids->all());
+        }
+    }
+
+    public function test_a_retired_farmer_row_cannot_be_reactivated_into_an_account(): void
+    {
+        // The list already hides retired farmer rows, but reactivate takes
+        // an explicit id — the service refuses non-staff roles outright, so
+        // knowing an old farmer's id is not enough to hand a login back to
+        // the removed role (with its old password).
+        $admin = User::factory()->create(['role' => 'admin']);
+        $farmer = User::factory()->create(['role' => 'farmer']);
+        DB::table('users')->where('id', $farmer->id)->update(['deleted_at' => now()]);
+
+        $this->actingAs($admin)
+            ->postJson("/api/v1/admin/users/{$farmer->id}/reactivate")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['user']);
+
+        $this->assertTrue(User::withTrashed()->findOrFail($farmer->id)->trashed());
     }
 }

@@ -105,11 +105,9 @@ class PublicMapSummaryTest extends TestCase
     /** The whole point of the aggregate endpoint: no identities escape. */
     public function test_summary_leaks_no_beneficiary_identity(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer', 'name' => 'Darna Villanueva']);
         $technician = User::factory()->create(['role' => 'technician', 'name' => 'Tech Rey']);
 
         Beneficiary::factory()
-            ->forFarmer($farmer)
             ->assignedTo($technician)
             ->create([
                 'name_of_farmer' => 'Darna Villanueva',
@@ -127,7 +125,7 @@ class PublicMapSummaryTest extends TestCase
 
         $body = json_encode($json);
 
-        // No farmer/technician names, no per-farm coordinates, no ids.
+        // No beneficiary/technician names, no per-farm coordinates, no ids.
         $this->assertStringNotContainsString('Darna Villanueva', $body);
         $this->assertStringNotContainsString('Tech Rey', $body);
         $this->assertStringNotContainsString('9.47123', $body);

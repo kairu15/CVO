@@ -138,22 +138,6 @@ class MonitoringMonthFilterTest extends TestCase
             ->assertJsonPath('data', ['2024-06', '2025-01', '2026-09']);
     }
 
-    public function test_farmer_months_cover_only_their_own_records(): void
-    {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $own = Beneficiary::factory()->forFarmer($farmer)->create();
-
-        MonitoringRecord::factory()->by($this->technician)->for($own, 'beneficiary')
-            ->create(['date_monitored' => '2025-01-08']);
-        MonitoringRecord::factory()->by($this->technician)->for($this->beneficiary, 'beneficiary')
-            ->create(['date_monitored' => '2026-09-21']);
-
-        $this->actingAs($farmer)
-            ->getJson('/api/v1/monitoring-records/months')
-            ->assertOk()
-            ->assertJsonPath('data', ['2025-01']);
-    }
-
     public function test_month_filter_rejects_an_invalid_bucket(): void
     {
         $this->seedSparseMonths();

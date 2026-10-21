@@ -34,7 +34,6 @@ class BeneficiaryFactory extends Factory
         [$lat, $lng] = self::BARANGAY_COORDS()[$address];
 
         return [
-            'farmer_id' => User::factory()->create(['role' => 'farmer'])->id,
             'name_of_farmer' => fake()->name(),
             'address' => $address,
             'animal_type' => fake()->randomElement(self::ANIMAL_TYPES),
@@ -43,17 +42,6 @@ class BeneficiaryFactory extends Factory
             'longitude' => $lng + fake()->randomFloat(5, -0.004, 0.004),
             'technician_id' => null,
         ];
-    }
-
-    /**
-     * Attach the beneficiary to an existing farmer instead of making a new one.
-     */
-    public function forFarmer(User $farmer): static
-    {
-        return $this->state(fn () => [
-            'farmer_id' => $farmer->id,
-            'name_of_farmer' => $farmer->name,
-        ]);
     }
 
     /**

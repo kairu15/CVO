@@ -32,7 +32,7 @@ export function OfflineBanner() {
 
         <p className="font-medium">
           {!online
-            ? "You're offline. Field visits, case notes and registrations are saved on this device and sync automatically when you reconnect."
+            ? "You're offline. Field visits, case notes and beneficiary additions are saved on this device and sync automatically when you reconnect."
             : `${activeCount} saved ${
                 activeCount === 1 ? "change" : "changes"
               } waiting to sync.`}

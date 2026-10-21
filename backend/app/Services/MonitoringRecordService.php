@@ -6,7 +6,6 @@ use App\Models\Beneficiary;
 use App\Models\FieldVisitPhoto;
 use App\Models\MonitoringRecord;
 use App\Models\User;
-use App\Models\UserNotification;
 use App\Support\Like;
 use App\Support\Pagination;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -17,7 +16,6 @@ class MonitoringRecordService
 {
     public function __construct(
         private readonly BeneficiaryService $beneficiaries,
-        private readonly NotificationService $notifications,
         private readonly AuditLogger $audit,
     ) {
     }
@@ -283,35 +281,17 @@ class MonitoringRecordService
     /**
      * Delete a monitoring record.
      *
-     * Three cases, all inside ONE transaction so the delete is all-or-nothing:
-     *
-     *  1. A REGISTRATION-created row (registration_status != none) IS the
-     *     farmer's registration. An admin deleting it is deleting the farmer,
-     *     so the household, its whole history and its account are soft-deleted
-     *     together — see BeneficiaryService::deleteFarmer(). This is what
-     *     fixes the orphaned-records bug: the row used to disappear while the
-     *     account, assignment, visits and notifications stayed behind.
-     *
-     *  2. An IMPORT-created record (source = import): deleting the sheet row
-     *     also removes its auto-created beneficiary when nothing else still
-     *     references it, so a deleted import stops resurfacing as a phantom
-     *     household in Beneficiaries, the map and the technician pickers.
-     *
-     *  3. An ordinary visit row (registration_status = none) on a registered
-     *     household: record-only delete. A technician clearing a bad entry
-     *     must not wipe the farmer.
+     * An IMPORT-created record (source = import): deleting the sheet row also
+     * removes its auto-created beneficiary when nothing else still references
+     * it, so a deleted import stops resurfacing as a phantom household in
+     * Beneficiaries, the map and the technician pickers. Any other row — a
+     * technician's visit, or a beneficiary's first (enrolment) record — is a
+     * plain record-only delete, all inside ONE transaction.
      */
     public function delete(User $actor, MonitoringRecord $record): void
     {
-        \Illuminate\Support\Facades\DB::transaction(function () use ($record, $actor): void {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($record): void {
             $beneficiary = $record->beneficiary;
-
-            if ($record->registration_status !== MonitoringRecord::REGISTRATION_NONE
-                && $beneficiary instanceof Beneficiary) {
-                $this->beneficiaries->deleteFarmer($actor, $beneficiary);
-
-                return;
-            }
 
             $record->delete();
 
@@ -336,52 +316,6 @@ class MonitoringRecordService
         });
 
         $this->audit->log($actor, 'monitoring_deleted', $record);
-    }
-
-    /**
-     * Accept a registration-created record: the admin has seen it. The
-     * green highlight and "New" badge stay until the upcoming midnight
-     * (app timezone), then the scheduler flips the row to `old`.
-     */
-    public function accept(MonitoringRecord $record, User $acceptor): MonitoringRecord
-    {
-        $record->forceFill([
-            'registration_status' => MonitoringRecord::REGISTRATION_ACCEPTED,
-            'accepted_at' => now(),
-            'status_expires_at' => now()->addDay()->startOfDay(),
-        ])->save();
-
-        $this->audit->log($acceptor, 'monitoring_accepted', $record);
-
-        // Tell the farmer their registration was reviewed, and the other
-        // admins so nobody re-reviews an already-accepted row.
-        $farmerUser = $record->beneficiary?->farmer_id;
-
-        if ($farmerUser) {
-            $this->notifications->create($farmerUser instanceof User ? $farmerUser : User::find($farmerUser), [
-                'type' => UserNotification::TYPE_REGISTRATION_ACCEPTED,
-                'actor_id' => $acceptor->id,
-                'beneficiary_id' => $record->beneficiary_id,
-                'monitoring_record_id' => $record->id,
-                'title' => 'Registration accepted',
-                'message' => "The CVO accepted the dispersal registration for {$record->beneficiary->name_of_farmer}.",
-                'link' => '/dashboard/farmer/monitoring',
-            ]);
-        }
-
-        User::query()->where('role', 'admin')->where('id', '!=', $acceptor->id)->get()->each(
-            fn (User $admin) => $this->notifications->create($admin, [
-                'type' => UserNotification::TYPE_REGISTRATION_ACCEPTED,
-                'actor_id' => $acceptor->id,
-                'beneficiary_id' => $record->beneficiary_id,
-                'monitoring_record_id' => $record->id,
-                'title' => 'Registration accepted',
-                'message' => "{$acceptor->name} accepted the registration for {$record->beneficiary->name_of_farmer}.",
-                'link' => '/dashboard/admin/monitoring',
-            ]),
-        );
-
-        return $record->refresh();
     }
 
     /**
@@ -411,28 +345,6 @@ class MonitoringRecordService
         }
 
         return $record->refresh();
-    }
-
-    /**
-     * Midnight expiry: everything whose countdown has passed becomes `old`.
-     * Covers both accepted records and `new` records nobody acted on — the
-     * admin chose auto-expiry so nothing stays green unattended.
-     *
-     * @return int rows flipped
-     */
-    public function expireDueRegistrations(): int
-    {
-        return MonitoringRecord::query()
-            ->whereIn('registration_status', [
-                MonitoringRecord::REGISTRATION_NEW,
-                MonitoringRecord::REGISTRATION_ACCEPTED,
-            ])
-            ->whereNotNull('status_expires_at')
-            ->where('status_expires_at', '<=', now())
-            ->update([
-                'registration_status' => MonitoringRecord::REGISTRATION_OLD,
-                'status_expires_at' => null,
-            ]);
     }
 
     /**

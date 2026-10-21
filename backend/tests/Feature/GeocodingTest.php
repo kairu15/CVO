@@ -22,9 +22,9 @@ class GeocodingTest extends TestCase
             ]),
         ]);
 
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $admin = User::factory()->create(['role' => 'admin']);
 
-        $response = $this->actingAs($farmer)
+        $response = $this->actingAs($admin)
             ->getJson('/api/v1/geocode?address=Banay%20Banay')
             ->assertOk()
             ->assertJsonPath('data.lat', 9.5538)
@@ -43,19 +43,21 @@ class GeocodingTest extends TestCase
             'nominatim.openstreetmap.org/*' => Http::response([]),
         ]);
 
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $admin = User::factory()->create(['role' => 'admin']);
 
-        $this->actingAs($farmer)
+        $this->actingAs($admin)
             ->getJson('/api/v1/geocode?address=Nowhere%20XYZ')
             ->assertOk()
             ->assertJsonPath('data', null);
     }
 
     /**
-     * The register page is public, so the endpoint is too — it only proxies
-     * cached, throttled Nominatim lookups and reveals nothing user-specific.
+     * The pin picker needs the lookup before anything is saved — including on
+     * the admin Beneficiaries form's own first render — so the endpoint is
+     * session-free: it only proxies cached, throttled Nominatim lookups and
+     * reveals nothing user-specific.
      */
-    public function test_geocode_is_public_for_the_registration_form(): void
+    public function test_geocode_is_public_for_the_pin_picker(): void
     {
         Http::fake([
             'nominatim.openstreetmap.org/*' => Http::response([
@@ -76,9 +78,9 @@ class GeocodingTest extends TestCase
             ]),
         ]);
 
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $admin = User::factory()->create(['role' => 'admin']);
 
-        $this->actingAs($farmer)
+        $this->actingAs($admin)
             ->postJson('/api/v1/beneficiaries', [
                 'name_of_farmer' => 'Geo Farmer',
                 'address' => 'Banay Banay',
@@ -97,10 +99,10 @@ class GeocodingTest extends TestCase
             'nominatim.openstreetmap.org/*' => Http::response([]),
         ]);
 
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $admin = User::factory()->create(['role' => 'admin']);
 
         // A covered barangay always gets a pin: OSM miss -> barangay centroid.
-        $this->actingAs($farmer)
+        $this->actingAs($admin)
             ->postJson('/api/v1/beneficiaries', [
                 'name_of_farmer' => 'Geo Farmer',
                 'address' => 'Dawis',
@@ -120,10 +122,10 @@ class GeocodingTest extends TestCase
             ]),
         ]);
 
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->create();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $beneficiary = Beneficiary::factory()->create();
 
-        $this->actingAs($farmer)
+        $this->actingAs($admin)
             ->putJson("/api/v1/beneficiaries/{$beneficiary->id}", [
                 'address' => 'Dawis',
             ])
@@ -139,9 +141,9 @@ class GeocodingTest extends TestCase
             ]),
         ]);
 
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $admin = User::factory()->create(['role' => 'admin']);
 
-        $this->actingAs($farmer)
+        $this->actingAs($admin)
             ->postJson('/api/v1/beneficiaries', [
                 'name_of_farmer' => 'Field Fix',
                 'address' => 'Banay Banay',
@@ -158,9 +160,9 @@ class GeocodingTest extends TestCase
 
     public function test_address_must_name_a_covered_barangay(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $admin = User::factory()->create(['role' => 'admin']);
 
-        $this->actingAs($farmer)
+        $this->actingAs($admin)
             ->postJson('/api/v1/beneficiaries', [
                 'name_of_farmer' => 'Geo Farmer',
                 'address' => 'Wrong Province Village',
@@ -177,10 +179,10 @@ class GeocodingTest extends TestCase
             'nominatim.openstreetmap.org/*' => Http::response([]),
         ]);
 
-        $farmer = User::factory()->create(['role' => 'farmer']);
+        $admin = User::factory()->create(['role' => 'admin']);
 
         // Loose spelling from the client is stored canonically.
-        $this->actingAs($farmer)
+        $this->actingAs($admin)
             ->postJson('/api/v1/beneficiaries', [
                 'name_of_farmer' => 'Geo Farmer',
                 'address' => 'banaybanay',
@@ -191,32 +193,28 @@ class GeocodingTest extends TestCase
             ->assertJsonPath('data.address', 'Banaybanay');
     }
 
-    public function test_registration_rejects_uncovered_barangay(): void
+    public function test_an_enrolment_rejects_an_uncovered_barangay(): void
     {
-        $this->postJson('/api/v1/register', [
-            'name' => 'Juan Dela Cruz',
-            'username' => 'juan2',
-            'email' => 'juan2@example.com',
-            'password' => 'Sup3r-Secret!',
-            'password_confirmation' => 'Sup3r-Secret!',
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/v1/beneficiaries', [
+            'name_of_farmer' => 'Juan Dela Cruz',
             'address' => 'Somewhere Else',
             'animal_type' => 'Carabao',
             'sex' => 'F',
         ])->assertUnprocessable()->assertJsonValidationErrors(['address']);
     }
 
-    public function test_registration_accepts_a_covered_barangay(): void
+    public function test_an_enrolment_accepts_a_covered_barangay(): void
     {
         Http::fake([
             'nominatim.openstreetmap.org/*' => Http::response([]),
         ]);
 
-        $this->postJson('/api/v1/register', [
-            'name' => 'Juan Dela Cruz',
-            'username' => 'juan3',
-            'email' => 'juan3@example.com',
-            'password' => 'Sup3r-Secret!',
-            'password_confirmation' => 'Sup3r-Secret!',
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/v1/beneficiaries', [
+            'name_of_farmer' => 'Juan Dela Cruz',
             'address' => 'Tayawan',
             'animal_type' => 'Carabao',
             'sex' => 'F',

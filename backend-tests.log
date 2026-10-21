@@ -1,0 +1,641 @@
+
+
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\AdminBeneficiaryDirectoryTest[39m
+  [32;1m✓[39;22m[90m [39m[90mthe directory defaults to fifty and caps per page at fifty[39m[90m                                                 [39m [90m37.33s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe directory still filters by farmer name and address[39m[90m                                                      [39m [90m0.27s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe directory rejects a non admin[39m[90m                                                                           [39m [90m0.30s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe directory rejects a non integer per page[39m[90m                                                                [39m [90m0.34s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\AdminRoleTest[39m
+  [32;1m✓[39;22m[90m [39m[90monly admins can access admin routes[39m[90m                                                                         [39m [90m0.94s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can list technicians[39m[90m                                                                                  [39m [90m0.40s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can change a users role[39m[90m                                                                               [39m [90m0.42s[39m  
+  [32;1m✓[39;22m[90m [39m[90mnon admins cannot change roles[39m[90m                                                                              [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin cannot change their own role[39m[90m                                                                          [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin cannot self demote even when other admins exist[39m[90m                                                       [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mat least one admin always remains[39m[90m                                                                           [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mrole change validates the role value[39m[90m                                                                        [39m [90m0.19s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\AdminUserManagementTest[39m
+  [32;1m✓[39;22m[90m [39m[90monly admins can manage accounts[39m[90m                                                                             [39m [90m0.46s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can create a staff account[39m[90m                                                                            [39m [90m1.63s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma created staff account can sign in[39m[90m                                                                         [39m [90m1.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcreating a farmer account is rejected[39m[90m                                                                       [39m [90m0.54s[39m  
+  [32;1m✓[39;22m[90m [39m[90mstore validates email taken and password strength[39m[90m                                                           [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can edit an accounts name and email[39m[90m                                                                   [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mediting an account can change its role[39m[90m                                                                      [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin cannot change their own role through the edit endpoint[39m[90m                                                [39m [90m0.32s[39m  
+  [32;1m✓[39;22m[90m [39m[90mupdate validates email uniqueness against other accounts[39m[90m                                                    [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can deactivate an account[39m[90m                                                                             [39m [90m0.67s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma deactivated account cannot sign in[39m[90m                                                                        [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin cannot deactivate their own account[39m[90m                                                                   [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma deactivated account can still be edited[39m[90m                                                                   [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can reactivate a deactivated account[39m[90m                                                                  [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe list defaults to active accounts and can include deactivated ones[39m[90m                                       [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mstatus filter rejects unknown values[39m[90m                                                                        [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can bulk deactivate accounts[39m[90m                                                                          [39m [90m0.38s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbulk deactivation skips the actor instead of failing[39m[90m                                                        [39m [90m0.31s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbulk deactivation rejects unknown and deactivated ids[39m[90m                                                       [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mactivity endpoint returns the account trail[39m[90m                                                                 [39m [90m0.45s[39m  
+  [32;1m✓[39;22m[90m [39m[90mrole changes appear in the account activity[39m[90m                                                                 [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe list filters accounts by role[39m[90m                                                                           [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe list rejects the removed farmer role filter[39m[90m                                                             [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcreating an account without a password returns a setup link[39m[90m                                                [39m [90m16.86s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe invited staff member sets their own password[39m[90m                                                           [39m [90m18.11s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma passwordless invite is audited as an invitation[39m[90m                                                           [39m [90m0.29s[39m  
+  [32;1m✓[39;22m[90m [39m[90mretired farmer rows never appear in the account list[39m[90m                                                        [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma retired farmer row cannot be reactivated into an account[39m[90m                                                  [39m [90m0.19s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\AnimalHealthTest[39m
+  [32;1m✓[39;22m[90m [39m[90mthe rollup reports visits clinical events and notes for one animal[39m[90m                                          [39m [90m1.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90man animal with nothing recorded reports empty aggregates[39m[90m                                                    [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe most recent clinical event wins[39m[90m                                                                         [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90monly unresolved outcomes count as open cases[39m[90m                                                                [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90man open case flags the animal for attention[39m[90m                                                                 [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90man overdue vaccination is reported as a reason[39m[90m                                                              [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma recently vaccinated closed out animal needs no attention[39m[90m                                                  [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe attention filter matches the derived flag[39m[90m                                                               [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90man unknown filter is rejected[39m[90m                                                                               [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician sees only assigned animals[39m[90m                                                                     [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mguests are rejected[39m[90m                                                                                         [39m [90m0.12s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\AuthTest[39m
+  [32;1m✓[39;22m[90m [39m[90mthere is no public registration endpoint[39m[90m                                                                    [39m [90m0.27s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma farmer account cannot be created by any flow[39m[90m                                                              [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90musers can login with valid credentials[39m[90m                                                                      [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma wrong password is reported against the password field[39m[90m                                                     [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90man unknown identifier is reported as not found[39m[90m                                                              [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90musers can login with a username[39m[90m                                                                             [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mremember me issues the recaller cookie only when asked[39m[90m                                                      [39m [90m1.04s[39m  
+  [32;1m✓[39;22m[90m [39m[90mauthenticated user can be fetched[39m[90m                                                                           [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mguests cannot fetch user endpoint[39m[90m                                                                           [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90musers can logout[39m[90m                                                                                            [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmobile clients receive a bearer token[39m[90m                                                                       [39m [90m0.27s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\BackfillBeneficiaryCoordinatesTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit pins a household whose short spelling names a covered barangay[39m[90m                                           [39m [90m0.36s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit pins a household whose address drops the barangay qualifier[39m[90m                                              [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit leaves an address that names no covered barangay alone[39m[90m                                                   [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit never moves a household that already has a pin[39m[90m                                                           [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma dry run reports without writing[39m[90m                                                                           [39m [90m0.16s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\BarangayApiTest[39m
+  [32;1m✓[39;22m[90m [39m[90mbarangays are public and ordered[39m[90m                                                                            [39m [90m0.49s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpuroks are public and scoped to their barangay[39m[90m                                                              [39m [90m0.23s[39m  
+  [32;1m✓[39;22m[90m [39m[90munknown barangay puroks 404[39m[90m                                                                                 [39m [90m0.29s[39m  
+  [32;1m✓[39;22m[90m [39m[90man enrolment stores the resolved barangay and chosen purok[39m[90m                                                  [39m [90m9.71s[39m  
+  [32;1m✓[39;22m[90m [39m[90man enrolment resolves the barangay id without a purok[39m[90m                                                       [39m [90m0.39s[39m  
+  [32;1m✓[39;22m[90m [39m[90man enrolment rejects a purok from another barangay[39m[90m                                                          [39m [90m0.25s[39m  
+  [32;1m✓[39;22m[90m [39m[90man enrolment rejects an unknown purok[39m[90m                                                                       [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90man enrolment rejects a purok without a barangay[39m[90m                                                             [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mnearest barangay matches the closest center[39m[90m                                                                 [39m [90m0.57s[39m  
+  [32;1m✓[39;22m[90m [39m[90mnearest barangay answers null far from any center[39m[90m                                                           [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mnearest barangay validates the coordinate payload[39m[90m                                                           [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mnearest purok is scoped to one barangay[39m[90m                                                                     [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mnearest purok answers null without purok coordinates[39m[90m                                                        [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90man enrolment records the location source[39m[90m                                                                    [39m [90m0.52s[39m  
+  [32;1m✓[39;22m[90m [39m[90man enrolment rejects an unknown location source[39m[90m                                                             [39m [90m0.20s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\BarangayManagementTest[39m
+  [32;1m✓[39;22m[90m [39m[90ma guest cannot manage reference data[39m[90m                                                                        [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90monly admins can manage reference data[39m[90m                                                                       [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can add a barangay[39m[90m                                                                                 [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma duplicate barangay name is rejected[39m[90m                                                                       [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma barangay can be recentered but not renamed[39m[90m                                                                [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can add a purok to a barangay[39m[90m                                                                      [39m [90m0.25s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma duplicate purok name within a barangay is rejected[39m[90m                                                        [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma purok can be renamed[39m[90m                                                                                      [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90man unused purok can be deleted[39m[90m                                                                              [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma purok with households cannot be deleted[39m[90m                                                                   [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe settings screen serves the updated reference data[39m[90m                                                       [39m [90m0.25s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\BeneficiaryDeletionTest[39m
+  [32;1m✓[39;22m[90m [39m[90mdeleting a household soft deletes every related record[39m[90m                                                      [39m [90m1.70s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma deleted household disappears from every list and report[39m[90m                                                   [39m [90m2.72s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdeleting a household never touches a staff account[39m[90m                                                          [39m [90m0.48s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdeleting an ordinary monitoring record keeps the household[39m[90m                                                  [39m [90m0.49s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\BeneficiaryTest[39m
+  [32;1m✓[39;22m[90m [39m[90mguests cannot list beneficiaries[39m[90m                                                                            [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnicians see only assigned beneficiaries[39m[90m                                                                 [39m [90m0.25s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnician direct fetch of an unassigned beneficiary is 403[39m[90m                                                 [39m [90m0.39s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma missing beneficiary is still 404 for a technician[39m[90m                                                         [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mreassignment moves visibility between technicians[39m[90m                                                           [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90mclearing an assignment revokes technician access[39m[90m                                                            [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnician scoping covers monitoring records[39m[90m                                                                [39m [90m0.25s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin sees all beneficiaries[39m[90m                                                                                [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe list defaults to fifty and caps per page at fifty[39m[90m                                                       [39m [90m0.50s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe list rejects a non integer per page[39m[90m                                                                     [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mstaff can create a beneficiary[39m[90m                                                                              [39m [90m1.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma create without animal details is rejected and creates nothing[39m[90m                                             [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnicians cannot assign technicians[39m[90m                                                                       [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can assign a technician[39m[90m                                                                               [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin cannot assign a non technician user[39m[90m                                                                   [39m [90m0.18s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\BulkAssignTest[39m
+  [32;1m✓[39;22m[90m [39m[90madmin can bulk assign a technician[39m[90m                                                                          [39m [90m0.39s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can bulk detach technicians[39m[90m                                                                           [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbulk assign reports missing ids as failed[39m[90m                                                                   [39m [90m0.27s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbulk assign rejects a non technician user[39m[90m                                                                   [39m [90m0.27s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnicians cannot bulk assign[39m[90m                                                                              [39m [90m0.16s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\BulkDeleteTest[39m
+  [32;1m✓[39;22m[90m [39m[90madmin bulk deletes monitoring records[39m[90m                                                                       [39m [90m1.39s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnician can bulk delete their own monitoring records[39m[90m                                                     [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician cannot bulk delete someone elses records[39m[90m                                                       [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmissing ids are reported as failed not a 422[39m[90m                                                                [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin bulk deletes case notes and health records[39m[90m                                                            [39m [90m0.58s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician bulk deletes their own field visits[39m[90m                                                            [39m [90m0.65s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin bulk deletes beneficiaries but others cannot[39m[90m                                                          [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbulk delete requires at least one id[39m[90m                                                                        [39m [90m0.15s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\CaseNoteTest[39m
+  [32;1m✓[39;22m[90m [39m[90mdoctor can write a case note[39m[90m                                                                                [39m [90m0.30s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma note needs no diagnosis which is what separates it from a health record[39m[90m                                   [39m [90m0.31s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe author is taken from the session not the payload[39m[90m                                                        [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90monly veterinarians can write notes[39m[90m                                                                          [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcreate requires a body and rejects a future date[39m[90m                                                            [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90man unknown beneficiary is rejected[39m[90m                                                                          [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe author can revise their own note but not a colleagues[39m[90m                                                   [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can correct a note after the vet leaves[39m[90m                                                            [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma note cannot be moved to another animal[39m[90m                                                                    [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe author can delete their own note[39m[90m                                                                        [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician sees only notes for assigned beneficiaries[39m[90m                                                     [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician cannot read a note on an unassigned beneficiary[39m[90m                                                [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mnotes are returned newest first[39m[90m                                                                             [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mguests are rejected[39m[90m                                                                                         [39m [90m0.17s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\DispersalEventTest[39m
+  [32;1m✓[39;22m[90m [39m[90mguests cannot list dispersal events[39m[90m                                                                         [39m [90m0.35s[39m  
+  [32;1m✓[39;22m[90m [39m[90massigned technician can record initial dispersal with coordinates[39m[90m                                           [39m [90m0.78s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnician can record re dispersal registering new recipient inline[39m[90m                                         [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mre dispersal requires a parent[39m[90m                                                                              [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90minitial dispersal rejects a parent[39m[90m                                                                          [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnician cannot record dispersal for unassigned beneficiary[39m[90m                                               [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician sees only events touching their assignments[39m[90m                                                    [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlineage returns the pass on chain[39m[90m                                                                           [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlineage answers an empty chain for beneficiary without dispersal[39m[90m                                            [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlineage is 404 for a missing beneficiary[39m[90m                                                                    [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlineage from the original household lists descendants[39m[90m                                                       [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlineage walks back to the original dispersal[39m[90m                                                                [39m [90m0.29s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician cannot read the lineage of an unassigned household[39m[90m                                             [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbeneficiary store accepts coordinates[39m[90m                                                                       [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbeneficiary store rejects out of range coordinates[39m[90m                                                          [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can correct a beneficiarys coordinates[39m[90m                                                                [39m [90m0.27s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlineage returns a multi generation descendant tree[39m[90m                                                          [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlineage tree branches when a household passes on to several[39m[90m                                                 [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlineage tree is empty for a household with no offspring[39m[90m                                                     [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can correct a dispersal events details[39m[90m                                                                [39m [90m0.25s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can soft delete a dispersal event[39m[90m                                                                     [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90massigned technician can update their own dispersal event[39m[90m                                                    [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnician cannot touch a dispersal event outside their scope[39m[90m                                               [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mswitching a re dispersal back to initial clears the parent[39m[90m                                                  [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mswitching an initial dispersal to re dispersal requires a parent[39m[90m                                            [39m [90m0.21s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\DispersalSignatureTest[39m
+  [32;1m✓[39;22m[90m [39m[90msignature is stored with provenance[39m[90m                                                                         [39m [90m3.55s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma dispersal without a signature still records[39m[90m                                                               [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90msignature must be a png data url[39m[90m                                                                            [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcaptured by comes from the session not the payload[39m[90m                                                          [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90msignature cannot be edited after capture[39m[90m                                                                    [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90mrecapturing creates a new event and leaves the original alone[39m[90m                                               [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90mguests cannot attach a signature[39m[90m                                                                            [39m [90m0.20s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\FieldVisitPhotoTest[39m
+  [32;1m✓[39;22m[90m [39m[90mupload stores the image and every metadata field[39m[90m                                                            [39m [90m1.70s[39m  
+  [32;1m✓[39;22m[90m [39m[90mupload accepts a photo without any gps fix[39m[90m                                                                  [39m [90m0.60s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma retake replaces the previous photo and file[39m[90m                                                               [39m [90m0.39s[39m  
+  [32;1m✓[39;22m[90m [39m[90manother technician cannot attach a photo to someone elses visit[39m[90m                                             [39m [90m0.23s[39m  
+  [32;1m✓[39;22m[90m [39m[90mupload validates the metadata payload[39m[90m                                                                       [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90mupload rejects an oversized image[39m[90m                                                                           [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcreating a visit without the photo assertion is rejected[39m[90m                                                    [39m [90m0.28s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdelete removes the row and the file[39m[90m                                                                         [39m [90m0.25s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\FieldVisitTest[39m
+  [32;1m✓[39;22m[90m [39m[90mtechnician can log a trip with an on site gps fix[39m[90m                                                           [39m [90m0.29s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma trip can be logged with no gps fix and no animal data[39m[90m                                                     [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma half captured fix is rejected[39m[90m                                                                             [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90mout of range coordinates are rejected[39m[90m                                                                       [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe technician is taken from the session not the payload[39m[90m                                                    [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90monly technicians can log a trip[39m[90m                                                                             [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcreate validates the purpose and required fields[39m[90m                                                            [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe purpose vocabulary follows the saved settings[39m[90m                                                           [39m [90m0.40s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe distance from the registered pin is reported[39m[90m                                                            [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe author can correct their own trip but not a colleagues[39m[90m                                                  [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma trip cannot be reassigned to another technician or farm[39m[90m                                                   [39m [90m0.28s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe author can delete their own trip[39m[90m                                                                        [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician sees their own trips even for another technicians beneficiary[39m[90m                                  [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician cannot read another authors visit by id[39m[90m                                                        [39m [90m0.12s[39m  
+  [32;1m✓[39;22m[90m [39m[90mvisits are returned newest first[39m[90m                                                                            [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe purpose vocabulary is served to the form[39m[90m                                                                [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe distance helper is null safe[39m[90m                                                                            [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mguests are rejected[39m[90m                                                                                         [39m [90m0.16s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\GeocodingTest[39m
+  [32;1m✓[39;22m[90m [39m[90mgeocode endpoint returns coordinates for a known address[39m[90m                                                    [39m [90m0.41s[39m  
+  [32;1m✓[39;22m[90m [39m[90mgeocode endpoint returns null data for unknown address[39m[90m                                                      [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mgeocode is public for the pin picker[39m[90m                                                                        [39m [90m0.10s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbeneficiary creation falls back to geocoded coordinates[39m[90m                                                     [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mosm miss falls back to the barangay centroid[39m[90m                                                                [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90maddress update re resolves coordinates[39m[90m                                                                      [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90mexplicit coordinates are not overridden by geocoding[39m[90m                                                        [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90maddress must name a covered barangay[39m[90m                                                                        [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90maddress is normalized to the canonical barangay spelling[39m[90m                                                    [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90man enrolment rejects an uncovered barangay[39m[90m                                                                  [39m [90m0.34s[39m  
+  [32;1m✓[39;22m[90m [39m[90man enrolment accepts a covered barangay[39m[90m                                                                     [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbarangays endpoint lists the coverage[39m[90m                                                                       [39m [90m0.68s[39m  
+  [32;1m✓[39;22m[90m [39m[90mnormalize matches loose spellings[39m[90m                                                                           [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mnormalize matches hyphenated and qualified barangay names[39m[90m                                                   [39m [90m0.18s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\HealthRecordTest[39m
+  [32;1m✓[39;22m[90m [39m[90mdoctor can author a health record[39m[90m                                                                           [39m [90m0.23s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe author is taken from the session not the payload[39m[90m                                                        [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90monly veterinarians can author records[39m[90m                                                                       [39m [90m0.54s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcreate requires a diagnosis and a valid outcome[39m[90m                                                             [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe outcome vocabulary follows the saved settings[39m[90m                                                           [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90man unknown beneficiary is rejected[39m[90m                                                                          [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma future date is rejected[39m[90m                                                                                   [39m [90m0.35s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe author can revise their own record but not a colleagues[39m[90m                                                 [39m [90m0.30s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can correct a record after the vet leaves[39m[90m                                                          [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma record cannot be moved to another animal[39m[90m                                                                  [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe author can delete their own record[39m[90m                                                                      [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician sees only records for assigned beneficiaries[39m[90m                                                   [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician cannot read a record on an unassigned beneficiary by id[39m[90m                                        [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mguests are rejected[39m[90m                                                                                         [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe outcome vocabulary is served to the form[39m[90m                                                                [39m [90m0.17s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\MonitoringAnimalTypeFilterTest[39m
+  [32;1m✓[39;22m[90m [39m[90mlists only the selected animal type[39m[90m                                                                         [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90manimal type and month filters combine with and[39m[90m                                                              [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90manimal type options come from the data sorted[39m[90m                                                               [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90msort by animal type orders rows alphabetically[39m[90m                                                              [39m [90m0.23s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe default sort is not animal type[39m[90m                                                                         [39m [90m0.24s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\MonitoringExcelTest[39m
+  [32;1m✓[39;22m[90m [39m[90madmin can import a monitoring report workbook[39m[90m                                                               [39m [90m9.63s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport is idempotent on reupload[39m[90m                                                                            [39m [90m0.30s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport matches existing beneficiary by name and address[39m[90m                                                     [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can export the report workbook[39m[90m                                                                        [39m [90m0.67s[39m  
+  [32;1m✓[39;22m[90m [39m[90mexport includes technician and photo timestamp columns[39m[90m                                                      [39m [90m0.42s[39m  
+  [32;1m✓[39;22m[90m [39m[90mexport includes rsbsa moa and ear tag columns[39m[90m                                                               [39m [90m0.41s[39m  
+  [32;1m✓[39;22m[90m [39m[90mexport orders sheets chronologically[39m[90m                                                                        [39m [90m0.52s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport derives animal types from the workbook[39m[90m                                                               [39m [90m0.43s[39m  
+  [32;1m✓[39;22m[90m [39m[90mexport can be filtered to one animal type[39m[90m                                                                   [39m [90m0.66s[39m  
+  [32;1m✓[39;22m[90m [39m[90mnon admin cannot import or export[39m[90m                                                                           [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport pins created beneficiaries at their barangay center[39m[90m                                                  [39m [90m0.59s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport leaves uncovered addresses unpinned rather than misplaced[39m[90m                                            [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport resolves loose barangay spellings[39m[90m                                                                    [39m [90m0.38s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport skips the footer and signature block[39m[90m                                                                 [39m [90m0.35s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport keeps a sparse but genuine farmer row[39m[90m                                                                [39m [90m0.29s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport pins hyphenated and short barangay spellings[39m[90m                                                         [39m [90m0.31s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\MonitoringImportCleanupTest[39m
+  [32;1m✓[39;22m[90m [39m[90mdeleting an imported record also removes its import beneficiary[39m[90m                                             [39m [90m0.29s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport beneficiary with multiple records survives one delete[39m[90m                                                [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport beneficiary with a field visit survives[39m[90m                                                              [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport beneficiary with a health record survives[39m[90m                                                            [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport beneficiary with a case note survives[39m[90m                                                                [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mimport beneficiary referenced by a dispersal chain survives[39m[90m                                                 [39m [90m0.23s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma registered beneficiary is never deleted with its record[39m[90m                                                   [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe round trip holds import then delete then reimport[39m[90m                                                       [39m [90m0.44s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\MonitoringMoaTest[39m
+  [32;1m✓[39;22m[90m [39m[90madmin can mark moa signed and it is returned[39m[90m                                                                [39m [90m0.43s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin can flip moa back to not signed[39m[90m                                                                       [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmoa is per dispersal so sibling visits share it[39m[90m                                                             [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdoctor and technician cannot set moa[39m[90m                                                                        [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma guest cannot set moa[39m[90m                                                                                      [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmoa requires a boolean[39m[90m                                                                                      [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmonitoring resource exposes rsbsa moa and ear tag[39m[90m                                                           [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnician scoping is unchanged by the new fields[39m[90m                                                           [39m [90m0.20s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\MonitoringMonthFilterTest[39m
+  [32;1m✓[39;22m[90m [39m[90mmonth filter returns every record for the month[39m[90m                                                             [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmeta total is the real month count not a page slice[39m[90m                                                         [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfilter buckets on date monitored not created at[39m[90m                                                             [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmonths endpoint lists only months with records chronologically[39m[90m                                              [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmonths endpoint is scoped to the caller[39m[90m                                                                     [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmonth filter rejects an invalid bucket[39m[90m                                                                      [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mrecords without a date monitored never appear in a month tab[39m[90m                                                [39m [90m0.15s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\MonitoringRecordContextTest[39m
+  [32;1m✓[39;22m[90m [39m[90mindex includes the assigned technician and latest photo[39m[90m                                                     [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90munassigned beneficiaries report a null assigned technician[39m[90m                                                  [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe latest photo is the most recent capture across all visits[39m[90m                                               [39m [90m0.28s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcapture date then time then id break ties[39m[90m                                                                   [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnicians receive the same columns for their own rows[39m[90m                                                     [39m [90m0.26s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\MonitoringRecordTest[39m
+  [32;1m✓[39;22m[90m [39m[90mtechnician can log a visit for an assigned beneficiary[39m[90m                                                      [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnician cannot log a visit for an unassigned beneficiary[39m[90m                                                 [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90midentity fields cannot be overridden by the client[39m[90m                                                          [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdoctors cannot create records but can edit them[39m[90m                                                             [39m [90m0.34s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnician sees only records of assigned beneficiaries[39m[90m                                                      [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcreate validates bcs range[39m[90m                                                                                  [39m [90m0.16s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\MonitoringSearchTest[39m
+  [32;1m✓[39;22m[90m [39m[90msearch matches a partial farmer name case insensitively[39m[90m                                                     [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90msearch combines with the month filter[39m[90m                                                                       [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90msearch finds a match that sorts onto a later page[39m[90m                                                           [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90msearch is scoped to the caller[39m[90m                                                                              [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90msearch rejects an overlong term[39m[90m                                                                             [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mblank search is ignored[39m[90m                                                                                     [39m [90m0.20s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\NotificationTest[39m
+  [32;1m✓[39;22m[90m [39m[90ma guest cannot read the feed[39m[90m                                                                                [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma new technician with no records gets an empty feed[39m[90m                                                         [39m [90m0.30s[39m  
+  [32;1m✓[39;22m[90m [39m[90man overdue vaccination raises an urgent alert[39m[90m                                                               [39m [90m0.28s[39m  
+  [32;1m✓[39;22m[90m [39m[90man animal with no vaccination raises no alert[39m[90m                                                               [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma vaccination coming due is a warning[39m[90m                                                                       [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma vaccination far from due raises no alert[39m[90m                                                                  [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma dispersal to an assigned animal raises an alert[39m[90m                                                           [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma re dispersal of an offspring raises an alert[39m[90m                                                              [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90malerts are worded from the record not the reader[39m[90m                                                            [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90murgency bands order the feed with overdue first[39m[90m                                                             [39m [90m0.25s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe feed only covers the callers assigned animals[39m[90m                                                           [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mstaff see the feed for everything they can see[39m[90m                                                              [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin sees an alert for every animal[39m[90m                                                                     [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90malerts link to the page that owns the record for that role[39m[90m                                                  [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90man alert id is stable for the same record[39m[90m                                                                   [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe limit caps the rows but not the counts[39m[90m                                                                  [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe limit is bounded[39m[90m                                                                                        [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe feed is read only[39m[90m                                                                                       [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe feed carries no read state[39m[90m                                                                              [39m [90m0.19s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\PaginationCapTest[39m
+  [32;1m✓[39;22m[90m [39m[90mthe support helper clamps to the shared bounds[39m[90m                                                              [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mevery list endpoint defaults to a fifty row page[39m[90m                                                            [39m [90m0.69s[39m  
+  [32;1m✓[39;22m[90m [39m[90man over limit page size is clamped not rejected[39m[90m                                                             [39m [90m0.27s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\ProfileTest[39m
+  [32;1m✓[39;22m[90m [39m[90mthe profile carries no farmer section[39m[90m                                                                       [39m [90m0.30s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnician and doctor sections report existing counts[39m[90m                                                       [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90muser can update own name and email only[39m[90m                                                                     [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90memail must stay unique[39m[90m                                                                                      [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlocation fields are not writable from the profile[39m[90m                                                           [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpassword change requires the current password[39m[90m                                                               [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mavatar upload is validated server side and scoped to the caller[39m[90m                                             [39m [90m0.31s[39m  
+  [32;1m✓[39;22m[90m [39m[90mprofile requires authentication[39m[90m                                                                             [39m [90m0.18s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\ProjectTest[39m
+  [32;1m✓[39;22m[90m [39m[90mguests cannot list projects[39m[90m                                                                                 [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90musers can list their projects[39m[90m                                                                               [39m [90m0.23s[39m  
+  [32;1m✓[39;22m[90m [39m[90musers can create a project[39m[90m                                                                                  [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcreate validates required fields[39m[90m                                                                            [39m [90m0.12s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcreate validates status enum[39m[90m                                                                                [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90mowner can update their project[39m[90m                                                                              [39m [90m0.28s[39m  
+  [32;1m✓[39;22m[90m [39m[90mother users cannot update someone elses project[39m[90m                                                             [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mother users cannot view someone elses project[39m[90m                                                               [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mowner can delete their project[39m[90m                                                                              [39m [90m0.16s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\PublicMapSummaryTest[39m
+  [32;1m✓[39;22m[90m [39m[90msummary is public[39m[90m                                                                                           [39m [90m0.37s[39m  
+  [32;1m✓[39;22m[90m [39m[90msummary counts per barangay with centroids[39m[90m                                                                  [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90msummary counts re dispersals[39m[90m                                                                                [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90msummary counts vaccinations due like the schedule[39m[90m                                                           [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90msummary leaks no beneficiary identity[39m[90m                                                                       [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90msummary is cached between requests[39m[90m                                                                          [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90msummary center falls back to bayawan city[39m[90m                                                                   [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90msummary shape is stable[39m[90m                                                                                     [39m [90m0.14s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\PublicTransparencyTest[39m
+  [32;1m✓[39;22m[90m [39m[90mtransparency is public[39m[90m                                                                                      [39m [90m0.27s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtransparency counts beneficiaries and re dispersals per barangay[39m[90m                                            [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mreach over time is a full zero filled series[39m[90m                                                                [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtransparency reports vaccination compliance[39m[90m                                                                 [39m [90m0.25s[39m  
+  [32;1m✓[39;22m[90m [39m[90mvaccination rate is null when there are no animals[39m[90m                                                          [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtransparency leaks no beneficiary identity[39m[90m                                                                  [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtransparency is cached between requests[39m[90m                                                                     [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtransparency shape is stable[39m[90m                                                                                [39m [90m0.16s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\RegistrationMonitoringTest[39m
+  [32;1m✓[39;22m[90m [39m[90madmin adding a beneficiary creates a monitoring record transactionally[39m[90m                                      [39m [90m1.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician adding a beneficiary owns the monitoring record[39m[90m                                                [39m [90m0.28s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma failed create leaves no partial rows[39m[90m                                                                      [39m [90m0.28s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe accept workflow is gone[39m[90m                                                                                 [39m [90m0.28s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\RegistrationPinTest[39m
+  [32;1m✓[39;22m[90m [39m[90ma create without a browser pin falls back to the barangay center[39m[90m                                            [39m [90m0.29s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma create keeps the browser captured pin when present[39m[90m                                                        [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma create with loose barangay spelling still gets a pin[39m[90m                                                      [39m [90m0.49s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\ReportChartTest[39m
+  [32;1m✓[39;22m[90m [39m[90ma guest and non holders cannot read charts[39m[90m                                                                  [39m [90m0.25s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdispersal trend buckets months and zero fills[39m[90m                                                               [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdispersal trend respects a date range[39m[90m                                                                       [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90manimals by barangay counts all covered barangays[39m[90m                                                            [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90manimals by barangay respects animal type[39m[90m                                                                    [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mvaccination compliance reports a rate per month[39m[90m                                                             [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mvaccination compliance survives an empty program[39m[90m                                                            [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90manimal type distribution groups monitoring records[39m[90m                                                          [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnician workload counts assigned households zero filled[39m[90m                                                  [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90mtechnician workload respects barangay[39m[90m                                                                       [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90man invalid filter is rejected[39m[90m                                                                               [39m [90m0.16s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\ReportTest[39m
+  [32;1m✓[39;22m[90m [39m[90ma guest cannot read the report[39m[90m                                                                              [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90monly admins can read the report[39m[90m                                                                             [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe report counts the program[39m[90m                                                                               [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mactivity counts reflect the recorded rows[39m[90m                                                                   [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mclinical counts use the configured outcome vocabulary[39m[90m                                                       [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe per barangay table covers every barangay with rows[39m[90m                                                      [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe barangay filter narrows every section[39m[90m                                                                   [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe trend covers the trailing months with zeroes[39m[90m                                                            [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90man unknown barangay yields an empty but valid report[39m[90m                                                        [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma from date adds the since counter[39m[90m                                                                          [39m [90m0.21s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\RolesPermissionsTest[39m
+  [32;1m✓[39;22m[90m [39m[90ma guest cannot read the matrix[39m[90m                                                                              [39m [90m0.31s[39m  
+  [32;1m✓[39;22m[90m [39m[90monly manage roles holders can read the matrix[39m[90m                                                               [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe matrix reflects the de facto seed[39m[90m                                                                       [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma guest and non holder cannot flip a cell[39m[90m                                                                   [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mrevoking a capability takes effect on the next request[39m[90m                                                      [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90mgranting a capability opens the module for that role[39m[90m                                                        [39m [90m0.23s[39m  
+  [32;1m✓[39;22m[90m [39m[90man unknown permission or role is rejected[39m[90m                                                                   [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mflipping a cell is audited[39m[90m                                                                                  [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe last manage roles holder cannot have it revoked[39m[90m                                                         [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmanage roles can move off admin once another role holds it[39m[90m                                                  [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma deactivated holder does not count toward lockout safety[39m[90m                                                   [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe user endpoint includes permission keys[39m[90m                                                                  [39m [90m0.17s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\SearchTest[39m
+  [32;1m✓[39;22m[90m [39m[90ma guest cannot search[39m[90m                                                                                       [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma short query is rejected[39m[90m                                                                                   [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma missing query is rejected[39m[90m                                                                                 [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma surrounding whitespace query is trimmed before validation[39m[90m                                                 [39m [90m0.12s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin finds a household by farmer name[39m[90m                                                                      [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90mhouseholds can be found by barangay and by animal[39m[90m                                                           [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma name match is ranked above an address match[39m[90m                                                               [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician only searches their assigned households[39m[90m                                                        [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmonitoring visits match through remarks and household[39m[90m                                                       [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician searching a remark finds only their own visits[39m[90m                                                 [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90maccounts group is admin and doctor only[39m[90m                                                                     [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90man account search never lists the caller[39m[90m                                                                    [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90man account result links to user management[39m[90m                                                                  [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma household result links to the lineage page for staff[39m[90m                                                      [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma household result links to the lineage page for every role[39m[90m                                                 [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90man empty result set is a 200 with no groups[39m[90m                                                                 [39m [90m0.14s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Security\AccountLockoutTest[39m
+  [32;1m✓[39;22m[90m [39m[90mfailed attempts below the threshold do not lock[39m[90m                                                             [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mconsecutive failures lock the account[39m[90m                                                                       [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlocked account answers 423 with retry after[39m[90m                                                                 [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe lock expires after the cooldown[39m[90m                                                                         [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma successful login resets the failure count[39m[90m                                                                 [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90munknown identifiers are never locked[39m[90m                                                                        [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlockout is audited with attempt count[39m[90m                                                                       [39m [90m0.12s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Security\ActivityLogTest[39m
+  [32;1m✓[39;22m[90m [39m[90mlogins and failed logins are recorded[39m[90m                                                                       [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbeneficiary crud is recorded[39m[90m                                                                                [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdispersal creation is recorded[39m[90m                                                                              [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90mrole changes are recorded with previous and new role[39m[90m                                                        [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mrows capture the request context[39m[90m                                                                            [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe log endpoint is admin only[39m[90m                                                                              [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe log endpoint filters by action[39m[90m                                                                          [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe log has no write path through the api[39m[90m                                                                   [39m [90m0.13s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Security\CsrfAuditTest[39m
+  [32;1m✓[39;22m[90m [39m[90mspa origin state changing requests require the csrf header[39m[90m                                                  [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmobile bearer requests are exactly exempt from csrf[39m[90m                                                         [39m [90m0.32s[39m  
+  [32;1m✓[39;22m[90m [39m[90mevery state changing route is inside the stateful api group[39m[90m                                                 [39m [90m0.10s[39m  
+  [32;1m✓[39;22m[90m [39m[90msafe methods do not require csrf even from the spa origin[39m[90m                                                   [39m [90m0.13s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Security\PasswordResetTest[39m
+  [32;1m✓[39;22m[90m [39m[90ma reset link can be requested and used[39m[90m                                                                      [39m [90m0.43s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe response never reveals whether an email exists[39m[90m                                                          [39m [90m0.72s[39m  
+  [32;1m✓[39;22m[90m [39m[90man expired token is refused[39m[90m                                                                                 [39m [90m0.39s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma token cannot be reused[39m[90m                                                                                    [39m [90m0.43s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma successful reset revokes existing sessions and tokens[39m[90m                                                     [39m [90m0.45s[39m  
+  [32;1m✓[39;22m[90m [39m[90mreset validates the password policy[39m[90m                                                                         [39m [90m0.33s[39m  
+  [32;1m✓[39;22m[90m [39m[90mreset requests are throttled[39m[90m                                                                                [39m [90m0.55s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Security\SecurityHeadersTest[39m
+  [32;1m✓[39;22m[90m [39m[90mx content type options is on every response[39m[90m                                                                 [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90mx frame options is on every response[39m[90m                                                                        [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcsp is applied to html responses[39m[90m                                                                            [39m [90m0.69s[39m  
+  [32;1m✓[39;22m[90m [39m[90mapi responses are not stored in the browser cache[39m[90m                                                           [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mhtml responses are not cache controlled by the api rule[39m[90m                                                     [39m [90m0.12s[39m  
+  [32;1m✓[39;22m[90m [39m[90mhsts is absent outside production[39m[90m                                                                           [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90mhsts is sent when forced on[39m[90m                                                                                 [39m [90m0.13s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Security\SessionSecurityTest[39m
+  [32;1m✓[39;22m[90m [39m[90mtoken login issues a token with absolute expiry[39m[90m                                                             [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90man expired token is rejected[39m[90m                                                                                [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma token past the idle window is rejected[39m[90m                                                                    [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma recently used token passes the idle check[39m[90m                                                                 [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlogout all revokes every token and session[39m[90m                                                                  [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpassword change revokes other tokens[39m[90m                                                                        [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mlogout all requires authentication[39m[90m                                                                          [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma fresh cookie session passes the absolute ceiling[39m[90m                                                          [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma cookie session past the absolute ceiling is rejected[39m[90m                                                      [39m [90m0.16s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Security\SqlInjectionTest[39m
+  [32;1m✓[39;22m[90m [39m[90mclassic injection payloads are matched as literals[39m[90m                                                          [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90msearch wildcards are escaped[39m[90m                                                                                [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe like helper escapes the full wildcard vocabulary[39m[90m                                                        [39m [90m0.12s[39m  
+  [32;1m✓[39;22m[90m [39m[90madmin user search handles hostile input[39m[90m                                                                     [39m [90m0.18s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Security\UploadSecurityTest[39m
+  [32;1m✓[39;22m[90m [39m[90mupload lands on the private disk under a server generated name[39m[90m                                              [39m [90m0.73s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma php payload disguised as an image is refused[39m[90m                                                              [39m [90m0.88s[39m  
+  [32;1m✓[39;22m[90m [39m[90man svg payload is refused[39m[90m                                                                                   [39m [90m0.32s[39m  
+  [32;1m✓[39;22m[90m [39m[90man oversized upload is refused[39m[90m                                                                              [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mavatar uploads follow the same pipeline[39m[90m                                                                     [39m [90m0.27s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\SettingsTest[39m
+  [32;1m✓[39;22m[90m [39m[90ma guest cannot read settings[39m[90m                                                                                [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90monly admins can read settings[39m[90m                                                                               [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90monly admins can change settings[39m[90m                                                                             [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90msettings return the configured defaults before any save[39m[90m                                                     [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can save the office profile[39m[90m                                                                        [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma saved profile survives a config default change[39m[90m                                                            [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe barangay list cannot be overwritten[39m[90m                                                                     [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90man invalid email is rejected[39m[90m                                                                                [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90man unknown key is ignored[39m[90m                                                                                   [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90msettings return the configured vaccination cycle before any save[39m[90m                                            [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can save the vaccination thresholds[39m[90m                                                                [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma nonsensical vaccination threshold is rejected[39m[90m                                                             [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can save the inactivity window[39m[90m                                                                     [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe inactivity window cannot exceed the servers own idle limit[39m[90m                                              [39m [90m0.25s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe server session ceilings are reported read only[39m[90m                                                          [39m [90m0.25s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma read hits the cache and a write drops it[39m[90m                                                                  [39m [90m0.36s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can save the field visit overdue threshold[39m[90m                                                         [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma nonsensical field visit threshold is rejected[39m[90m                                                             [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can save the animal type list[39m[90m                                                                      [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90man invalid animal type list is rejected[39m[90m                                                                     [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can save the health outcome vocabulary[39m[90m                                                             [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can save the field visit purpose vocabulary[39m[90m                                                        [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90man invalid vocabulary list is rejected[39m[90m                                                                      [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mnotification preferences default to everything on[39m[90m                                                           [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma disabled event type writes no notification[39m[90m                                                                [39m [90m0.18s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\SiteTest[39m
+  [32;1m✓[39;22m[90m [39m[90ma guest can read the site metadata[39m[90m                                                                          [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90msaved contact details reach the public pages[39m[90m                                                                [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe saved inactivity window reaches the client[39m[90m                                                              [39m [90m0.27s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe public payload stays within its boundary[39m[90m                                                                [39m [90m0.15s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\SmartAlertTest[39m
+  [32;1m✓[39;22m[90m [39m[90moverdue vaccination alerts admins and the assigned technician[39m[90m                                               [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma recent vaccination does not alert[39m[90m                                                                         [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mrerunning the scan does not duplicate alerts[39m[90m                                                                [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfixing the record clears the alert[39m[90m                                                                          [39m [90m0.23s[39m  
+  [32;1m✓[39;22m[90m [39m[90mno recent visit flags an established household[39m[90m                                                              [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbcs rule can be disabled by clearing both ranges[39m[90m                                                            [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbcs rule uses the general range for every species[39m[90m                                                           [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbcs rule flags a score outside a confirmed range[39m[90m                                                            [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90mbarangay flag rate flags only the barangay above the city share[39m[90m                                             [39m [90m0.24s[39m  
+  [32;1m✓[39;22m[90m [39m[90msmall barangays are not flagged[39m[90m                                                                             [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe smart filter returns only flags and reports their count[39m[90m                                                 [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90man unknown filter is rejected[39m[90m                                                                               [39m [90m0.13s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\SymptomRuleTest[39m
+  [32;1m✓[39;22m[90m [39m[90madmins see every rule including retired ones[39m[90m                                                                [39m [90m0.51s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can create a rule and keywords are normalized[39m[90m                                                      [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma non admin cannot change rules[39m[90m                                                                             [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma rule requires a label keywords and a hint[39m[90m                                                                 [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can deactivate a rule[39m[90m                                                                              [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90man admin can delete a rule[39m[90m                                                                                  [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mstaff can read only the active rules in display order[39m[90m                                                       [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe active rules require authentication[39m[90m                                                                     [39m [90m0.12s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\SyncConflictTest[39m
+  [32;1m✓[39;22m[90m [39m[90ma technician logs a conflict and it is stored[39m[90m                                                               [39m [90m0.40s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe row is always stamped with the caller[39m[90m                                                                   [39m [90m0.19s[39m  
+  [32;1m✓[39;22m[90m [39m[90mkeeping the server version is a valid resolution[39m[90m                                                            [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe offline editable entity vocabulary is accepted[39m[90m                                                          [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90man unknown entity type is rejected[39m[90m                                                                          [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90man unknown resolution is rejected[39m[90m                                                                           [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mguests are rejected[39m[90m                                                                                         [39m [90m0.13s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe audit list is admin only[39m[90m                                                                                [39m [90m0.21s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\UserNotificationTest[39m
+  [32;1m✓[39;22m[90m [39m[90madding a beneficiary notifies the other admins[39m[90m                                                              [39m [90m0.43s[39m  
+  [32;1m✓[39;22m[90m [39m[90massignment notifies the technician[39m[90m                                                                          [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma reassignment notifies both technicians[39m[90m                                                                    [39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma field visit photo notifies admins and doctors[39m[90m                                                             [39m [90m0.31s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdoctors receive only the health relevant events[39m[90m                                                             [39m [90m0.33s[39m  
+  [32;1m✓[39;22m[90m [39m[90munread count and mark all read[39m[90m                                                                              [39m [90m0.42s[39m  
+  [32;1m✓[39;22m[90m [39m[90mread all requires authentication and events carry read state[39m[90m                                                [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe feed counts stay honest with events merged in[39m[90m                                                           [39m [90m0.31s[39m  
+  [32;1m✓[39;22m[90m [39m[90mopening one notification marks only that one read[39m[90m                                                           [39m [90m0.42s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\VaccinationScheduleTest[39m
+  [32;1m✓[39;22m[90m [39m[90mthe schedule derives next due from the last vaccination[39m[90m                                                     [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma saved vaccination interval drives the schedule[39m[90m                                                            [39m [90m0.17s[39m  
+  [32;1m✓[39;22m[90m [39m[90man animal never vaccinated is reported as never[39m[90m                                                             [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmonitoring records without a vaccination do not count[39m[90m                                                       [39m [90m0.15s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe latest vaccination wins when several are recorded[39m[90m                                                       [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90man overdue animal is reported as overdue[39m[90m                                                                    [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90man animal due inside the window is due soon[39m[90m                                                                 [39m [90m0.18s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe status filter agrees with the computed row status[39m[90m                                                       [39m [90m0.32s[39m  
+  [32;1m✓[39;22m[90m [39m[90mthe most urgent animals come first[39m[90m                                                                          [39m [90m0.20s[39m  
+  [32;1m✓[39;22m[90m [39m[90man unknown status is rejected[39m[90m                                                                               [39m [90m0.14s[39m  
+  [32;1m✓[39;22m[90m [39m[90ma technician sees only assigned animals[39m[90m                                                                     [39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mguests are rejected[39m[90m                                                                                         [39m [90m0.12s[39m  
+
+  [90mTests:[39m    [32;1m527 passed[39;22m[90m (2169 assertions)[39m
+  [90mDuration:[39m [39m310.22s[39m
+

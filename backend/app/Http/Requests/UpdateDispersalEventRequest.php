@@ -82,7 +82,8 @@ class UpdateDispersalEventRequest extends FormRequest
         match ($user->role) {
             'admin', 'doctor' => null,
             'technician' => $query->where('technician_id', $user->id),
-            default => $query->where('farmer_id', $user->id),
+            // No other role exists; scope to nothing rather than everything.
+            default => $query->whereRaw('0 = 1'),
         };
     }
 }

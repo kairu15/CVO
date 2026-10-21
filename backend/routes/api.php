@@ -38,9 +38,17 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-// Authentication (rate limited to 6 attempts per minute)
-Route::prefix('v1')->middleware('throttle:6,1')->group(function (): void {
-    Route::post('/register', [AuthController::class, 'register'])->name('api.register');
+// Authentication (rate limited to 6 attempts per minute).
+//
+// There is no public registration endpoint: accounts are staff-only and
+// created by an administrator (see the /admin/users routes), and beneficiaries
+// are program records the admin enters on the Beneficiaries screen.
+// The trailing argument on each throttle below is the LIMITER PREFIX. Laravel
+// keys a numeric throttle on sha1(domain|ip) alone — every `throttle:X,1`
+// without a prefix shares ONE counter per IP, so six hits to the public
+// /site endpoint would starve the login budget (and vice versa). A distinct
+// prefix per budget keeps them independent.
+Route::prefix('v1')->middleware('throttle:6,1,auth')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login'])->name('api.login');
     Route::post('/token-login', [AuthController::class, 'tokenLogin'])->name('api.token-login');
 
@@ -70,40 +78,43 @@ Route::prefix('v1')->middleware('throttle:6,1')->group(function (): void {
 |
 */
 Route::prefix('v1')->group(function (): void {
-    // Location reference data for the public forms — the registration
-    // form's barangay → purok cascade. Read-only and session-free: these
-    // are reference tables, not user data, so they need no auth. Ordered
-    // by id (the config seed order) so the dropdown reads as a stable list.
+    // Location reference data for the public forms — the barangay → purok
+    // cascade the Beneficiaries screen (and any pre-login form) uses.
+    // Read-only and session-free: these are reference tables, not user
+    // data, so they need no auth. Ordered by id (the config seed order) so
+    // the dropdown reads as a stable list.
     Route::get('/barangays', [BarangayController::class, 'index'])
-        ->middleware('throttle:60,1')
+        ->middleware('throttle:60,1,barangays')
         ->name('api.barangays');
     Route::get('/barangays/{barangay}/puroks', [BarangayController::class, 'puroks'])
-        ->middleware('throttle:60,1')
+        ->middleware('throttle:60,1,barangays')
         ->name('api.barangays.puroks');
 
-    // GPS/pin → barangay/purok auto-detect for the registration form.
-    // Public like the rest of the cascade (used before login); POST because
-    // it carries the farmer's coordinates. Nearest-centroid matching — see
-    // App\Support\Geo for why this is a suggestion, not a boundary lookup.
+    // GPS/pin → barangay/purok auto-detect. Public like the rest of the
+    // cascade (the admin form opens it while its first fetches still sit in
+    // the throttle budget); POST because it carries coordinates.
+    // Nearest-centroid matching — see App\Support\Geo for why this is a
+    // suggestion, not a boundary lookup.
     Route::post('/barangays/nearest', [BarangayController::class, 'nearest'])
-        ->middleware('throttle:30,1')
+        ->middleware('throttle:30,1,barangays-nearest')
         ->name('api.barangays.nearest');
     Route::post('/barangays/{barangay}/puroks/nearest', [BarangayController::class, 'nearestPurok'])
-        ->middleware('throttle:60,1')
+        ->middleware('throttle:60,1,barangays-nearest')
         ->name('api.barangays.puroks.nearest');
 
-    // Address → coordinates for the public registration form's pin preview.
-    // Cached server-side and throttled — it proxies Nominatim, which forbids
-    // heavy use. Public because the register page has no session yet.
+    // Address → coordinates for the pin preview on the admin Beneficiaries
+    // form. Cached server-side and throttled — it proxies Nominatim, which
+    // forbids heavy use. Public so the address cascade is also reachable
+    // before the first fetch settles.
     Route::get('/geocode', [BeneficiaryController::class, 'geocode'])
-        ->middleware('throttle:30,1')
+        ->middleware('throttle:30,1,geocode')
         ->name('api.geocode');
 
     // Landing page map — aggregated program statistics only (per-barangay
     // counts on fixed barangay centroids and program totals). No names, no
     // exact farm coordinates, no session required. Cached server-side.
     Route::get('/public/map-summary', [PublicMapController::class, 'summary'])
-        ->middleware('throttle:30,1')
+        ->middleware('throttle:30,1,map-summary')
         ->name('api.public.map-summary');
 
     // Public site metadata — the office contact details an administrator edits
@@ -111,7 +122,7 @@ Route::prefix('v1')->group(function (): void {
     // because every page that renders them (landing, Support, the
     // password-reset note) is used before login.
     Route::get('/site', [SiteController::class, 'show'])
-        ->middleware('throttle:60,1')
+        ->middleware('throttle:60,1,site')
         ->name('api.site');
 
     // Public transparency dashboard — aggregate program statistics only
@@ -120,7 +131,7 @@ Route::prefix('v1')->group(function (): void {
     // Session-free like the map summary; cached server-side so anonymous
     // traffic cannot become a query amplifier.
     Route::get('/public/transparency', [PublicTransparencyController::class, 'index'])
-        ->middleware('throttle:30,1')
+        ->middleware('throttle:30,1,transparency')
         ->name('api.public.transparency');
 });
 
@@ -135,7 +146,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::get('/profile', [ProfileController::class, 'show'])->name('api.profile.show');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('api.profile.update');
     Route::patch('/profile/password', [ProfileController::class, 'updatePassword'])
-        ->middleware('throttle:6,1')
+        ->middleware('throttle:6,1,password')
         ->name('api.profile.password');
     Route::post('/profile/avatar', [ProfileController::class, 'storeAvatar'])
         ->name('api.profile.avatar.store');
@@ -168,17 +179,10 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::post('monitoring-records/bulk-delete', [MonitoringRecordController::class, 'bulkDestroy'])
         ->name('api.monitoring-records.bulk-delete');
 
-    // Admin accepts a registration-created monitoring record (starts the
-    // midnight countdown). Declared after the apiResource so its explicit
-    // path wins over the {monitoring_record} binding, same as the pattern
-    // used for field-visit photo routes.
-    Route::patch('monitoring-records/{id}/accept', [MonitoringRecordController::class, 'accept'])
-        ->name('api.monitoring-records.accept');
-
     // Admin flips the dispersal's MOA status (per-beneficiary) from the
-    // monitoring table's inline toggle. Same routing pattern as accept above:
-    // declared after the apiResource so the explicit path wins, and
-    // authorized by MonitoringRecordPolicy::setMoa inside the controller.
+    // monitoring table's inline toggle. Declared after the apiResource so
+    // the explicit path wins, and authorized by
+    // MonitoringRecordPolicy::setMoa inside the controller.
     Route::patch('monitoring-records/{id}/moa', [MonitoringRecordController::class, 'setMoa'])
         ->name('api.monitoring-records.moa');
 
@@ -247,7 +251,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
 
     // Global header search — read-only, role-scoped to the caller's own rows.
     Route::get('search', [SearchController::class, 'index'])
-        ->middleware('throttle:60,1')
+        ->middleware('throttle:60,1,search')
         ->name('api.search');
 
     // Offline sync conflicts — the client reports the technician's decision

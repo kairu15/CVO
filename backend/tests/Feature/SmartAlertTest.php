@@ -37,9 +37,7 @@ class SmartAlertTest extends TestCase
     {
         $admin = $this->admin();
         $technician = User::factory()->create(['role' => 'technician']);
-        $farmer = User::factory()->create(['role' => 'farmer']);
         $beneficiary = Beneficiary::factory()
-            ->forFarmer($farmer)
             ->assignedTo($technician)
             ->create();
 
@@ -323,8 +321,8 @@ class SmartAlertTest extends TestCase
         // An ordinary stored event also exists for the same admin.
         UserNotification::create([
             'user_id' => $admin->id,
-            'type' => UserNotification::TYPE_REGISTRATION_NEW,
-            'title' => 'New farmer registered',
+            'type' => UserNotification::TYPE_BENEFICIARY_ADDED,
+            'title' => 'Beneficiary added',
             'message' => 'A routine event.',
         ]);
 

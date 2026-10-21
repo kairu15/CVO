@@ -122,7 +122,7 @@ class FieldVisitTest extends TestCase
             'purpose' => 'routine-monitoring',
         ];
 
-        foreach (['doctor', 'farmer', 'admin'] as $role) {
+        foreach (['doctor', 'admin'] as $role) {
             $this->actingAs(User::factory()->create(['role' => $role]))
                 ->postJson('/api/v1/field-visits', $payload)
                 ->assertForbidden();
@@ -256,27 +256,14 @@ class FieldVisitTest extends TestCase
             ->assertJsonPath('data.0.id', $mine->id);
     }
 
-    public function test_a_farmer_sees_the_visits_made_to_their_animals(): void
+    public function test_a_technician_cannot_read_another_authors_visit_by_id(): void
     {
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $own = Beneficiary::factory()->forFarmer($farmer)->create();
-        $visit = FieldVisit::factory()->by($this->technician)->forBeneficiary($own)->create();
+        // Visits scope by author: another technician's trip is invisible, not
+        // merely forbidden — it must not even confirm the row exists.
+        $other = User::factory()->create(['role' => 'technician']);
+        $visit = FieldVisit::factory()->by($other)->forBeneficiary($this->beneficiary)->create();
 
-        FieldVisit::factory()->by($this->technician)->forBeneficiary($this->beneficiary)->create();
-
-        $this->actingAs($farmer)
-            ->getJson('/api/v1/field-visits')
-            ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $visit->id);
-    }
-
-    public function test_a_farmer_cannot_read_another_farmers_visit_by_id(): void
-    {
-        $visit = FieldVisit::factory()->by($this->technician)->forBeneficiary($this->beneficiary)->create();
-        $farmer = User::factory()->create(['role' => 'farmer']);
-
-        $this->actingAs($farmer)
+        $this->actingAs($this->technician)
             ->getJson("/api/v1/field-visits/{$visit->id}")
             ->assertNotFound();
     }

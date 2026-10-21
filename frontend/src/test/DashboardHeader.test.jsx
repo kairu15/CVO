@@ -245,9 +245,9 @@ describe("DashboardHeader", () => {
       alerts: [
         {
           id: "event-42",
-          type: "registration-new",
+          type: "beneficiary-added",
           urgency: "info",
-          title: "New farmer registered",
+          title: "New beneficiary added",
           message: "Opened this one.",
           date: "2026-09-26T08:00:00+08:00",
           read: false,
@@ -261,7 +261,7 @@ describe("DashboardHeader", () => {
     renderHeader();
 
     await user.click(screen.getByRole("button", { name: "Notifications" }));
-    await user.click(await screen.findByRole("link", { name: /New farmer registered/ }));
+    await user.click(await screen.findByRole("link", { name: /New beneficiary added/ }));
 
     // The stored event is written read; a derived alert has no row to write.
     await vi.waitFor(() => expect(notificationsApi.markRead).toHaveBeenCalledWith(42));

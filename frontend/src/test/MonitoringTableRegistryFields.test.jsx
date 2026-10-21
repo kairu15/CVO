@@ -22,8 +22,6 @@ const WITH_VALUES = {
   moa_signed: true,
   assigned_technician: null,
   latest_field_visit_photo: null,
-  registration_status: "none",
-  is_new: false,
 };
 
 const MISSING_VALUES = {

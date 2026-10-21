@@ -39,73 +39,49 @@ class UserNotificationTest extends TestCase
             ->all();
     }
 
-    public function test_registration_notifies_every_admin(): void
+    /** Enroll a household through the real admin endpoint. */
+    private function addBeneficiary(User $actor, ?string $name = null): Beneficiary
     {
+        $name ??= 'Nena Farmer '.uniqid();
+
+        $this->actingAs($actor)
+            ->postJson('/api/v1/beneficiaries', [
+                'name_of_farmer' => $name,
+                'address' => 'Ali-is',
+                'animal_type' => 'Goat',
+                'sex' => 'F',
+            ])->assertCreated();
+
+        return Beneficiary::where('name_of_farmer', $name)->firstOrFail();
+    }
+
+    public function test_adding_a_beneficiary_notifies_the_other_admins(): void
+    {
+        $actor = $this->admin();
         $first = $this->admin();
         $second = $this->admin();
-        $otherAdmin = $this->admin(); // also an admin — also notified
 
-        $this->postJson('/api/v1/register', [
-            'name' => 'Nena Farmer',
-            'username' => 'nena'.uniqid(),
-            'email' => 'nena'.uniqid().'@test.dev',
-            'password' => 'Sup3r-Secret!',
-            'password_confirmation' => 'Sup3r-Secret!',
-            'address' => 'Ali-is',
-            'animal_type' => 'Goat',
-            'sex' => 'F',
-        ])->assertCreated();
+        $this->addBeneficiary($actor, 'Nena Farmer');
 
-        foreach ([$first, $second, $otherAdmin] as $admin) {
+        foreach ([$first, $second] as $admin) {
             $events = $this->events($admin->fresh());
 
             $this->assertCount(1, $events);
-            $this->assertSame('registration-new', $events[0]['type']);
-            $this->assertSame('New farmer registered', $events[0]['title']);
+            $this->assertSame('beneficiary-added', $events[0]['type']);
+            $this->assertSame('Beneficiary added', $events[0]['title']);
             $this->assertStringContainsString('Nena Farmer', $events[0]['message']);
             $this->assertFalse($events[0]['read']);
         }
-    }
-
-    public function test_accepting_a_registration_notifies_the_farmer_and_other_admins(): void
-    {
-        $actor = $this->admin();
-        $colleague = $this->admin();
-
-        $this->postJson('/api/v1/register', [
-            'name' => 'Nena Farmer',
-            'username' => 'nena'.uniqid(),
-            'email' => 'nena'.uniqid().'@test.dev',
-            'password' => 'Sup3r-Secret!',
-            'password_confirmation' => 'Sup3r-Secret!',
-            'address' => 'Ali-is',
-            'animal_type' => 'Goat',
-            'sex' => 'F',
-        ])->assertCreated();
-
-        $record = MonitoringRecord::latest('id')->first();
-        $farmer = User::find($record->beneficiary->farmer_id);
-
-        $this->actingAs($actor)->patchJson("/api/v1/monitoring-records/{$record->id}/accept")->assertOk();
 
         // The acting admin does NOT hear about their own action.
-        $this->assertCount(1, $this->events($actor->fresh())); // only the registration event
-
-        $farmerEvents = $this->events($farmer->fresh());
-        $this->assertSame('registration-accepted', $farmerEvents[0]['type']);
-        $this->assertSame('Registration accepted', $farmerEvents[0]['title']);
-
-        $colleagueEvents = $this->events($colleague->fresh());
-        $this->assertSame('registration-accepted', $colleagueEvents[0]['type']);
-        $this->assertStringContainsString($actor->name, $colleagueEvents[0]['message']);
+        $this->assertCount(0, $this->events($actor->fresh()));
     }
 
-    public function test_assignment_notifies_the_technician_and_the_farmer(): void
+    public function test_assignment_notifies_the_technician(): void
     {
         $admin = $this->admin();
         $technician = User::factory()->create(['role' => 'technician']);
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->create();
+        $beneficiary = Beneficiary::factory()->create();
 
         $this->actingAs($admin)
             ->patchJson("/api/v1/admin/beneficiaries/{$beneficiary->id}/assign-technician", [
@@ -116,10 +92,6 @@ class UserNotificationTest extends TestCase
         $techEvents = $this->events($technician->fresh());
         $this->assertSame('technician-assigned', $techEvents[0]['type']);
         $this->assertStringContainsString($beneficiary->name_of_farmer, $techEvents[0]['message']);
-
-        $farmerEvents = $this->events($farmer->fresh());
-        $this->assertSame('technician-assigned', $farmerEvents[0]['type']);
-        $this->assertStringContainsString($technician->name, $farmerEvents[0]['message']);
     }
 
     public function test_a_reassignment_notifies_both_technicians(): void
@@ -181,17 +153,9 @@ class UserNotificationTest extends TestCase
     {
         $doctor = User::factory()->create(['role' => 'doctor']);
 
-        // A registration is an admin-workflow event, not a veterinary one.
-        $this->postJson('/api/v1/register', [
-            'name' => 'Nena Farmer',
-            'username' => 'nena'.uniqid(),
-            'email' => 'nena'.uniqid().'@test.dev',
-            'password' => 'Sup3r-Secret!',
-            'password_confirmation' => 'Sup3r-Secret!',
-            'address' => 'Ali-is',
-            'animal_type' => 'Goat',
-            'sex' => 'F',
-        ])->assertCreated();
+        // Adding a beneficiary is an admin-workflow event, not a veterinary
+        // one — doctors never hear about it.
+        $this->addBeneficiary($this->admin(), 'Nena Farmer');
 
         $this->actingAs($doctor)->getJson('/api/v1/notifications/unread-count')
             ->assertOk()
@@ -200,40 +164,31 @@ class UserNotificationTest extends TestCase
 
     public function test_unread_count_and_mark_all_read(): void
     {
-        $admin = $this->admin();
-        $other = $this->admin(); // exists before the events, so it receives them
+        $actor = $this->admin(); // enrolls; does not notify themselves
+        $receiver = $this->admin(); // exists before the events, so it receives them
 
-        // Three events land (three registrations).
+        // Three events land (three households enrolled).
         foreach (range(1, 3) as $ignored) {
-            $this->postJson('/api/v1/register', [
-                'name' => 'Farmer '.$ignored,
-                'username' => 'f'.$ignored.uniqid(),
-                'email' => 'f'.$ignored.uniqid().'@test.dev',
-                'password' => 'Sup3r-Secret!',
-                'password_confirmation' => 'Sup3r-Secret!',
-                'address' => 'Ali-is',
-                'animal_type' => 'Goat',
-                'sex' => 'F',
-            ])->assertCreated();
+            $this->addBeneficiary($actor, 'Farmer '.$ignored);
         }
 
-        $this->actingAs($admin)->getJson('/api/v1/notifications/unread-count')
+        $this->actingAs($receiver)->getJson('/api/v1/notifications/unread-count')
             ->assertOk()
             ->assertJsonPath('data.unread', 3);
 
         // Mark all read → count drops to zero without waiting for a poll.
-        $this->actingAs($admin)->postJson('/api/v1/notifications/read-all')
+        $this->actingAs($receiver)->postJson('/api/v1/notifications/read-all')
             ->assertOk()
             ->assertJsonPath('data.marked', 3);
 
-        $this->actingAs($admin)->getJson('/api/v1/notifications/unread-count')
+        $this->actingAs($receiver)->getJson('/api/v1/notifications/unread-count')
             ->assertOk()
             ->assertJsonPath('data.unread', 0);
 
-        // Read state is per user: the other admin still has theirs.
-        $this->actingAs($other)->getJson('/api/v1/notifications/unread-count')
+        // The actor never received their own events, so nothing to clear.
+        $this->actingAs($actor)->getJson('/api/v1/notifications/unread-count')
             ->assertOk()
-            ->assertJsonPath('data.unread', 3);
+            ->assertJsonPath('data.unread', 0);
     }
 
     public function test_read_all_requires_authentication_and_events_carry_read_state(): void
@@ -246,8 +201,8 @@ class UserNotificationTest extends TestCase
         $beneficiary = Beneficiary::factory()->create();
         UserNotification::create([
             'user_id' => $admin->id,
-            'type' => 'registration-new',
-            'title' => 'New farmer registered',
+            'type' => 'beneficiary-added',
+            'title' => 'Beneficiary added',
             'message' => 'Test event',
             'read_at' => now(),
         ]);
@@ -259,22 +214,14 @@ class UserNotificationTest extends TestCase
     public function test_the_feed_counts_stay_honest_with_events_merged_in(): void
     {
         // The limit caps rows but never the counts, events included.
-        $admin = $this->admin();
+        $actor = $this->admin();
+        $receiver = $this->admin();
 
         foreach (range(1, 2) as $ignored) {
-            $this->postJson('/api/v1/register', [
-                'name' => 'Farmer '.$ignored,
-                'username' => 'x'.$ignored.uniqid(),
-                'email' => 'x'.$ignored.uniqid().'@test.dev',
-                'password' => 'Sup3r-Secret!',
-                'password_confirmation' => 'Sup3r-Secret!',
-                'address' => 'Ali-is',
-                'animal_type' => 'Goat',
-                'sex' => 'F',
-            ])->assertCreated();
+            $this->addBeneficiary($actor, 'Farmer '.$ignored);
         }
 
-        $this->actingAs($admin)->getJson('/api/v1/notifications?limit=1')
+        $this->actingAs($receiver)->getJson('/api/v1/notifications?limit=1')
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('meta.unread_events', 2);
@@ -282,49 +229,41 @@ class UserNotificationTest extends TestCase
 
     public function test_opening_one_notification_marks_only_that_one_read(): void
     {
-        $admin = $this->admin();
-        $other = $this->admin(); // exists before the events, so it receives them too
+        $actor = $this->admin(); // enrolls
+        $receiver = $this->admin(); // exists before the events, so it receives them
+        $stranger = User::factory()->create(['role' => 'doctor']); // a role the event never reaches
 
         foreach (range(1, 2) as $ignored) {
-            $this->postJson('/api/v1/register', [
-                'name' => 'Farmer '.$ignored,
-                'username' => 'r'.$ignored.uniqid(),
-                'email' => 'r'.$ignored.uniqid().'@test.dev',
-                'password' => 'Sup3r-Secret!',
-                'password_confirmation' => 'Sup3r-Secret!',
-                'address' => 'Ali-is',
-                'animal_type' => 'Goat',
-                'sex' => 'F',
-            ])->assertCreated();
+            $this->addBeneficiary($actor, 'Farmer '.$ignored);
         }
 
-        $events = $this->events($admin->fresh());
+        $events = $this->events($receiver->fresh());
         $this->assertCount(2, $events);
 
         $id = (int) str_replace('event-', '', $events[0]['id']);
 
-        $this->actingAs($admin)->postJson("/api/v1/notifications/{$id}/read")
+        $this->actingAs($receiver)->postJson("/api/v1/notifications/{$id}/read")
             ->assertOk()
             ->assertJsonPath('data.marked', true);
 
         // Opening one leaves the other unread — the badge counts the remainder,
         // it does not clear wholesale.
-        $this->actingAs($admin)->getJson('/api/v1/notifications/unread-count')
+        $this->actingAs($receiver)->getJson('/api/v1/notifications/unread-count')
             ->assertOk()
             ->assertJsonPath('data.unread', 1);
 
         // ...and the read flag is written on the row the reader opened.
-        $opened = collect($this->events($admin))->firstWhere('id', $events[0]['id']);
+        $opened = collect($this->events($receiver))->firstWhere('id', $events[0]['id']);
         $this->assertTrue($opened['read']);
 
         // Scoped to its owner: the same id changes nothing for another user,
-        // who still has both of their own unread.
-        $this->actingAs($other)->postJson("/api/v1/notifications/{$id}/read")
+        // who has no such notification at all.
+        $this->actingAs($stranger)->postJson("/api/v1/notifications/{$id}/read")
             ->assertOk()
             ->assertJsonPath('data.marked', false);
 
-        $this->actingAs($other)->getJson('/api/v1/notifications/unread-count')
+        $this->actingAs($stranger)->getJson('/api/v1/notifications/unread-count')
             ->assertOk()
-            ->assertJsonPath('data.unread', 2);
+            ->assertJsonPath('data.unread', 0);
     }
 }

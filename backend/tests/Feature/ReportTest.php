@@ -36,7 +36,7 @@ class ReportTest extends TestCase
 
     public function test_only_admins_can_read_the_report(): void
     {
-        foreach (['doctor', 'technician', 'farmer'] as $role) {
+        foreach (['doctor', 'technician'] as $role) {
             $this->actingAs(User::factory()->create(['role' => $role]))
                 ->getJson('/api/v1/admin/report')
                 ->assertForbidden();
@@ -46,9 +46,8 @@ class ReportTest extends TestCase
     public function test_the_report_counts_the_program(): void
     {
         $admin = $this->admin();
-        $farmer = User::factory()->create(['role' => 'farmer']);
 
-        Beneficiary::factory()->forFarmer($farmer)->count(3)->create();
+        Beneficiary::factory()->count(3)->create();
         Beneficiary::factory()->create(['technician_id' => null]);
 
         $data = $this->report($admin);
@@ -62,10 +61,9 @@ class ReportTest extends TestCase
     public function test_activity_counts_reflect_the_recorded_rows(): void
     {
         $admin = $this->admin();
-        $farmer = User::factory()->create(['role' => 'farmer']);
         $tech = User::factory()->create(['role' => 'technician']);
 
-        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->assignedTo($tech)->create();
+        $beneficiary = Beneficiary::factory()->assignedTo($tech)->create();
 
         MonitoringRecord::factory()->for($beneficiary, 'beneficiary')->create();
         FieldVisit::factory()->for($beneficiary, 'beneficiary')->create(['latitude' => 9.3, 'longitude' => 122.8]);
@@ -85,9 +83,8 @@ class ReportTest extends TestCase
     public function test_clinical_counts_use_the_configured_outcome_vocabulary(): void
     {
         $admin = $this->admin();
-        $farmer = User::factory()->create(['role' => 'farmer']);
 
-        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->create();
+        $beneficiary = Beneficiary::factory()->create();
 
         HealthRecord::factory()->for($beneficiary, 'beneficiary')->create(['outcome' => 'recovered']);
         HealthRecord::factory()->for($beneficiary, 'beneficiary')->create(['outcome' => 'ongoing']);
@@ -108,11 +105,10 @@ class ReportTest extends TestCase
     public function test_the_per_barangay_table_covers_every_barangay_with_rows(): void
     {
         $admin = $this->admin();
-        $farmer = User::factory()->create(['role' => 'farmer']);
 
-        $a = Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Banaybanay']);
-        $b = Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Dawis']);
-        Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Banaybanay']);
+        $a = Beneficiary::factory()->create(['address' => 'Banaybanay']);
+        $b = Beneficiary::factory()->create(['address' => 'Dawis']);
+        Beneficiary::factory()->create(['address' => 'Banaybanay']);
 
         MonitoringRecord::factory()->for($a, 'beneficiary')->create();
 
@@ -132,10 +128,9 @@ class ReportTest extends TestCase
     public function test_the_barangay_filter_narrows_every_section(): void
     {
         $admin = $this->admin();
-        $farmer = User::factory()->create(['role' => 'farmer']);
 
-        $inScope = Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Banaybanay']);
-        $outOfScope = Beneficiary::factory()->forFarmer($farmer)->create(['address' => 'Dawis']);
+        $inScope = Beneficiary::factory()->create(['address' => 'Banaybanay']);
+        $outOfScope = Beneficiary::factory()->create(['address' => 'Dawis']);
 
         MonitoringRecord::factory()->for($inScope, 'beneficiary')->create();
         MonitoringRecord::factory()->for($outOfScope, 'beneficiary')->create();
@@ -153,9 +148,8 @@ class ReportTest extends TestCase
     public function test_the_trend_covers_the_trailing_months_with_zeroes(): void
     {
         $admin = $this->admin();
-        $farmer = User::factory()->create(['role' => 'farmer']);
 
-        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->create();
+        $beneficiary = Beneficiary::factory()->create();
 
         DispersalEvent::factory()->create([
             'beneficiary_id' => $beneficiary->id,
@@ -191,8 +185,7 @@ class ReportTest extends TestCase
     public function test_a_from_date_adds_the_since_counter(): void
     {
         $admin = $this->admin();
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $beneficiary = Beneficiary::factory()->forFarmer($farmer)->create();
+        $beneficiary = Beneficiary::factory()->create();
 
         DispersalEvent::factory()->create([
             'beneficiary_id' => $beneficiary->id,

@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AttributionControl,
   Map as MapLibreMap,
@@ -9,6 +15,16 @@ import {
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Icon } from "./Icons";
 import { InlineAlert } from "./InlineAlert";
+import { beneficiariesApi } from "../api/beneficiariesApi";
+import { getErrorMessage } from "../api/client";
+import {
+  buildArrows,
+  buildPointMarkers,
+  buildSegments,
+  dateRangeLabel,
+  formatPointDate,
+  toLngLat,
+} from "../lib/flightPath";
 import { spreadPositions } from "../lib/mapPositions";
 
 /**
@@ -59,20 +75,95 @@ const ANIMAL_COLORS = {
 
 const RE_DISPERSAL_COLOR = "#2d4d19";
 
+/*
+ * The per-beneficiary "flight path": the chronological trail from an
+ * animal's origin, through every GPS-tagged field visit, to its current pin.
+ *
+ * Drawn as MapLibre sources/layers (not DOM markers) so a long trail stays
+ * one WebGL-drawn feature per segment — hundreds of segments still render in
+ * a frame — and so the fade, arrows and hover all come from the same data.
+ * Nothing is rendered until a pin asks for it: with a screen full of
+ * households, every trail on at once would be visual noise, not history.
+ */
+const PATH_SOURCES = {
+  segments: "cvo-flight-segments",
+  arrows: "cvo-flight-arrows",
+  points: "cvo-flight-points",
+};
+
+const PATH_LAYERS = {
+  casing: "cvo-flight-casing",
+  line: "cvo-flight-line",
+  arrows: "cvo-flight-arrows",
+  points: "cvo-flight-points",
+};
+
+const PATH_ARROW_IMAGE = "cvo-flight-arrow";
+
+/** Trail endpoints, from the brand ramp — deliberately NOT an animal colour. */
+const PATH_OLD_COLOR = "#a5d6a7"; // brand-300, the faded origin end
+const PATH_NEW_COLOR = "#2d4d19"; // brand-900, the saturated recent end
+
+/** Flag glyph for the origin: a pole with a pennant, in the brand green. */
+const ORIGIN_FLAG_SVG =
+  '<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M5 2v16" stroke="#2d4d19" stroke-width="2.2" stroke-linecap="round" fill="none"/>' +
+  '<path d="M6 3h8l-2.6 3L14 9H6z" fill="#2d4d19"/>' +
+  "</svg>";
+
+/** Arrowhead pointing UP the page; `icon-rotate` then swings it by bearing. */
+const PATH_ARROW_SVG =
+  // width/height are not decoration: an SVG with only a viewBox decodes to a
+  // zero-sized image in Chrome, and MapLibre then refuses to register it.
+  '<svg viewBox="0 0 12 12" width="12" height="12" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M6 0.7 10.9 10.5 6 8.1 1.1 10.5Z" fill="#2d4d19" stroke="#ffffff" stroke-width="0.9" stroke-linejoin="round"/>' +
+  "</svg>";
+
 function colorFor(beneficiary) {
   if (beneficiary.is_re_dispersal) return RE_DISPERSAL_COLOR;
   return ANIMAL_COLORS[beneficiary.animal_type] ?? "#558b2f";
 }
 
-function popupHtml(beneficiary) {
+/**
+ * @param {object} props
+ * @param {boolean} [props.flightActive] this household's trail is on the map
+ * @param {boolean} [props.showFlightPath] offer the show/hide toggle (viewer
+ *   mode only — the picker's popup has no trail to reveal)
+ */
+function popupHtml(beneficiary, { flightActive = false, showFlightPath = false } = {}) {
   const badge = beneficiary.is_re_dispersal
     ? '<p style="margin:4px 0 0;padding:1px 8px;display:inline-block;border-radius:9999px;background:#e7efdd;color:#2d4d19;font-size:10px;font-weight:600;text-transform:uppercase">Re-dispersal recipient</p>'
+    : "";
+  const toggle = showFlightPath
+    ? '<button type="button" class="cvo-path-toggle"' +
+      ` data-path-id="${escapeHtml(String(beneficiary.id))}"` +
+      ' style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:3px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">' +
+      `<svg viewBox="0 0 20 20" width="11" height="11" aria-hidden="true" style="flex:none"><path d="M5 2v16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M6 3h8l-2.6 3L14 9H6z" fill="currentColor"/></svg>` +
+      (flightActive ? "Hide flight path" : "Show flight path") +
+      "</button>"
     : "";
   return (
     `<div style="min-width:12rem;font-size:13px;line-height:1.4">` +
     `<p style="margin:0;font-weight:600;color:#0f172a">${escapeHtml(beneficiary.name_of_farmer)}</p>` +
     `<p style="margin:0;font-size:12px;color:#64748b">${escapeHtml(beneficiary.address)} &middot; ${escapeHtml(beneficiary.animal_type)}</p>` +
     badge +
+    toggle +
+    `</div>`
+  );
+}
+
+/** Popup for one point on a trail — the same card language as the pins. */
+function pathPointHtml(properties) {
+  const label = properties.label ?? "";
+  return (
+    `<div style="min-width:10rem;font-size:13px;line-height:1.4">` +
+    `<p style="margin:0;font-weight:600;color:#0f172a">${escapeHtml(properties.title ?? "")}</p>` +
+    (label
+      ? `<p style="margin:0;font-size:12px;color:#64748b">${escapeHtml(label)}</p>`
+      : "") +
+    (properties.subtitle
+      ? `<p style="margin:2px 0 0;font-size:12px;color:#64748b">${escapeHtml(properties.subtitle)}</p>`
+      : "") +
     `</div>`
   );
 }
@@ -124,10 +215,33 @@ export function DispersalMap({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [animalFilter, setAnimalFilter] = useState("all");
 
+  // The ONE flight path currently revealed — null hides it all. Deliberately
+  // singular: on a city-wide map with every trail drawn at once, direction
+  // and recency stop reading at all. A pin's popup asks for its own trail.
+  const [flightPath, setFlightPath] = useState({
+    id: null,
+    name: null,
+    beneficiary: null,
+    points: null,
+    loading: false,
+    error: null,
+    empty: false,
+  });
+
+  const flightRef = useRef(flightPath); // latest state, read by bound handlers
+  const pathMarkersRef = useRef([]); // the origin/end markers of a revealed trail
+  const hoverPopupRef = useRef(null); // segment tooltip, reused while hovering
+  const toggleRef = useRef(null); // latest reveal/hide, read by popup clicks
+  const previousPathIdRef = useRef(null); // pin popup that needs relabelling
+
   // Keep the latest callback without re-creating the map on every render.
   useEffect(() => {
     onPickRef.current = onPick;
   }, [onPick]);
+
+  useEffect(() => {
+    flightRef.current = flightPath;
+  }, [flightPath]);
 
   const centerTo = center ?? selected ?? DEFAULT_CENTER;
 
@@ -177,6 +291,11 @@ export function DispersalMap({
       attributionControl: false,
     });
     mapRef.current = map;
+    // Debug/support handle: lets a support session (or the browser check)
+    // inspect what the WebGL canvas is actually drawing. No user data lives
+    // here — the map object is already reachable from the console via the
+    // container's __cvoMap, exactly like any devtools inspection.
+    containerRef.current.__cvoMap = map;
 
     map.addControl(new NavigationControl({ showCompass: false }), "top-right");
     map.addControl(
@@ -196,6 +315,7 @@ export function DispersalMap({
     return () => {
       map.remove();
       mapRef.current = null;
+      if (containerRef.current) delete containerRef.current.__cvoMap;
       markersRef.current = [];
       selectedMarkerRef.current = null;
       setMapReady(false);
@@ -280,6 +400,336 @@ export function DispersalMap({
     };
   }, [mapReady, isFullscreen]);
 
+  /**
+   * Reveal one household's trail, fetched on demand (and cached by the
+   * browser like every other GET).
+   */
+  async function showFlightPath(beneficiary) {
+    const id = Number(beneficiary.id);
+    const base = {
+      id,
+      name: beneficiary.name_of_farmer,
+      beneficiary,
+      points: null,
+      loading: true,
+      error: null,
+      empty: false,
+    };
+    setFlightPath(base);
+
+    try {
+      const payload = await beneficiariesApi.path(id);
+      // The user may have hidden the trail (or opened another) while this was
+      // in flight: applying the result then would pop the chip back up after
+      // it was dismissed.
+      if (flightRef.current.id !== id) return;
+
+      const points = Array.isArray(payload?.points) ? payload.points : [];
+
+      // Fewer than two distinct spots means there is no journey to draw yet —
+      // an animal still sitting exactly where it was dispersed. Saying so is
+      // better than drawing an empty map and leaving the user guessing.
+      if (points.length < 2) {
+        setFlightPath({ ...base, loading: false, empty: true });
+        return;
+      }
+
+      setFlightPath({ ...base, loading: false, points });
+    } catch (err) {
+      if (flightRef.current.id !== id) return;
+      setFlightPath({ ...base, loading: false, error: getErrorMessage(err) });
+    }
+  }
+
+  function hideFlightPath() {
+    // The chip disappears with the id, so an empty or failed reveal is
+    // dismissed by the same control that hides a drawn trail.
+    setFlightPath({
+      id: null,
+      name: null,
+      beneficiary: null,
+      points: null,
+      loading: false,
+      error: null,
+      empty: false,
+    });
+  }
+
+  // Latest toggle, read by the delegated popup click — popups are created
+  // once per marker, so a closure would pin a stale state.
+  useEffect(() => {
+    toggleRef.current = (beneficiary) => {
+      if (flightRef.current.id === Number(beneficiary.id)) hideFlightPath();
+      else showFlightPath(beneficiary);
+    };
+  });
+
+  // One delegated listener for every pin popup's "Show flight path" button:
+  // markers are recycled as the visible set changes, so per-popup listeners
+  // would leak on every reconcile.
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell || onPick) return undefined;
+
+    function onClick(event) {
+      const button = event.target?.closest?.(".cvo-path-toggle");
+      if (!button) return;
+      const id = button.getAttribute("data-path-id");
+      const beneficiary = visible.find((row) => String(row.id) === String(id));
+      if (beneficiary) toggleRef.current?.(beneficiary);
+    }
+
+    shell.addEventListener("click", onClick);
+    return () => shell.removeEventListener("click", onClick);
+  }, [onPick, visible]);
+
+  // Pin popups carry a show/hide label that must follow the active trail —
+  // refresh their contents instead of recreating every marker (that would
+  // slam each open popup shut).
+  useEffect(() => {
+    const previousId = previousPathIdRef.current;
+    previousPathIdRef.current = flightPath.id;
+
+    for (const entry of markersRef.current) {
+      const isActive = String(entry.key) === String(flightPath.id);
+      const wasActive = String(entry.key) === String(previousId);
+      if (!isActive && !wasActive) continue;
+
+      // `setHTML` rather than a DOM swap: it is MapLibre's own content API,
+      // and re-setting it re-renders the popup even while it is open.
+      entry.marker
+        .getPopup()
+        ?.setHTML(
+          popupHtml(entry.beneficiary, {
+            showFlightPath: !onPick,
+            flightActive: isActive,
+          }),
+        );
+    }
+  }, [flightPath.id, onPick]);
+
+  // A household the user filters away must not leave its trail behind — the
+  // line would point at a pin that is no longer drawn.
+  useEffect(() => {
+    if (flightPath.id === null) return;
+    if (visible.some((row) => Number(row.id) === flightPath.id)) return;
+    hideFlightPath();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hideFlightPath is stable in behaviour; re-running on its identity would churn
+  }, [visible, flightPath.id]);
+
+  // Bind the trail's click/hover behaviour once the map exists. Handlers are
+  // layer-keyed, so they survive every reveal/hide — only the source data
+  // changes between trails. They are UNBOUND on cleanup and rebound on the
+  // next mount: React's StrictMode (dev) mounts, discards and mounts again,
+  // and a one-shot guard would have left the surviving map with no handlers
+  // at all — no point popups, no segment tooltip.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || onPick) return undefined;
+
+    ensurePathLayers(map);
+    ensurePathArrowIcon(map);
+
+    const onPointClick = (event) => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      new Popup({ offset: 12, closeButton: false })
+        .setLngLat(feature.geometry.coordinates)
+        .setHTML(pathPointHtml(feature.properties))
+        .addTo(map);
+    };
+
+    // Hovering a SEGMENT names the dates it spans — a whole trail can only
+    // tell you "when", a span tells you "between when".
+    const onSegmentMove = (event) => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+
+      const { from_date: from, to_date: to } = feature.properties;
+      hoverPopupRef.current ??= new Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 12,
+      });
+      hoverPopupRef.current
+        .setLngLat(event.lngLat)
+        .setHTML(
+          `<p style="margin:0;font-size:12px;font-weight:600;color:#0f172a;` +
+            `background:#fff;padding:2px 8px;border-radius:9999px;` +
+            `box-shadow:0 1px 4px rgb(15 23 42 / 0.25)">${escapeHtml(dateRangeLabel(from, to))}</p>`,
+        )
+        .addTo(map);
+      map.getCanvas().style.cursor = "pointer";
+    };
+
+    const onSegmentLeave = () => {
+      hoverPopupRef.current?.remove();
+      map.getCanvas().style.cursor = "";
+    };
+
+    const onPointEnter = () => {
+      map.getCanvas().style.cursor = "pointer";
+    };
+    const onPointLeave = () => {
+      map.getCanvas().style.cursor = "";
+    };
+
+    map.on("click", PATH_LAYERS.points, onPointClick);
+    map.on("mousemove", PATH_LAYERS.line, onSegmentMove);
+    map.on("mouseleave", PATH_LAYERS.line, onSegmentLeave);
+    map.on("mouseenter", PATH_LAYERS.points, onPointEnter);
+    map.on("mouseleave", PATH_LAYERS.points, onPointLeave);
+
+    return () => {
+      try {
+        map.off("click", PATH_LAYERS.points, onPointClick);
+        map.off("mousemove", PATH_LAYERS.line, onSegmentMove);
+        map.off("mouseleave", PATH_LAYERS.line, onSegmentLeave);
+        map.off("mouseenter", PATH_LAYERS.points, onPointEnter);
+        map.off("mouseleave", PATH_LAYERS.points, onPointLeave);
+      } catch {
+        // The map instance was already removed (its own cleanup ran first).
+      }
+      hoverPopupRef.current?.remove();
+    };
+  }, [mapReady, onPick]);
+
+  // Draw (or clear) the revealed trail. Segments are painted as separate
+  // features so hover can name a span, and the gradient rides on each
+  // segment's `age` property rather than a whole-line gradient.
+  const pathPoints = flightPath.points;
+  const pathKey = flightPath.id;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || onPick) return undefined;
+
+    const segmentsSource = map.getSource(PATH_SOURCES.segments);
+    if (!segmentsSource) return undefined;
+
+    // Endpoint markers and the previous trail go first — a stale flag on a
+    // hidden trail is worse than no trail.
+    for (const marker of pathMarkersRef.current) marker.remove();
+    pathMarkersRef.current = [];
+    hoverPopupRef.current?.remove();
+
+    const empty = { type: "FeatureCollection", features: [] };
+    segmentsSource.setData(empty);
+    map.getSource(PATH_SOURCES.arrows)?.setData(empty);
+    map.getSource(PATH_SOURCES.points)?.setData(empty);
+    // Observable without reaching into the map instance: how many points the
+    // revealed trail was built from (also handy when supporting a report).
+    containerRef.current?.removeAttribute("data-flight-path-points");
+
+    if (!pathPoints || pathPoints.length < 2) return undefined;
+
+    // Endpoints are anchored to the pin the map actually DRAWS (households
+    // sharing a barangay centre are spread over a ring), so the trail meets
+    // the dot the user clicked instead of stopping short of it. Visit fixes
+    // stay on their real coordinates — they are GPS readings, not pins.
+    const drawn = spreadPositions(visible);
+    const positioned = pathPoints.map((point) => {
+      const pin = point.anchor_id != null ? drawn.get(String(point.anchor_id)) : null;
+      return pin ? { ...point, longitude: pin[0], latitude: pin[1] } : point;
+    });
+
+    const segments = buildSegments(positioned);
+    const arrows = buildArrows(positioned);
+    const markers = buildPointMarkers(positioned);
+    containerRef.current?.setAttribute("data-flight-path-points", String(positioned.length));
+
+    const origin = positioned[0];
+    const end = positioned[positioned.length - 1];
+
+    const originEl = document.createElement("div");
+    originEl.className = "cvo-flight-origin";
+    originEl.setAttribute("aria-hidden", "true");
+    originEl.innerHTML = ORIGIN_FLAG_SVG;
+    const originMarker = new Marker({ element: originEl, anchor: "bottom" })
+      .setLngLat(toLngLat(origin))
+      .setPopup(
+        new Popup({ offset: 12 }).setHTML(
+          pathPointHtml({
+            title: origin.title,
+            subtitle: origin.subtitle,
+            label: formatPointDate(origin.occurred_on),
+          }),
+        ),
+      )
+      .addTo(map);
+
+    const endEl = document.createElement("div");
+    endEl.className = "cvo-flight-end";
+    endEl.setAttribute("aria-hidden", "true");
+    const endMarker = new Marker({ element: endEl })
+      .setLngLat(toLngLat(end))
+      .setPopup(
+        new Popup({ offset: 12 }).setHTML(
+          pathPointHtml({
+            title: end.title,
+            subtitle: end.subtitle,
+            label: formatPointDate(end.occurred_on),
+          }),
+        ),
+      )
+      .addTo(map);
+
+    pathMarkersRef.current = [originMarker, endMarker];
+
+    const total = segments.features.length;
+    const paint = (progress) => {
+      const shown = Math.max(1, Math.ceil(progress * total));
+      segmentsSource.setData({
+        type: "FeatureCollection",
+        features: segments.features.slice(0, shown),
+      });
+      map.getSource(PATH_SOURCES.arrows)?.setData({
+        type: "FeatureCollection",
+        features: arrows.features.filter((feature) => feature.properties.index < shown),
+      });
+      map.getSource(PATH_SOURCES.points)?.setData({
+        type: "FeatureCollection",
+        features: markers.features.filter((feature) => feature.properties.index < shown),
+      });
+    };
+
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (reduceMotion || total <= 2) {
+      paint(1);
+      return undefined;
+    }
+
+    // A single draw-in, origin → current: it makes the direction unmistakable
+    // the first time a trail appears, and then stops for good.
+    const DURATION_MS = 700;
+    const startedAt = performance.now();
+    let frame;
+    const step = (now) => {
+      const t = Math.min(1, (now - startedAt) / DURATION_MS);
+      paint(t);
+      if (t < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `visible` only feeds the pin-alignment lookup; re-running on it would re-animate during unrelated refetches
+  }, [mapReady, onPick, pathPoints, pathKey]);
+
+  // A pin's popup offers its own trail; the label follows whichever trail is
+  // currently on the map. Identity is stable (it reads both refs), so marker
+  // reconciles never churn on every render.
+  const popupFor = useCallback(
+    (beneficiary) =>
+      popupHtml(beneficiary, {
+        showFlightPath: !onPickRef.current,
+        flightActive: String(flightRef.current.id) === String(beneficiary.id),
+      }),
+    [],
+  );
+
   // Reconcile markers with the visible rows — add, move, remove.
   useEffect(() => {
     const map = mapRef.current;
@@ -301,10 +751,11 @@ export function DispersalMap({
 
       if (entry.color !== color || entry.position !== `${position[0]},${position[1]}`) {
         entry.marker.remove();
-        entry.marker = makeMarker(map, position, color, popupHtml(beneficiary));
+        entry.marker = makeMarker(map, position, color, popupFor(beneficiary));
         entry.color = color;
         entry.position = `${position[0]},${position[1]}`;
       }
+      entry.beneficiary = beneficiary;
     }
 
     for (const [key, beneficiary] of byId) {
@@ -313,7 +764,8 @@ export function DispersalMap({
       const color = colorFor(beneficiary);
       markersRef.current.push({
         key,
-        marker: makeMarker(map, position, color, popupHtml(beneficiary)),
+        marker: makeMarker(map, position, color, popupFor(beneficiary)),
+        beneficiary,
         color,
         position: `${position[0]},${position[1]}`,
       });
@@ -324,7 +776,7 @@ export function DispersalMap({
       entry.marker.remove();
       return false;
     });
-  }, [mapReady, visible, onPick]);
+  }, [mapReady, visible, onPick, popupFor]);
 
   // Picker mode: keep exactly one marker on the selected spot.
   useEffect(() => {
@@ -415,6 +867,16 @@ export function DispersalMap({
               {type}
             </span>
           ))}
+          <span className="inline-flex items-center gap-1.5" title="Shown when a pin asks for its animal's history">
+            <span
+              aria-hidden="true"
+              className="h-1 w-7 rounded-full"
+              style={{
+                background: `linear-gradient(90deg, ${PATH_OLD_COLOR}, ${PATH_NEW_COLOR})`,
+              }}
+            />
+            Flight path
+          </span>
           <label className="ml-auto flex items-center gap-2">
             <span className="sr-only">Filter by animal type</span>
             <select
@@ -431,6 +893,45 @@ export function DispersalMap({
               ))}
             </select>
           </label>
+        </div>
+      )}
+
+      {/* Which trail is up, and the one control that takes it down again. */}
+      {!onPick && flightPath.id !== null && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span
+            role="status"
+            className={`cvo-flight-chip inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-medium ${
+              flightPath.error
+                ? "bg-amber-50 text-amber-800"
+                : "bg-brand-100 text-brand-800"
+            }`}
+          >
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-brand-700" />
+            {flightPath.loading && `Loading flight path — ${flightPath.name}…`}
+            {!flightPath.loading &&
+              (flightPath.error
+                ? `Flight path unavailable — ${flightPath.name}`
+                : flightPath.empty
+                  ? `No recorded movement yet — ${flightPath.name}`
+                  : `Flight path — ${flightPath.name}`)}
+          </span>
+          {flightPath.error && flightPath.beneficiary && (
+            <button
+              type="button"
+              className="rounded-full px-3 py-1.5 font-semibold text-brand-800 underline hover:bg-brand-100"
+              onClick={() => showFlightPath(flightPath.beneficiary)}
+            >
+              Try again
+            </button>
+          )}
+          <button
+            type="button"
+            className="rounded-full px-3 py-1.5 font-medium text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50"
+            onClick={hideFlightPath}
+          >
+            Hide path
+          </button>
         </div>
       )}
 
@@ -529,6 +1030,112 @@ export function DispersalMap({
       </div>
     </div>
   );
+}
+
+/**
+ * The trail's sources and layers, added once per map instance.
+ *
+ * Everything about the trail is data-driven (the `age` property each
+ * segment carries), so styling never has to be rebuilt when a different
+ * household is revealed — only the source data changes.
+ */
+function ensurePathLayers(map) {
+  if (map.getLayer(PATH_LAYERS.line)) return;
+
+  const empty = { type: "FeatureCollection", features: [] };
+  map.addSource(PATH_SOURCES.segments, { type: "geojson", data: empty });
+  map.addSource(PATH_SOURCES.arrows, { type: "geojson", data: empty });
+  map.addSource(PATH_SOURCES.points, { type: "geojson", data: empty });
+
+  // A white casing under the trail: it separates the route from the raster
+  // basemap AND from the coloured pins it crosses, so the line never has to
+  // compete for the same green.
+  map.addLayer({
+    id: PATH_LAYERS.casing,
+    type: "line",
+    source: PATH_SOURCES.segments,
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#ffffff", "line-opacity": 0.85, "line-width": 6 },
+  });
+
+  map.addLayer({
+    id: PATH_LAYERS.line,
+    type: "line",
+    source: PATH_SOURCES.segments,
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: {
+      "line-width": 3,
+      // Faded at the origin, saturated at the most recent segment: direction
+      // and recency read from colour alone, before an arrowhead is noticed.
+      "line-color": [
+        "interpolate",
+        ["linear"],
+        ["get", "age"],
+        0,
+        PATH_OLD_COLOR,
+        1,
+        PATH_NEW_COLOR,
+      ],
+      "line-opacity": ["interpolate", ["linear"], ["get", "age"], 0, 0.55, 1, 0.95],
+    },
+  });
+
+  map.addLayer({
+    id: PATH_LAYERS.arrows,
+    type: "symbol",
+    source: PATH_SOURCES.arrows,
+    layout: {
+      "icon-image": PATH_ARROW_IMAGE,
+      "icon-size": ["interpolate", ["linear"], ["zoom"], 10, 0.6, 15, 0.95],
+      // The arrow glyph points north; rotating it by the segment's own
+      // bearing is what makes it read as "this way, forward in time".
+      "icon-rotate": ["get", "bearing"],
+      "icon-rotation-alignment": "map",
+      "icon-allow-overlap": true,
+    },
+    paint: { "icon-opacity": ["interpolate", ["linear"], ["get", "age"], 0, 0.6, 1, 1] },
+  });
+
+  map.addLayer({
+    id: PATH_LAYERS.points,
+    type: "circle",
+    source: PATH_SOURCES.points,
+    paint: {
+      "circle-radius": 5,
+      "circle-color": [
+        "match",
+        ["get", "kind"],
+        "origin",
+        PATH_NEW_COLOR,
+        "current",
+        PATH_NEW_COLOR,
+        "#3f6b22",
+      ],
+      "circle-stroke-color": "#ffffff",
+      "circle-stroke-width": 2,
+      "circle-opacity": 0.95,
+    },
+  });
+}
+
+/** Decode the arrowhead SVG and register it — MapLibre needs a raster image. */
+function ensurePathArrowIcon(map) {
+  if (map.hasImage(PATH_ARROW_IMAGE)) return;
+
+  const image = new Image();
+  image.onload = () => {
+    if (map.hasImage(PATH_ARROW_IMAGE)) return;
+    try {
+      // NO isStyleLoaded() gate here on purpose: in MapLibre that check stays
+      // false for a while after `load` on a style still pulling raster tiles,
+      // and gating on it silently skips registration — leaving the arrow
+      // layer requesting an image that never arrives.
+      map.addImage(PATH_ARROW_IMAGE, image, { pixelRatio: 2 });
+    } catch {
+      // Map already removed — nothing left to register the image on.
+    }
+  };
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(PATH_ARROW_SVG)}`;
 }
 
 function makeMarker(map, position, color, html) {

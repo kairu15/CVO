@@ -83,6 +83,20 @@ class BeneficiaryController extends Controller
     }
 
     /**
+     * One animal's chronological location history for the dispersal map's
+     * flight-path trail: origin → GPS-tagged field visits → current pin.
+     * Read-only, and scoped exactly like show() (BeneficiaryService::pathFor):
+     * a technician whose assignment excludes the row answers 403, a missing
+     * row 404.
+     */
+    public function path(Request $request, int $id): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->beneficiaries->pathFor($request->user(), $id),
+        ]);
+    }
+
+    /**
      * Staff maintain the record; the admin also reassigns technicians.
      */
     public function update(UpdateBeneficiaryRequest $request, int $id): BeneficiaryResource

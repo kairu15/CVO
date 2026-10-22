@@ -8,6 +8,29 @@ import { api } from "./client";
  * database computes the aggregate, this layer never counts rows.
  */
 
+/**
+ * The printable report templates the API can fill. The server validates the
+ * key against its own catalogue (ReportTemplateService::TEMPLATES) — this list
+ * only drives the picker, which stays hidden while there is just one.
+ */
+export const REPORT_TEMPLATES = [
+  { value: "dispersal", label: "Livestock Dispersal and Re-dispersal Report" },
+];
+
+/**
+ * The download filename from a Content-Disposition header, preferring the
+ * RFC 5987 UTF-8 form when the server sends one.
+ */
+function filenameFromDisposition(header) {
+  if (!header) return null;
+
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (encoded) return decodeURIComponent(encoded[1].trim());
+
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain ? plain[1].trim() : null;
+}
+
 export const reportsApi = {
   /**
    * @param {object} [params]
@@ -71,5 +94,50 @@ export const reportsApi = {
   technicianWorkload: async (params = {}) => {
     const response = await api.get("/api/v1/admin/report/charts/technician-workload", { params });
     return response.data?.data ?? [];
+  },
+
+  /**
+   * The printable report: the office's own Excel template filled with the
+   * dispersal records for these filters, downloaded under the admin's name.
+   *
+   * @param {object} payload
+   * @param {string} payload.template   key from REPORT_TEMPLATES
+   * @param {string} payload.name       editable report title (also the filename)
+   * @param {string} [payload.barangay]
+   * @param {string} [payload.animal_type]
+   * @param {string} [payload.month]    "YYYY-MM"
+   * @param {string} [payload.from]     ISO date
+   * @param {string} [payload.to]       ISO date
+   * @returns {Promise<{blob: Blob, filename: string}>}
+   */
+  exportTemplate: async (payload) => {
+    try {
+      const response = await api.post("/api/v1/admin/report/template-export", payload, {
+        responseType: "blob",
+        // A large roster takes longer than the SPA's default 30s ceiling.
+        timeout: 120_000,
+      });
+
+      return {
+        blob: response.data,
+        filename:
+          filenameFromDisposition(response.headers?.["content-disposition"]) ?? "cvo-report.xlsx",
+      };
+    } catch (error) {
+      // Under `responseType: "blob"` a JSON error body arrives as a Blob, so
+      // getErrorMessage would see no `.message`. Decode it back into the shape
+      // the error helpers expect before rethrowing.
+      const data = error?.response?.data;
+
+      if (typeof Blob !== "undefined" && data instanceof Blob) {
+        try {
+          error.response.data = JSON.parse(await data.text());
+        } catch {
+          // Not JSON (a proxy error page, say) — leave the original body.
+        }
+      }
+
+      throw error;
+    }
   },
 };

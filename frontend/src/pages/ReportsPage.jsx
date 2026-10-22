@@ -23,6 +23,7 @@ import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { MonthYearDropdown } from "../components/MonthYearDropdown";
 import { AnimalTypeDropdown } from "../components/AnimalTypeDropdown";
+import { ReportExportPanel } from "../components/ReportExportPanel";
 import { Icon } from "../components/Icons";
 import { getRole } from "../config/roles";
 
@@ -331,6 +332,10 @@ export default function ReportsPage({ roleKey = "admin" }) {
             Scoped to: {[barangay || "all barangays", animalType ?? "all types", month ? `month ${month}` : "all months"].join(" · ")}
           </p>
         )}
+
+        {/* The printable report: the office's own template, filled for the
+            filters above, under an editable report name. */}
+        <ReportExportPanel barangay={barangay} month={month} animalType={animalType} from={from} />
       </section>
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}

@@ -4,11 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ReportChartRequest;
 use App\Http\Requests\ReportRequest;
+use App\Http\Requests\ReportTemplateExportRequest;
 use App\Services\ReportChartService;
 use App\Services\ReportExcelService;
 use App\Services\ReportService;
+use App\Services\ReportTemplateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -29,6 +32,7 @@ class ReportController extends Controller
     public function __construct(
         private readonly ReportService $reports,
         private readonly ReportExcelService $excel,
+        private readonly ReportTemplateService $templates,
         private readonly ReportChartService $charts,
     ) {}
 
@@ -57,6 +61,29 @@ class ReportController extends Controller
             $request->user(),
             $validated['barangay'] ?? null,
             isset($validated['from']) ? Carbon::parse($validated['from']) : null,
+        );
+    }
+
+    /**
+     * The office's own printable report, filled from the recorded dispersals.
+     *
+     * Unlike export() above — a plain workbook of the aggregates — this is the
+     * CVO cover sheet with its letterhead and signature block, plus the
+     * dispersal roster between them, under the admin's editable report name.
+     */
+    public function exportFromTemplate(ReportTemplateExportRequest $request): BinaryFileResponse
+    {
+        $v = $request->validated();
+
+        return $this->templates->downloadResponse(
+            $request->user(),
+            $v['template'],
+            $v['name'],
+            $v['barangay'] ?? null,
+            $v['month'] ?? null,
+            isset($v['from']) ? Carbon::parse($v['from']) : null,
+            isset($v['to']) ? Carbon::parse($v['to']) : null,
+            $v['animal_type'] ?? null,
         );
     }
 

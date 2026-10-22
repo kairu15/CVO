@@ -22,6 +22,13 @@ use Illuminate\Support\Facades\DB;
 
 class BeneficiaryService
 {
+    /**
+     * Ceiling on the points of a single trail. Realistic volumes are a few
+     * dozen visits over a program lifetime; the cap exists so a pathological
+     * import cannot ship an unbounded payload, not because rendering needs it.
+     */
+    private const PATH_POINT_CAP = 500;
+
     public function __construct(
         private readonly GeocodingService $geocoder,
         private readonly AuditLogger $audit,
@@ -115,6 +122,171 @@ class BeneficiaryService
 
         // Genuinely missing (or out of scope for a non-technician role).
         abort(404);
+    }
+
+    /**
+     * One animal's chronological location history — the trail the dispersal
+     * map draws as a "flight path": origin → every GPS-tagged field visit →
+     * the current pin.
+     *
+     * Ordering is by the EVENT timestamp (the dispersal date, then
+     * `visited_on`), never by insertion order or id: a visit typed in late
+     * must not be drawn after a later one just because it was created
+     * afterwards. The origin and the current pin are structural anchors —
+     * first and last by definition — and the visits between them are sorted
+     * oldest-first with id only as a tie-break so equal dates draw stably.
+     *
+     * The origin is the household the ANIMAL came from: for a re-dispersal
+     * recipient that is the parent household it was passed on from (dated by
+     * the dispersal), not the recipient's own pin — otherwise every
+     * re-dispersal trail would start at its own endpoint.
+     *
+     * Scoping is shared with every other beneficiary read: `findFor` answers
+     * 404 for a missing row and 403 for a technician whose assignment does not
+     * include it, so this endpoint can never leak rows the client merely
+     * failed to filter.
+     *
+     * Visits without a GPS fix are skipped (still a visit, just not a
+     * location), and consecutive duplicate coordinates collapse to one point
+     * — a household whose pin sits on its origin would otherwise emit a
+     * zero-length segment, which renders as an arrowhead stuck in place.
+     *
+     * @return array{beneficiary_id: int, points: list<array<string, mixed>>}
+     */
+    public function pathFor(User $user, int $beneficiaryId): array
+    {
+        $beneficiary = $this->findFor($user, $beneficiaryId);
+
+        // The delivery event that started this animal's story: an initial
+        // dispersal, or the re-dispersal that received it. Oldest first so a
+        // beneficiary touched by several events still starts at the first.
+        $delivery = DispersalEvent::query()
+            ->where('beneficiary_id', $beneficiaryId)
+            ->orderBy('date_dispersed')
+            ->orderBy('id')
+            ->first();
+
+        $parent = $delivery?->parent_beneficiary_id !== null
+            ? Beneficiary::query()->find($delivery->parent_beneficiary_id)
+            : null;
+        $fromParent = $delivery !== null
+            && $delivery->dispersal_type === DispersalEvent::TYPE_RE_DISPERSAL
+            && $parent !== null;
+
+        $points = [];
+
+        $originAnchor = $fromParent ? $parent : $beneficiary;
+        $hasOrigin = $this->hasCoordinates($originAnchor);
+
+        // A re-dispersal whose parent household has no pin still has a
+        // truthful place to start from: the recipient's own pin.
+        if (! $hasOrigin && $fromParent) {
+            $originAnchor = $beneficiary;
+            $hasOrigin = $this->hasCoordinates($originAnchor);
+        }
+
+        if ($hasOrigin) {
+            $points[] = [
+                'kind' => 'origin',
+                // Which household this point is anchored to: the recipient's
+                // own pin for an initial dispersal, the PARENT's pin for a
+                // re-dispersal. The client uses it to line the trail up with
+                // the marker the map actually draws.
+                'anchor_id' => $originAnchor->id,
+                'latitude' => (float) $originAnchor->latitude,
+                'longitude' => (float) $originAnchor->longitude,
+                'occurred_on' => $delivery?->date_dispersed?->toDateString()
+                    ?? $beneficiary->created_at?->toDateString(),
+                'title' => match (true) {
+                    $fromParent => 'Re-dispersal origin',
+                    $delivery !== null => 'Initial dispersal',
+                    default => 'Registered location',
+                },
+                'subtitle' => "{$originAnchor->name_of_farmer} · {$originAnchor->address}",
+            ];
+        }
+
+        // Chronological visits. The newest CAP rows are kept when a path
+        // somehow exceeds the ceiling — a trail that runs off the top of the
+        // list should end at its most recent points, not its oldest ones.
+        $visits = FieldVisit::query()
+            ->where('beneficiary_id', $beneficiaryId)
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->orderByDesc('visited_on')
+            ->orderByDesc('id')
+            ->limit(self::PATH_POINT_CAP)
+            ->get()
+            ->reverse()
+            ->values();
+
+        foreach ($visits as $visit) {
+            $points[] = [
+                'kind' => 'field-visit',
+                'latitude' => (float) $visit->latitude,
+                'longitude' => (float) $visit->longitude,
+                'occurred_on' => $visit->visited_on?->toDateString(),
+                'title' => 'Field visit',
+                'subtitle' => ($visit->notes ?? '') !== ''
+                    ? "{$visit->purpose} — {$visit->notes}"
+                    : (($visit->purpose !== '') ? $visit->purpose : null),
+            ];
+        }
+
+        if ($this->hasCoordinates($beneficiary)) {
+            $points[] = [
+                'kind' => 'current',
+                'anchor_id' => $beneficiary->id,
+                'latitude' => (float) $beneficiary->latitude,
+                'longitude' => (float) $beneficiary->longitude,
+                'occurred_on' => $points !== []
+                    ? ($points[array_key_last($points)]['occurred_on'] ?? null)
+                    : $beneficiary->created_at?->toDateString(),
+                'title' => 'Current pin',
+                'subtitle' => "{$beneficiary->name_of_farmer} · {$beneficiary->address}",
+            ];
+        }
+
+        return [
+            'beneficiary_id' => $beneficiary->id,
+            'points' => $this->deduplicatePoints($points),
+        ];
+    }
+
+    /** A beneficiary can only be pinned when both coordinates are present. */
+    private function hasCoordinates(Beneficiary $beneficiary): bool
+    {
+        return $beneficiary->latitude !== null
+            && $beneficiary->longitude !== null
+            && ! ((float) $beneficiary->latitude === 0.0 && (float) $beneficiary->longitude === 0.0);
+    }
+
+    /**
+     * Collapse runs of consecutive points that sit on the same spot, keeping
+     * the earliest of each run (the origin wins over a visit recorded in the
+     * same place). Non-consecutive repeats are kept: an animal genuinely
+     * returning to a location is part of the story the trail tells.
+     *
+     * @param  list<array<string, mixed>>  $points
+     * @return list<array<string, mixed>>
+     */
+    private function deduplicatePoints(array $points): array
+    {
+        $kept = [];
+
+        foreach ($points as $point) {
+            $previous = $kept !== [] ? $kept[array_key_last($kept)] : null;
+
+            if ($previous !== null
+                && (float) $previous['latitude'] === (float) $point['latitude']
+                && (float) $previous['longitude'] === (float) $point['longitude']) {
+                continue;
+            }
+
+            $kept[] = $point;
+        }
+
+        return $kept;
     }
 
     /**

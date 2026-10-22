@@ -162,6 +162,14 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::get('beneficiaries/{id}/lineage', [DispersalEventController::class, 'lineage'])
         ->name('api.beneficiaries.lineage');
 
+    // One animal's chronological location history — origin → field visits →
+    // current pin — behind the map's per-beneficiary flight path. Same
+    // role scoping as show(); the trailing segment keeps it clear of
+    // apiResource's beneficiaries/{beneficiary} binding, exactly like the
+    // lineage route above.
+    Route::get('beneficiaries/{id}/path', [BeneficiaryController::class, 'path'])
+        ->name('api.beneficiaries.path');
+
     // The month/year tab list for the monitoring table — must be declared
     // BEFORE the apiResource, whose {monitoring_record} binding would
     // otherwise swallow "months" as a record id (same pattern as
@@ -329,6 +337,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         // figures behind the charts are not trapped on screen.
         Route::get('/report/export', [ReportController::class, 'export'])
             ->middleware('permission:view_reports')->name('api.admin.report.export');
+
+        // The printable report built on the office's own Excel template — the
+        // CVO cover sheet + signature block, filled with the dispersal roster
+        // for the chosen filters. POST: the editable report name and filters
+        // travel in the body. Same view_reports gate as the report above.
+        Route::post('/report/template-export', [ReportController::class, 'exportFromTemplate'])
+            ->middleware('permission:view_reports')->name('api.admin.report.template-export');
 
         // The capability matrix itself. Guarded by manage_roles — the one
         // permission that can edit permissions. The controller refuses (422)

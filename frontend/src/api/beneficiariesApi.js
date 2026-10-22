@@ -70,6 +70,17 @@ export const beneficiariesApi = {
 
   get: async (id) => unwrap(await api.get(`/api/v1/beneficiaries/${id}`)),
 
+  /**
+   * One animal's chronological location history for the map's flight path —
+   * `{ beneficiary_id, points }` where points run origin → field-visit fixes
+   * → current pin, ordered by event date, each carrying { latitude,
+   * longitude, occurred_on, kind, title, subtitle, anchor_id }.
+   *
+   * Scoped server-side like every other beneficiary read: a technician whose
+   * assignment excludes the row gets a 403.
+   */
+  path: async (id) => unwrap(await api.get(`/api/v1/beneficiaries/${id}/path`)),
+
   create: async (payload) => {
     await ensureCsrfCookie();
     return unwrap(await api.post("/api/v1/beneficiaries", payload));

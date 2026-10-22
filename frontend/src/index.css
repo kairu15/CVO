@@ -351,6 +351,43 @@
 }
 
 /*
+ * Flight-path endpoints on the dispersal map.
+ *
+ * The two ends of a trail are a different KIND of information from the
+ * animal-type pins beside them, so they get their own shapes rather than
+ * another coloured dot: a flag where the animal's story starts, a ringed dot
+ * where it currently stands. Both are drawn in the deep brand green —
+ * darker and greener than the tan earth tones used for goats and swine —
+ * so a trail end can never be mistaken for "another animal over there".
+ */
+.cvo-flight-end {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  border: 3px solid #fff;
+  background: #2d4d19; /* brand-900 */
+  box-shadow:
+    0 0 0 3px rgb(45 77 25 / 0.35),
+    0 1px 4px rgb(15 23 42 / 0.45);
+  cursor: pointer;
+}
+
+.cvo-flight-origin {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  filter: drop-shadow(0 1px 3px rgb(15 23 42 / 0.5));
+}
+
+.cvo-flight-origin svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/*
  * Ear-tag printing.
  *
  * Printing a dashboard page would otherwise output the sidebar, header and

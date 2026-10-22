@@ -150,12 +150,14 @@ export const adminApi = {
    * the file matches whatever filters are active on screen, and the server
    * names the file after them.
    */
-  exportMonitoringExcelUrl: (month = null, animalType = null) => {
+  exportMonitoringExcelUrl: (month = null, animalType = null, classificationId = null) => {
     const base = api.defaults.baseURL ?? "";
     const params = new URLSearchParams();
 
     if (month) params.set("month", month);
     if (animalType) params.set("animal_type", animalType);
+    // Second level of the cascade; only sent once a type is selected.
+    if (classificationId) params.set("classification_id", classificationId);
 
     const query = params.toString();
     return `${base}/api/v1/admin/monitoring-records/export${query ? `?${query}` : ""}`;

@@ -155,8 +155,10 @@ return [
     |
     |   CONFIRMED by the CVO (2026-09-30): general band 2–4 on the system's 1–5
     |   scale. Change it only on a veterinarian's instruction; `bcs_normal_ranges`
-    |   is where a per-species exception goes, e.g. ['Swine' => [2, 3]]. Setting
-    |   BOTH to empty DISABLES the rule.
+    |   is where a per-species exception goes, e.g. ['Swine (Pig)' => [2, 3]].
+    |   Keys are the SPECIFIC animal-type names from the master list (System
+    |   Settings → Animal types), so a band can finally be defined per type
+    |   rather than per loose category. Setting BOTH to empty DISABLES the rule.
     |
     | - `no_recent_visit_days` fires for a household created at least this many
     |   days ago whose latest field visit is older than this — or that has no

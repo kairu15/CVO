@@ -28,6 +28,13 @@ class MonitoringRecordResource extends JsonResource
             'name_of_farmer' => $this->beneficiary->name_of_farmer,
             'address' => $this->beneficiary->address,
             'animal_type' => $this->beneficiary->animal_type,
+            // Structured master-list pair: the species id / display name and
+            // the selected classification, so the table can show and filter
+            // both without a second request.
+            'animal_type_id' => $this->beneficiary->animal_type_id,
+            'animal_type_name' => $this->beneficiary->animalType?->name ?? $this->beneficiary->animal_type,
+            'classification_id' => $this->beneficiary->classification_id,
+            'animal_classification' => $this->beneficiary->animalClassification?->name,
             'sex' => $this->beneficiary->sex,
 
             // Registry / agreement fields, read from the beneficiary so the

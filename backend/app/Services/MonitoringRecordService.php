@@ -43,19 +43,61 @@ class MonitoringRecordService
         int $perPage = Pagination::DEFAULT_PER_PAGE,
         ?string $animalType = null,
         string $sort = 'date',
+        ?int $animalTypeId = null,
+        ?int $classificationId = null,
     ): LengthAwarePaginator {
+        // A legacy name ("Carabao") resolves to the master type it clearly
+        // means, so filtering by the catalogue's own name ("Carabao (Water
+        // Buffalo)") still catches rows whose display string predates the
+        // migration. An ambiguous or unknown name resolves to null and keeps
+        // the exact string match it has always had.
+        $resolvedAnimalTypeId = $animalType !== null && trim($animalType) !== ''
+            ? app(AnimalTypeCatalog::class)->resolveType($animalType)?->id
+            : null;
+
         $page = $this->scopeFor($user)
-            ->with(['beneficiary', 'technician', 'beneficiary.technician'])
+            ->with([
+                'beneficiary',
+                'beneficiary.technician',
+                'beneficiary.animalType',
+                'beneficiary.animalClassification',
+                'technician',
+            ])
             ->when($month !== null, fn (Builder $q) => $this->applyMonthFilter($q, $month))
             // Animal type lives on the beneficiary. Filtering with whereHas
             // keeps it a database WHERE (before pagination), so the month and
             // animal filters combine with AND and `meta.total` is the real
             // filtered count — never a client-side slice of one page.
+            //
+            // Two keys are accepted: the LEGACY free-text value (what the
+            // monitoring table's data-derived filter sends, and what every
+            // historical row carries) and the master-list id (what the
+            // cascading select sends). Filtering by id is what makes the new
+            // structured list authoritative; the string stays for rows the
+            // migration could not map.
             ->when(
                 $animalType !== null && trim($animalType) !== '',
                 fn (Builder $q) => $q->whereHas(
                     'beneficiary',
-                    fn (Builder $bq) => $bq->where('animal_type', $animalType),
+                    fn (Builder $bq) => $bq->where('animal_type', $animalType)
+                        ->when(
+                            $resolvedAnimalTypeId !== null,
+                            fn (Builder $iq) => $iq->orWhere('animal_type_id', $resolvedAnimalTypeId),
+                        ),
+                ),
+            )
+            ->when(
+                $animalTypeId !== null,
+                fn (Builder $q) => $q->whereHas(
+                    'beneficiary',
+                    fn (Builder $bq) => $bq->where('animal_type_id', $animalTypeId),
+                ),
+            )
+            ->when(
+                $classificationId !== null,
+                fn (Builder $q) => $q->whereHas(
+                    'beneficiary',
+                    fn (Builder $bq) => $bq->where('classification_id', $classificationId),
                 ),
             )
             ->when(
@@ -63,14 +105,19 @@ class MonitoringRecordService
                 function (Builder $q): void {
                     // Order by the beneficiary's type first (alphabetical), so
                     // the table's grouping runs over rows the DATABASE already
-                    // ordered — not an array sort in PHP or JS. The date/id
-                    // tie-breakers below stay the secondary order within a
-                    // group.
-                    $q->orderBy(
-                        Beneficiary::query()
-                            ->select('animal_type')
-                            ->whereColumn('beneficiaries.id', 'monitoring_records.beneficiary_id')
-                            ->limit(1),
+                    // ordered — not an array sort in PHP or JS. The master
+                    // list's name wins; an unmapped historical row falls back
+                    // to its legacy string so it still groups sensibly. The
+                    // date/id tie-breakers below stay the secondary order
+                    // within a group.
+                    $q->orderByRaw(
+                        'coalesce('
+                        .'(select animal_types.name from animal_types'
+                        .' inner join beneficiaries as type_owner on type_owner.animal_type_id = animal_types.id'
+                        .' where type_owner.id = monitoring_records.beneficiary_id),'
+                        .'(select beneficiaries.animal_type from beneficiaries'
+                        .' where beneficiaries.id = monitoring_records.beneficiary_id)'
+                        .')'
                     );
                 },
             )
@@ -236,7 +283,13 @@ class MonitoringRecordService
         $record = $this->scopeFor($user)->find($id);
 
         if ($record) {
-            $record->load(['beneficiary', 'technician', 'beneficiary.technician']);
+            $record->load([
+                'beneficiary',
+                'technician',
+                'beneficiary.technician',
+                'beneficiary.animalType',
+                'beneficiary.animalClassification',
+            ]);
             $this->attachLatestPhotos(new EloquentCollection([$record]));
         }
 

@@ -39,6 +39,12 @@ class IndexMonitoringRecordsRequest extends FormRequest
             // only boar records monitored that month.
             'animal_type' => ['sometimes', 'nullable', 'string', 'max:100'],
 
+            // Structured master-list pair (the cascading filter). `animal_type_id`
+            // narrows to the species; `classification_id` further narrows to
+            // the sex/age class and is only meaningful with a type.
+            'animal_type_id' => ['sometimes', 'nullable', 'integer', 'exists:animal_types,id'],
+            'classification_id' => ['sometimes', 'nullable', 'integer', 'exists:animal_classifications,id'],
+
             // Row ordering: the default (by date) or grouped alphabetically by
             // animal type. Sorting happens in the DATABASE ORDER BY, never in
             // PHP/JS after the fetch.

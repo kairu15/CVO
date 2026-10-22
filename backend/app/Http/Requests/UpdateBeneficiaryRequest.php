@@ -2,6 +2,9 @@
 
 namespace App\Http\Requests;
 
+use App\Models\AnimalClassification;
+use App\Models\Beneficiary;
+use App\Services\AnimalTypeCatalog;
 use App\Support\Barangays;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -37,7 +40,39 @@ class UpdateBeneficiaryRequest extends FormRequest
                     }
                 },
             ],
-            'animal_type' => ['sometimes', 'string', 'max:255'],
+            // Species, by master-list name or id. `sometimes` because this is
+            // a partial update: a request that only corrects the ear tag must
+            // not be forced to resend the animal.
+            'animal_type' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'animal_type_id' => ['sometimes', 'nullable', 'integer', 'exists:animal_types,id'],
+            'classification_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null) {
+                        return;
+                    }
+
+                    $catalog = app(AnimalTypeCatalog::class);
+                    $typeId = $this->filled('animal_type_id')
+                        ? (int) $this->input('animal_type_id')
+                        : ($catalog->resolveType((string) $this->input('animal_type'))?->id
+                            ?? $this->currentBeneficiary()?->animal_type_id);
+
+                    if ($typeId === null) {
+                        $fail('Choose an animal type before choosing a classification.');
+
+                        return;
+                    }
+
+                    $classification = AnimalClassification::query()->find($value);
+
+                    if (! $classification || (int) $classification->animal_type_id !== (int) $typeId) {
+                        $fail('The selected classification does not belong to the chosen animal type.');
+                    }
+                },
+            ],
             // Registry ID and physical tag number. Loose on purpose (no single
             // RSBSA format; tags are office-issued) — see
             // StoreBeneficiaryRequest for the rationale.
@@ -54,6 +89,28 @@ class UpdateBeneficiaryRequest extends FormRequest
                 ? ['nullable', 'integer', 'exists:users,id,role,technician']
                 : ['prohibited'],
         ];
+    }
+
+    /**
+     * Keep the master-list pair consistent on a partial update: resolve the
+     * submitted type (by id or name), fill the other half, and drop a stale
+     * classification when the type changes.
+     *
+     * @return array<string, mixed>
+     */
+    public function validated($key = null, $default = null)
+    {
+        $validated = parent::validated($key, $default);
+
+        return app(AnimalTypeCatalog::class)->applyPair($validated, $this->currentBeneficiary());
+    }
+
+    /** The beneficiary being edited (the route carries an id, not a model). */
+    private function currentBeneficiary(): ?Beneficiary
+    {
+        $id = $this->route('beneficiary');
+
+        return $id instanceof Beneficiary ? $id : Beneficiary::query()->find($id);
     }
 
     /**

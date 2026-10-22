@@ -65,6 +65,14 @@ class ActivityLog extends Model
         'reference_data_updated',
         'permissions_updated',
 
+        // Animal master list (Animal Type → Classification)
+        'animal_type_created',
+        'animal_type_updated',
+        'animal_type_deleted',
+        'animal_classification_created',
+        'animal_classification_updated',
+        'animal_classification_deleted',
+
         // Record CRUD (subject of item 7's coverage)
         'beneficiary_created',
         'beneficiary_updated',

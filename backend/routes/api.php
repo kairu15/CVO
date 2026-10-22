@@ -3,6 +3,7 @@
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AnimalHealthController;
+use App\Http\Controllers\AnimalTypeController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BarangayController;
 use App\Http\Controllers\BeneficiaryController;
@@ -154,6 +155,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         ->name('api.profile.avatar.destroy');
 
     Route::apiResource('projects', ProjectController::class);
+
+    // The animal master list (Animal Type → Classification), served grouped by
+    // main category. Every role that records or views an animal reads it —
+    // the registration cascade, the monitoring filter and the settings
+    // manager all consume this one response. Writes are admin-only, below.
+    Route::get('animal-types', [AnimalTypeController::class, 'index'])
+        ->name('api.animal-types');
 
     // Beneficiaries & livestock monitoring
     Route::apiResource('beneficiaries', BeneficiaryController::class);
@@ -376,6 +384,23 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
             ->middleware('permission:manage_reference_data')->name('api.admin.puroks.update');
         Route::delete('/puroks/{purok}', [BarangayController::class, 'destroyPurok'])
             ->middleware('permission:manage_reference_data')->name('api.admin.puroks.destroy');
+
+        // Animal master list (Animal Type → Classification). Real CRUD rather
+        // than a fixed seed: the office must be able to add a species the
+        // shipped list did not anticipate. Deletion is refused while animals
+        // still reference the entry (see AnimalTypeController).
+        Route::post('/animal-types', [AnimalTypeController::class, 'store'])
+            ->middleware('permission:manage_reference_data')->name('api.admin.animal-types.store');
+        Route::patch('/animal-types/{animalType}', [AnimalTypeController::class, 'update'])
+            ->middleware('permission:manage_reference_data')->name('api.admin.animal-types.update');
+        Route::delete('/animal-types/{animalType}', [AnimalTypeController::class, 'destroy'])
+            ->middleware('permission:manage_reference_data')->name('api.admin.animal-types.destroy');
+        Route::post('/animal-types/{animalType}/classifications', [AnimalTypeController::class, 'storeClassification'])
+            ->middleware('permission:manage_reference_data')->name('api.admin.animal-types.classifications.store');
+        Route::patch('/animal-classifications/{animalClassification}', [AnimalTypeController::class, 'updateClassification'])
+            ->middleware('permission:manage_reference_data')->name('api.admin.animal-classifications.update');
+        Route::delete('/animal-classifications/{animalClassification}', [AnimalTypeController::class, 'destroyClassification'])
+            ->middleware('permission:manage_reference_data')->name('api.admin.animal-classifications.destroy');
 
         // Health concern hint rules — the admin-editable half of the
         // Rule-Based Health Concern Hints (the read-only half is

@@ -30,6 +30,7 @@ export function BeneficiaryDetailModal({ beneficiary, onClose, technicianName })
     ["Name of farmer", beneficiary.name_of_farmer],
     ["Address (barangay)", beneficiary.address],
     ["Type of animal", beneficiary.animal_type],
+    ["Classification", beneficiary.animal_classification],
     [
       "Sex",
       beneficiary.sex === "M" ? "Male" : beneficiary.sex === "F" ? "Female" : beneficiary.sex,

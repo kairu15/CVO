@@ -18,6 +18,9 @@ const COLUMNS = [
   { key: "rsbsa_number", label: "RSBSA #" },
   { key: "address", label: "Address" },
   { key: "animal_type", label: "Type of Animal" },
+  // The sex/age class within the type (Boar, Sow, Layer…). Nullable: older
+  // records only ever recorded the coarse type.
+  { key: "animal_classification", label: "Classification" },
   { key: "sex", label: "Sex" },
   { key: "date_monitored", label: "Date Monitored" },
   { key: "date_vits_supp", label: "Date of Vits Supp." },

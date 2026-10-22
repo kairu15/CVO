@@ -31,6 +31,10 @@ class AdminExcelExportRequest extends FormRequest
             // exported; when absent the export behaves exactly as before
             // (every type).
             'animal_type' => ['sometimes', 'nullable', 'string', 'max:100'],
+
+            // Second level of the cascading filter: one classification within
+            // the selected type (null = every classification).
+            'classification_id' => ['sometimes', 'nullable', 'integer', 'exists:animal_classifications,id'],
         ];
     }
 }

@@ -18,8 +18,15 @@ import { Icon } from "./Icons";
  * @param {object} props
  * @param {string|null} [props.month] active "YYYY-MM" filter, if any
  * @param {string|null} [props.animalType] active animal-type filter, if any
+ * @param {string|number|null} [props.classificationId] active classification
+ *   filter — the second level of the cascade, passed through so the file
+ *   holds one classification within the chosen type
  */
-export function MonitoringExcelToolbar({ month = null, animalType = null }) {
+export function MonitoringExcelToolbar({
+  month = null,
+  animalType = null,
+  classificationId = null,
+}) {
   const fileInputRef = useRef(null);
   const invalidate = useInvalidate();
   const [importing, setImporting] = useState(false);
@@ -52,7 +59,9 @@ export function MonitoringExcelToolbar({ month = null, animalType = null }) {
 
   function handleExport() {
     // Session-cookie auth means a plain link downloads with credentials.
-    window.location.href = adminApi.exportMonitoringExcelUrl(month, animalType);
+    window.location.href = classificationId
+      ? adminApi.exportMonitoringExcelUrl(month, animalType, classificationId)
+      : adminApi.exportMonitoringExcelUrl(month, animalType);
   }
 
   return (
@@ -86,7 +95,7 @@ export function MonitoringExcelToolbar({ month = null, animalType = null }) {
           className="btn-secondary"
           title={
             animalType
-              ? `Export only ${animalType}${month ? ` for ${month}` : ""}`
+              ? `Export only ${animalType}${classificationId ? " (one classification)" : ""}${month ? ` for ${month}` : ""}`
               : "Export every animal type"
           }
         >

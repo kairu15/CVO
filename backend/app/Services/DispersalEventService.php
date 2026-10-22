@@ -71,10 +71,18 @@ class DispersalEventService
             $recipientId = $data['beneficiary_id'];
 
             if (! empty($data['register_new'])) {
+                // Resolve the inline household's species against the master
+                // list too, so a field registration is no less structured
+                // than one entered on the Beneficiaries screen. An unknown
+                // spelling keeps its text and simply stays unmapped.
+                $newTypeId = app(AnimalTypeCatalog::class)
+                    ->resolveType((string) $data['new_animal_type'])?->id;
+
                 $recipient = Beneficiary::create([
                     'name_of_farmer' => $data['new_name_of_farmer'],
                     'address' => $data['new_address'],
                     'animal_type' => $data['new_animal_type'],
+                    'animal_type_id' => $newTypeId,
                     'sex' => $data['new_sex'],
                     'latitude' => $data['new_latitude'] ?? null,
                     'longitude' => $data['new_longitude'] ?? null,

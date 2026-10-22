@@ -44,6 +44,8 @@ class MonitoringRecordController extends Controller
             Pagination::perPage($request->validated('per_page') ?? null),
             $request->validated('animal_type'),
             $request->validated('sort') ?? 'date',
+            $request->validated('animal_type_id') !== null ? (int) $request->validated('animal_type_id') : null,
+            $request->validated('classification_id') !== null ? (int) $request->validated('classification_id') : null,
         );
 
         return MonitoringRecordResource::collection($paginator);

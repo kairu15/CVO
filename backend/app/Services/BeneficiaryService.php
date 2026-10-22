@@ -55,7 +55,7 @@ class BeneficiaryService
         $barangay = trim((string) ($filters['barangay'] ?? ''));
 
         return $this->scopeQueryFor($user)
-            ->with('technician')
+            ->with(['technician', 'animalType', 'animalClassification'])
             ->withCount('monitoringRecords')
             // Search runs INSIDE the role scope above, so a technician can
             // never widen their view by typing a name they are not assigned.

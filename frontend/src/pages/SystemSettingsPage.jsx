@@ -6,6 +6,7 @@ import { InlineAlert } from "../components/InlineAlert";
 import { SkeletonList } from "../components/Skeleton";
 import { Icon } from "../components/Icons";
 import { SymptomRulesEditor } from "../components/SymptomRulesEditor";
+import { AnimalTypeManager } from "../components/AnimalTypeManager";
 import { VocabularyEditor } from "../components/VocabularyEditor";
 import { useToast } from "../context/ToastContext";
 import { getRole } from "../config/roles";
@@ -546,16 +547,22 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
             </div>
           </section>
 
-          {/* Writable: the suggested animal-type vocabulary */}
+          {/* Writable: the two-level master list every animal picker reads */}
+          <AnimalTypeManager />
+
+          {/* Legacy: the casing hints the importer uses for values that are
+              NOT in the master list. Kept because an import legitimately
+              carries a spelling the catalogue has not seen yet. */}
           <section className="card p-6">
             <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
               Animal types
             </h3>
             <p className="mt-1.5 text-xs text-slate-500">
-              The species list the forms suggest. It never becomes a filter on
-              existing records — the import keeps every value it finds, even one
-              not listed here — so adding a program category is safe. Saved as
-              one list.
+              Import spelling hints. The importer keeps every value it finds;
+              a value matching one of these takes this list's exact casing,
+              and everything else is kept as its own type. The master list
+              above is what the forms and filters actually offer — this list
+              never becomes a filter on existing records.
             </p>
 
             <div className="mt-4 flex flex-wrap gap-2">

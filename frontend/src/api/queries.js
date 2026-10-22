@@ -90,15 +90,20 @@ export function useMonitoringRecords(
   animalType = null,
   sort = "date",
   enabled = true,
+  classificationId = null,
 ) {
   return useQuery({
-    queryKey: ["monitoring-records", { month, page, search, animalType, sort }],
+    queryKey: [
+      "monitoring-records",
+      { month, page, search, animalType, sort, classificationId },
+    ],
     queryFn: () =>
       monitoringApi.list({
         per_page: 100,
         ...(month ? { month } : {}),
         ...(search ? { search } : {}),
         ...(animalType ? { animal_type: animalType } : {}),
+        ...(classificationId ? { classification_id: classificationId } : {}),
         sort,
         page,
       }),

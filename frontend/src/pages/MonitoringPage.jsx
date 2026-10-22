@@ -7,6 +7,7 @@ import {
   useMonitoringMonths,
   useMonitoringRecords,
 } from "../api/queries";
+import { useAnimalTypeGroups } from "../hooks/useAnimalTypes";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { monitoringApi } from "../api/monitoringApi";
 import { getErrorMessage } from "../api/client";
@@ -15,7 +16,7 @@ import { useToast } from "../context/ToastContext";
 import { MonitoringTable } from "../components/MonitoringTable";
 import { MonitoringExcelToolbar } from "../components/MonitoringExcelToolbar";
 import { MonthYearDropdown } from "../components/MonthYearDropdown";
-import { AnimalTypeDropdown } from "../components/AnimalTypeDropdown";
+import { AnimalTypeClassificationSelect } from "../components/AnimalTypeClassificationSelect";
 import { VisitFormModal } from "../components/VisitFormModal";
 import { EmptyState } from "../components/EmptyState";
 import { Modal } from "../components/Modal";
@@ -81,6 +82,9 @@ export default function MonitoringPage({ roleKey }) {
   // under. Grouping by type is the default; admins can switch back to the
   // barangay grouping they had before.
   const [animalType, setAnimalType] = useState(null);
+  // Second level of the cascade. Only meaningful once a type is picked; a
+  // type change clears it (see the select's onChange).
+  const [classificationId, setClassificationId] = useState(null);
   const [groupBy, setGroupBy] = useState("animal_type");
   const toast = useToast();
 
@@ -98,9 +102,21 @@ export default function MonitoringPage({ roleKey }) {
   // existing date order within a group) or the pre-existing date order.
   const sort = groupBy === "animal_type" ? "animal_type" : "date";
 
-  const recordsQuery = useMonitoringRecords(selectedMonth, page, debouncedSearch, animalType, sort);
+  const recordsQuery = useMonitoringRecords(
+    selectedMonth,
+    page,
+    debouncedSearch,
+    animalType,
+    sort,
+    true,
+    classificationId,
+  );
   const monthsQuery = useMonitoringMonths();
   const animalTypesQuery = useMonitoringAnimalTypes();
+  // The master list supplies the category headers and the classification
+  // options; the data-derived list below still supplies values that are not
+  // in it (an older import), so no historical row becomes unfilterable.
+  const { groups: animalTypeGroups } = useAnimalTypeGroups();
   const beneficiaryQuery = useAssignedBeneficiaries(isTechnician);
 
   const records = recordsQuery.data?.data ?? [];
@@ -143,9 +159,14 @@ export default function MonitoringPage({ roleKey }) {
     setPage(1);
   }, []);
 
-  /** Animal-type pick: same — swap the filter and start back at page 1. */
-  const selectAnimalType = useCallback((type) => {
+  /**
+   * Cascading filter pick: swap the type and/or classification and start back
+   * at page 1. Changing the type always clears the classification, because a
+   * classification only means something inside its own type.
+   */
+  const selectAnimalType = useCallback((type, nextClassificationId = null) => {
     setAnimalType(type);
+    setClassificationId(nextClassificationId);
     setPage(1);
   }, []);
 
@@ -267,10 +288,22 @@ export default function MonitoringPage({ roleKey }) {
                   onSelect={selectMonth}
                 />
 
-                <AnimalTypeDropdown
-                  types={animalTypes}
-                  selected={animalType}
-                  onSelect={selectAnimalType}
+                <AnimalTypeClassificationSelect
+                  groups={animalTypeGroups}
+                  extraTypes={animalTypes}
+                  allowAll
+                  typeValue={animalType ?? ""}
+                  classificationValue={classificationId ?? ""}
+                  onChange={({ animalType: type, classificationId: id }) =>
+                    selectAnimalType(type || null, id ? Number(id) : null)
+                  }
+                  typeLabel="Animal type"
+                  typeAriaLabel="Filter by animal type"
+                  classificationLabel="Classification"
+                  classificationAriaLabel="Filter by classification"
+                  typeId="monitoring-animal-type"
+                  classificationId="monitoring-classification"
+                  className="w-full sm:w-80"
                 />
 
                 {/* Search as you type: every keystroke updates the field,
@@ -323,7 +356,11 @@ export default function MonitoringPage({ roleKey }) {
             </div>
 
             {isAdmin && (
-              <MonitoringExcelToolbar month={selectedMonth} animalType={animalType} />
+              <MonitoringExcelToolbar
+                month={selectedMonth}
+                animalType={animalType}
+                classificationId={classificationId}
+              />
             )}
           </div>
         </section>

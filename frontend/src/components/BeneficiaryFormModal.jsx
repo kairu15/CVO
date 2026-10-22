@@ -5,21 +5,29 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useNotifyOfflineSaved } from "../context/OfflineQueueContext";
 import { useBarangays } from "../hooks/useBarangays";
+import { useAnimalTypeGroups } from "../hooks/useAnimalTypes";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { Modal } from "./Modal";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { InlineAlert } from "./InlineAlert";
 import { TextField } from "./TextField";
 import { CoordinatePicker } from "./CoordinatePicker";
+import { AnimalTypeClassificationSelect } from "./AnimalTypeClassificationSelect";
 
-/** The animal vocabulary the rest of the program's forms offer. */
-const ANIMAL_TYPES = ["Carabao", "Cattle", "Goat", "Swine", "Boar"];
+/**
+ * Shown only while the master list is still loading (or unreachable), so the
+ * form never renders an empty species dropdown and the admin can still enrol
+ * a household. The server resolves these names against the master list on
+ * save; they are a floor, not the vocabulary.
+ */
+const FALLBACK_ANIMAL_TYPES = ["Carabao", "Cattle", "Goat", "Swine", "Boar"];
 
 const EMPTY_FORM = {
   name_of_farmer: "",
   rsbsa_number: "",
   ear_tag_number: "",
   animal_type: "",
+  classification_id: "",
   sex: "F",
   address: "",
   purok_id: "",
@@ -57,6 +65,7 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
   const { user } = useAuth();
   const notifyOfflineSaved = useNotifyOfflineSaved();
   const [barangays, barangaysStatus] = useBarangays();
+  const { groups: animalTypeGroups } = useAnimalTypeGroups();
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [puroks, setPuroks] = useState([]);
@@ -83,6 +92,10 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
             rsbsa_number: beneficiary.rsbsa_number ?? "",
             ear_tag_number: beneficiary.ear_tag_number ?? "",
             animal_type: beneficiary.animal_type ?? "",
+            classification_id:
+              beneficiary.classification_id != null
+                ? String(beneficiary.classification_id)
+                : "",
             sex: beneficiary.sex ?? "F",
             address: beneficiary.address ?? "",
             purok_id: beneficiary.purok_id != null ? String(beneficiary.purok_id) : "",
@@ -165,6 +178,12 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
       rsbsa_number: form.rsbsa_number.trim() || null,
       ear_tag_number: form.ear_tag_number.trim() || null,
       animal_type: form.animal_type,
+      // Only sent when one was chosen: an unclassified animal is a real case
+      // (not every historical record has one), and sending `null` on every
+      // save would make an untouched cascade look like a deliberate clear.
+      ...(form.classification_id !== ""
+        ? { classification_id: Number(form.classification_id) }
+        : {}),
       sex: form.sex,
       address: form.address,
       purok_id: form.purok_id === "" ? null : Number(form.purok_id),
@@ -333,29 +352,36 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
           </div>
         </div>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <div>
-            <label htmlFor="beneficiary-animal" className="block text-sm font-medium text-slate-700">
-              Type of animal
-            </label>
-            <select
-              id="beneficiary-animal"
-              className="field mt-1.5"
-              value={form.animal_type}
-              onChange={update("animal_type")}
-            >
-              <option value="">Select animal…</option>
-              {ANIMAL_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-            {errors.animal_type && (
-              <p className="mt-1.5 text-xs font-medium text-red-600">{errors.animal_type}</p>
-            )}
-          </div>
+        {/* The master list's two levels: type (grouped by main category) →
+            classification. The classification is disabled until a type is
+            picked and resets whenever the type changes. */}
+        <div className="mt-3">
+          <AnimalTypeClassificationSelect
+            groups={animalTypeGroups}
+            extraTypes={animalTypeGroups.length === 0 ? FALLBACK_ANIMAL_TYPES : []}
+            typeValue={form.animal_type}
+            classificationValue={form.classification_id}
+            onChange={({ animalType, classificationId }) => {
+              setForm((prev) => ({
+                ...prev,
+                animal_type: animalType,
+                classification_id: classificationId,
+              }));
+              setErrors((prev) => ({
+                ...prev,
+                animal_type: undefined,
+                classification_id: undefined,
+              }));
+            }}
+            typeLabel="Type of animal"
+            typeId="beneficiary-animal"
+            classificationId="beneficiary-classification"
+            typeError={errors.animal_type}
+            classificationError={errors.classification_id}
+          />
+        </div>
 
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor="beneficiary-sex" className="block text-sm font-medium text-slate-700">
               Sex
@@ -373,9 +399,7 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
               <p className="mt-1.5 text-xs font-medium text-red-600">{errors.sex}</p>
             )}
           </div>
-        </div>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <TextField
             id="beneficiary-ear-tag"
             label="Ear tag number (optional)"
@@ -383,7 +407,9 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
             onChange={update("ear_tag_number")}
             error={errors.ear_tag_number}
           />
+        </div>
 
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor="beneficiary-moa" className="block text-sm font-medium text-slate-700">
               MOA status

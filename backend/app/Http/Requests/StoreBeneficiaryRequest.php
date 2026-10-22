@@ -2,8 +2,11 @@
 
 namespace App\Http\Requests;
 
+use App\Models\AnimalClassification;
+use App\Models\AnimalType;
 use App\Models\Beneficiary;
 use App\Models\Purok;
+use App\Services\AnimalTypeCatalog;
 use App\Support\Barangays;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -36,7 +39,57 @@ class StoreBeneficiaryRequest extends FormRequest
                     }
                 },
             ],
-            'animal_type' => ['required', 'string', 'max:255'],
+            // The species, as a name from the master list (the cascading
+            // dropdown's value) OR its id. One of the two is required; the
+            // server fills the other so the legacy display string and the FK
+            // can never disagree.
+            'animal_type' => ['required_without:animal_type_id', 'nullable', 'string', 'max:255'],
+            'animal_type_id' => [
+                'nullable',
+                'integer',
+                'exists:animal_types,id',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null || ! $this->filled('animal_type')) {
+                        return;
+                    }
+
+                    $type = AnimalType::query()->find($value);
+                    $named = app(AnimalTypeCatalog::class)->resolveType((string) $this->input('animal_type'));
+
+                    if ($type && $named && $named->id !== $type->id) {
+                        $fail('The animal type and the animal type id do not match.');
+                    }
+                },
+            ],
+            // Optional sex/age class within the chosen type. When given it
+            // must actually belong to that type — the same consistency rule
+            // the barangay → purok cascade enforces.
+            'classification_id' => [
+                'nullable',
+                'integer',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null) {
+                        return;
+                    }
+
+                    $catalog = app(AnimalTypeCatalog::class);
+                    $typeId = $this->filled('animal_type_id')
+                        ? (int) $this->input('animal_type_id')
+                        : $catalog->resolveType((string) $this->input('animal_type'))?->id;
+
+                    if ($typeId === null) {
+                        $fail('Choose an animal type before choosing a classification.');
+
+                        return;
+                    }
+
+                    $classification = AnimalClassification::query()->find($value);
+
+                    if (! $classification || (int) $classification->animal_type_id !== $typeId) {
+                        $fail('The selected classification does not belong to the chosen animal type.');
+                    }
+                },
+            ],
             // The farmer's national registry ID and the animal's physical tag
             // number. Deliberately loose: RSBSA numbers have no single
             // published format across LGUs/regions, and tags are issued by
@@ -122,6 +175,12 @@ class StoreBeneficiaryRequest extends FormRequest
             // server-side, so the two can never disagree.
             $validated['barangay_id'] = Barangays::idFor($address);
         }
+
+        // Pair the value submitted by this request with the structured master
+        // list (“Swine (Pig)” and its id, plus a nullable classification).
+        // The submitted display string is kept exactly as typed when it still
+        // resolves; only an id-only payload is given the canonical name.
+        $validated = app(AnimalTypeCatalog::class)->applyPair($validated);
 
         return $validated;
     }

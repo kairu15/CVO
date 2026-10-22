@@ -50,6 +50,10 @@ class MonitoringExcelService
         // field-visit photo was captured. Not part of the paper template —
         // importers ignore unknown columns, so round-trips stay safe.
         'Technician', 'Photo Timestamp',
+        // Master-list classification (Boar, Sow, Layer…). Appended after the
+        // template's own columns so every existing column keeps its letter —
+        // old workbooks and the on-screen table still line up.
+        'Classification',
     ];
 
     /**
@@ -202,11 +206,23 @@ class MonitoringExcelService
         ?string $month = null,
         ?string $animalType = null,
         ?MonitoringRecordService $records = null,
+        ?int $classificationId = null,
     ): Spreadsheet {
         $records ??= app(MonitoringRecordService::class);
 
+        // Match the master type ID as well as the legacy display string, so
+        // an export of "Carabao (Water Buffalo)" still includes rows the
+        // migration mapped but whose old string reads "Carabao".
+        $resolvedTypeId = $animalType !== null && $animalType !== ''
+            ? app(AnimalTypeCatalog::class)->resolveType($animalType)?->id
+            : null;
+
         $models = MonitoringRecord::query()
-            ->with(['beneficiary', 'beneficiary.technician'])
+            ->with([
+                'beneficiary',
+                'beneficiary.technician',
+                'beneficiary.animalClassification',
+            ])
             ->when($month, function ($q, $month): void {
                 $q->whereYear('date_monitored', '=', substr($month, 0, 4))
                     ->whereMonth('date_monitored', '=', substr($month, 5, 2));
@@ -217,7 +233,21 @@ class MonitoringExcelService
                 $animalType !== null && $animalType !== '',
                 fn ($q) => $q->whereHas(
                     'beneficiary',
-                    fn ($b) => $b->where('animal_type', $animalType),
+                    fn ($b) => $b->where('animal_type', $animalType)
+                        ->when(
+                            $resolvedTypeId !== null,
+                            fn ($iq) => $iq->orWhere('animal_type_id', $resolvedTypeId),
+                        ),
+                ),
+            )
+            // The cascading filter's second level: one classification within
+            // the selected type. Runs at the query level like the type, so
+            // the workbook holds exactly the rows the screen shows.
+            ->when(
+                $classificationId !== null,
+                fn ($q) => $q->whereHas(
+                    'beneficiary',
+                    fn ($b) => $b->where('classification_id', $classificationId),
                 ),
             )
             ->orderBy('date_monitored')
@@ -254,16 +284,16 @@ class MonitoringExcelService
             $sheet = new Worksheet($spreadsheet, $label);
             $spreadsheet->addSheet($sheet);
 
-            // Title row, merged across the full template width (R with the
-            // registry + oversight columns).
+            // Title row, merged across the full template width (S with the
+            // registry + oversight + classification columns).
             $sheet->setCellValue('A1', 'LIVESTOCK MONTHLY MONITORING REPORT');
-            $sheet->mergeCells('A1:R1');
+            $sheet->mergeCells('A1:S1');
             $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
             $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
             // Header row.
             $sheet->fromArray(self::EXPORT_HEADERS, null, 'A2');
-            $headerStyle = $sheet->getStyle('A2:R2');
+            $headerStyle = $sheet->getStyle('A2:S2');
             $headerStyle->getFont()->setBold(true);
             $headerStyle->getFill()->setFillType(Fill::FILL_SOLID)
                 ->getStartColor()->setRGB('DCE8D9');
@@ -297,15 +327,16 @@ class MonitoringExcelService
                     $b->ear_tag_number,
                     $b->technician?->name ?? 'Unassigned',
                     $photo ? $this->d($photo->capture_date).' '.substr((string) $photo->capture_time, 0, 5) : null,
+                    $b->animalClassification?->name,
                 ], null, 'A'.$rowIndex);
 
-                $sheet->getStyle('A'.$rowIndex.':R'.$rowIndex)
+                $sheet->getStyle('A'.$rowIndex.':S'.$rowIndex)
                     ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
 
                 $rowIndex++;
             }
 
-            foreach (range('A', 'R') as $col) {
+            foreach (range('A', 'S') as $col) {
                 $width = match (true) {
                     $col === 'A' => 24, // Name of Farmer
                     $col === 'B' => 20, // RSBSA #
@@ -320,9 +351,13 @@ class MonitoringExcelService
     }
 
     /** Stream the workbook as a download. */
-    public function downloadResponse(?string $month = null, ?string $animalType = null): StreamedResponse
-    {
-        $writer = new XlsxWriter($this->exportWorkbook($month, $animalType));
+    public function downloadResponse(
+        ?string $month = null,
+        ?string $animalType = null,
+        ?int $classificationId = null,
+        ?string $classificationName = null,
+    ): StreamedResponse {
+        $writer = new XlsxWriter($this->exportWorkbook($month, $animalType, null, $classificationId));
 
         // Name the file after the filters that were active, e.g.
         // livestock-monitoring-report-boar-dec-2026.xlsx — so a folder of
@@ -331,6 +366,10 @@ class MonitoringExcelService
 
         if ($animalType !== null && $animalType !== '') {
             $parts[] = Str::slug($animalType);
+        }
+
+        if ($classificationName !== null && $classificationName !== '') {
+            $parts[] = Str::slug($classificationName);
         }
 
         if ($month) {
@@ -534,7 +573,17 @@ class MonitoringExcelService
         // Types come from the workbook itself (whitespace/case normalized);
         // the summary collects the distinct set so the admin sees exactly what
         // the file introduced.
-        $animalType = AnimalTypes::normalize($values['animal_type'] ?? null);
+        $normalizedType = AnimalTypes::normalize($values['animal_type'] ?? null);
+
+        // Fold a workbook value into the master list when it is unambiguous:
+        // the specific type's name is stored, and the classification it names
+        // ("Rooster" → Chicken / Rooster) is recorded with it. A typo, a
+        // category or an ambiguous term is kept exactly as normalized — the
+        // import must never invent a species the office did not write.
+        $catalog = app(AnimalTypeCatalog::class);
+        $resolved = $catalog->resolve($normalizedType);
+        $mapped = $resolved['status'] === 'mapped';
+        $animalType = $mapped ? $resolved['type']->name : $normalizedType;
         $summary['animal_types'][$animalType] = true;
 
         $sex = strtoupper(trim((string) ($values['sex'] ?? '')));
@@ -556,6 +605,8 @@ class MonitoringExcelService
             // Normalized above so the same type never splits into several
             // groups ("cattle "/"CATTLE"); unknown-but-real types are kept.
             'animal_type' => $animalType,
+            'animal_type_id' => $mapped ? $resolved['type']->id : null,
+            'classification_id' => $mapped ? $resolved['classification']?->id : null,
             'sex' => in_array($sex, ['M', 'F'], true) ? $sex : null,
             // Origin tag: lets the delete path clean these auto-created rows
             // up (see MonitoringRecordService::delete) without ever touching

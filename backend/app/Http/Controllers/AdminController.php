@@ -320,9 +320,15 @@ class AdminController extends Controller
      */
     public function exportMonitoringExcel(AdminExcelExportRequest $request): StreamedResponse
     {
+        $classificationId = $request->validated('classification_id');
+
         return $this->excel->downloadResponse(
             $request->validated('month') ?? null,
             $request->validated('animal_type') ?? null,
+            $classificationId !== null ? (int) $classificationId : null,
+            $classificationId !== null
+                ? \App\Models\AnimalClassification::query()->find($classificationId)?->name
+                : null,
         );
     }
 }

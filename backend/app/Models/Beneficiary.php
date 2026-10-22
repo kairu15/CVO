@@ -32,6 +32,12 @@ class Beneficiary extends Model
         'barangay_id',
         'purok_id',
         'animal_type',
+        // Structured twin of `animal_type`: the master-list type and, when
+        // recorded, its classification (Boar under Swine (Pig)). The string
+        // above stays as the display/sync column; these two are what the
+        // filters, grouping and exports resolve against.
+        'animal_type_id',
+        'classification_id',
         // The human-readable number printed on the animal's physical tag.
         'ear_tag_number',
         // Signed Memorandum of Agreement for this dispersal. Tri-state:
@@ -52,8 +58,19 @@ class Beneficiary extends Model
             'longitude' => 'float',
             'barangay_id' => 'integer',
             'purok_id' => 'integer',
+            'animal_type_id' => 'integer',
+            'classification_id' => 'integer',
             'moa_signed' => 'boolean',
         ];
+    }
+
+    /**
+     * The display name of the animal: the specific master-list type when
+     * mapped, else the legacy free-text value the sheet carried.
+     */
+    public function typeName(): ?string
+    {
+        return $this->animalType?->name ?? $this->animal_type;
     }
 
     /**
@@ -71,6 +88,24 @@ class Beneficiary extends Model
     public function barangay(): BelongsTo
     {
         return $this->belongsTo(Barangay::class);
+    }
+
+    /**
+     * The master-list species this animal belongs to (nullable on historical
+     * rows that could not be mapped safely).
+     */
+    public function animalType(): BelongsTo
+    {
+        return $this->belongsTo(AnimalType::class);
+    }
+
+    /**
+     * The sex/age class within the type (Boar, Sow, Gilt…). Nullable: the old
+     * sheets recorded a coarse type, rarely a classification.
+     */
+    public function animalClassification(): BelongsTo
+    {
+        return $this->belongsTo(AnimalClassification::class, 'classification_id');
     }
 
     /**

@@ -241,7 +241,7 @@ class SmartAlertService
             .' order by mr.date_monitored desc, mr.id desc limit 1)';
 
         $animals = Beneficiary::query()
-            ->with('technician')
+            ->with(['technician', 'animalType'])
             ->select('beneficiaries.*')
             ->selectRaw("{$latestBcs} as latest_bcs")
             ->whereRaw("{$latestBcs} is not null")
@@ -250,8 +250,13 @@ class SmartAlertService
         $specs = [];
 
         foreach ($animals as $animal) {
-            // Per-species override first, then the general band.
-            $range = $perSpecies[$animal->animal_type] ?? $general;
+            // The override keys off the SPECIFIC master-list type ("Swine
+            // (Pig)", "Cattle", "Layer"…), not a loose category, so a real
+            // clinical band can finally be defined per type. A historical row
+            // the migration could not map still falls back to its legacy
+            // string, and then to the general band.
+            $species = $animal->animalType?->name ?? $animal->animal_type;
+            $range = $perSpecies[$species] ?? $general;
 
             // Neither configured for this species → do not guess; skip it.
             if ($range === null) {
@@ -278,7 +283,7 @@ class SmartAlertService
                         $bcs,
                         $min,
                         $max,
-                        $animal->animal_type,
+                        $species,
                     ),
                     'link' => $this->linkFor($user),
                 ];

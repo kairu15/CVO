@@ -393,6 +393,11 @@ export default function BeneficiariesPage() {
                         </td>
                         <td className="truncate px-4 py-2.5 text-slate-600">
                           {beneficiary.animal_type}
+                          {beneficiary.animal_classification && (
+                            <span className="block text-[10px] font-medium text-slate-500">
+                              {beneficiary.animal_classification}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
                           {beneficiary.sex}

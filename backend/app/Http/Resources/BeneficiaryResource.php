@@ -24,6 +24,15 @@ class BeneficiaryResource extends JsonResource
             'barangay_id' => $this->barangay_id,
             'purok_id' => $this->purok_id,
             'animal_type' => $this->animal_type,
+            // Structured pair from the master list. `animal_type_id` is null
+            // only on a historical row the migration could not map; the
+            // legacy string above still carries whatever the sheet said.
+            'animal_type_id' => $this->animal_type_id,
+            'classification_id' => $this->classification_id,
+            'animal_classification' => $this->animalClassification?->name,
+            // The specific type's display name when mapped, so a caller never
+            // has to know whether the value came from the list or the sheet.
+            'animal_type_name' => $this->animalType?->name ?? $this->animal_type,
             // Human-readable physical tag number (the tag card's QR is
             // derived from the id, not from this value).
             'ear_tag_number' => $this->ear_tag_number,

@@ -3,7 +3,6 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icons";
-import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { InlineAlert } from "../components/InlineAlert";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { PasswordToggle, TextField } from "../components/TextField";
@@ -126,7 +125,6 @@ export default function ResetPasswordPage() {
           </Link>
 
           <div className="flex shrink-0 items-center gap-2">
-            <LanguageSwitcher className="inline-flex" />
             <Link
               to="/login"
               className="inline-flex shrink-0 items-center gap-2 rounded-pill px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-white hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"

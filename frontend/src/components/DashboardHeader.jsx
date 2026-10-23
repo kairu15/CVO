@@ -14,7 +14,6 @@ import { searchApi } from "../api/searchApi";
 import { getErrorMessage } from "../api/client";
 import { useFlashHighlight } from "../hooks/useFlashHighlight";
 import { Icon } from "./Icons";
-import { LanguageSwitcher } from "./LanguageSwitcher";
 import { ConnectivityStatus } from "./ConnectivityStatus";
 import { SyncStatusBadge } from "./SyncStatusBadge";
 import { SkeletonList } from "./Skeleton";
@@ -169,9 +168,6 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
             </>
           )}
         </div>
-
-        {/* Language — English / Filipino / Cebuano, persisted in localStorage. */}
-        <LanguageSwitcher className="hidden md:inline-flex" />
 
         {/* Offline sync — a persistent count of anything still to sync, so a
             technician can verify nothing was lost even after days offline. */}

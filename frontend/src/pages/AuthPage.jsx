@@ -2,7 +2,6 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icons";
-import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { LoginForm } from "../components/LoginForm";
 import { site } from "../config/site";
 
@@ -37,7 +36,6 @@ export default function AuthPage() {
           </Link>
 
           <div className="flex shrink-0 items-center gap-2">
-            <LanguageSwitcher className="inline-flex" />
             <Link
               to="/"
               className="inline-flex shrink-0 items-center gap-2 rounded-pill px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-white hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"

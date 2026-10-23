@@ -64,14 +64,43 @@ const OSM_STYLE = {
   layers: [{ id: "osm", type: "raster", source: "osm" }],
 };
 
-/** Legend colors keyed by animal type — brand/earth ramp tokens. */
+/**
+ * Legend colors keyed by animal type.
+ *
+ * Deliberately avoids red, blue, green and yellow: those either disappear into
+ * the basemap (water, parks, roads) or clash with the green flight path, so the
+ * palette stays within brown, gray, purple, orange and pink. Types are
+ * administered in Settings, so a type added later falls through to a stable
+ * pick from the same palette instead of sharing one green.
+ */
 const ANIMAL_COLORS = {
-  Carabao: "#558b2f",
-  Cattle: "#7cb342",
-  Goat: "#bb9469",
-  Swine: "#825f3c",
-  Boar: "#63482e",
+  Carabao: "#ea580c", // orange
+  Cattle: "#7e22ce", // purple
+  Goat: "#78350f", // brown
+  Poultry: "#db2777", // pink
+  Swine: "#57534e", // gray
+  Boar: "#9a3412", // burnt orange
+  Unspecified: "#78716c", // light gray
 };
+
+/** Allowed pin palette for animal types added later — no red/blue/green/yellow. */
+const ANIMAL_FALLBACK_COLORS = [
+  "#ea580c", // orange
+  "#7e22ce", // purple
+  "#78350f", // brown
+  "#db2777", // pink
+  "#57534e", // gray
+  "#9a3412", // burnt orange
+  "#6b21a8", // deep purple
+  "#78716c", // light gray
+];
+
+/** Same type always gets the same colour, across reloads and devices. */
+function fallbackColor(animalType) {
+  let hash = 0;
+  for (const char of animalType) hash = (hash * 31 + char.codePointAt(0)) >>> 0;
+  return ANIMAL_FALLBACK_COLORS[hash % ANIMAL_FALLBACK_COLORS.length];
+}
 
 const RE_DISPERSAL_COLOR = "#2d4d19";
 
@@ -100,6 +129,22 @@ const PATH_LAYERS = {
 
 const PATH_ARROW_IMAGE = "cvo-flight-arrow";
 
+/** All-trails overview: cap arrowheads so a city-wide view stays legible. */
+const ALL_PATHS_ARROW_LIMIT = 400;
+
+/** Concurrent path requests while the overview is being assembled. */
+const ALL_PATHS_CONCURRENCY = 6;
+
+/** Idle "show all flight paths" state. */
+const NO_ALL_PATHS = {
+  active: false,
+  loading: false,
+  loaded: 0,
+  total: 0,
+  failed: 0,
+  paths: [], // [{ beneficiary, points }] — only trails with movement
+};
+
 /** Trail endpoints, from the brand ramp — deliberately NOT an animal colour. */
 const PATH_OLD_COLOR = "#a5d6a7"; // brand-300, the faded origin end
 const PATH_NEW_COLOR = "#2d4d19"; // brand-900, the saturated recent end
@@ -121,7 +166,8 @@ const PATH_ARROW_SVG =
 
 function colorFor(beneficiary) {
   if (beneficiary.is_re_dispersal) return RE_DISPERSAL_COLOR;
-  return ANIMAL_COLORS[beneficiary.animal_type] ?? "#558b2f";
+  const animalType = beneficiary.animal_type ?? "";
+  return ANIMAL_COLORS[animalType] ?? fallbackColor(animalType);
 }
 
 /**
@@ -215,9 +261,9 @@ export function DispersalMap({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [animalFilter, setAnimalFilter] = useState("all");
 
-  // The ONE flight path currently revealed — null hides it all. Deliberately
-  // singular: on a city-wide map with every trail drawn at once, direction
-  // and recency stop reading at all. A pin's popup asks for its own trail.
+  // The single trail revealed from a pin's popup. Deliberately singular: a
+  // pin's popup asks for its own trail, and the two views never share the
+  // map — showing one hides the other.
   const [flightPath, setFlightPath] = useState({
     id: null,
     name: null,
@@ -228,7 +274,14 @@ export function DispersalMap({
     empty: false,
   });
 
+  // The overview: every visible household's trail at once, fetched on demand.
+  // Kept separate from `flightPath` so the pin-popup labels and chips keep
+  // their single-trail wording.
+  const [allPaths, setAllPaths] = useState(NO_ALL_PATHS);
+
   const flightRef = useRef(flightPath); // latest state, read by bound handlers
+  const pathCacheRef = useRef(new Map()); // id -> points ([] = no movement)
+  const allPathsTokenRef = useRef(0); // cancels in-flight overview fetches
   const pathMarkersRef = useRef([]); // the origin/end markers of a revealed trail
   const hoverPopupRef = useRef(null); // segment tooltip, reused while hovering
   const toggleRef = useRef(null); // latest reveal/hide, read by popup clicks
@@ -314,6 +367,8 @@ export function DispersalMap({
 
     return () => {
       map.remove();
+      // Stop an overview fetch still in flight from updating a dead map.
+      allPathsTokenRef.current += 1;
       mapRef.current = null;
       if (containerRef.current) delete containerRef.current.__cvoMap;
       markersRef.current = [];
@@ -405,6 +460,8 @@ export function DispersalMap({
    * browser like every other GET).
    */
   async function showFlightPath(beneficiary) {
+    resetAllPaths(); // the two trail views share one map
+
     const id = Number(beneficiary.id);
     const base = {
       id,
@@ -452,6 +509,87 @@ export function DispersalMap({
       loading: false,
       error: null,
       empty: false,
+    });
+  }
+
+  /** Tear the overview down and cancel any fetches still assembling it. */
+  function resetAllPaths() {
+    allPathsTokenRef.current += 1;
+    setAllPaths((prev) => (prev.active ? { ...NO_ALL_PATHS } : prev));
+  }
+
+  /**
+   * Fetch every visible household's trail and draw them on one map.
+   *
+   * One request per beneficiary is the shape the API offers (there is no bulk
+   * endpoint), so the workers below keep at most ALL_PATHS_CONCURRENCY in
+   * flight. Results are cached for the life of the map: toggling the overview
+   * off and on again does not refetch the same trails. Households with no
+   * movement are cached too (as an empty list) and simply contribute nothing.
+   */
+  async function showAllFlightPaths() {
+    if (visible.length === 0) return;
+
+    hideFlightPath();
+
+    const token = ++allPathsTokenRef.current;
+    const rows = visible;
+    const cache = pathCacheRef.current;
+    const trails = [];
+    let failed = 0;
+    let loaded = 0;
+    let next = 0;
+
+    setAllPaths({
+      active: true,
+      loading: true,
+      loaded: 0,
+      total: rows.length,
+      failed: 0,
+      paths: [],
+    });
+
+    async function worker() {
+      while (next < rows.length && token === allPathsTokenRef.current) {
+        const row = rows[next++];
+        const id = Number(row.id);
+        let points = cache.get(id);
+
+        if (points === undefined) {
+          try {
+            const payload = await beneficiariesApi.path(id);
+            points = Array.isArray(payload?.points) ? payload.points : [];
+            cache.set(id, points);
+          } catch {
+            points = null; // not cached, so a retry can try again
+          }
+        }
+
+        if (token !== allPathsTokenRef.current) return;
+
+        if (points === null) failed += 1;
+        else if (points.length >= 2) trails.push({ beneficiary: row, points });
+
+        loaded += 1;
+        setAllPaths((prev) =>
+          prev.active ? { ...prev, loaded, failed } : prev,
+        );
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(ALL_PATHS_CONCURRENCY, rows.length) }, worker),
+    );
+
+    if (token !== allPathsTokenRef.current) return;
+
+    setAllPaths({
+      active: true,
+      loading: false,
+      loaded,
+      total: rows.length,
+      failed,
+      paths: trails,
     });
   }
 
@@ -594,7 +732,7 @@ export function DispersalMap({
     };
   }, [mapReady, onPick]);
 
-  // Draw (or clear) the revealed trail. Segments are painted as separate
+  // Draw (or clear) the revealed trail(s). Segments are painted as separate
   // features so hover can name a span, and the gradient rides on each
   // segment's `age` property rather than a whole-line gradient.
   const pathPoints = flightPath.points;
@@ -617,63 +755,104 @@ export function DispersalMap({
     map.getSource(PATH_SOURCES.arrows)?.setData(empty);
     map.getSource(PATH_SOURCES.points)?.setData(empty);
     // Observable without reaching into the map instance: how many points the
-    // revealed trail was built from (also handy when supporting a report).
+    // revealed trail(s) were built from (also handy when supporting a report).
     containerRef.current?.removeAttribute("data-flight-path-points");
 
-    if (!pathPoints || pathPoints.length < 2) return undefined;
+    // One group per trail: the overview draws every household's trail, a pin
+    // popup draws exactly one.
+    const groups = allPaths.active
+      ? allPaths.paths
+      : pathPoints && pathPoints.length >= 2
+        ? [{ beneficiary: flightPath.beneficiary, points: pathPoints }]
+        : [];
+
+    if (groups.length === 0) return undefined;
 
     // Endpoints are anchored to the pin the map actually DRAWS (households
     // sharing a barangay centre are spread over a ring), so the trail meets
     // the dot the user clicked instead of stopping short of it. Visit fixes
     // stay on their real coordinates — they are GPS readings, not pins.
     const drawn = spreadPositions(visible);
-    const positioned = pathPoints.map((point) => {
-      const pin = point.anchor_id != null ? drawn.get(String(point.anchor_id)) : null;
-      return pin ? { ...point, longitude: pin[0], latitude: pin[1] } : point;
-    });
+    const align = (points) =>
+      points.map((point) => {
+        const pin = point.anchor_id != null ? drawn.get(String(point.anchor_id)) : null;
+        return pin ? { ...point, longitude: pin[0], latitude: pin[1] } : point;
+      });
 
-    const segments = buildSegments(positioned);
-    const arrows = buildArrows(positioned);
-    const markers = buildPointMarkers(positioned);
-    containerRef.current?.setAttribute("data-flight-path-points", String(positioned.length));
+    const positionedGroups = groups.map((group) => align(group.points));
+    const segments = {
+      type: "FeatureCollection",
+      features: positionedGroups.flatMap((points) => buildSegments(points).features),
+    };
+    const arrows = {
+      type: "FeatureCollection",
+      features: positionedGroups
+        .flatMap((points) => buildArrows(points).features)
+        // Several trails at once would otherwise multiply MAX_ARROWS by the
+        // number of households and flood the map with arrowheads.
+        .slice(0, allPaths.active ? ALL_PATHS_ARROW_LIMIT : undefined),
+    };
+    const markers = {
+      type: "FeatureCollection",
+      features: positionedGroups.flatMap((points) => buildPointMarkers(points).features),
+    };
+    containerRef.current?.setAttribute(
+      "data-flight-path-points",
+      String(positionedGroups.reduce((count, points) => count + points.length, 0)),
+    );
 
-    const origin = positioned[0];
-    const end = positioned[positioned.length - 1];
+    // Origin flags and end dots belong to a single revealed trail; the
+    // overview would otherwise add two DOM markers per household on top of
+    // the pins already crowding the map. Its arrows carry the direction.
+    if (!allPaths.active) {
+      const positioned = positionedGroups[0];
+      const origin = positioned[0];
+      const end = positioned[positioned.length - 1];
 
-    const originEl = document.createElement("div");
-    originEl.className = "cvo-flight-origin";
-    originEl.setAttribute("aria-hidden", "true");
-    originEl.innerHTML = ORIGIN_FLAG_SVG;
-    const originMarker = new Marker({ element: originEl, anchor: "bottom" })
-      .setLngLat(toLngLat(origin))
-      .setPopup(
-        new Popup({ offset: 12 }).setHTML(
-          pathPointHtml({
-            title: origin.title,
-            subtitle: origin.subtitle,
-            label: formatPointDate(origin.occurred_on),
-          }),
-        ),
-      )
-      .addTo(map);
+      const originEl = document.createElement("div");
+      originEl.className = "cvo-flight-origin";
+      originEl.setAttribute("aria-hidden", "true");
+      originEl.innerHTML = ORIGIN_FLAG_SVG;
+      const originMarker = new Marker({ element: originEl, anchor: "bottom" })
+        .setLngLat(toLngLat(origin))
+        .setPopup(
+          new Popup({ offset: 12 }).setHTML(
+            pathPointHtml({
+              title: origin.title,
+              subtitle: origin.subtitle,
+              label: formatPointDate(origin.occurred_on),
+            }),
+          ),
+        )
+        .addTo(map);
 
-    const endEl = document.createElement("div");
-    endEl.className = "cvo-flight-end";
-    endEl.setAttribute("aria-hidden", "true");
-    const endMarker = new Marker({ element: endEl })
-      .setLngLat(toLngLat(end))
-      .setPopup(
-        new Popup({ offset: 12 }).setHTML(
-          pathPointHtml({
-            title: end.title,
-            subtitle: end.subtitle,
-            label: formatPointDate(end.occurred_on),
-          }),
-        ),
-      )
-      .addTo(map);
+      const endEl = document.createElement("div");
+      endEl.className = "cvo-flight-end";
+      endEl.setAttribute("aria-hidden", "true");
+      const endMarker = new Marker({ element: endEl })
+        .setLngLat(toLngLat(end))
+        .setPopup(
+          new Popup({ offset: 12 }).setHTML(
+            pathPointHtml({
+              title: end.title,
+              subtitle: end.subtitle,
+              label: formatPointDate(end.occurred_on),
+            }),
+          ),
+        )
+        .addTo(map);
 
-    pathMarkersRef.current = [originMarker, endMarker];
+      pathMarkersRef.current = [originMarker, endMarker];
+    }
+
+    // The overview appears in one frame: animating hundreds of trails at once
+    // would stall the map for no extra clarity.
+    if (allPaths.active) {
+      segmentsSource.setData(segments);
+      map.getSource(PATH_SOURCES.arrows)?.setData(arrows);
+      map.getSource(PATH_SOURCES.points)?.setData(markers);
+      return undefined;
+    }
 
     const total = segments.features.length;
     const paint = (progress) => {
@@ -716,7 +895,7 @@ export function DispersalMap({
 
     return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `visible` only feeds the pin-alignment lookup; re-running on it would re-animate during unrelated refetches
-  }, [mapReady, onPick, pathPoints, pathKey]);
+  }, [mapReady, onPick, pathPoints, pathKey, allPaths.active, allPaths.paths]);
 
   // A pin's popup offers its own trail; the label follows whichever trail is
   // currently on the map. Identity is stable (it reads both refs), so marker
@@ -877,22 +1056,41 @@ export function DispersalMap({
             />
             Flight path
           </span>
-          <label className="ml-auto flex items-center gap-2">
-            <span className="sr-only">Filter by animal type</span>
-            <select
-              className="field !w-auto !py-1.5 text-xs"
-              value={animalFilter}
-              onChange={(event) => setAnimalFilter(event.target.value)}
-              aria-label="Filter map by animal type"
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={allPaths.active ? resetAllPaths : showAllFlightPaths}
+              aria-pressed={allPaths.active}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-slate-600 ring-1 ring-slate-300 transition hover:bg-slate-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
             >
-              <option value="all">All animal types</option>
-              {animalTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-          </label>
+              <Icon
+                name={allPaths.active ? "eye-off" : "eye"}
+                className="h-3.5 w-3.5"
+              />
+              {allPaths.active ? "Hide all flight paths" : "Show all flight paths"}
+            </button>
+            <label className="flex items-center gap-2">
+              <span className="sr-only">Filter by animal type</span>
+              <select
+                className="field !w-auto !py-1.5 text-xs"
+                value={animalFilter}
+                onChange={(event) => {
+                  setAnimalFilter(event.target.value);
+                  // The overview was fetched for the old visible set; leaving
+                  // its trails up would point at pins the filter just hid.
+                  resetAllPaths();
+                }}
+                aria-label="Filter map by animal type"
+              >
+                <option value="all">All animal types</option>
+                {animalTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
       )}
 
@@ -931,6 +1129,38 @@ export function DispersalMap({
             onClick={hideFlightPath}
           >
             Hide path
+          </button>
+        </div>
+      )}
+
+      {/* The all-trails overview: progress while it assembles, then what it
+          found. Always dismissable, including mid-load. */}
+      {!onPick && allPaths.active && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span
+            role="status"
+            className={`cvo-flight-chip inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-medium ${
+              !allPaths.loading && allPaths.failed > 0 && allPaths.paths.length === 0
+                ? "bg-amber-50 text-amber-800"
+                : "bg-brand-100 text-brand-800"
+            }`}
+          >
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-brand-700" />
+            {allPaths.loading &&
+              `Loading flight paths — ${allPaths.loaded}/${allPaths.total}…`}
+            {!allPaths.loading &&
+              (allPaths.paths.length === 0
+                ? allPaths.failed > 0
+                  ? `Flight paths unavailable — ${allPaths.failed} of ${allPaths.total} households`
+                  : `No recorded movement yet — ${allPaths.total} household${allPaths.total === 1 ? "" : "s"}`
+                : `${allPaths.paths.length} flight path${allPaths.paths.length === 1 ? "" : "s"} shown${allPaths.failed > 0 ? ` · ${allPaths.failed} unavailable` : ""}`)}
+          </span>
+          <button
+            type="button"
+            className="rounded-full px-3 py-1.5 font-medium text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50"
+            onClick={resetAllPaths}
+          >
+            Hide paths
           </button>
         </div>
       )}

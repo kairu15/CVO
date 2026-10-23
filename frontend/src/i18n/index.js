@@ -7,32 +7,11 @@ import ceb from "./locales/ceb.json";
 /**
  * Internationalization (item 8).
  *
- * Three languages, English as the fallback: Filipino and Cebuano are partial —
- * any key not yet translated resolves to its English value through
- * `fallbackLng`, so a half-translated screen degrades to English rather than
- * showing raw keys.
- *
- * The choice persists in localStorage (no backend, per the brief) and is
- * applied to <html lang> for assistive tech.
+ * The app now runs in English only: the language picker was removed, so there
+ * is no way to choose another language and no stored preference is honoured.
+ * The Filipino and Cebuano bundles stay registered with i18next, unused, so
+ * re-enabling the picker later needs only the UI back.
  */
-
-export const LANGUAGES = [
-  { code: "en", label: "English" },
-  { code: "fil", label: "Filipino" },
-  { code: "ceb", label: "Cebuano" },
-];
-
-export const LANGUAGE_STORAGE_KEY = "cvo.language";
-
-/** A stored language only wins if it is still one we offer. */
-function initialLanguage() {
-  try {
-    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    return LANGUAGES.some((language) => language.code === stored) ? stored : "en";
-  } catch {
-    return "en"; // storage blocked (private mode) — fall back to English
-  }
-}
 
 i18n.use(initReactI18next).init({
   resources: {
@@ -40,19 +19,11 @@ i18n.use(initReactI18next).init({
     fil: { translation: fil },
     ceb: { translation: ceb },
   },
-  lng: initialLanguage(),
+  lng: "en",
   fallbackLng: "en",
   interpolation: { escapeValue: false }, // React already escapes
 });
 
-i18n.on("languageChanged", (language) => {
-  try {
-    localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
-  } catch {
-    // Persisting is best-effort; the switch still applies for this session.
-  }
-
-  document.documentElement.lang = language;
-});
+document.documentElement.lang = "en";
 
 export default i18n;

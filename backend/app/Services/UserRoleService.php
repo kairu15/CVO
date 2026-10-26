@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
-use App\Services\AuditLogger;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -16,7 +16,6 @@ use Illuminate\Validation\ValidationException;
  */
 class UserRoleService
 {
-    public function __construct(private readonly AuditLogger $audit) {}
     /**
      * Set an account's role.
      *
@@ -42,17 +41,11 @@ class UserRoleService
             ]);
         }
 
-        $previous = $target->role;
-
-        $target->update(['role' => $role]);
-
-        // Role changes are the highest-value audit event in the system (item
-        // 7): they are how accounts gain or lose staff access, so both the
-        // old and the new role are on the row.
-        $this->audit->log($actor, 'role_changed', $target, [
-            'previous_role' => $previous,
-            'new_role' => $role,
-        ]);
+        // Role changes are the highest-value audit event in the system: they
+        // are how accounts gain or lose staff access. One transaction — the
+        // User model writes `role_changed` (with previous/new role) inside it,
+        // so the trail and the change commit or roll back together.
+        DB::transaction(fn () => $target->update(['role' => $role]));
 
         return $target->refresh();
     }

@@ -9,7 +9,6 @@ use App\Http\Requests\IndexBeneficiariesRequest;
 use App\Http\Requests\StoreBeneficiaryRequest;
 use App\Http\Requests\UpdateBeneficiaryRequest;
 use App\Http\Resources\BeneficiaryResource;
-use App\Services\AuditLogger;
 use App\Services\BeneficiaryService;
 use App\Support\Barangays;
 use App\Support\Pagination;
@@ -17,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 class BeneficiaryController extends Controller
@@ -25,7 +25,6 @@ class BeneficiaryController extends Controller
 
     public function __construct(
         private readonly BeneficiaryService $beneficiaries,
-        private readonly AuditLogger $audit,
     ) {}
 
     /**
@@ -119,9 +118,9 @@ class BeneficiaryController extends Controller
             }
         }
 
-        $beneficiary->update($validated);
-
-        $this->audit->log($request->user(), 'beneficiary_updated', $beneficiary);
+        // One transaction: the change and the audit row it writes through
+        // App\Models\Concerns\Auditable commit together (or neither does).
+        DB::transaction(fn () => $beneficiary->update($validated));
 
         return new BeneficiaryResource($beneficiary->refresh());
     }

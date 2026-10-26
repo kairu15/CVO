@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -25,7 +26,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class TechnicianAssignment extends Model
 {
-    use SoftDeletes;
+    use Auditable, SoftDeletes;
 
     protected $fillable = [
         'beneficiary_id',
@@ -40,6 +41,20 @@ class TechnicianAssignment extends Model
         return [
             'assigned_at' => 'datetime',
         ];
+    }
+
+    /**
+     * A history row IS the assignment event — `technician_assigned`, the
+     * action the service used to write by hand. Any later change to an
+     * append-only row falls back to the generic verbs.
+     */
+    protected function auditActionFor(string $event, array $oldValues, array $newValues): ?string
+    {
+        if ($event === 'created') {
+            return 'technician_assigned';
+        }
+
+        return $this->resolveAuditAction($event, $oldValues, $newValues);
     }
 
     /** The beneficiary whose technician changed. */

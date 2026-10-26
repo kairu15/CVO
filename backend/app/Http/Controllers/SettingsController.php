@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Http\Requests\SettingsRequest;
 use App\Models\Barangay;
 use App\Models\Purok;
+use App\Models\Setting;
 use App\Services\AuditLogger;
 use App\Services\SettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 
 /**
  * System Settings — admin-only.
@@ -66,19 +68,54 @@ class SettingsController extends Controller
         $lists = Arr::only($validated, self::LIST_KEYS);
         $scalars = Arr::except($validated, self::LIST_KEYS);
 
-        $this->settings->save(Arr::only($scalars, SettingsService::KEYS));
+        // The keys this save can touch — the diff below is scoped to them.
+        $touched = array_values(array_unique([
+            ...array_keys(Arr::only($scalars, SettingsService::KEYS)),
+            ...array_keys(array_filter($lists, 'is_array')),
+        ]));
 
-        foreach ($lists as $key => $list) {
-            if (is_array($list)) {
-                $this->settings->saveList($key, $list);
+        // ONE transaction: the saves and the audit row describing them commit
+        // together (or neither does). The row keeps its `sections` context AND
+        // carries a real before/after of the values that actually changed —
+        // read from the table rather than SettingsService::values(), which
+        // serves a cache that the save is in the middle of invalidating.
+        DB::transaction(function () use ($lists, $scalars, $touched, $validated, $request): void {
+            $before = $touched === [] ? [] : Setting::query()
+                ->whereIn('key', $touched)
+                ->pluck('value', 'key')
+                ->all();
+
+            $this->settings->save(Arr::only($scalars, SettingsService::KEYS));
+
+            foreach ($lists as $key => $list) {
+                if (is_array($list)) {
+                    $this->settings->saveList($key, $list);
+                }
             }
-        }
 
-        // Which sections changed, named — the audit trail should say what an
-        // administrator touched without storing every saved value.
-        $this->audit->log($request->user(), 'settings_updated', null, [
-            'sections' => array_keys($validated),
-        ]);
+            $after = $touched === [] ? [] : Setting::query()
+                ->whereIn('key', $touched)
+                ->pluck('value', 'key')
+                ->all();
+
+            $old = [];
+            $new = [];
+
+            foreach ($touched as $key) {
+                if (($before[$key] ?? null) === ($after[$key] ?? null)) {
+                    continue;
+                }
+
+                $old[$key] = $before[$key] ?? null;
+                $new[$key] = $after[$key] ?? null;
+            }
+
+            // Which sections changed, named — the audit trail should say what
+            // an administrator touched; the values ride alongside as diff.
+            $this->audit->log($request->user(), 'settings_updated', null, [
+                'sections' => array_keys($validated),
+            ], $old === [] ? null : $old, $new === [] ? null : $new);
+        });
 
         return response()->json(['data' => $this->payload()]);
     }

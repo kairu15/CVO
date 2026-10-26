@@ -19,7 +19,6 @@ class DispersalEventService
 
     public function __construct(
         private readonly BeneficiaryService $beneficiaries,
-        private readonly AuditLogger $audit,
     ) {}
 
     /**
@@ -106,14 +105,17 @@ class DispersalEventService
             // its event both exist, or neither does. "Who" is always the
             // authenticated actor — never a client-supplied id.
             if (! empty($data['signature'])) {
+                // The signature lands in the same transaction as the create,
+                // so it belongs to ONE audit row — the creation — not a
+                // second "updated" row for the same moment.
+                $event->skipNextAudit();
+
                 $event->update([
                     'signature_path' => $this->storeSignature($data['signature']),
                     'signature_captured_by' => $actor->id,
                     'signature_captured_at' => $data['signature_captured_at'] ?? now(),
                 ]);
             }
-
-            $this->audit->log($actor, 'dispersal_created', $event);
 
             return $event;
         });
@@ -131,9 +133,8 @@ class DispersalEventService
             $event->parent_beneficiary_id = null;
         }
 
-        $event->fill($data)->save();
-
-        $this->audit->log($actor, 'dispersal_updated', $event);
+        // One transaction: change + its audit row commit together.
+        DB::transaction(fn () => $event->fill($data)->save());
 
         return $event->refresh();
     }
@@ -144,9 +145,7 @@ class DispersalEventService
      */
     public function delete(User $actor, DispersalEvent $event): void
     {
-        $event->delete();
-
-        $this->audit->log($actor, 'dispersal_deleted', $event);
+        DB::transaction(fn () => $event->delete());
     }
 
     /**

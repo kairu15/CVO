@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\BeneficiaryFactory;
+use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Beneficiary extends Model
 {
     /** @use HasFactory<BeneficiaryFactory> */
-    use HasFactory, SoftDeletes;
+    use Auditable, HasFactory, SoftDeletes;
 
     /**
      * Row origin: auto-created by the admin's monitoring Excel import.

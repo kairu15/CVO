@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\DispersalEventFactory;
+use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class DispersalEvent extends Model
 {
     /** @use HasFactory<DispersalEventFactory> */
-    use HasFactory, SoftDeletes;
+    use Auditable, HasFactory, SoftDeletes;
 
     public const TYPE_INITIAL = 'initial';
 
@@ -21,6 +22,12 @@ class DispersalEvent extends Model
      * @var list<string>
      */
     public const TYPES = [self::TYPE_INITIAL, self::TYPE_RE_DISPERSAL];
+
+    /** Audit action prefix: `dispersal_created`, not `dispersal_event_created`. */
+    protected function auditKey(): string
+    {
+        return 'dispersal';
+    }
 
     protected $fillable = [
         'beneficiary_id',

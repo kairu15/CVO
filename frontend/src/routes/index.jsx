@@ -18,6 +18,7 @@ import UserManagementPage from "../pages/UserManagementPage";
 import ReportsPage from "../pages/ReportsPage";
 import SystemSettingsPage from "../pages/SystemSettingsPage";
 import RolesPermissionsPage from "../pages/RolesPermissionsPage";
+import AuditLogPage from "../pages/AuditLogPage";
 import HealthRecordsPage from "../pages/HealthRecordsPage";
 import VaccinationSchedulePage from "../pages/VaccinationSchedulePage";
 import CaseNotesPage from "../pages/CaseNotesPage";
@@ -201,6 +202,17 @@ export default function AppRoutes() {
               element={
                 <RoleRoute dashboard="admin">
                   <RolesPermissionsPage roleKey="admin" />
+                </RoleRoute>
+              }
+            />
+
+            {/* Audit Trail — append-only record of every change, export and
+                sign-in; read-only for admins holding view_activity_logs. */}
+            <Route
+              path="/dashboard/admin/audit"
+              element={
+                <RoleRoute dashboard="admin">
+                  <AuditLogPage />
                 </RoleRoute>
               }
             />

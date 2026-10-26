@@ -31,7 +31,6 @@ class BeneficiaryService
 
     public function __construct(
         private readonly GeocodingService $geocoder,
-        private readonly AuditLogger $audit,
     ) {}
 
     /**
@@ -302,20 +301,24 @@ class BeneficiaryService
     {
         $previous = $beneficiary->technician_id;
 
-        $beneficiary->update(['technician_id' => $technicianId]);
+        DB::transaction(function () use ($beneficiary, $previous, $technicianId, $actor): void {
+            // The history row written below IS the audit entry for this
+            // assignment (`technician_assigned`), so the beneficiary's own
+            // technician_id update must not add a second row for one change.
+            if ($previous != $technicianId) {
+                $beneficiary->skipNextAudit();
+            }
 
-        TechnicianAssignment::create([
-            'beneficiary_id' => $beneficiary->id,
-            'technician_id' => $technicianId,
-            'assigned_by' => $actor->id,
-            'assigned_at' => now(),
-            'previous_technician_id' => $previous,
-        ]);
+            $beneficiary->update(['technician_id' => $technicianId]);
 
-        $this->audit->log($actor, 'technician_assigned', $beneficiary, [
-            'technician_id' => $technicianId,
-            'previous_technician_id' => $previous,
-        ]);
+            TechnicianAssignment::create([
+                'beneficiary_id' => $beneficiary->id,
+                'technician_id' => $technicianId,
+                'assigned_by' => $actor->id,
+                'assigned_at' => now(),
+                'previous_technician_id' => $previous,
+            ]);
+        });
 
         // Notify the technician gaining (or losing) the household, and the
         // farmer whose animal it is. A reassignment is one event with two
@@ -397,8 +400,6 @@ class BeneficiaryService
             $record = $beneficiary->monitoringRecords()->create([
                 'technician_id' => $actor->role === 'technician' ? $actor->id : null,
             ]);
-
-            $this->audit->log($actor, 'beneficiary_created', $beneficiary);
 
             // Tell the OTHER administrators a beneficiary was added — the
             // trigger that replaced "a new farmer registered". Resolved lazily
@@ -524,8 +525,6 @@ class BeneficiaryService
                 ->delete();
 
             $beneficiary->delete();
-
-            $this->audit->log($actor, 'beneficiary_deleted', $beneficiary);
         });
     }
 }

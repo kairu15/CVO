@@ -33,6 +33,10 @@ class ActivityLogResource extends JsonResource
             'ip_address' => $this->ip_address,
             'user_agent' => $this->user_agent,
             'context' => $this->context,
+            // The before/after pair behind the row's expandable diff — null
+            // for rows written before the diff columns existed.
+            'old_values' => $this->old_values,
+            'new_values' => $this->new_values,
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

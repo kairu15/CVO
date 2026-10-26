@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class MonitoringRecord extends Model
 {
     /** @use HasFactory<\Database\Factories\MonitoringRecordFactory> */
-    use HasFactory, SoftDeletes;
+    use Auditable, HasFactory, SoftDeletes;
 
     protected $fillable = [
         'beneficiary_id',
@@ -25,6 +26,12 @@ class MonitoringRecord extends Model
         'farmers_signature',
         'remarks',
     ];
+
+    /** Audit action prefix: `monitoring_created`, not `monitoring_record_created`. */
+    protected function auditKey(): string
+    {
+        return 'monitoring';
+    }
 
     protected function casts(): array
     {

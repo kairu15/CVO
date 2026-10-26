@@ -33,7 +33,6 @@ class UserAccountService
     public function __construct(
         private readonly UserRoleService $roles,
         private readonly AuthService $auth,
-        private readonly AuditLogger $audit,
     ) {}
 
     /**
@@ -59,6 +58,13 @@ class UserAccountService
         $invited = ($attributes['password'] ?? null) === null;
 
         $user = DB::transaction(function () use ($actor, $attributes, $invited): User {
+            // An invite is a distinct audit event from a plain create, so the
+            // trait's row is relabelled before the create it is about to
+            // write (one-shot — see Auditable::auditNextCreatedAs).
+            if ($invited) {
+                User::auditNextCreatedAs('user_invited', ['invited' => true]);
+            }
+
             // The `password` => 'hashed' cast on User hashes on assignment.
             // For an invite, a random 32-char value holds the column: nobody
             // knows it, so the account is unusable until the setup link
@@ -69,11 +75,6 @@ class UserAccountService
                 'password' => $attributes['password'] ?? Str::password(32, symbols: false),
                 'role' => $attributes['role'],
                 'created_by' => $actor->id,
-            ]);
-
-            $this->audit->log($actor, $invited ? 'user_invited' : 'user_created', $user, [
-                'role' => $user->role,
-                'invited' => $invited,
             ]);
 
             return $user;
@@ -135,10 +136,8 @@ class UserAccountService
             if ($role !== null && $role !== $target->role) {
                 $this->roles->assignRole($actor, $target, $role);
             }
-
-            $this->audit->log($actor, 'user_updated', $target, [
-                'role' => $target->role,
-            ]);
+            // Audit rows for the profile fields and (separately) the role are
+            // written by the User model inside this transaction.
         });
 
         return $target->refresh();
@@ -162,14 +161,12 @@ class UserAccountService
             ]);
         }
 
-        DB::transaction(function () use ($actor, $target): void {
+        DB::transaction(function () use ($target): void {
             $this->auth->logoutEverywhere($target);
 
+            // The User model writes `user_deactivated` inside this
+            // transaction (soft delete ⇒ deleted event).
             $target->delete();
-
-            $this->audit->log($actor, 'user_deactivated', $target, [
-                'role' => $target->role,
-            ]);
         });
 
         return $target;
@@ -194,11 +191,7 @@ class UserAccountService
             ]);
         }
 
-        $target->restore();
-
-        $this->audit->log($actor, 'user_reactivated', $target, [
-            'role' => $target->role,
-        ]);
+        DB::transaction(fn () => $target->restore());
 
         return $target->refresh();
     }

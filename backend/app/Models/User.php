@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
+use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -19,7 +20,52 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasApiTokens, Notifiable, SoftDeletes;
+    use HasFactory, HasApiTokens, Notifiable, SoftDeletes, Auditable;
+
+    /**
+     * Accounts have bespoke action names for the moments the trail singles
+     * out (an invite is not a plain create; a role change is an update; the
+     * deactivate/reactivate pair maps to soft delete/restore), so the trait's
+     * generic resolution is overridden here.
+     */
+    protected function auditActionFor(string $event, array $oldValues, array $newValues): ?string
+    {
+        if ($event === 'updated'
+            && ($oldValues['role'] ?? null) !== ($newValues['role'] ?? null)) {
+            return 'role_changed';
+        }
+
+        return match ($event) {
+            'deleted' => 'user_deactivated',
+            'restored' => 'user_reactivated',
+            default => $this->resolveAuditAction($event, $oldValues, $newValues),
+        };
+    }
+
+    /**
+     * The account-activity modal reads previous/new role straight off the
+     * row, exactly as it did when the service wrote them by hand.
+     *
+     * @param  array<string, mixed>  $oldValues
+     * @param  array<string, mixed>  $newValues
+     * @return array<string, mixed>
+     */
+    protected function auditContextFor(string $event, array $oldValues, array $newValues): array
+    {
+        if ($event === 'updated'
+            && ($oldValues['role'] ?? null) !== ($newValues['role'] ?? null)) {
+            return [
+                'previous_role' => $oldValues['role'] ?? null,
+                'new_role' => $newValues['role'] ?? null,
+            ];
+        }
+
+        if ($event === 'created') {
+            return ['role' => $this->role];
+        }
+
+        return [];
+    }
 
     /**
      * Every role the CVO system recognises.

@@ -68,6 +68,7 @@ export const roles = {
         items: [
           { label: "User Management", icon: "users", to: "/dashboard/admin/users" },
           { label: "Roles & Permissions", icon: "shield", to: "/dashboard/admin/roles" },
+          { label: "Audit Trail", icon: "activity", to: "/dashboard/admin/audit" },
           { label: "Reports", icon: "chart", to: "/dashboard/admin/reports" },
           { label: "System Settings", icon: "sliders", to: "/dashboard/admin/settings" },
         ],

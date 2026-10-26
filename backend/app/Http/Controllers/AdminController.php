@@ -18,6 +18,7 @@ use App\Http\Resources\UserResource;
 use App\Models\ActivityLog;
 use App\Models\Beneficiary;
 use App\Models\User;
+use App\Services\AuditLogger;
 use App\Services\BeneficiaryService;
 use App\Services\MonitoringExcelService;
 use App\Services\UserAccountService;
@@ -26,6 +27,7 @@ use App\Support\Like;
 use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -40,6 +42,7 @@ class AdminController extends Controller
         private readonly UserRoleService $roles,
         private readonly UserAccountService $accounts,
         private readonly BeneficiaryService $beneficiaries,
+        private readonly AuditLogger $audit,
     ) {}
 
     /**
@@ -309,7 +312,26 @@ class AdminController extends Controller
      */
     public function importMonitoringExcel(AdminExcelImportRequest $request): JsonResponse
     {
-        $summary = $this->excel->import($request->file('file'), $request->user());
+        // One transaction around parse + write + audit: a committed import
+        // always has its row, a rolled-back one leaves none.
+        $summary = DB::transaction(function () use ($request): array {
+            $summary = $this->excel->import($request->file('file'), $request->user());
+
+            // Data IN — the counts the confirmation screen shows, so the trail
+            // says how much entered the system in this one file.
+            $this->audit->log($request->user(), 'imported', null, [
+                'resource' => 'monitoring_workbook',
+                'file' => mb_substr((string) $request->file('file')->getClientOriginalName(), 0, 120),
+                'sheets' => (int) ($summary['sheets'] ?? 0),
+                'rows_read' => (int) ($summary['rows_read'] ?? 0),
+                'records_created' => (int) ($summary['records_created'] ?? 0),
+                'records_skipped' => (int) ($summary['records_skipped'] ?? 0),
+                'beneficiaries_created' => (int) ($summary['beneficiaries_created'] ?? 0),
+                'errors' => count($summary['errors'] ?? []),
+            ]);
+
+            return $summary;
+        });
 
         return response()->json(['data' => $summary]);
     }
@@ -321,6 +343,18 @@ class AdminController extends Controller
     public function exportMonitoringExcel(AdminExcelExportRequest $request): StreamedResponse
     {
         $classificationId = $request->validated('classification_id');
+
+        // Data OUT — what was handed out and under which filters.
+        $this->audit->log($request->user(), 'exported', null, [
+            'resource' => 'monitoring_workbook',
+            'filters' => array_filter([
+                'month' => $request->validated('month'),
+                'animal_type' => $request->validated('animal_type'),
+                'classification' => $classificationId !== null
+                    ? \App\Models\AnimalClassification::query()->find($classificationId)?->name
+                    : null,
+            ], static fn (?string $value): bool => $value !== null),
+        ]);
 
         return $this->excel->downloadResponse(
             $request->validated('month') ?? null,

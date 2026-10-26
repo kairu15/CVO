@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ReportChartRequest;
 use App\Http\Requests\ReportRequest;
 use App\Http\Requests\ReportTemplateExportRequest;
+use App\Services\AuditLogger;
 use App\Services\ReportChartService;
 use App\Services\ReportExcelService;
 use App\Services\ReportService;
@@ -34,6 +35,7 @@ class ReportController extends Controller
         private readonly ReportExcelService $excel,
         private readonly ReportTemplateService $templates,
         private readonly ReportChartService $charts,
+        private readonly AuditLogger $audit,
     ) {}
 
     public function index(ReportRequest $request): JsonResponse
@@ -57,6 +59,15 @@ class ReportController extends Controller
     {
         $validated = $request->validated();
 
+        // Data OUT: one row per report download, with the filters it used.
+        $this->audit->log($request->user(), 'exported', null, [
+            'resource' => 'city_report',
+            'filters' => array_filter([
+                'barangay' => $validated['barangay'] ?? null,
+                'from' => isset($validated['from']) ? (string) $validated['from'] : null,
+            ], static fn (?string $value): bool => $value !== null),
+        ]);
+
         return $this->excel->downloadResponse(
             $request->user(),
             $validated['barangay'] ?? null,
@@ -74,6 +85,20 @@ class ReportController extends Controller
     public function exportFromTemplate(ReportTemplateExportRequest $request): BinaryFileResponse
     {
         $v = $request->validated();
+
+        // Data OUT: the office's own template, named by the requester.
+        $this->audit->log($request->user(), 'exported', null, [
+            'resource' => 'report_template',
+            'filters' => array_filter([
+                'template' => $v['template'],
+                'report_name' => $v['name'],
+                'barangay' => $v['barangay'] ?? null,
+                'animal_type' => $v['animal_type'] ?? null,
+                'month' => $v['month'] ?? null,
+                'from' => $v['from'] ?? null,
+                'to' => $v['to'] ?? null,
+            ], static fn (?string $value): bool => $value !== null),
+        ]);
 
         return $this->templates->downloadResponse(
             $request->user(),

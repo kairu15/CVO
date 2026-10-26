@@ -312,21 +312,17 @@ class MonitoringRecordService
      */
     public function create(User $technician, array $data): MonitoringRecord
     {
-        $record = MonitoringRecord::create([
+        // One transaction: the visit row and the audit row App\Models\Concerns
+        // \Auditable writes for it commit together — or neither does.
+        return \Illuminate\Support\Facades\DB::transaction(fn (): MonitoringRecord => MonitoringRecord::create([
             ...$data,
             'technician_id' => $technician->id,
-        ]);
-
-        $this->audit->log($technician, 'monitoring_created', $record);
-
-        return $record;
+        ]));
     }
 
     public function update(User $actor, MonitoringRecord $record, array $data): MonitoringRecord
     {
-        $record->update($data);
-
-        $this->audit->log($actor, 'monitoring_updated', $record);
+        \Illuminate\Support\Facades\DB::transaction(fn () => $record->update($data));
 
         return $record->refresh();
     }
@@ -368,7 +364,9 @@ class MonitoringRecordService
             }
         });
 
-        $this->audit->log($actor, 'monitoring_deleted', $record);
+        // The audit rows (monitoring_deleted, and beneficiary_deleted for a
+        // cascade) are written inside the transaction above, so a rollback
+        // leaves neither the change nor its trail.
     }
 
     /**
@@ -389,12 +387,17 @@ class MonitoringRecordService
         $beneficiary = $record->beneficiary;
 
         if ($beneficiary instanceof Beneficiary) {
+            $previous = $beneficiary->moa_signed;
+
+            // This manual row IS the audit entry for the flip, so the
+            // beneficiary's own update must not add a second one.
+            $beneficiary->skipNextAudit();
             $beneficiary->update(['moa_signed' => $signed]);
 
             $this->audit->log($actor, 'monitoring_moa_updated', $beneficiary, [
                 'beneficiary_id' => $beneficiary->id,
                 'moa_signed' => $signed,
-            ]);
+            ], ['moa_signed' => $previous], ['moa_signed' => $signed]);
         }
 
         return $record->refresh();

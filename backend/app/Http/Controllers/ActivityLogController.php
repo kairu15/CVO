@@ -31,6 +31,7 @@ class ActivityLogController extends Controller
             ->with('actor:id,name,email,role')
             ->when($validated['action'] ?? null, fn ($q, $action) => $q->where('action', $action))
             ->when($validated['actor_id'] ?? null, fn ($q, $actorId) => $q->where('actor_id', $actorId))
+            ->when($validated['target_type'] ?? null, fn ($q, $type) => $q->where('target_type', $type))
             ->when($validated['date_from'] ?? null, fn ($q, $from) => $q->where('created_at', '>=', $from))
             ->when($validated['date_to'] ?? null, fn ($q, $to) => $q->where('created_at', '<=', $to))
             ->when($validated['search'] ?? null, function ($q, $search): void {
@@ -49,14 +50,32 @@ class ActivityLogController extends Controller
     }
 
     /**
-     * The canonical action vocabulary, for the dashboard's filter dropdown —
-     * the same list AuditLogger validates writes against.
+     * The filter vocabulary for the audit page, in one response: the action
+     * list AuditLogger validates writes against, the entity types that exist
+     * so far, and the actors who appear in the log.
      */
     public function actions(): JsonResponse
     {
         return response()->json([
             'data' => [
                 'actions' => ActivityLog::ACTIONS,
+                'target_types' => ActivityLog::query()
+                    ->whereNotNull('target_type')
+                    ->distinct()
+                    ->orderBy('target_type')
+                    ->pluck('target_type')
+                    ->all(),
+                'actors' => ActivityLog::query()
+                    ->whereNotNull('actor_id')
+                    ->distinct()
+                    ->orderBy('actor_id')
+                    ->limit(200)
+                    ->pluck('actor_id')
+                    ->pipe(fn ($ids) => User::query()
+                        ->withTrashed()
+                        ->whereIn('id', $ids)
+                        ->get(['id', 'name', 'email'])
+                        ->values()),
             ],
         ]);
     }

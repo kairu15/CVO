@@ -52,26 +52,36 @@ class RolePermissionController extends Controller
             $this->refuseIfLastManager($role);
         }
 
-        if ($granted) {
-            RolePermission::firstOrCreate([
+        $existed = RolePermission::query()
+            ->where('role', $role)
+            ->where('permission_id', $permission->id)
+            ->exists();
+
+        // ONE transaction: the matrix change and the audit row describing it
+        // commit together. The row keeps `role`/`granted` and now carries the
+        // before/after, so a diff reads "no → yes" without querying the pivot.
+        DB::transaction(function () use ($request, $role, $permission, $granted, $existed): void {
+            if ($granted) {
+                RolePermission::firstOrCreate([
+                    'role' => $role,
+                    'permission_id' => $permission->id,
+                ]);
+            } else {
+                RolePermission::query()
+                    ->where('role', $role)
+                    ->where('permission_id', $permission->id)
+                    ->delete();
+            }
+
+            // Grants must reach every consumer immediately — the next request
+            // after a revoke is evaluated against the new matrix.
+            Permission::flushRoleCache();
+
+            $this->audit->log($request->user(), 'permissions_updated', $permission, [
                 'role' => $role,
-                'permission_id' => $permission->id,
-            ]);
-        } else {
-            RolePermission::query()
-                ->where('role', $role)
-                ->where('permission_id', $permission->id)
-                ->delete();
-        }
-
-        // Grants must reach every consumer immediately — the next request
-        // after a revoke is evaluated against the new matrix.
-        Permission::flushRoleCache();
-
-        $this->audit->log($request->user(), 'permissions_updated', $permission, [
-            'role' => $role,
-            'granted' => $granted,
-        ]);
+                'granted' => $granted,
+            ], ['role' => $role, 'granted' => $existed], ['role' => $role, 'granted' => $granted]);
+        });
 
         return response()->json(['data' => $this->matrix()]);
     }

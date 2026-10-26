@@ -12,6 +12,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * INSERTs — and read through the admin-only activity log endpoint. There is
  * deliberately no update or delete path anywhere in the application.
  *
+ * `old_values` / `new_values` hold ONLY the fields that changed, masked the
+ * same way the UI masks them (App\Support\SensitiveMask): a create has no
+ * old_values, a delete no new_values.
+ *
  * `actor_role` is snapshotted at write time on purpose: role changes are
  * themselves audited events, so a historical row must not change meaning
  * after the fact.
@@ -25,6 +29,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $ip_address
  * @property string|null $user_agent
  * @property array<string, mixed>|null $context
+ * @property array<string, mixed>|null $old_values
+ * @property array<string, mixed>|null $new_values
  * @property \Illuminate\Support\Carbon $created_at
  */
 class ActivityLog extends Model
@@ -97,9 +103,21 @@ class ActivityLog extends Model
         'case_note_updated',
         'case_note_deleted',
 
+        // Generic model verbs — used by App\Models\Concerns\Auditable for
+        // models with no bespoke action name (and for restores, which never
+        // had one).
+        'created',
+        'updated',
+        'deleted',
+        'restored',
+
         // File uploads (item 8)
         'file_uploaded',
         'file_deleted',
+
+        // Data in and data out (item 8 — system-wide audit trail)
+        'exported',
+        'imported',
     ];
 
     public const UPDATED_AT = null;
@@ -113,12 +131,16 @@ class ActivityLog extends Model
         'ip_address',
         'user_agent',
         'context',
+        'old_values',
+        'new_values',
     ];
 
     protected function casts(): array
     {
         return [
             'context' => 'array',
+            'old_values' => 'array',
+            'new_values' => 'array',
             'created_at' => 'datetime',
         ];
     }

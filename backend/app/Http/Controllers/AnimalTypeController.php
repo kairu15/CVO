@@ -10,9 +10,9 @@ use App\Models\AnimalClassification;
 use App\Models\AnimalType;
 use App\Models\Beneficiary;
 use App\Services\AnimalTypeCatalog;
-use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -35,7 +35,6 @@ class AnimalTypeController extends Controller
 {
     public function __construct(
         private readonly AnimalTypeCatalog $catalog,
-        private readonly AuditLogger $audit,
     ) {}
 
     /**
@@ -52,28 +51,19 @@ class AnimalTypeController extends Controller
     {
         $validated = $request->validated();
 
-        $type = AnimalType::create([
+        $type = DB::transaction(fn (): AnimalType => AnimalType::create([
             'main_category' => $validated['main_category'],
             'name' => $validated['name'],
             'sort_order' => $validated['sort_order']
                 ?? ((int) AnimalType::query()->where('main_category', $validated['main_category'])->max('sort_order')) + 1,
-        ]);
-
-        $this->audit->log($request->user(), 'animal_type_created', $type, [
-            'name' => $type->name,
-            'main_category' => $type->main_category,
-        ]);
+        ]));
 
         return $this->typeResponse($type->fresh(['classifications']), Response::HTTP_CREATED);
     }
 
     public function update(UpdateAnimalTypeRequest $request, AnimalType $animalType): JsonResponse
     {
-        $animalType->update($request->validated());
-
-        $this->audit->log($request->user(), 'animal_type_updated', $animalType, [
-            'name' => $animalType->name,
-        ]);
+        DB::transaction(fn () => $animalType->update($request->validated()));
 
         return $this->typeResponse($animalType->fresh(['classifications']));
     }
@@ -86,10 +76,7 @@ class AnimalTypeController extends Controller
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $name = $animalType->name;
-        $animalType->delete();
-
-        $this->audit->log($request->user(), 'animal_type_deleted', null, ['name' => $name]);
+        DB::transaction(fn () => $animalType->delete());
 
         return response()->json([], Response::HTTP_NO_CONTENT);
     }
@@ -98,16 +85,11 @@ class AnimalTypeController extends Controller
     {
         $validated = $request->validated();
 
-        $classification = $animalType->classifications()->create([
+        $classification = DB::transaction(fn () => $animalType->classifications()->create([
             'name' => $validated['name'],
             'sort_order' => $validated['sort_order']
                 ?? ((int) $animalType->classifications()->max('sort_order')) + 1,
-        ]);
-
-        $this->audit->log($request->user(), 'animal_classification_created', $classification, [
-            'animal_type' => $animalType->name,
-            'name' => $classification->name,
-        ]);
+        ]));
 
         return $this->classificationResponse($classification, Response::HTTP_CREATED);
     }
@@ -116,11 +98,7 @@ class AnimalTypeController extends Controller
         UpdateAnimalClassificationRequest $request,
         AnimalClassification $animalClassification,
     ): JsonResponse {
-        $animalClassification->update($request->validated());
-
-        $this->audit->log($request->user(), 'animal_classification_updated', $animalClassification, [
-            'name' => $animalClassification->name,
-        ]);
+        DB::transaction(fn () => $animalClassification->update($request->validated()));
 
         return $this->classificationResponse($animalClassification->fresh());
     }
@@ -137,10 +115,7 @@ class AnimalTypeController extends Controller
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $name = $animalClassification->name;
-        $animalClassification->delete();
-
-        $this->audit->log($request->user(), 'animal_classification_deleted', null, ['name' => $name]);
+        DB::transaction(fn () => $animalClassification->delete());
 
         return response()->json([], Response::HTTP_NO_CONTENT);
     }

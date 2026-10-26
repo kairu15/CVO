@@ -5,6 +5,7 @@ import { monitoringApi } from "../api/monitoringApi";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { dispersalApi } from "../api/dispersalApi";
 import { syncApi } from "../api/syncApi";
+import { withOfflineQueuedAt } from "../api/client";
 
 /**
  * Offline submission queue.
@@ -452,7 +453,12 @@ export async function flushQueue() {
         }
 
         await patch(item.id, { status: "syncing" });
-        await consumer.apply(item, { patch });
+        // The replayed submission carries the item's device timestamp, so the
+        // audit trail records WHEN this was actually recorded (on the device)
+        // alongside the sync time — see X-Offline-Queued-At in client.js.
+        await withOfflineQueuedAt(item.createdAt, () =>
+          consumer.apply(item, { patch }),
+        );
 
         // A confirmed overwrite is logged after it lands, so the audit shows
         // last-write-wins actually happened rather than merely being offered.

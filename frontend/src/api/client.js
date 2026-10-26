@@ -33,6 +33,54 @@ export function setUnauthorizedHandler(handler) {
   onUnauthorized = handler;
 }
 
+/**
+ * Device timestamp of an offline submission currently being replayed.
+ *
+ * While set, every request carries it as `X-Offline-Queued-At`, and the API
+ * records it on the audit row (device_created_at) beside its own created_at
+ * (the sync time) — so a visit logged in the field three days ago is not
+ * presented as having happened the moment connectivity returned.
+ *
+ * A module-level flag is safe because the offline queue replays items one at
+ * a time (oldest first); it is cleared in `finally` so a failed replay never
+ * leaks the header into ordinary requests.
+ */
+let offlineQueuedAt = null;
+
+/**
+ * Run one queued submission with the device timestamp attached.
+ *
+ * @template T
+ * @param {string|null|undefined} queuedAt  ISO timestamp from the queue row.
+ * @param {() => Promise<T>} request
+ * @returns {Promise<T>}
+ */
+export async function withOfflineQueuedAt(queuedAt, request) {
+  const previous = offlineQueuedAt;
+  offlineQueuedAt = queuedAt ?? null;
+
+  try {
+    return await request();
+  } finally {
+    offlineQueuedAt = previous;
+  }
+}
+
+api.interceptors.request.use((config) => {
+  if (offlineQueuedAt) {
+    config.headers ??= {};
+    // Axios 1.x exposes AxiosHeaders (with .set); the plain object branch
+    // keeps this correct for any adapter that hands back a bare object.
+    if (typeof config.headers.set === "function") {
+      config.headers.set("X-Offline-Queued-At", offlineQueuedAt);
+    } else {
+      config.headers["X-Offline-Queued-At"] = offlineQueuedAt;
+    }
+  }
+
+  return config;
+});
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {

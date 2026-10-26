@@ -24,6 +24,8 @@ class ActivityLogRequest extends FormRequest
         return [
             'action' => ['sometimes', 'nullable', 'string', 'max:64'],
             'actor_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            // Entity type — the short class basename (`Beneficiary`).
+            'target_type' => ['sometimes', 'nullable', 'string', 'max:64'],
             'date_from' => ['sometimes', 'nullable', 'date'],
             'date_to' => ['sometimes', 'nullable', 'date', 'after_or_equal:date_from'],
             'search' => ['sometimes', 'nullable', 'string', 'max:255'],

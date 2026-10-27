@@ -10,23 +10,32 @@ import { dashboardPathFor } from "../config/roles";
 import AuthPage from "../pages/AuthPage";
 import LandingPage from "../pages/LandingPage";
 import TransparencyPage from "../pages/TransparencyPage";
-import RoleDashboard from "../pages/RoleDashboard";
-import MonitoringPage from "../pages/MonitoringPage";
-import TechnicianAssignmentsPage from "../pages/TechnicianAssignmentsPage";
-import BeneficiariesPage from "../pages/BeneficiariesPage";
-import UserManagementPage from "../pages/UserManagementPage";
-import ReportsPage from "../pages/ReportsPage";
-import SystemSettingsPage from "../pages/SystemSettingsPage";
-import RolesPermissionsPage from "../pages/RolesPermissionsPage";
-import AuditLogPage from "../pages/AuditLogPage";
-import HealthRecordsPage from "../pages/HealthRecordsPage";
-import VaccinationSchedulePage from "../pages/VaccinationSchedulePage";
-import CaseNotesPage from "../pages/CaseNotesPage";
-import AnimalHealthPage from "../pages/AnimalHealthPage";
-import FieldVisitsPage from "../pages/FieldVisitsPage";
-import { ProfilePage } from "../pages/ProfilePage";
-import NotificationsPage from "../pages/NotificationsPage";
 import ResetPasswordPage from "../pages/ResetPasswordPage";
+
+// Every authenticated screen is loaded on demand so the first paint does not
+// ship the whole system: the reports (Recharts), the forms (MapLibre via the
+// coordinate picker) and the admin configuration pages are the bulk of the
+// bundle, and a signed-in user only ever opens a few of them. The shell —
+// sidebar, header, Suspense fallback — lives in DashboardLayout, so a lazy
+// page suspends inside the layout instead of blanking it.
+const RoleDashboard = lazy(() => import("../pages/RoleDashboard"));
+const MonitoringPage = lazy(() => import("../pages/MonitoringPage"));
+const TechnicianAssignmentsPage = lazy(() => import("../pages/TechnicianAssignmentsPage"));
+const BeneficiariesPage = lazy(() => import("../pages/BeneficiariesPage"));
+const UserManagementPage = lazy(() => import("../pages/UserManagementPage"));
+const ReportsPage = lazy(() => import("../pages/ReportsPage"));
+const SystemSettingsPage = lazy(() => import("../pages/SystemSettingsPage"));
+const RolesPermissionsPage = lazy(() => import("../pages/RolesPermissionsPage"));
+const AuditLogPage = lazy(() => import("../pages/AuditLogPage"));
+const HealthRecordsPage = lazy(() => import("../pages/HealthRecordsPage"));
+const VaccinationSchedulePage = lazy(() => import("../pages/VaccinationSchedulePage"));
+const CaseNotesPage = lazy(() => import("../pages/CaseNotesPage"));
+const AnimalHealthPage = lazy(() => import("../pages/AnimalHealthPage"));
+const FieldVisitsPage = lazy(() => import("../pages/FieldVisitsPage"));
+const NotificationsPage = lazy(() => import("../pages/NotificationsPage"));
+const ProfilePage = lazy(() =>
+  import("../pages/ProfilePage").then((m) => ({ default: m.ProfilePage })),
+);
 
 // The map bundle (MapLibre GL) is heavy — load it only when a map page opens.
 const DispersalMapPage = lazy(() => import("../pages/DispersalMapPage"));

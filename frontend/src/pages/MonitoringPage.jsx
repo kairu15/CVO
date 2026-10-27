@@ -279,14 +279,22 @@ export default function MonitoringPage({ roleKey }) {
           filter runs server-side so a selection shows the WHOLE month. */}
       {(months.length > 0 || animalTypes.length > 0 || isAdmin) && !loading && (
         <section className="card px-4 py-3">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-end gap-3">
             {months.length > 0 && (
               <>
-                <MonthYearDropdown
-                  months={months}
-                  selected={selectedMonth}
-                  onSelect={selectMonth}
-                />
+                {/* Every filter field carries a label above it, so the month
+                    and search controls read the same as the animal-type /
+                    classification cascade instead of relying on placeholders. */}
+                <div className="flex w-full flex-col gap-1.5 sm:w-72">
+                  <span className="block text-sm font-medium text-slate-700">
+                    Month
+                  </span>
+                  <MonthYearDropdown
+                    months={months}
+                    selected={selectedMonth}
+                    onSelect={selectMonth}
+                  />
+                </div>
 
                 <AnimalTypeClassificationSelect
                   groups={animalTypeGroups}
@@ -309,22 +317,31 @@ export default function MonitoringPage({ roleKey }) {
                 {/* Search as you type: every keystroke updates the field,
                     the 300ms debounce decides when the request fires, and
                     the page resets so results always start on page 1. */}
-                <div className="relative w-full sm:w-72">
-                  <Icon
-                    name="search"
-                    className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400"
-                  />
-                  <input
-                    type="search"
-                    value={search}
-                    onChange={(event) => {
-                      setSearch(event.target.value);
-                      setPage(1);
-                    }}
-                    placeholder="Search farmer name…"
-                    className="field pl-9"
-                    aria-label="Search monitoring records by farmer name"
-                  />
+                <div className="w-full sm:w-72">
+                  <label
+                    htmlFor="monitoring-search"
+                    className="block text-sm font-medium text-slate-700"
+                  >
+                    Search
+                  </label>
+                  <div className="relative mt-1.5">
+                    <Icon
+                      name="search"
+                      className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400"
+                    />
+                    <input
+                      id="monitoring-search"
+                      type="search"
+                      value={search}
+                      onChange={(event) => {
+                        setSearch(event.target.value);
+                        setPage(1);
+                      }}
+                      placeholder="Search farmer name…"
+                      className="field pl-9"
+                      aria-label="Search monitoring records by farmer name"
+                    />
+                  </div>
                 </div>
               </>
             )}

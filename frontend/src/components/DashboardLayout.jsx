@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getRole, roleFromPath, roleLabel } from "../config/roles";
@@ -7,6 +7,7 @@ import { DashboardSidebar } from "./DashboardSidebar";
 import { IdleSessionGuard } from "./IdleSessionGuard";
 import { OfflineBanner } from "./OfflineBanner";
 import { Icon } from "./Icons";
+import { SkeletonList } from "./Skeleton";
 import { useSiteConfig } from "../hooks/useSiteConfig";
 
 /**
@@ -93,7 +94,12 @@ export function DashboardLayout() {
               the dashboard switcher in the sidebar to move between roles.
             </div>
           )}
-          <Outlet />
+          {/* Pages are code-split (see routes/index.jsx), so the chunk a
+              navigation needs arrives after the route changes. The fallback
+              keeps the sidebar and header in place while it loads. */}
+          <Suspense fallback={<SkeletonList rows={4} />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

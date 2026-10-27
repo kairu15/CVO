@@ -126,7 +126,7 @@ function MoaCell({ record, editable, busy, onToggle }) {
           className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${
             checked ? "translate-x-4" : "translate-x-0.5"
           }`}
-36        />
+        />
       </button>
       {busy ? (
         <ButtonSpinner className="h-3.5 w-3.5 border-brand-700/30 border-t-brand-700" />

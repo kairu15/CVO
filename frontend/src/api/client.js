@@ -81,12 +81,43 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/**
+ * A read that never got an answer is retried ONCE, after a short pause.
+ *
+ * The API runs on a hosting tier that sleeps when idle: the first request
+ * after a quiet period can outlast the socket timeout while the instance
+ * boots, even though the identical request a moment later succeeds. Retrying
+ * a GET is safe (no side effects) and turns that cold start into a slower
+ * page instead of "The server took too long to respond" on every card.
+ *
+ * Only reads are retried, only once, and only when no response arrived
+ * (timeout / dropped connection) or the edge answered 502–504 while the
+ * process was restarting. Cancelled reads (React Query aborts a request whose
+ * component unmounted) are never retried, and writes keep the existing
+ * single-attempt behavior so a replayed form can never double-submit.
+ */
+const READ_RETRY_DELAY_MS = 1_500;
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
       onUnauthorized?.(error);
     }
+
+    const config = error.config;
+    const isRead = (config?.method ?? "").toLowerCase() === "get";
+    const cancelled = error.code === "ERR_CANCELED" || config?.signal?.aborted;
+    const noAnswer = !error.response;
+    const upstreamRestarting = RETRYABLE_STATUSES.has(error.response?.status);
+
+    if (isRead && !cancelled && !config.__readRetried && (noAnswer || upstreamRestarting)) {
+      config.__readRetried = true;
+      await new Promise((resolve) => setTimeout(resolve, READ_RETRY_DELAY_MS));
+      return api.request(config);
+    }
+
     return Promise.reject(error);
   },
 );

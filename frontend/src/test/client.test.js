@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getErrorMessage, getFieldErrors } from "../api/client";
+import { api, getErrorMessage, getFieldErrors } from "../api/client";
 
 describe("getErrorMessage", () => {
   it("explains an unreachable server instead of showing axios's 'Network Error'", () => {
@@ -56,6 +56,50 @@ describe("getErrorMessage", () => {
 
   it("never returns an empty string", () => {
     expect(getErrorMessage({})).toBe("Something went wrong");
+  });
+});
+
+/** A request that died before any response arrived (the cold-start case). */
+function timeoutError(config) {
+  const error = new Error("timeout of 30000ms exceeded");
+  error.code = "ECONNABORTED";
+  error.config = config;
+  return error;
+}
+
+function okResponse(config, body = { ok: true }) {
+  return { data: body, status: 200, statusText: "OK", headers: {}, config };
+}
+
+describe("api read retry", () => {
+  it("retries a GET once when the server never answered", async () => {
+    let attempts = 0;
+
+    const response = await api.get("/api/v1/health", {
+      adapter: async (config) => {
+        attempts += 1;
+        if (attempts === 1) throw timeoutError(config);
+        return okResponse(config);
+      },
+    });
+
+    expect(attempts).toBe(2);
+    expect(response.data).toEqual({ ok: true });
+  });
+
+  it("does not retry a write, so a form can never double-submit", async () => {
+    let attempts = 0;
+
+    await expect(
+      api.post("/api/v1/monitoring-records", {}, {
+        adapter: async (config) => {
+          attempts += 1;
+          throw timeoutError(config);
+        },
+      }),
+    ).rejects.toBeTruthy();
+
+    expect(attempts).toBe(1);
   });
 });
 

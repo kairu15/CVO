@@ -98,6 +98,13 @@ services:
 
       - key: SESSION_DRIVER
         value: database
+      # Cache on local disk, NOT in the database: the MySQL instance is
+      # external to Render, so every cache read on the default `database`
+      # store is another network round trip on EVERY request (permissions,
+      # settings, report aggregates). This service is a single instance, so
+      # a file cache loses nothing; it is rebuilt after a deploy/restart.
+      - key: CACHE_STORE
+        value: file
       # Render terminates TLS; cookies must be Secure.
       - key: SESSION_SECURE_COOKIE
         value: "true"

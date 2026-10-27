@@ -122,8 +122,13 @@ function ChartCard({ title, caption, state, isEmpty, emptyTitle, emptyDescriptio
           <SkeletonList rows={3} rowClassName="h-24" />
         </div>
       ) : state.error ? (
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap items-center gap-3">
           <InlineAlert message={state.error} />
+          {state.refresh && (
+            <button type="button" onClick={state.refresh} className="btn-secondary !px-3.5 !py-1.5 text-xs">
+              Try again
+            </button>
+          )}
         </div>
       ) : isEmpty ? (
         <div className="mt-4">
@@ -338,7 +343,14 @@ export default function ReportsPage({ roleKey = "admin" }) {
         <ReportExportPanel barangay={barangay} month={month} animalType={animalType} from={from} />
       </section>
 
-      {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
+      {error && (
+        <div className="flex flex-wrap items-center gap-3">
+          <InlineAlert message={error} onDismiss={() => setError(null)} />
+          <button type="button" onClick={() => load()} className="btn-secondary !px-3.5 !py-1.5 text-xs">
+            Try again
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <section className="card overflow-hidden">

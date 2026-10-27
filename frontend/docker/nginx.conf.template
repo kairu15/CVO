@@ -55,6 +55,27 @@ server {
 
     charset utf-8;
 
+    # Compress the bundle and JSON responses. The SPA is code-split per
+    # screen (see src/routes/index.jsx), and the chunks that remain are still
+    # large; nginx's default only compresses text/html, so without this the
+    # browser downloads JavaScript and API payloads uncompressed — the bulk
+    # of first-load time on mobile data.
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_types
+        application/javascript
+        application/json
+        application/manifest+json
+        application/xml
+        image/svg+xml
+        text/css
+        text/javascript
+        text/plain
+        text/xml;
+
     # Matches the backend/php upload ceiling.
     client_max_body_size 12m;
 

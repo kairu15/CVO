@@ -31,6 +31,15 @@ function filenameFromDisposition(header) {
   return plain ? plain[1].trim() : null;
 }
 
+/**
+ * The report reads aggregate every record in the system, so they are the
+ * slowest calls this app makes. 90s is deliberate: the API's hosting tier
+ * sleeps when idle and a cold report can take far longer than the client's
+ * default 30s socket timeout, which used to surface as "The server took too
+ * long to respond" on every chart at once.
+ */
+const REPORT_READ_TIMEOUT_MS = 90_000;
+
 export const reportsApi = {
   /**
    * @param {object} [params]
@@ -40,7 +49,10 @@ export const reportsApi = {
    *   clinical: object, per_barangay: Array<object>, trend: Array<object>}>}
    */
   cityWide: async (params = {}) => {
-    const response = await api.get("/api/v1/admin/report", { params });
+    const response = await api.get("/api/v1/admin/report", {
+      params,
+      timeout: REPORT_READ_TIMEOUT_MS,
+    });
 
     return response.data?.data ?? {};
   },
@@ -51,7 +63,10 @@ export const reportsApi = {
    * @returns {Promise<Array<{month: string, label: string, dispersals: number, re_dispersals: number}>>}
    */
   dispersalTrend: async (params = {}) => {
-    const response = await api.get("/api/v1/admin/report/charts/dispersal-trend", { params });
+    const response = await api.get("/api/v1/admin/report/charts/dispersal-trend", {
+      params,
+      timeout: REPORT_READ_TIMEOUT_MS,
+    });
     return response.data?.data ?? [];
   },
 
@@ -61,7 +76,10 @@ export const reportsApi = {
    * @returns {Promise<Array<{barangay: string, dispersals: number, re_dispersals: number}>>}
    */
   animalsByBarangay: async (params = {}) => {
-    const response = await api.get("/api/v1/admin/report/charts/animals-by-barangay", { params });
+    const response = await api.get("/api/v1/admin/report/charts/animals-by-barangay", {
+      params,
+      timeout: REPORT_READ_TIMEOUT_MS,
+    });
     return response.data?.data ?? [];
   },
 
@@ -72,7 +90,10 @@ export const reportsApi = {
    * @returns {Promise<Array<{month: string, label: string, total: number, compliant: number, rate: number|null}>>}
    */
   vaccinationCompliance: async (params = {}) => {
-    const response = await api.get("/api/v1/admin/report/charts/vaccination-compliance", { params });
+    const response = await api.get("/api/v1/admin/report/charts/vaccination-compliance", {
+      params,
+      timeout: REPORT_READ_TIMEOUT_MS,
+    });
     return response.data?.data ?? [];
   },
 
@@ -82,7 +103,10 @@ export const reportsApi = {
    * @returns {Promise<Array<{animal_type: string, animals: number}>>}
    */
   animalTypeDistribution: async (params = {}) => {
-    const response = await api.get("/api/v1/admin/report/charts/animal-type-distribution", { params });
+    const response = await api.get("/api/v1/admin/report/charts/animal-type-distribution", {
+      params,
+      timeout: REPORT_READ_TIMEOUT_MS,
+    });
     return response.data?.data ?? [];
   },
 
@@ -92,7 +116,10 @@ export const reportsApi = {
    * @returns {Promise<Array<{technician: string, households: number}>>}
    */
   technicianWorkload: async (params = {}) => {
-    const response = await api.get("/api/v1/admin/report/charts/technician-workload", { params });
+    const response = await api.get("/api/v1/admin/report/charts/technician-workload", {
+      params,
+      timeout: REPORT_READ_TIMEOUT_MS,
+    });
     return response.data?.data ?? [];
   },
 

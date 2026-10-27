@@ -16,6 +16,7 @@ use App\Models\UserNotification;
 use App\Services\NotificationService;
 use App\Services\AuditLogger;
 use App\Services\FieldVisitService;
+use App\Services\FieldVisitVerificationService;
 use App\Services\SettingsService;
 use App\Support\ImageSanitizer;
 use App\Support\Pagination;
@@ -33,17 +34,28 @@ class FieldVisitController extends Controller
         private readonly FieldVisitService $visits,
         private readonly NotificationService $notifications,
         private readonly AuditLogger $audit,
+        private readonly FieldVisitVerificationService $verification,
     ) {}
 
     /**
-     * Role-scoped field visits.
+     * Role-scoped field visits, optionally narrowed to one on-site verdict
+     * (or the `review` bucket) by the `verification` query parameter.
      */
     public function index(Request $request): AnonymousResourceCollection
     {
+        $verificationFilter = $request->input('verification', 'all');
+
+        abort_unless(
+            in_array($verificationFilter, FieldVisitVerificationService::FILTERS, true),
+            Response::HTTP_UNPROCESSABLE_ENTITY,
+            'Unknown verification filter.',
+        );
+
         return FieldVisitResource::collection(
             $this->visits->listFor(
                 $request->user(),
                 Pagination::perPage($request->input('per_page')),
+                $verificationFilter,
             ),
         );
     }
@@ -119,8 +131,45 @@ class FieldVisitController extends Controller
         return response()->json([
             'data' => [
                 'purposes' => app(SettingsService::class)->fieldVisitPurposes(),
+                // The office's on-site radius, so the form can state the
+                // threshold it will be judged against (the verdict itself is
+                // always computed server-side).
+                'onsite_threshold_m' => $this->verification->thresholdM(),
             ],
         ]);
+    }
+
+    /**
+     * The technician's short justification for an off-site visit ("met at
+     * alternate site"). Never blocks saving the visit — the visit exists
+     * either way; this only annotates the verdict. The visiting technician
+     * or an admin may write it, enforced by the same policy that guards the
+     * visit itself.
+     */
+    public function verificationNote(Request $request, int $id): FieldVisitResource
+    {
+        $visit = $this->visits->findScoped($request->user(), $id);
+
+        abort_unless($visit, Response::HTTP_NOT_FOUND);
+
+        $this->authorize('update', $visit);
+
+        $validated = $request->validate([
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $note = trim((string) ($validated['note'] ?? ''));
+
+        $visit->forceFill([
+            'verification_note' => $note === '' ? null : $note,
+            'verification_note_at' => $note === '' ? null : now(),
+        ])->save();
+
+        $this->audit->log($request->user(), 'field_visit_verification_note', $visit, [
+            'has_note' => $note !== '',
+        ]);
+
+        return new FieldVisitResource($visit->load(['beneficiary', 'technician', 'photos']));
     }
 
     /**
@@ -167,6 +216,11 @@ class FieldVisitController extends Controller
 
         $this->audit->log($request->user(), 'field_visit_photo_uploaded', $photo);
 
+        // The photo's capture fix is the fix the verdict cares about —
+        // re-derive the on-site status from stored coordinates now that the
+        // newest photo exists.
+        $this->verification->refresh($visit);
+
         // Evidence was just submitted — tell the supervisors who review this
         // household: admins for oversight, doctors because the photo carries
         // the animal's condition they triage on. The technician's own visit
@@ -205,6 +259,10 @@ class FieldVisitController extends Controller
             $photo->delete();
 
             $this->audit->log($request->user(), 'field_visit_photo_deleted', $photo);
+
+            // The photo's fix is gone: re-derive from what remains (the
+            // trip's own fix), so the verdict never cites a deleted photo.
+            $this->verification->refresh($visit);
         }
 
         return response()->noContent();

@@ -69,11 +69,16 @@ class SiteTest extends TestCase
     {
         $data = $this->getJson('/api/v1/site')->assertOk()->json('data');
 
-        // Office contact and the client-side window — nothing else. The
-        // server's real session lifetimes, the barangay list and the form
-        // vocabularies stay on the admin-only payload.
-        $this->assertSame(['office', 'session'], array_keys($data));
+        // Office contact, the client-side window and the office pin the
+        // route planner falls back to — nothing else. The server's real
+        // session lifetimes, the barangay list and the form vocabularies
+        // stay on the admin-only payload.
+        $this->assertSame(['office', 'session', 'office_location'], array_keys($data));
         $this->assertSame(['idle_minutes'], array_keys($data['session']));
+        $this->assertSame(
+            ['latitude', 'longitude'],
+            array_keys($data['office_location']),
+        );
         $this->assertSame(
             ['office_email', 'office_phone', 'office_hours', 'office_address'],
             array_keys($data['office']),

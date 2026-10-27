@@ -39,6 +39,14 @@ class SiteController extends Controller
                     // enforces.
                     'idle_minutes' => $this->settings->sessionIdleMinutes(),
                 ],
+                // The office pin — the route planner's fallback start point
+                // when a device cannot report its own location. The office's
+                // own address is already public above, so its coordinate is
+                // the same class of information.
+                'office_location' => [
+                    'latitude' => $this->settings->officeLatitude(),
+                    'longitude' => $this->settings->officeLongitude(),
+                ],
             ],
         ]);
     }

@@ -243,6 +243,21 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::delete('field-visits/{id}/photo', [FieldVisitController::class, 'destroyPhoto'])
         ->name('api.field-visits.photos.destroy');
 
+    // The technician's justification for an off-site verdict (Feature 1).
+    // Declared after the apiResource so the explicit path wins over
+    // {field_visit} binding, same pattern as the photo routes above.
+    Route::patch('field-visits/{id}/verification-note', [FieldVisitController::class, 'verificationNote'])
+        ->whereNumber('id')
+        ->name('api.field-visits.verification-note');
+
+    // Admin: adopt a visit's captured fix as the household's registered
+    // pin (Feature 1) — for beneficiaries that have no geotag, including
+    // rows created by the Excel import. Audited through the Beneficiary's
+    // own diff row; the write itself is gated by beneficiaries.update.
+    Route::patch('beneficiaries/{id}/location', [BeneficiaryController::class, 'setLocation'])
+        ->whereNumber('id')
+        ->name('api.beneficiaries.set-location');
+
     // Vaccination schedule — derived, read-only, role-scoped.
     Route::get('vaccination-schedule', [VaccinationScheduleController::class, 'index'])
         ->name('api.vaccination-schedule');
@@ -345,6 +360,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         // figures behind the charts are not trapped on screen.
         Route::get('/report/export', [ReportController::class, 'export'])
             ->middleware('permission:view_reports')->name('api.admin.report.export');
+
+        // Off-site / needs-review counts behind the Reports screen's
+        // verification card (Feature 1).
+        Route::get('/report/verification', [ReportController::class, 'verificationSummary'])
+            ->middleware('permission:view_reports')->name('api.admin.report.verification');
 
         // The printable report built on the office's own Excel template — the
         // CVO cover sheet + signature block, filled with the dispersal roster

@@ -78,4 +78,14 @@ export const fieldVisitsApi = {
     await ensureCsrfCookie();
     return unwrap(await api.delete(`/api/v1/field-visits/${id}/photo`));
   },
+
+  /**
+   * The technician's short justification for an off-site verdict (Feature 1).
+   * Never blocks saving the visit — it annotates the stored verdict. The
+   * visiting technician or an admin may write it.
+   */
+  setVerificationNote: async (id, note) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.patch(`/api/v1/field-visits/${id}/verification-note`, { note }));
+  },
 };

@@ -44,6 +44,26 @@ class SettingsRequest extends FormRequest
             'vaccination_due_soon_days' => ['sometimes', 'integer', 'min:1', 'max:365'],
             'field_visit_overdue_days' => ['sometimes', 'integer', 'min:1', 'max:3650'],
 
+            // Field-visit verification radius (Feature 1). A policy number
+            // the office picks — wide enough to absorb ordinary GPS noise,
+            // never so wide that "on site" stops meaning anything.
+            'onsite_threshold_m' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+
+            // The route planner's fallback start (the CVO office pin).
+            'office_latitude' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'office_longitude' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+
+            // Cluster scan inputs (Feature 3) — N days, K cases, R kilometres.
+            'cluster_lookback_days' => ['sometimes', 'integer', 'min:1', 'max:365'],
+            'cluster_min_cases' => ['sometimes', 'integer', 'min:2', 'max:100'],
+            'cluster_radius_km' => ['sometimes', 'numeric', 'min:0.1', 'max:50'],
+
+            // Which clinical outcomes count as a case. Saved wholesale like
+            // the other vocabularies; the scan intersects it with the live
+            // outcome list at read time.
+            'cluster_reportable_outcomes' => ['sometimes', 'array', 'max:20'],
+            'cluster_reportable_outcomes.*' => ['required', 'string', 'min:1', 'max:50', 'distinct'],
+
             // The suggested animal-type vocabulary. A suggestion, not a
             // filter: the importer keeps unknown workbook values as their own
             // type, so this list can never invalidate existing records. Saved

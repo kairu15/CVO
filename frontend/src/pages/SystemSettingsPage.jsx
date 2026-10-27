@@ -98,6 +98,14 @@ const ALERT_FIELDS = [
     max: 3650,
     hint: "How stale a household's latest field visit may get before the daily smart-alert scan flags it.",
   },
+  {
+    key: "onsite_threshold_m",
+    label: "On-site visit threshold (metres)",
+    min: 1,
+    max: 10000,
+    hint:
+      "Inside this radius a captured GPS fix counts as on-site. A fix whose accuracy radius is wider is flagged 'low accuracy' instead. A review aid — not proof, and not a standard.",
+  },
 ];
 
 /**
@@ -152,6 +160,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
 
   const [profile, setProfile] = useState({});
   const [alerts, setAlerts] = useState({});
+  const [officeLocation, setOfficeLocation] = useState({});
   const [session, setSession] = useState({});
   const [animalTypes, setAnimalTypes] = useState([]);
   const [newAnimalType, setNewAnimalType] = useState("");
@@ -180,7 +189,19 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
   const apply = useCallback((settings) => {
     setData(settings);
     setProfile(settings.office_profile ?? {});
-    setAlerts(settings.alerts ?? {});
+    // The verification threshold rides in its own payload group but is
+    // edited beside the other thresholds, so it is folded into the alerts
+    // form state here — one row of inputs, two server keys groups.
+    setAlerts({
+      ...(settings.alerts ?? {}),
+      onsite_threshold_m: settings.verification?.onsite_threshold_m ?? "",
+    });
+    // Flattened to the settings KEYS the PATCH speaks (office_latitude /
+    // office_longitude) rather than the payload's latitude/longitude.
+    setOfficeLocation({
+      office_latitude: settings.office_location?.latitude ?? "",
+      office_longitude: settings.office_location?.longitude ?? "",
+    });
     setSession(settings.session ?? {});
     setAnimalTypes(settings.animal_types ?? []);
     setHealthOutcomes(settings.health_outcomes ?? []);
@@ -424,10 +445,11 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
               Alerts &amp; thresholds
             </h3>
             <p className="mt-1.5 text-xs text-slate-500">
-              The vaccination cycle. Every derived surface reads these two
-              numbers — the Vaccination Schedule screen, Animal Health
-              Monitoring, the public program counts and the daily smart-alert
-              scan — so they can never disagree about which animals are late.
+              The vaccination cycle and the field-visit on-site threshold.
+              Every derived surface reads these numbers — the Vaccination
+              Schedule screen, Animal Health Monitoring, the public program
+              counts, the daily smart-alert scan and visit verification — so
+              they can never disagree.
             </p>
 
             <form
@@ -465,6 +487,78 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
                 >
                   {savingSection === "alerts" ? "Saving…" : "Save thresholds"}
                   {savingSection !== "alerts" && <Icon name="check" className="h-4 w-4" />}
+                </button>
+              </div>
+            </form>
+          </section>
+
+          {/* Writable: the office pin the route planner falls back to */}
+          <section className="card p-6">
+            <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
+              Route planner start point
+            </h3>
+            <p className="mt-1.5 text-xs text-slate-500">
+              The office coordinate the daily route planner uses when a
+              technician's device cannot report its own location.
+            </p>
+
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                save(
+                  "office_location",
+                  ["office_latitude", "office_longitude"],
+                  officeLocation,
+                  "Route planner start point saved.",
+                );
+              }}
+              className="mt-4 grid gap-4 sm:grid-cols-2"
+            >
+              <Field
+                id="office-latitude"
+                label="Office latitude"
+                hint="Decimal degrees, e.g. 9.6311"
+                error={fieldErrors.office_latitude}
+              >
+                <input
+                  id="office-latitude"
+                  type="number"
+                  step="0.000001"
+                  min={-90}
+                  max={90}
+                  required
+                  value={officeLocation.office_latitude ?? ""}
+                  onChange={(event) => setField(setOfficeLocation, "office_latitude", event.target.value)}
+                  className="field mt-1 w-full text-sm"
+                />
+              </Field>
+              <Field
+                id="office-longitude"
+                label="Office longitude"
+                hint="Decimal degrees, e.g. 123.1980"
+                error={fieldErrors.office_longitude}
+              >
+                <input
+                  id="office-longitude"
+                  type="number"
+                  step="0.000001"
+                  min={-180}
+                  max={180}
+                  required
+                  value={officeLocation.office_longitude ?? ""}
+                  onChange={(event) => setField(setOfficeLocation, "office_longitude", event.target.value)}
+                  className="field mt-1 w-full text-sm"
+                />
+              </Field>
+
+              <div className="sm:col-span-2">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="btn-primary inline-flex items-center gap-2 rounded-pill px-5 py-2 text-sm font-semibold disabled:opacity-60"
+                >
+                  {savingSection === "office_location" ? "Saving…" : "Save start point"}
+                  {savingSection !== "office_location" && <Icon name="check" className="h-4 w-4" />}
                 </button>
               </div>
             </form>

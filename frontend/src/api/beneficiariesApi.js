@@ -91,6 +91,23 @@ export const beneficiariesApi = {
     return unwrap(await api.put(`/api/v1/beneficiaries/${id}`, payload));
   },
 
+  /**
+   * Admin: adopt a field visit's captured fix as this household's
+   * registered pin (Feature 1) — only for households that have NO geotag
+   * yet, including rows the Excel import created. The server recomputes
+   * every stored verification verdict for the household in the same call.
+   */
+  adoptVisitLocation: async (id, { latitude, longitude, fieldVisitId }) => {
+    await ensureCsrfCookie();
+    return unwrap(
+      await api.patch(`/api/v1/beneficiaries/${id}/location`, {
+        latitude,
+        longitude,
+        field_visit_id: fieldVisitId,
+      }),
+    );
+  },
+
   remove: async (id) => {
     await ensureCsrfCookie();
     return unwrap(await api.delete(`/api/v1/beneficiaries/${id}`));

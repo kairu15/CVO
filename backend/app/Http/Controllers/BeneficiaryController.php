@@ -6,10 +6,13 @@ use App\Http\Controllers\Concerns\BulkDeletes;
 use App\Http\Requests\BulkDeleteRequest;
 use App\Http\Requests\GeocodeRequest;
 use App\Http\Requests\IndexBeneficiariesRequest;
+use App\Http\Requests\SetBeneficiaryLocationRequest;
 use App\Http\Requests\StoreBeneficiaryRequest;
 use App\Http\Requests\UpdateBeneficiaryRequest;
 use App\Http\Resources\BeneficiaryResource;
+use App\Models\FieldVisit;
 use App\Services\BeneficiaryService;
+use App\Services\FieldVisitVerificationService;
 use App\Support\Barangays;
 use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
@@ -25,6 +28,7 @@ class BeneficiaryController extends Controller
 
     public function __construct(
         private readonly BeneficiaryService $beneficiaries,
+        private readonly FieldVisitVerificationService $verification,
     ) {}
 
     /**
@@ -96,6 +100,56 @@ class BeneficiaryController extends Controller
     }
 
     /**
+     * Adopt a field visit's captured fix as this household's registered pin
+     * (Feature 1) — the admin action for beneficiaries with NO geotag,
+     * including rows the Excel import created.
+     *
+     * Guard rails: the write is refused when the household already has a
+     * pin (this action fills a gap, it never moves an existing pin) and when
+     * the named visit carries no fix of its own. The change lands through
+     * the model, so the Auditable diff row records the adopted coordinates
+     * in the audit trail, and every earlier `no_reference_location` verdict
+     * for the household is recomputed immediately.
+     */
+    public function setLocation(SetBeneficiaryLocationRequest $request, int $id): BeneficiaryResource
+    {
+        $beneficiary = $this->beneficiaries->findFor($request->user(), $id);
+
+        $this->authorize('update', $beneficiary);
+
+        abort_if(
+            $beneficiary->latitude !== null && $beneficiary->longitude !== null,
+            Response::HTTP_UNPROCESSABLE_ENTITY,
+            'This household already has a registered location.',
+        );
+
+        $visit = FieldVisit::query()
+            ->where('beneficiary_id', $beneficiary->id)
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->find((int) $request->validated('field_visit_id'));
+
+        abort_unless(
+            $visit,
+            Response::HTTP_UNPROCESSABLE_ENTITY,
+            'That visit has no captured location to adopt.',
+        );
+
+        DB::transaction(fn () => $beneficiary->update([
+            'latitude' => $request->validated('latitude'),
+            'longitude' => $request->validated('longitude'),
+            'location_source' => 'gps',
+        ]));
+
+        // The reference pin just appeared: every previous verdict for this
+        // household read `no_reference_location` and is now re-derived from
+        // the stored coordinates.
+        $this->verification->refreshForBeneficiary($beneficiary);
+
+        return new BeneficiaryResource($beneficiary->refresh()->load('technician'));
+    }
+
+    /**
      * Staff maintain the record; the admin also reassigns technicians.
      */
     public function update(UpdateBeneficiaryRequest $request, int $id): BeneficiaryResource
@@ -121,6 +175,11 @@ class BeneficiaryController extends Controller
         // One transaction: the change and the audit row it writes through
         // App\Models\Concerns\Auditable commit together (or neither does).
         DB::transaction(fn () => $beneficiary->update($validated));
+
+        // The registered pin (or its absence) is one side of every stored
+        // on-site verdict for this household: re-derive them whenever the
+        // record is edited, so no visit keeps citing a moved pin.
+        $this->verification->refreshForBeneficiary($beneficiary);
 
         return new BeneficiaryResource($beneficiary->refresh());
     }

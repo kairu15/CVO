@@ -96,6 +96,10 @@ class ActivityLog extends Model
         'field_visit_deleted',
         'field_visit_photo_uploaded',
         'field_visit_photo_deleted',
+        // Feature 1 — the server re-derived a visit's on-site verdict, and
+        // the technician's justification for an off-site visit.
+        'field_visit_verification',
+        'field_visit_verification_note',
         'health_record_created',
         'health_record_updated',
         'health_record_deleted',
@@ -118,6 +122,10 @@ class ActivityLog extends Model
         // Data in and data out (item 8 — system-wide audit trail)
         'exported',
         'imported',
+
+        // Feature 3 — the spatial cluster scan and its human review.
+        'cluster_alert_created',
+        'cluster_alert_reviewed',
     ];
 
     public const UPDATED_AT = null;

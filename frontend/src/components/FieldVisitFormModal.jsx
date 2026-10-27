@@ -51,6 +51,10 @@ export function FieldVisitFormModal({
   purposes = [],
   visit = null,
   onSaved,
+  // The office's on-site radius (Feature 1), so the form states the rule the
+  // server will judge the save against. The verdict itself is computed
+  // server-side — this is display only.
+  onsiteThresholdM = null,
 }) {
   const editing = Boolean(visit);
 
@@ -588,6 +592,11 @@ export function FieldVisitFormModal({
             <p className="mt-2 text-xs text-slate-500">
               Capture where the visit actually happened — taking the photo below
               records your position here too.
+              {onsiteThresholdM
+                ? ` The server compares the fix against the household's registered pin using the office's ${onsiteThresholdM} m on-site threshold.`
+                : ""}{" "}
+              GPS can be inaccurate or spoofed, so the on-site verdict is a
+              review aid — not proof of anyone's presence.
             </p>
           )}
 

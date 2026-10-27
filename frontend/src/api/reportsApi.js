@@ -58,6 +58,19 @@ export const reportsApi = {
   },
 
   /**
+   * On-site verification counts (Feature 1): verdicts per status, the
+   * `review_count` bucket the "Off-site / needs review" filter serves, and
+   * the threshold the verdicts were judged against.
+   * @returns {Promise<{counts: Record<string, number>, review_count: number, total: number, threshold_m: number}>}
+   */
+  verificationSummary: async () => {
+    const response = await api.get("/api/v1/admin/report/verification", {
+      timeout: REPORT_READ_TIMEOUT_MS,
+    });
+    return response.data?.data ?? {};
+  },
+
+  /**
    * Chart 1 — dispersal trend over time: monthly counts, oldest first,
    * zero-filled. Filters: barangay, animal_type, from/to (ISO dates).
    * @returns {Promise<Array<{month: string, label: string, dispersals: number, re_dispersals: number}>>}

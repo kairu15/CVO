@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { fieldVisitsApi } from "../api/fieldVisitsApi";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { useAutoRefresh } from "../api/queries";
@@ -15,6 +15,7 @@ import { Icon } from "../components/Icons";
 import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
 import { BulkActionBar } from "../components/BulkActionBar";
 import { PaginationFooter } from "../components/PaginationFooter";
+import { VerificationBadge } from "../components/VerificationBadge";
 import { useRowSelection } from "../hooks/useRowSelection";
 import { useAuth } from "../context/AuthContext";
 import { getRole } from "../config/roles";
@@ -48,7 +49,15 @@ function formatDate(value) {
 export default function FieldVisitsPage({ roleKey = "technician" }) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const config = getRole(roleKey);
+
+  // Deep-linkable verification filter ("?verification=review" from the work
+  // queue and the Reports card).
+  const [verificationFilter, setVerificationFilter] = useState(
+    () => new URLSearchParams(location.search).get("verification") ?? "all",
+  );
+  const [threshold, setThreshold] = useState(null);
 
   const [visits, setVisits] = useState([]);
   const [meta, setMeta] = useState(null);
@@ -66,6 +75,16 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
   const [removing, setRemoving] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  // The off-site justification (Feature 1) — annotates the stored verdict,
+  // never blocks the visit itself.
+  const [noting, setNoting] = useState(null);
+  const [noteText, setNoteText] = useState("");
+  const [noteBusy, setNoteBusy] = useState(false);
+
+  // Admin: adopt this visit's captured fix as the household's registered pin.
+  const [adopting, setAdopting] = useState(null);
+  const [adoptBusy, setAdoptBusy] = useState(false);
 
   // Row selection for the bulk (select-all) delete.
   const { selected, toggle, toggleAll, clear } = useRowSelection();
@@ -91,13 +110,18 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
 
     try {
       const [visitsRes, optionsRes] = await Promise.all([
-        fieldVisitsApi.list({ per_page: 50, page }),
+        fieldVisitsApi.list({
+          per_page: 50,
+          page,
+          ...(verificationFilter !== "all" ? { verification: verificationFilter } : {}),
+        }),
         fieldVisitsApi.options(),
       ]);
 
       setVisits(visitsRes?.data ?? []);
       setMeta(visitsRes?.meta ?? null);
       setPurposes(optionsRes?.purposes ?? []);
+      setThreshold(optionsRes?.onsite_threshold_m ?? null);
 
       // The picker is only needed by someone who can log a trip.
       if (canLog) {
@@ -108,11 +132,18 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [canLog, page]);
+  }, [canLog, page, verificationFilter]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  /** Switching the filter starts a fresh first page — the filter is applied
+   *  in the database query, before pagination. */
+  function changeVerificationFilter(value) {
+    setVerificationFilter(value);
+    setPage(1);
+  }
 
   // Quietly re-fetch so visits logged elsewhere appear without a manual reload.
   useAutoRefresh(load);
@@ -161,6 +192,57 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
       setError(getErrorMessage(err));
     } finally {
       setBulkBusy(false);
+    }
+  }
+
+  /**
+   * Save the technician's short justification for an off-site verdict
+   * (Feature 1). Purely annotating — the visit and its verdict already
+   * exist, and nothing here can block either.
+   */
+  async function confirmNote() {
+    if (!noting) return;
+
+    setNoteBusy(true);
+    setError(null);
+
+    try {
+      await fieldVisitsApi.setVerificationNote(noting.id, noteText.trim());
+      setNoting(null);
+      await load(true);
+      setNotice("Justification saved.");
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setNoteBusy(false);
+    }
+  }
+
+  /**
+   * Admin: adopt this visit's captured fix as the household's registered
+   * pin (Feature 1). The server refuses a household that already has one
+   * and recomputes every stored verdict for the household in the same call.
+   */
+  async function confirmAdopt() {
+    if (!adopting) return;
+
+    setAdoptBusy(true);
+    setError(null);
+
+    try {
+      await beneficiariesApi.adoptVisitLocation(adopting.beneficiary_id, {
+        latitude: adopting.latitude,
+        longitude: adopting.longitude,
+        fieldVisitId: adopting.id,
+      });
+      const name = adopting.name_of_farmer;
+      setAdopting(null);
+      await load(true);
+      setNotice(`Registered ${name}'s location from this visit. Verification verdicts were re-computed.`);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setAdoptBusy(false);
     }
   }
 
@@ -215,6 +297,13 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
               GPS position captured on site. What you observed about the animal
               goes in Monitoring Records.
             </p>
+            <p className="mt-2 max-w-2xl text-xs text-slate-500">
+              <Icon name="info" className="mr-1 inline h-3.5 w-3.5" />
+              GPS can be inaccurate or spoofed, so the on-site verdict below is
+              a review aid — it flags a visit for someone to look at, it is not
+              proof that anyone was (or was not) on site.
+              {threshold ? ` The office's on-site threshold is ${threshold} m.` : ""}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -255,6 +344,39 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
           autoDismiss={5000}
         />
       )}
+
+      {/* Verification filter — server-side, before pagination. "Off-site /
+          needs review" is the bucket the Reports card and the work queue
+          deep-link into. */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label
+            htmlFor="visit-verification-filter"
+            className="block text-xs font-semibold text-slate-600"
+          >
+            Verification
+          </label>
+          <select
+            id="visit-verification-filter"
+            className="field mt-1 w-56 text-sm"
+            value={verificationFilter}
+            onChange={(event) => changeVerificationFilter(event.target.value)}
+          >
+            <option value="all">All visits</option>
+            <option value="review">Off-site / needs review</option>
+            <option value="on_site">On site</option>
+            <option value="off_site">Off site</option>
+            <option value="low_accuracy">Low accuracy</option>
+            <option value="no_reference_location">No registered pin</option>
+            <option value="no_gps">No GPS</option>
+          </select>
+        </div>
+        {verificationFilter !== "all" && meta && (
+          <span className="rounded-pill bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800">
+            {meta.total} {meta.total === 1 ? "visit" : "visits"} in this filter
+          </span>
+        )}
+      </div>
 
       <section className="card overflow-hidden">
         {loading ? (
@@ -325,8 +447,6 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {visits.map((visit) => {
-                  const drift = distanceText(visit.distance_from_registered_m);
-
                   return (
                     <tr key={visit.id} className="transition hover:bg-brand-50/40">
                       {deletableIds.length > 0 && (
@@ -382,22 +502,29 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
                         )}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap">
+                        <VerificationBadge
+                          status={visit.verification_status}
+                          distanceM={visit.distance_m}
+                          accuracyM={visit.gps_accuracy_m}
+                        />
                         {visit.has_location ? (
-                          <>
-                            <span className="inline-flex items-center gap-1 font-medium text-slate-900">
-                              <Icon name="locate-fixed" className="h-3.5 w-3.5 text-brand-700" />
-                              Captured
-                            </span>
-                            {drift && (
-                              <span className="mt-0.5 block text-[11px] text-slate-500">
-                                {drift} from the registered pin
-                              </span>
-                            )}
-                          </>
+                          <span className="mt-0.5 block text-[11px] text-slate-500">
+                            {visit.distance_m !== null && visit.distance_m !== undefined
+                              ? `${distanceText(visit.distance_m)} from the registered pin`
+                              : "Captured on site"}
+                          </span>
                         ) : (
                           // Say so rather than leaving a blank the reader has
                           // to interpret.
-                          <span className="text-slate-400">Not captured</span>
+                          <span className="mt-0.5 block text-[11px] text-slate-400">Not captured</span>
+                        )}
+                        {visit.verification_note && (
+                          <span
+                            className="mt-0.5 block max-w-[16rem] truncate text-[11px] text-slate-500"
+                            title={visit.verification_note}
+                          >
+                            Justification: {visit.verification_note}
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
@@ -407,6 +534,32 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
                         <td className="px-4 py-2.5 text-right whitespace-nowrap">
                           {canModify(visit) ? (
                             <>
+                              {visit.latitude !== null &&
+                                visit.longitude !== null &&
+                                visit.beneficiary_has_location === false &&
+                                user?.role === "admin" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setAdopting(visit)}
+                                    title="Use this visit's captured fix as the household's registered pin"
+                                    className="rounded-pill px-3 py-1 text-[11px] font-semibold text-brand-800 transition hover:bg-brand-100"
+                                  >
+                                    Use this location
+                                  </button>
+                                )}
+                              {["off_site", "low_accuracy"].includes(visit.verification_status) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setNoting(visit);
+                                    setNoteText(visit.verification_note ?? "");
+                                  }}
+                                  title="Add a short justification for this verdict"
+                                  className="rounded-pill px-3 py-1 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-50"
+                                >
+                                  {visit.verification_note ? "Edit justification" : "Justify"}
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -453,6 +606,7 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
         beneficiaries={beneficiaries}
         purposes={purposes}
         visit={editing}
+        onsiteThresholdM={threshold}
         onSaved={async () => {
           // Re-fetch immediately after a save: waiting for the 30s
           // auto-refresh tick is why a freshly logged visit looked like it
@@ -515,6 +669,86 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
               </>
             ) : (
               "Delete selected"
+            )}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={noting !== null}
+        title="Justify this visit"
+        onClose={() => setNoting(null)}
+      >
+        <p className="text-sm text-slate-600">
+          The server measured <strong>{noting?.name_of_farmer}</strong>
+          {noting?.distance_m !== null && noting?.distance_m !== undefined
+            ? ` ${distanceText(noting.distance_m)} from the registered pin`
+            : ""}
+          {noting?.verification_status === "low_accuracy"
+            ? ", and the fix's accuracy radius was wider than the on-site threshold"
+            : ""}
+          . Add a short reason if you know why — it does not change the
+          measurement or block the visit.
+        </p>
+
+        <label htmlFor="verification-note" className="mt-4 block text-xs font-semibold text-slate-600">
+          Justification (optional)
+        </label>
+        <textarea
+          id="verification-note"
+          value={noteText}
+          onChange={(event) => setNoteText(event.target.value)}
+          maxLength={500}
+          rows={3}
+          placeholder="e.g. Met the farmer at the alternate site"
+          className="field mt-1.5 w-full"
+        />
+        <p className="mt-1 text-[11px] text-slate-500">{noteText.length}/500</p>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={() => setNoting(null)}>
+            Cancel
+          </button>
+          <button type="button" className="btn-primary" onClick={confirmNote} disabled={noteBusy}>
+            {noteBusy ? (
+              <>
+                <ButtonSpinner />
+                Saving…
+              </>
+            ) : (
+              "Save justification"
+            )}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={adopting !== null}
+        title="Use this visit's location?"
+        onClose={() => setAdopting(null)}
+      >
+        <p className="text-sm text-slate-600">
+          <strong>{adopting?.name_of_farmer}</strong> has no registered pin
+          (including households created by the Excel import). Adopt the fix
+          captured on this visit —{" "}
+          {adopting?.latitude}, {adopting?.longitude} — as the household's
+          registered location? Every stored verification verdict for the
+          household is re-computed, and the change is recorded in the audit
+          trail.
+        </p>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={() => setAdopting(null)}>
+            Cancel
+          </button>
+          <button type="button" className="btn-primary" onClick={confirmAdopt} disabled={adoptBusy}>
+            {adoptBusy ? (
+              <>
+                <ButtonSpinner />
+                Saving…
+              </>
+            ) : (
+              "Use this location"
             )}
           </button>
         </div>

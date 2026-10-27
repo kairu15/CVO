@@ -67,6 +67,9 @@ class SettingsService
     /** The field-visit purpose vocabulary, stored as a JSON list. */
     public const FIELD_VISIT_PURPOSES_KEY = 'field_visit_purposes';
 
+    /** Which health-record outcomes the cluster scan treats as reportable (JSON list). */
+    public const CLUSTER_REPORTABLE_OUTCOMES_KEY = 'cluster_reportable_outcomes';
+
     /**
      * Which notification types actually write rows. Every stored event type
      * and every smart-alert rule gets a `notify_*` switch, defaulting to on:
@@ -83,6 +86,7 @@ class SettingsService
         'notify_smart_bcs_out_of_range',
         'notify_smart_no_recent_visit',
         'notify_smart_barangay_flag',
+        'notify_cluster_alert',
     ];
 
     /**
@@ -102,6 +106,7 @@ class SettingsService
         'smart-bcs-out-of-range' => 'notify_smart_bcs_out_of_range',
         'smart-no-recent-visit' => 'notify_smart_no_recent_visit',
         'smart-barangay-flag' => 'notify_smart_barangay_flag',
+        'cluster-alert' => 'notify_cluster_alert',
     ];
 
     /**
@@ -117,6 +122,15 @@ class SettingsService
         self::HEALTH_OUTCOMES_KEY,
         self::FIELD_VISIT_PURPOSES_KEY,
         ...self::NOTIFICATION_KEYS,
+
+        // Field-visit verification + route-planner fallback + cluster scan.
+        'onsite_threshold_m',
+        'office_latitude',
+        'office_longitude',
+        'cluster_lookback_days',
+        'cluster_min_cases',
+        'cluster_radius_km',
+        self::CLUSTER_REPORTABLE_OUTCOMES_KEY,
     ];
 
     private const CACHE_KEY = 'settings.values';
@@ -124,7 +138,7 @@ class SettingsService
     /**
      * All groups, typed — what the System Settings screen renders.
      *
-     * @return array{contact: array<string, string|null>, alerts: array<string, int>, session: array{idle_minutes: int}, animal_types: list<string>, notifications: array<string, bool>}
+     * @return array{contact: array<string, string|null>, alerts: array<string, int>, session: array{idle_minutes: int}, verification: array{onsite_threshold_m: int}, office_location: array{latitude: float, longitude: float}, cluster: array{lookback_days: int, min_cases: int, radius_km: float, reportable_outcomes: list<string>}, animal_types: list<string>, notifications: array<string, bool>}
      */
     public function all(): array
     {
@@ -144,6 +158,24 @@ class SettingsService
             ],
             'session' => [
                 'idle_minutes' => (int) $values['session_idle_minutes'],
+            ],
+            'verification' => [
+                // The radius, in metres, inside which a captured fix counts
+                // as on-site. A policy number the office sets, not a
+                // standard — see config/cvo.php for the provisional default.
+                'onsite_threshold_m' => (int) $values['onsite_threshold_m'],
+            ],
+            'office_location' => [
+                // The route planner's fallback start point when the device
+                // cannot report its own location.
+                'latitude' => (float) $values['office_latitude'],
+                'longitude' => (float) $values['office_longitude'],
+            ],
+            'cluster' => [
+                'lookback_days' => (int) $values['cluster_lookback_days'],
+                'min_cases' => (int) $values['cluster_min_cases'],
+                'radius_km' => (float) $values['cluster_radius_km'],
+                'reportable_outcomes' => $this->clusterReportableOutcomes(),
             ],
             'animal_types' => $this->animalTypes(),
             'notifications' => $this->notifications(),
@@ -194,6 +226,62 @@ class SettingsService
     public function fieldVisitOverdueDays(): int
     {
         return $this->all()['alerts']['field_visit_overdue_days'];
+    }
+
+    /**
+     * The on-site radius for field-visit verification, in metres. A fix whose
+     * accuracy radius exceeds this number is `low_accuracy` rather than
+     * `off_site`, so one number governs both the circle and the accuracy gate.
+     */
+    public function onsiteThresholdM(): int
+    {
+        return max(1, (int) $this->all()['verification']['onsite_threshold_m']);
+    }
+
+    /** The CVO office coordinate — the route planner's fallback start. */
+    public function officeLatitude(): float
+    {
+        return $this->all()['office_location']['latitude'];
+    }
+
+    public function officeLongitude(): float
+    {
+        return $this->all()['office_location']['longitude'];
+    }
+
+    /** How far back the cluster scan looks, in days (N). */
+    public function clusterLookbackDays(): int
+    {
+        return max(1, (int) $this->all()['cluster']['lookback_days']);
+    }
+
+    /** Cases needed inside the radius before a cluster is flagged (K). */
+    public function clusterMinCases(): int
+    {
+        return max(2, (int) $this->all()['cluster']['min_cases']);
+    }
+
+    /** The neighbourhood radius, in kilometres (R). */
+    public function clusterRadiusKm(): float
+    {
+        return max(0.1, (float) $this->all()['cluster']['radius_km']);
+    }
+
+    /**
+     * Which health-record outcomes count as a case in the cluster scan,
+     * intersected with the live clinical vocabulary at read time so an
+     * outcome an admin removes cannot linger in the flags.
+     *
+     * @return list<string>
+     */
+    public function clusterReportableOutcomes(): array
+    {
+        $configured = $this->listValue(
+            self::CLUSTER_REPORTABLE_OUTCOMES_KEY,
+            'cvo.cluster_alerts.reportable_outcomes',
+        );
+
+        return array_values(array_intersect($configured, $this->healthOutcomes()));
     }
 
     /**
@@ -409,6 +497,16 @@ class SettingsService
             'field_visit_overdue_days' => (string) config('cvo.smart_alerts.no_recent_visit_days'),
 
             'session_idle_minutes' => (string) config('security.client_idle_minutes'),
+
+            'onsite_threshold_m' => (string) config('cvo.verification.onsite_threshold_m'),
+            'office_latitude' => (string) config('cvo.office_location.latitude'),
+            'office_longitude' => (string) config('cvo.office_location.longitude'),
+            'cluster_lookback_days' => (string) config('cvo.cluster_alerts.lookback_days'),
+            'cluster_min_cases' => (string) config('cvo.cluster_alerts.min_cases'),
+            'cluster_radius_km' => (string) config('cvo.cluster_alerts.radius_km'),
+            self::CLUSTER_REPORTABLE_OUTCOMES_KEY => json_encode(
+                array_values(config('cvo.cluster_alerts.reportable_outcomes', [])),
+            ),
 
             self::ANIMAL_TYPES_KEY => json_encode(array_values(config('cvo.animal_types', []))),
             self::HEALTH_OUTCOMES_KEY => json_encode(array_values(config('cvo.health_outcomes', []))),

@@ -176,6 +176,18 @@ export default function AppRoutes() {
                 </RoleRoute>
               }
             />
+            {/* Admin oversight of the field log — same page as the
+                technician's, role-scoped server-side. Needed so an off-site
+                verdict can be reviewed (and its fix adopted for an unpinned
+                household) without asking a technician to do it. */}
+            <Route
+              path="/dashboard/admin/field-visits"
+              element={
+                <RoleRoute dashboard="admin">
+                  <FieldVisitsPage roleKey="admin" />
+                </RoleRoute>
+              }
+            />
             <Route
               path="/dashboard/admin/users"
               element={

@@ -200,4 +200,73 @@ return [
         'barangay_flag_min_records' => 5,
         'barangay_flag_ratio_multiplier' => 1.5,
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | On-site visit verification
+    |--------------------------------------------------------------------------
+    |
+    | `onsite_threshold_m` is the radius, in metres, inside which a captured
+    | GPS fix counts as "taken at the registered pin". It is a POLICY NUMBER
+    | the office chooses, not a surveying or veterinary standard, and it is
+    | editable in System Settings — this is only the shipped default.
+    |
+    | UNCONFIRMED: 100 m is a provisional placeholder. A fix whose accuracy
+    | radius is wider than this threshold is reported as `low_accuracy`
+    | rather than `off_site`, so one number governs both the circle and the
+    | accuracy gate.
+    |
+    */
+    'verification' => [
+        'onsite_threshold_m' => 100,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Route planner fallback start point
+    |--------------------------------------------------------------------------
+    |
+    | The CVO office coordinate used when the technician's device cannot
+    | report its own location. Editable in System Settings; the public `site`
+    | endpoint serves it so the planner can fall back without an admin
+    | round-trip. UNCONFIRMED: placeholder for the Bayawan City hall area —
+    | the office should confirm the exact pin.
+    |
+    */
+    'office_location' => [
+        'latitude' => 9.6311,
+        'longitude' => 123.1980,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Spatial cluster scan (Feature 3)
+    |--------------------------------------------------------------------------
+    |
+    | Inputs for `php artisan clusters:scan`, which flags POSSIBLE clusters of
+    | health problems for human review. Every number below is a DECISION, not
+    | a veterinary standard, and the defaults are UNCONFIRMED placeholders the
+    | CVO veterinarian must sign off on before the flags are relied on:
+    |
+    |   lookback_days          how far back a health record counts (N)
+    |   min_cases              cases needed inside the radius to flag (K)
+    |   radius_km              neighbourhood radius (R)
+    |   reportable_outcomes    which health-record outcomes count as a case.
+    |                          The clinical vocabulary is admin-editable in
+    |                          System Settings, so this list is intersected
+    |                          with the live vocabulary at scan time — an
+    |                          outcome an admin removes stops counting.
+    |                          The data model has no severity/critical field,
+    |                          so outcomes stand in for "reportable".
+    |
+    | Every alert is labelled a statistical flag for review, never a
+    | diagnosis, and public views never see anything finer than barangay.
+    |
+    */
+    'cluster_alerts' => [
+        'lookback_days' => 14,
+        'min_cases' => 3,
+        'radius_km' => 2.0,
+        'reportable_outcomes' => ['deceased'],
+    ],
 ];

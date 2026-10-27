@@ -315,7 +315,7 @@ class SettingsTest extends TestCase
             ->assertOk()
             ->json('data.notifications');
 
-        $this->assertSame(['beneficiary-added', 'technician-assigned', 'technician-reassigned', 'field-visit-photo', 'smart-vaccination-overdue', 'smart-bcs-out-of-range', 'smart-no-recent-visit', 'smart-barangay-flag'], array_keys($data));
+        $this->assertSame(['beneficiary-added', 'technician-assigned', 'technician-reassigned', 'field-visit-photo', 'smart-vaccination-overdue', 'smart-bcs-out-of-range', 'smart-no-recent-visit', 'smart-barangay-flag', 'cluster-alert'], array_keys($data));
         $this->assertNotContains(false, $data);
     }
 

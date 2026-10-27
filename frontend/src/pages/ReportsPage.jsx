@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Bar,
   BarChart,
@@ -136,6 +137,83 @@ function ChartCard({ title, caption, state, isEmpty, emptyTitle, emptyDescriptio
         </div>
       ) : (
         <div className="mt-4 h-72">{children}</div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * On-site verification counts (Feature 1) — how the field log's geotagged
+ * visits were judged against each household's registered pin. Its own card
+ * because it is a count, not a chart, and it must survive a chart outage.
+ */
+function VerificationCard({ roleKey }) {
+  const state = useChart(useCallback(() => reportsApi.verificationSummary(), []));
+  const counts = state.data?.counts ?? {};
+  const total = state.data?.total ?? 0;
+  const review = state.data?.review_count ?? 0;
+
+  return (
+    <section className="card p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
+          Visit verification
+        </h3>
+        {state.data && (
+          <p className="text-xs text-slate-500">
+            On-site threshold: {state.data.threshold_m} m
+          </p>
+        )}
+      </div>
+
+      {state.loading ? (
+        <div className="mt-4">
+          <SkeletonList rows={2} rowClassName="h-16" />
+        </div>
+      ) : state.error ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <InlineAlert message={state.error} />
+          <button
+            type="button"
+            onClick={state.refresh}
+            className="btn-secondary !px-3.5 !py-1.5 text-xs"
+          >
+            Try again
+          </button>
+        </div>
+      ) : total === 0 ? (
+        <div className="mt-4">
+          <EmptyState
+            title="No field visits yet"
+            description="Verdicts appear once the field team logs geotagged visits."
+          />
+        </div>
+      ) : (
+        <>
+          <p className="mt-4 text-sm text-slate-600">
+            <Link
+              to={`/dashboard/${roleKey}/field-visits?verification=review`}
+              className="font-semibold text-brand-800 underline-offset-2 hover:underline"
+            >
+              {review} off-site / need review
+            </Link>{" "}
+            of {total} geotagged visits — open the filtered list to look at them.
+          </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <Stat label="On site" value={counts.on_site ?? 0} />
+            <Stat label="Off site" value={counts.off_site ?? 0} />
+            <Stat label="Low accuracy" value={counts.low_accuracy ?? 0} />
+            <Stat label="No registered pin" value={counts.no_reference_location ?? 0} />
+            <Stat label="No GPS" value={counts.no_gps ?? 0} />
+          </div>
+
+          <p className="mt-4 text-xs text-slate-500">
+            GPS can be inaccurate or spoofed, so these verdicts flag visits for
+            human review — they are not proof that anyone was (or was not) on
+            site, and they are not a diagnosis.
+          </p>
+        </>
       )}
     </section>
   );
@@ -442,6 +520,9 @@ export default function ReportsPage({ roleKey = "admin" }) {
               )}
             </div>
           </section>
+
+          {/* On-site verification counts (Feature 1) */}
+          <VerificationCard roleKey={roleKey} />
 
           {/* Chart 1 — dispersal trend over time */}
           <ChartCard

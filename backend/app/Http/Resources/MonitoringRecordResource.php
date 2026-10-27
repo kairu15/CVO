@@ -75,6 +75,15 @@ class MonitoringRecordResource extends JsonResource
                 fn () => $this->beneficiary->relationLoaded('latestFieldVisitPhoto')
                     && $this->beneficiary->latestFieldVisitPhoto !== null,
             ),
+            // The SERVER's on-site verdict for that photo's visit, computed
+            // from stored coordinates (Feature 1). Null when the household
+            // has never had a geotagged visit.
+            'visit_verification_status' => $this->whenLoaded(
+                'beneficiary',
+                fn () => $this->beneficiary->relationLoaded('latestFieldVisitPhoto')
+                    ? $this->beneficiary->latestFieldVisitPhoto?->visit_verification_status
+                    : null,
+            ),
 
             // Visit fields.
             'date_monitored' => $this->date_monitored?->toDateString(),

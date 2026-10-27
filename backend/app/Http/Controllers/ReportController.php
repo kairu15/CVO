@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ReportChartRequest;
 use App\Http\Requests\ReportRequest;
 use App\Http\Requests\ReportTemplateExportRequest;
+use App\Models\FieldVisit;
 use App\Services\AuditLogger;
+use App\Services\FieldVisitVerificationService;
 use App\Services\ReportChartService;
 use App\Services\ReportExcelService;
 use App\Services\ReportService;
@@ -244,6 +246,51 @@ class ReportController extends Controller
      * @param  Closure(): array<string, mixed>  $build
      * @return array<string, mixed>
      */
+    /**
+     * Off-site / needs-review counts for the Reports screen (Feature 1).
+     *
+     * One grouped COUNT over the stored verdicts — no rows leave the server —
+     * plus the threshold the verdicts were judged against, so the number on
+     * the screen cannot drift from the rule that produced it. `review_count`
+     * is exactly the bucket the "Off-site / needs review" filter serves.
+     */
+    public function verificationSummary(ReportChartRequest $request): JsonResponse
+    {
+        $summary = $this->cached('verification-summary', [], function (): array {
+            $rows = FieldVisit::query()
+                ->selectRaw("coalesce(verification_status, 'unreviewed') as status")
+                ->selectRaw('count(*) as total')
+                ->groupBy('status')
+                ->pluck('total', 'status');
+
+            $counts = array_fill_keys([...FieldVisitVerificationService::STATUSES, 'unreviewed'], 0);
+
+            foreach ($rows as $status => $total) {
+                $counts[$status] = (int) $total;
+            }
+
+            $review = array_sum(array_intersect_key(
+                $counts,
+                array_flip([...FieldVisitVerificationService::REVIEW_STATUSES, 'unreviewed']),
+            ));
+
+            return [
+                'counts' => $counts,
+                'review_count' => $review,
+                'total' => array_sum($counts),
+            ];
+        }, self::REPORT_CACHE_SECONDS);
+
+        return response()->json([
+            'data' => [
+                ...$summary,
+                // The rule the counts were produced by, stated alongside so
+                // the reader knows what "off site" meant today.
+                'threshold_m' => app(FieldVisitVerificationService::class)->thresholdM(),
+            ],
+        ]);
+    }
+
     private function cached(string $name, array $filters, Closure $build, int $seconds): array
     {
         return Cache::remember(

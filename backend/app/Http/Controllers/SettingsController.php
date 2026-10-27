@@ -56,6 +56,7 @@ class SettingsController extends Controller
         SettingsService::ANIMAL_TYPES_KEY,
         SettingsService::HEALTH_OUTCOMES_KEY,
         SettingsService::FIELD_VISIT_PURPOSES_KEY,
+        SettingsService::CLUSTER_REPORTABLE_OUTCOMES_KEY,
     ];
 
     public function update(SettingsRequest $request): JsonResponse
@@ -131,6 +132,19 @@ class SettingsController extends Controller
         return [
             'office_profile' => $this->settings->officeProfile(),
             'alerts' => $this->settings->alerts(),
+            // Field-visit verification + route-planner fallback + cluster
+            // scan inputs — all three are policy numbers the office owns.
+            'verification' => ['onsite_threshold_m' => $this->settings->onsiteThresholdM()],
+            'office_location' => [
+                'latitude' => $this->settings->officeLatitude(),
+                'longitude' => $this->settings->officeLongitude(),
+            ],
+            'cluster' => [
+                'lookback_days' => $this->settings->clusterLookbackDays(),
+                'min_cases' => $this->settings->clusterMinCases(),
+                'radius_km' => $this->settings->clusterRadiusKm(),
+                'reportable_outcomes' => $this->settings->clusterReportableOutcomes(),
+            ],
             'session' => [
                 'idle_minutes' => $this->settings->sessionIdleMinutes(),
                 // Read-only ceilings. Enforced by the framework's session

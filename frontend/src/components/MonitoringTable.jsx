@@ -4,6 +4,7 @@ import { EmptyState } from "./EmptyState";
 import { Icon } from "./Icons";
 import { SkeletonList } from "./Skeleton";
 import { PhotoLightbox } from "./PhotoLightbox";
+import { VerificationBadge } from "./VerificationBadge";
 
 /**
  * Table columns mirroring the CVO's Excel monitoring sheet, in order.
@@ -394,6 +395,15 @@ export function MonitoringTable({
                                 ) : (
                                   <span className="text-slate-400">—</span>
                                 )}
+                                {photo?.image_url && (
+                                  <span className="mt-1 block">
+                                    <VerificationBadge
+                                      status={record.visit_verification_status}
+                                      accuracyM={photo?.accuracy_m ?? null}
+                                      compact
+                                    />
+                                  </span>
+                                )}
                               </td>
                             );
                           }
@@ -453,6 +463,13 @@ export function MonitoringTable({
         caption={
           photoRecord?.latest_field_visit_photo && (
             <div className="flex flex-wrap gap-x-6 gap-y-1">
+              <span className="inline-flex items-center gap-1.5">
+                <strong className="font-semibold text-slate-800">Verification:</strong>
+                <VerificationBadge
+                  status={photoRecord.visit_verification_status}
+                  accuracyM={photoRecord.latest_field_visit_photo.accuracy_m ?? null}
+                />
+              </span>
               {captureTimestamp(photoRecord.latest_field_visit_photo) && (
                 <span>
                   <strong className="font-semibold text-slate-800">Captured:</strong>{" "}

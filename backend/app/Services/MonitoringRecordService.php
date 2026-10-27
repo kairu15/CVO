@@ -252,6 +252,10 @@ class MonitoringRecordService
             // the map below needs it and must not lazy-load per photo.
             ->select('field_visit_photos.*')
             ->addSelect('field_visits.beneficiary_id')
+            // The visit's stored on-site verdict rides along with its newest
+            // photo, so the monitoring table and lightbox can badge the
+            // capture without a second query per row (Feature 1).
+            ->addSelect('field_visits.verification_status as visit_verification_status')
             ->selectRaw(
                 'row_number() over ('
                 .'partition by field_visits.beneficiary_id '

@@ -56,6 +56,7 @@ export const roles = {
         items: [
           { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/admin/monitoring" },
           { label: "Beneficiaries", icon: "clipboard", to: "/dashboard/admin/beneficiaries" },
+          { label: "Field Visits", icon: "route", to: "/dashboard/admin/field-visits" },
           { label: "Technicians", icon: "map-pin", to: "/dashboard/admin/technicians" },
         ],
       },

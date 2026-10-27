@@ -53,6 +53,20 @@ class FieldVisitResource extends JsonResource
                 $registeredLng,
             ),
 
+            // Feature 1 — the SERVER's stored verdict over the photo/trip
+            // fix and the registered pin. Computed from stored coordinates
+            // on every save and sync replay (FieldVisitVerificationService),
+            // never taken from the device. A review aid, not proof.
+            'verification_status' => $this->verification_status,
+            'distance_m' => $this->distance_m !== null ? (int) $this->distance_m : null,
+            'gps_accuracy_m' => $this->gps_accuracy_m !== null ? (float) $this->gps_accuracy_m : null,
+            'verification_note' => $this->verification_note,
+            'verification_note_at' => $this->verification_note_at?->toIso8601String(),
+            // Whether the household this visit belongs to still lacks a
+            // registered pin — the condition for the admin's "use this
+            // visit's location" action.
+            'beneficiary_has_location' => $registeredLat !== null && $registeredLng !== null,
+
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

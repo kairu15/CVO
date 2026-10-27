@@ -49,6 +49,11 @@ class SettingsRequest extends FormRequest
             // never so wide that "on site" stops meaning anything.
             'onsite_threshold_m' => ['sometimes', 'integer', 'min:1', 'max:10000'],
 
+            // How far back a dispersal/re-dispersal may be dated. Zero means
+            // "today only"; the ceiling keeps a mistyped year from backfilling
+            // the whole programme in one field visit.
+            'dispersal_max_backdate_days' => ['sometimes', 'integer', 'min:0', 'max:3650'],
+
             // The route planner's fallback start (the CVO office pin).
             'office_latitude' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
             'office_longitude' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],

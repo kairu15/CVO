@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AnimalDispersalController;
 use App\Http\Controllers\AnimalHealthController;
 use App\Http\Controllers\AnimalTypeController;
 use App\Http\Controllers\AuthController;
@@ -292,8 +293,38 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::post('sync/conflicts', [SyncConflictController::class, 'store'])
         ->name('api.sync.conflicts.store');
 
-    // Livestock pass-on / re-dispersal chain
+    // Livestock pass-on / re-dispersal chain (beneficiary-centric)
     Route::apiResource('dispersal-events', DispersalEventController::class);
+
+    // The ANIMAL ownership chain — one animal whose owner changes over time,
+    // and the single source the flight path is drawn from. Gated per
+    // capability; row scoping (a technician sees only their assigned
+    // households) is enforced in AnimalDispersalService's query layer.
+    //
+    // Note the void path is `ownership-events/{id}/void`, NOT
+    // `dispersal-events/{id}/void`: the latter would collide with the
+    // beneficiary-centric resource above and put two different tables behind
+    // one URL prefix.
+    Route::post('dispersals', [AnimalDispersalController::class, 'disperse'])
+        ->middleware('permission:manage_dispersal')->name('api.dispersals.store');
+    Route::post('animals/{animal}/redispersals', [AnimalDispersalController::class, 'redisperse'])
+        ->middleware('permission:manage_redispersal')->name('api.animals.redispersals.store');
+    Route::post('animals/{animal}/returns', [AnimalDispersalController::class, 'returnToCvo'])
+        ->middleware('permission:manage_redispersal')->name('api.animals.returns.store');
+    Route::post('animals/{animal}/pass-ons', [AnimalDispersalController::class, 'passOn'])
+        ->middleware('permission:manage_dispersal')->name('api.animals.pass-ons.store');
+    Route::post('ownership-events/{event}/void', [AnimalDispersalController::class, 'voidEvent'])
+        ->middleware('permission:void_dispersal_event')->name('api.ownership-events.void');
+
+    // Which animals a household currently holds — the UI resolves the animal
+    // to act on from the beneficiary row it already has.
+    Route::get('beneficiaries/{id}/animals', [AnimalDispersalController::class, 'beneficiaryAnimals'])
+        ->middleware('permission:view_flight_path')->name('api.beneficiaries.animals');
+
+    Route::get('animals/{animal}/ownership-chain', [AnimalDispersalController::class, 'ownershipChain'])
+        ->middleware('permission:view_flight_path')->name('api.animals.ownership-chain');
+    Route::get('animals/{animal}/flight-path', [AnimalDispersalController::class, 'flightPath'])
+        ->middleware('permission:view_flight_path')->name('api.animals.flight-path');
 
     // Admin: the /admin module, gated PER CAPABILITY by the role_permissions
     // matrix (EnsurePermission) instead of one role check. With the shipped

@@ -86,6 +86,18 @@ class ActivityLog extends Model
         'dispersal_created',
         'dispersal_updated',
         'dispersal_deleted',
+        // Ownership chain — one animal whose owner changes over time. Each
+        // service call (`AnimalDispersalService`) writes exactly ONE row here,
+        // so a handover and its audit entry cannot disagree about what
+        // happened.
+        'animal_created',
+        'animal_updated',
+        'animal_deleted',
+        'dispersal_recorded',
+        're_dispersal_recorded',
+        'pass_on_recorded',
+        'return_recorded',
+        'dispersal_event_voided',
         'monitoring_created',
         'monitoring_updated',
         'monitoring_deleted',

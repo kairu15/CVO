@@ -14,6 +14,9 @@ vi.mock("../context/AuthContext", () => ({
 }));
 
 vi.mock("../context/OfflineQueueContext", () => ({
+  // Mirrors the real module: the optional hook resolves to null outside a
+  // provider, which is the state these page tests render in.
+  useOptionalOfflineQueue: () => null,
   useNotifyOfflineSaved: () => vi.fn(),
 }));
 

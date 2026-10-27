@@ -1,82 +1,40 @@
 import { useCallback, useEffect, useState } from "react";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { useAutoRefresh } from "../api/queries";
-import { dispersalApi } from "../api/dispersalApi";
 import { getErrorMessage } from "../api/client";
-import { enqueue, isNetworkError } from "../lib/offlineQueue";
-import { useNotifyOfflineSaved } from "../context/OfflineQueueContext";
-import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { DispersalMap } from "../components/DispersalMap";
-import { ConfirmDialog } from "../components/ConfirmDialog";
+import { DispersalDialog } from "../components/DispersalDialog";
 import { EmptyState } from "../components/EmptyState";
 import { InlineAlert } from "../components/InlineAlert";
-import { ButtonSpinner } from "../components/LoadingSpinner";
-import { Modal } from "../components/Modal";
-import { SignaturePad } from "../components/SignaturePad";
-import { TextField } from "../components/TextField";
 import { useAuth } from "../context/AuthContext";
-import { useBarangays } from "../hooks/useBarangays";
 
 /**
  * "Dispersal Map" — every geo-tagged beneficiary on one map, for the roles
  * with city-wide or field oversight (admin, doctor, technician).
  *
- * Technicians additionally get the "Record re-dispersal" action: offspring of
- * an assigned beneficiary's animal is passed on to a new household, either an
- * existing beneficiary or one registered inline with its own geo-tag.
+ * The trail a pin draws is the animal's OWNERSHIP CHAIN — where it came from
+ * (CVO), which beneficiary received it, and each later handover, in date
+ * order — read from the recorded ownership events rather than reconstructed
+ * from field visits.
+ *
+ * Recording happens through the one shared DispersalDialog: this page opens it
+ * from a pin's "Re-disperse" action, so a handover starts exactly where the
+ * animal already is.
  */
 export default function DispersalMapPage({ roleKey }) {
   const { user } = useAuth();
-  const [barangays] = useBarangays();
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+  // The shared dialog: `{ mode, beneficiary }` while open, null closed.
+  const [dispersal, setDispersal] = useState(null);
 
-  // Re-dispersal modal state
-  const [recordOpen, setRecordOpen] = useState(false);
-  const [source, setSource] = useState("");
-  const [form, setForm] = useState({
-    new_name_of_farmer: "",
-    new_address: "",
-    new_animal_type: "",
-    new_sex: "F",
-    date_dispersed: "",
-    remarks: "",
-  });
-  const [formErrors, setFormErrors] = useState({});
-  const [submitting, setSubmitting] = useState(false);
-  // E-signature of the dispersal agreement (item 7): the recipient signs the
-  // pad; the PNG data URL travels with the record. Required in the UI — a
-  // dispersal without a captured agreement is not a complete record.
-  const [signature, setSignature] = useState(null);
-  // Unsaved-input guard for the re-dispersal form — see FieldVisitFormModal.
-  const [confirmDiscard, setConfirmDiscard] = useState(false);
-  const notifyOfflineSaved = useNotifyOfflineSaved();
-
-  const reDispersalDirty =
-    Boolean(recordOpen) &&
-    Boolean(
-      source ||
-        form.new_name_of_farmer ||
-        form.new_address ||
-        form.new_animal_type ||
-        form.date_dispersed ||
-        form.remarks ||
-        signature,
-    );
-  useUnsavedChangesGuard({ when: reDispersalDirty && !submitting });
-
-  /** Close the re-dispersal form — asking first when input would be lost. */
-  function requestCloseReDispersal() {
-    if (reDispersalDirty && !submitting) {
-      setConfirmDiscard(true);
-      return;
-    }
-    setRecordOpen(false);
-  }
-
-  const isTechnician = user?.role === "technician" || roleKey === "technician";
+  const role = roleKey ?? user?.role;
+  const isTechnician = role === "technician";
+  // Only the roles that may record a handover get the pin action
+  // (manage_dispersal / manage_redispersal); a doctor's access is read-only.
+  const canDisperse = role === "admin" || role === "technician";
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -96,109 +54,9 @@ export default function DispersalMapPage({ roleKey }) {
     load();
   }, [load]);
 
-  // Quietly re-fetch so re-dispersals registered elsewhere appear without a
+  // Quietly re-fetch so handovers registered elsewhere appear without a
   // manual reload.
   useAutoRefresh(load);
-
-  function update(field) {
-    return (event) => {
-      const { value } = event.target;
-      setForm((prev) => ({ ...prev, [field]: value }));
-      setFormErrors((prev) => ({ ...prev, [field]: undefined }));
-    };
-  }
-
-  function handleSignature(dataUrl) {
-    setSignature(dataUrl);
-    setFormErrors((prev) => ({ ...prev, signature: undefined }));
-  }
-
-  async function submitReDispersal(event) {
-    event.preventDefault();
-    setFormErrors({});
-    setNotice(null);
-
-    const next = {};
-    if (!source) next.source = "Select the beneficiary whose animal produced the offspring.";
-    if (!form.new_name_of_farmer.trim()) next.new_name_of_farmer = "Enter the recipient's name.";
-    if (!form.new_address.trim()) next.new_address = "Select the recipient's barangay.";
-    if (!form.new_animal_type) next.new_animal_type = "Select the animal type.";
-    if (!signature) {
-      next.signature = "Capture the recipient's signature to complete the agreement.";
-    }
-    if (Object.keys(next).length > 0) {
-      setFormErrors(next);
-      return;
-    }
-
-    const payload = {
-      beneficiary_id: Number(source),
-      parent_beneficiary_id: Number(source),
-      dispersal_type: "re-dispersal",
-      register_new: true,
-      date_dispersed: form.date_dispersed || undefined,
-      remarks: form.remarks.trim() || undefined,
-      new_name_of_farmer: form.new_name_of_farmer.trim(),
-      new_address: form.new_address.trim(),
-      new_animal_type: form.new_animal_type,
-      new_sex: form.new_sex,
-      signature,
-      signature_captured_at: new Date().toISOString(),
-    };
-
-    function resetReDispersal() {
-      setRecordOpen(false);
-      setSource("");
-      setSignature(null);
-      setForm({
-        new_name_of_farmer: "",
-        new_address: "",
-        new_animal_type: "",
-        new_sex: "F",
-        date_dispersed: "",
-        remarks: "",
-      });
-    }
-
-    setSubmitting(true);
-    try {
-      try {
-        await dispersalApi.create(payload);
-      } catch (err) {
-        // No connection: queue the whole registration + dispersal (including
-        // the signed agreement) so the field work is not lost, and replay it in
-        // order on reconnect. A queued-empty beneficiary is only created once
-        // the payload actually lands.
-        if (isNetworkError(err)) {
-          await enqueue({
-            kind: "dispersal",
-            mode: "create",
-            label: `Re-dispersal — ${payload.new_name_of_farmer}`,
-            payload,
-            userId: user?.id ?? null,
-          });
-          resetReDispersal();
-          notifyOfflineSaved({
-            noun: "re-dispersal record",
-            label: payload.new_name_of_farmer,
-          });
-          await load();
-          return;
-        }
-        throw err;
-      }
-
-      resetReDispersal();
-      setNotice("Re-dispersal recorded — the recipient now appears on the map.");
-      await load();
-    } catch (err) {
-      setFormErrors({ form: getErrorMessage(err) });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const assignable = beneficiaries.filter((b) => b.technician_id === user?.id);
 
   return (
     <div className="space-y-6">
@@ -210,26 +68,12 @@ export default function DispersalMapPage({ roleKey }) {
               Dispersal Map
             </h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              Every geo-tagged beneficiary in the program. Markers are colored
-              by animal type; a full table view follows the map for
-              accessibility.
+              Every geo-tagged beneficiary in the program. Markers are colored by
+              animal type; a full table view follows the map for accessibility.
+              {canDisperse &&
+                " Open a pin to show its flight path — the animal's recorded journey from CVO through each owner — or to re-disperse it."}
             </p>
           </div>
-          {isTechnician && (
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => setRecordOpen(true)}
-              disabled={assignable.length === 0}
-              title={
-                assignable.length === 0
-                  ? "No beneficiaries are assigned to you yet"
-                  : undefined
-              }
-            >
-              Record re-dispersal
-            </button>
-          )}
         </div>
       </section>
 
@@ -243,7 +87,16 @@ export default function DispersalMapPage({ roleKey }) {
         />
       )}
 
-      <DispersalMap beneficiaries={beneficiaries} loading={loading} error={null} />
+      <DispersalMap
+        beneficiaries={beneficiaries}
+        loading={loading}
+        error={null}
+        onRedisperse={
+          canDisperse
+            ? (beneficiary) => setDispersal({ mode: "re-disperse", beneficiary })
+            : undefined
+        }
+      />
 
       {beneficiaries.length === 0 && !loading && !error && (
         <section className="card">
@@ -262,167 +115,15 @@ export default function DispersalMapPage({ roleKey }) {
         </section>
       )}
 
-      <Modal
-        open={recordOpen}
-        title="Record re-dispersal (pass-on)"
-        onClose={requestCloseReDispersal}
-      >
-        <form onSubmit={submitReDispersal} noValidate className="space-y-3">
-          {formErrors.form && <InlineAlert message={formErrors.form} />}
-
-          <div>
-            <label htmlFor="redispersal-source" className="block text-sm font-medium text-slate-700">
-              Offspring of (your assigned beneficiary)
-            </label>
-            <select
-              id="redispersal-source"
-              className="field mt-1.5"
-              value={source}
-              onChange={(event) => setSource(event.target.value)}
-            >
-              <option value="">Select beneficiary…</option>
-              {assignable.map((beneficiary) => (
-                <option key={beneficiary.id} value={beneficiary.id}>
-                  {beneficiary.name_of_farmer} — {beneficiary.address} ({beneficiary.animal_type})
-                </option>
-              ))}
-            </select>
-            {formErrors.source && (
-              <p className="mt-1.5 text-xs font-medium text-red-600">{formErrors.source}</p>
-            )}
-          </div>
-
-          <TextField
-            id="redispersal-recipient"
-            label="New recipient — name of farmer"
-            value={form.new_name_of_farmer}
-            onChange={update("new_name_of_farmer")}
-            error={formErrors.new_name_of_farmer}
-          />          <div>
-            <label htmlFor="redispersal-address" className="block text-sm font-medium text-slate-700">
-              Recipient barangay
-            </label>
-            <select
-              id="redispersal-address"
-              className="field mt-1.5"
-              value={form.new_address}
-              onChange={update("new_address")}
-            >
-              <option value="">Select barangay…</option>
-              {barangays.map((barangay) => (
-                <option key={barangay.id ?? barangay.name} value={barangay.name}>
-                  {barangay.name}
-                </option>
-              ))}
-            </select>
-            {formErrors.new_address && (
-              <p className="mt-1.5 text-xs font-medium text-red-600">{formErrors.new_address}</p>
-            )}
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="redispersal-animal" className="block text-sm font-medium text-slate-700">
-                Animal type
-              </label>
-              <select
-                id="redispersal-animal"
-                className="field mt-1.5"
-                value={form.new_animal_type}
-                onChange={update("new_animal_type")}
-              >
-                <option value="">Select animal…</option>
-                <option>Carabao</option>
-                <option>Cattle</option>
-                <option>Goat</option>
-                <option>Swine</option>
-                <option>Boar</option>
-              </select>
-              {formErrors.new_animal_type && (
-                <p className="mt-1.5 text-xs font-medium text-red-600">
-                  {formErrors.new_animal_type}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="redispersal-sex" className="block text-sm font-medium text-slate-700">
-                Sex of animal
-              </label>
-              <select
-                id="redispersal-sex"
-                className="field mt-1.5"
-                value={form.new_sex}
-                onChange={update("new_sex")}
-              >
-                <option value="F">Female (F)</option>
-                <option value="M">Male (M)</option>
-              </select>
-            </div>
-          </div>
-
-          <TextField
-            id="redispersal-date"
-            label="Date dispersed"
-            type="date"
-            value={form.date_dispersed}
-            onChange={update("date_dispersed")}
-            error={formErrors.date_dispersed}
-          />
-
-          <TextField
-            id="redispersal-remarks"
-            label="Remarks"
-            value={form.remarks}
-            onChange={update("remarks")}
-            error={formErrors.remarks}
-          />
-
-          <SignaturePad
-            id="redispersal-signature"
-            label="Recipient's signature (agreement)"
-            hint="Signature of the recipient household accepting the animal."
-            onChange={handleSignature}
-            error={formErrors.signature}
-          />
-
-          <p className="text-xs text-slate-500">
-            The recipient household is registered with the animal type above;
-            its map pin is placed automatically from the chosen barangay. The
-            signature is stored with the agreement and cannot be edited
-            afterwards — record a new re-dispersal to correct a mistake.
-          </p>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setRecordOpen(false)}
-            >
-              Cancel
-            </button>
-            <button type="submit" className="btn-primary" disabled={submitting}>
-              {submitting ? (
-                <>
-                  <ButtonSpinner />
-                  Saving…
-                </>
-              ) : (
-                "Record re-dispersal"
-              )}
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      <ConfirmDialog
-        open={confirmDiscard}
-        message="This re-dispersal hasn't been recorded yet. Closing the form discards what you've entered, including the signature."
-        onConfirm={() => {
-          setConfirmDiscard(false);
-          setRecordOpen(false);
+      <DispersalDialog
+        open={dispersal !== null}
+        mode={dispersal?.mode ?? "re-disperse"}
+        beneficiary={dispersal?.beneficiary ?? null}
+        onClose={() => setDispersal(null)}
+        onSaved={async () => {
+          setNotice("Ownership recorded — the flight path now draws the recorded events.");
+          await load();
         }}
-        onCancel={() => setConfirmDiscard(false)}
       />
     </div>
   );

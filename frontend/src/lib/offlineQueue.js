@@ -4,6 +4,7 @@ import { healthRecordsApi } from "../api/healthRecordsApi";
 import { monitoringApi } from "../api/monitoringApi";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { dispersalApi } from "../api/dispersalApi";
+import { animalOwnershipApi } from "../api/animalOwnershipApi";
 import { syncApi } from "../api/syncApi";
 import { withOfflineQueuedAt } from "../api/client";
 
@@ -343,6 +344,44 @@ const consumers = {
       return dispersalApi.create(item.payload);
     },
   },
+
+  /**
+   * Ownership-chain actions (re-disperse / return / pass on).
+   *
+   * These are EDITS of an animal's chain, so they carry the `base_event_id`
+   * the technician saw when they queued the item. If the chain moved on —
+   * another device, or an admin backfilling — the server answers 409
+   * `stale_event`; `conflictStatuses` below parks the item as a CONFLICT
+   * instead of applying it, exactly as the brief requires.
+   *
+   * `rebaseConflict` is what makes "keep mine" meaningful here: rather than
+   * replaying the stale token (which would 409 forever), it re-reads the
+   * animal's current latest event and re-arms the SAME intended handover on
+   * top of the state the server actually has.
+   */
+  "animal-ownership": {
+    conflictEntity: "animal_ownership_event",
+    conflictStatuses: [409],
+    async apply(item) {
+      const { action, animalId, payload } = item.payload;
+
+      if (action === "disperse") return animalOwnershipApi.disperse(payload);
+      if (action === "redisperse") return animalOwnershipApi.redisperse(animalId, payload);
+      if (action === "pass-on") return animalOwnershipApi.passOn(animalId, payload);
+      if (action === "return") return animalOwnershipApi.returnToCvo(animalId, payload);
+
+      throw new Error(`Unknown ownership action [${action}].`);
+    },
+    async rebaseConflict(item) {
+      const { animalId, payload } = item.payload;
+      const chain = await animalOwnershipApi.ownershipChain(animalId);
+
+      return {
+        ...item.payload,
+        payload: { ...payload, base_event_id: chain?.latest_event_id ?? null },
+      };
+    },
+  },
 };
 
 /** An edit of an existing record that has not already been confirmed to overwrite. */
@@ -467,20 +506,37 @@ export async function flushQueue() {
         }
 
         await markSynced(item.id);
-        synced += 1;
-      } catch (error) {
+        synced += 1;      } catch (error) {
         const retryable = isRetryable(error);
 
+        // A server-DECLARED conflict (the 409 a stale base_event_id earns):
+        // the payload is valid, the world moved. Park it for the technician's
+        // decision rather than retrying a token that will never be accepted.
+        const serverConflict =
+          !retryable && (consumer.conflictStatuses ?? []).includes(error?.response?.status);
+
         await patch(item.id, {
-          status: retryable ? "pending" : "error",
+          status: serverConflict ? "conflict" : retryable ? "pending" : "error",
           error: messageOf(error),
           attempts: item.attempts + 1,
+          ...(serverConflict
+            ? {
+                conflict: {
+                  entityType: consumer.conflictEntity ?? null,
+                  entityId: item.payload?.animalId ?? item.serverId ?? null,
+                  serverUpdatedAt: null,
+                },
+              }
+            : {}),
         });
 
         // Transport failure: the rest would fail identically — stop and wait
         // for the next reconnect rather than burning through the queue.
         if (retryable) break;
-
+        if (serverConflict) {
+          conflicts += 1;
+          continue;
+        }
         failed += 1;
       }
     }
@@ -505,7 +561,24 @@ export async function resolveConflict(id, decision) {
   if (!item) return;
 
   if (decision === "overwrite") {
-    await patch(id, { resolve: "overwrite", status: "pending", error: null });
+    // A consumer may need to re-arm the payload against the server's current
+    // state before "keep mine" can succeed — the ownership chain's stale
+    // base_event_id, for one. Refreshing it here means the technician's
+    // intent is applied, not their stale token.
+    const consumer = consumers[item.kind];
+    let payload = item.payload;
+
+    if (typeof consumer?.rebaseConflict === "function") {
+      try {
+        payload = await consumer.rebaseConflict(item);
+      } catch {
+        // Could not reach the server to refresh — leave the item parked so
+        // nothing is discarded and the technician can retry.
+        return;
+      }
+    }
+
+    await patch(id, { payload, resolve: "overwrite", status: "pending", error: null });
     await flushQueue();
     return;
   }

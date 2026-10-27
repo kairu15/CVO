@@ -15,7 +15,7 @@ import {
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Icon } from "./Icons";
 import { InlineAlert } from "./InlineAlert";
-import { beneficiariesApi } from "../api/beneficiariesApi";
+import { fetchOwnershipTrail } from "../lib/ownershipPath";
 import { getErrorMessage } from "../api/client";
 import {
   buildArrows,
@@ -176,9 +176,20 @@ function colorFor(beneficiary) {
  * @param {boolean} [props.showFlightPath] offer the show/hide toggle (viewer
  *   mode only — the picker's popup has no trail to reveal)
  */
-function popupHtml(beneficiary, { flightActive = false, showFlightPath = false } = {}) {
+function popupHtml(
+  beneficiary,
+  { flightActive = false, showFlightPath = false, offerRedisperse = false } = {},
+) {
   const badge = beneficiary.is_re_dispersal
     ? '<p style="margin:4px 0 0;padding:1px 8px;display:inline-block;border-radius:9999px;background:#e7efdd;color:#2d4d19;font-size:10px;font-weight:600;text-transform:uppercase">Re-dispersal recipient</p>'
+    : "";
+  // The pin's own "Re-disperse" action: a dispersal starts where the animal
+  // already is, so the map pin is the natural place to record one.
+  const redisperse = offerRedisperse
+    ? '<button type="button" class="cvo-redisperse"' +
+      ` data-redisperse-id="${escapeHtml(String(beneficiary.id))}"` +
+      ' style="margin-top:8px;margin-left:6px;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:3px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">' +
+      "Re-disperse</button>"
     : "";
   const toggle = showFlightPath
     ? '<button type="button" class="cvo-path-toggle"' +
@@ -194,6 +205,7 @@ function popupHtml(beneficiary, { flightActive = false, showFlightPath = false }
     `<p style="margin:0;font-size:12px;color:#64748b">${escapeHtml(beneficiary.address)} &middot; ${escapeHtml(beneficiary.animal_type)}</p>` +
     badge +
     toggle +
+    redisperse +
     `</div>`
   );
 }
@@ -247,12 +259,15 @@ export function DispersalMap({
   onPick,
   center,
   selected = null,
+  onRedisperse,
 }) {
   const containerRef = useRef(null);
   const shellRef = useRef(null); // the box that flips to fullscreen (container + overlay)
   const mapRef = useRef(null);
   const markersRef = useRef([]); // { marker, beneficiary }
   const selectedMarkerRef = useRef(null);
+  // Latest "Re-disperse" handler, read by the delegated popup click below.
+  const onRedisperseRef = useRef(onRedisperse);
   const onPickRef = useRef(onPick);
   // True while fullscreen is emulated with fixed positioning because the
   // Fullscreen API is missing (iPhone Safari) or refused the request.
@@ -475,7 +490,7 @@ export function DispersalMap({
     setFlightPath(base);
 
     try {
-      const payload = await beneficiariesApi.path(id);
+      const payload = await fetchOwnershipTrail(id);
       // The user may have hidden the trail (or opened another) while this was
       // in flight: applying the result then would pop the chip back up after
       // it was dismissed.
@@ -557,7 +572,7 @@ export function DispersalMap({
 
         if (points === undefined) {
           try {
-            const payload = await beneficiariesApi.path(id);
+            const payload = await fetchOwnershipTrail(id);
             points = Array.isArray(payload?.points) ? payload.points : [];
             cache.set(id, points);
           } catch {
@@ -593,6 +608,12 @@ export function DispersalMap({
     });
   }
 
+  // Latest handler, read by the delegated popup click — popups are created
+  // once per marker, so a closure would pin a stale callback.
+  useEffect(() => {
+    onRedisperseRef.current = onRedisperse;
+  }, [onRedisperse]);
+
   // Latest toggle, read by the delegated popup click — popups are created
   // once per marker, so a closure would pin a stale state.
   useEffect(() => {
@@ -610,11 +631,22 @@ export function DispersalMap({
     if (!shell || onPick) return undefined;
 
     function onClick(event) {
-      const button = event.target?.closest?.(".cvo-path-toggle");
-      if (!button) return;
-      const id = button.getAttribute("data-path-id");
-      const beneficiary = visible.find((row) => String(row.id) === String(id));
-      if (beneficiary) toggleRef.current?.(beneficiary);
+      const toggle = event.target?.closest?.(".cvo-path-toggle");
+
+      if (toggle) {
+        const id = toggle.getAttribute("data-path-id");
+        const beneficiary = visible.find((row) => String(row.id) === String(id));
+        if (beneficiary) toggleRef.current?.(beneficiary);
+        return;
+      }
+
+      const redisperse = event.target?.closest?.(".cvo-redisperse");
+
+      if (redisperse) {
+        const id = redisperse.getAttribute("data-redisperse-id");
+        const beneficiary = visible.find((row) => String(row.id) === String(id));
+        if (beneficiary) onRedisperseRef.current?.(beneficiary);
+      }
     }
 
     shell.addEventListener("click", onClick);
@@ -640,6 +672,7 @@ export function DispersalMap({
         ?.setHTML(
           popupHtml(entry.beneficiary, {
             showFlightPath: !onPick,
+            offerRedisperse: !onPick && Boolean(onRedisperseRef.current),
             flightActive: isActive,
           }),
         );
@@ -904,6 +937,7 @@ export function DispersalMap({
     (beneficiary) =>
       popupHtml(beneficiary, {
         showFlightPath: !onPickRef.current,
+        offerRedisperse: !onPickRef.current && Boolean(onRedisperseRef.current),
         flightActive: String(flightRef.current.id) === String(beneficiary.id),
       }),
     [],

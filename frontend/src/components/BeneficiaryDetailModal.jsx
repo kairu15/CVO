@@ -16,8 +16,16 @@ import { Icon } from "./Icons";
  * @param {() => void} props.onClose
  * @param {(id: number|null) => string} [props.technicianName] fallback
  *   resolver for the technician name from the page's own list
+ * @param {(beneficiary: object, mode: "disperse"|"re-disperse") => void}
+ *   [props.onOpenDispersal] renders the dispositions that open the shared
+ *   DispersalDialog for this household
  */
-export function BeneficiaryDetailModal({ beneficiary, onClose, technicianName }) {
+export function BeneficiaryDetailModal({
+  beneficiary,
+  onClose,
+  technicianName,
+  onOpenDispersal,
+}) {
   if (!beneficiary) return null;
 
   const sourceLabels = {
@@ -76,6 +84,26 @@ export function BeneficiaryDetailModal({ beneficiary, onClose, technicianName })
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
         {beneficiary.id ? (
           <div className="flex flex-wrap items-center gap-2">
+            {onOpenDispersal && (
+              <button
+                type="button"
+                className="btn-primary !px-3.5 !py-1.5 text-xs"
+                onClick={() => onOpenDispersal(beneficiary, "re-disperse")}
+              >
+                <Icon name="refresh" className="h-3.5 w-3.5" />
+                Re-disperse animal
+              </button>
+            )}
+            {onOpenDispersal && (
+              <button
+                type="button"
+                className="btn-secondary !px-3.5 !py-1.5 text-xs"
+                onClick={() => onOpenDispersal(beneficiary, "disperse")}
+              >
+                <Icon name="plus" className="h-3.5 w-3.5" />
+                Disperse animal
+              </button>
+            )}
             <Link
               to={`/dashboard/admin/beneficiaries/${beneficiary.id}/lineage`}
               className="btn-secondary !px-3.5 !py-1.5 text-xs"

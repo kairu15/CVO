@@ -76,6 +76,16 @@ const PROFILE_FIELDS = [
   },
 ];
 
+const DISPERSAL_FIELDS = [
+  {
+    key: "dispersal_max_backdate_days",
+    label: "Backdating window (days)",
+    min: 0,
+    max: 3650,
+    hint: "How far back an animal handover may be dated. A record typed up after a week in the barangay is normal; one dated into a previous year is not. A future date is never accepted, whatever this says.",
+  },
+];
+
 const ALERT_FIELDS = [
   {
     key: "vaccination_interval_days",
@@ -124,6 +134,15 @@ const NOTIFICATION_PREFERENCES = [
     ],
   },
   {
+    group: "Animal ownership",
+    items: [
+      { key: "notify_animal_dispersed", type: "animal-dispersed", label: "Animal dispersed to a household" },
+      { key: "notify_animal_re_dispersed", type: "animal-re-dispersed", label: "Animal re-dispersed onward" },
+      { key: "notify_animal_returned", type: "animal-returned", label: "Animal returned to the CVO" },
+      { key: "notify_animal_event_voided", type: "animal-event-voided", label: "Ownership record voided" },
+    ],
+  },
+  {
     group: "Smart alerts (daily scan)",
     items: [
       { key: "notify_smart_vaccination_overdue", type: "smart-vaccination-overdue", label: "Overdue vaccination" },
@@ -162,6 +181,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
   const [alerts, setAlerts] = useState({});
   const [officeLocation, setOfficeLocation] = useState({});
   const [session, setSession] = useState({});
+  const [dispersal, setDispersal] = useState({});
   const [animalTypes, setAnimalTypes] = useState([]);
   const [newAnimalType, setNewAnimalType] = useState("");
   const [healthOutcomes, setHealthOutcomes] = useState([]);
@@ -203,6 +223,11 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
       office_longitude: settings.office_location?.longitude ?? "",
     });
     setSession(settings.session ?? {});
+    // Flattened to the settings KEY the PATCH speaks (dispersal_max_backdate_
+    // days) rather than the payload group's max_backdate_days.
+    setDispersal({
+      dispersal_max_backdate_days: settings.dispersal?.max_backdate_days ?? "",
+    });
     setAnimalTypes(settings.animal_types ?? []);
     setHealthOutcomes(settings.health_outcomes ?? []);
     setFieldVisitPurposes(settings.field_visit_purposes ?? []);
@@ -489,6 +514,64 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
                   {savingSection !== "alerts" && <Icon name="check" className="h-4 w-4" />}
                 </button>
               </div>
+            </form>
+          </section>
+
+          {/* Writable: how far back an animal handover may be dated */}
+          <section className="card p-6">
+            <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
+              Animal ownership
+            </h3>
+            <p className="mt-1.5 text-xs text-slate-500">
+              How far back a dispersal or re-dispersal may be dated. Field
+              records are typed up after the visit, so a short window is
+              normal; the ceiling is here so a mistyped year cannot backfill
+              the whole programme at once. The ownership chain itself — who
+              held an animal, from when, and where — is recorded per animal,
+              not set here.
+            </p>
+
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                save(
+                  "dispersal",
+                  DISPERSAL_FIELDS.map((field) => field.key),
+                  dispersal,
+                  "Backdating window saved. New handovers follow it now.",
+                );
+              }}
+              className="mt-4 max-w-md"
+            >
+              {DISPERSAL_FIELDS.map(({ key, label, min, max, hint }) => (
+                <Field
+                  key={key}
+                  id={`dispersal-${key}`}
+                  label={label}
+                  hint={hint}
+                  error={fieldErrors[key]}
+                >
+                  <input
+                    id={`dispersal-${key}`}
+                    type="number"
+                    min={min}
+                    max={max}
+                    required
+                    value={dispersal[key] ?? ""}
+                    onChange={(event) => setField(setDispersal, key, event.target.value)}
+                    className="field mt-1 w-full text-sm"
+                  />
+                </Field>
+              ))}
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="btn-primary mt-4 inline-flex items-center gap-2 rounded-pill px-5 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                {savingSection === "dispersal" ? "Saving…" : "Save backdating window"}
+                {savingSection !== "dispersal" && <Icon name="check" className="h-4 w-4" />}
+              </button>
             </form>
           </section>
 

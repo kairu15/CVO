@@ -49,6 +49,20 @@ class UserNotification extends Model
     public const TYPE_FIELD_VISIT_PHOTO = 'field-visit-photo';
 
     /*
+     * Ownership-chain events. Unlike the derived dispersal feed (which
+     * restates the beneficiary pass-on table on read), an animal handover has
+     * no row anything else re-derives from, so each one is WRITTEN here, once,
+     * to the technicians assigned to the old and new holders and to admins.
+     */
+    public const TYPE_ANIMAL_DISPERSED = 'animal-dispersed';
+
+    public const TYPE_ANIMAL_RE_DISPERSED = 'animal-re-dispersed';
+
+    public const TYPE_ANIMAL_RETURNED = 'animal-returned';
+
+    public const TYPE_ANIMAL_EVENT_VOIDED = 'animal-event-voided';
+
+    /*
      * Smart Alerts — the daily, rule-based flags written by
      * SmartAlertService. Deliberately a separate namespace of types so the
      * UI can pull them into their own "Flagged" tab and the scan's own
@@ -76,6 +90,10 @@ class UserNotification extends Model
         self::TYPE_TECHNICIAN_ASSIGNED,
         self::TYPE_TECHNICIAN_REASSIGNED,
         self::TYPE_FIELD_VISIT_PHOTO,
+        self::TYPE_ANIMAL_DISPERSED,
+        self::TYPE_ANIMAL_RE_DISPERSED,
+        self::TYPE_ANIMAL_RETURNED,
+        self::TYPE_ANIMAL_EVENT_VOIDED,
         ...self::SMART_TYPES,
     ];
 

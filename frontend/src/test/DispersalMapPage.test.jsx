@@ -1,46 +1,63 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DispersalMapPage from "../pages/DispersalMapPage";
 import { beneficiariesApi } from "../api/beneficiariesApi";
-import { dispersalApi } from "../api/dispersalApi";
+import { animalOwnershipApi } from "../api/animalOwnershipApi";
+import { ToastProvider } from "../context/ToastContext";
 
-// MapLibre needs WebGL; the map itself is not what this test covers.
+// MapLibre needs WebGL; the map is not what this test covers. The stub hands
+// back the pin's "Re-disperse" action so the page's wiring can be asserted.
 vi.mock("../components/DispersalMap", () => ({
-  DispersalMap: () => <div data-testid="map" />,
+  DispersalMap: ({ onRedisperse }) => (
+    <div data-testid="map">
+      {onRedisperse && (
+        <button
+          type="button"
+          onClick={() =>
+            onRedisperse({ id: 1, name_of_farmer: "Aling Nena", address: "Dawis" })
+          }
+        >
+          pin re-disperse
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 vi.mock("../api/beneficiariesApi", () => ({
-  beneficiariesApi: { list: vi.fn() },
+  beneficiariesApi: { list: vi.fn(), create: vi.fn() },
 }));
 
-vi.mock("../api/dispersalApi", () => ({
-  dispersalApi: { create: vi.fn() },
+vi.mock("../api/animalOwnershipApi", () => ({
+  animalOwnershipApi: {
+    beneficiaryAnimals: vi.fn(),
+    ownershipChain: vi.fn(),
+    redisperse: vi.fn(),
+  },
+  isStaleOwnershipConflict: () => false,
 }));
 
 vi.mock("../hooks/useBarangays", () => ({
   useBarangays: () => [[{ id: 1, name: "Dawis" }], "ready"],
 }));
 
+vi.mock("../hooks/useAnimalTypes", () => ({
+  useAnimalTypeGroups: () => ({
+    groups: [
+      { key: "livestock", label: "Livestock", animal_types: [{ id: 3, name: "Carabao", classifications: [] }] },
+    ],
+    loading: false,
+    reload: vi.fn(),
+  }),
+}));
+
 vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({ user: { id: 7, name: "Jun Technician", role: "technician" } }),
 }));
 
-const ctx = {
-  scale: vi.fn(),
-  beginPath: vi.fn(),
-  moveTo: vi.fn(),
-  lineTo: vi.fn(),
-  stroke: vi.fn(),
-  clearRect: vi.fn(),
-};
-
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctx);
-  vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(
-    "data:image/png;base64,AAAA",
-  );
 
   beneficiariesApi.list.mockResolvedValue([
     {
@@ -52,81 +69,51 @@ beforeEach(() => {
       sex: "F",
     },
   ]);
+
+  animalOwnershipApi.beneficiaryAnimals.mockResolvedValue([
+    { id: 42, status: "active", ear_tag_number: "TAG-42", animal_type_name: "Carabao" },
+  ]);
+  animalOwnershipApi.ownershipChain.mockResolvedValue({
+    latest_event_id: 5,
+    current_owner: { id: 1, label: "Aling Nena", barangay: "Dawis" },
+  });
 });
 
-async function openForm() {
-  render(
+function renderPage() {
+  return render(
     <MemoryRouter>
-      <DispersalMapPage roleKey="technician" />
+      <ToastProvider>
+        <DispersalMapPage roleKey="technician" />
+      </ToastProvider>
     </MemoryRouter>,
   );
-
-  const trigger = await screen.findByRole("button", { name: /record re-dispersal/i });
-  await waitFor(() => expect(trigger).toBeEnabled());
-  fireEvent.click(trigger);
-
-  return screen.getByRole("dialog");
 }
 
-function fillForm(dialog) {
-  fireEvent.change(
-    within(dialog).getByLabelText(/offspring of \(your assigned beneficiary\)/i),
-    { target: { value: "1" } },
-  );
-  fireEvent.change(within(dialog).getByLabelText(/name of farmer/i), {
-    target: { value: "Aling Nena" },
-  });
-  fireEvent.change(within(dialog).getByLabelText(/recipient barangay/i), {
-    target: { value: "Dawis" },
-  });
-  fireEvent.change(within(dialog).getByLabelText(/^animal type$/i), {
-    target: { value: "Carabao" },
-  });
-}
+describe("DispersalMapPage", () => {
+  it("loads the households and draws the map", async () => {
+    renderPage();
 
-describe("DispersalMapPage signed re-dispersal", () => {
-  it("blocks submission until the recipient has signed", async () => {
-    const dialog = await openForm();
-    fillForm(dialog);
-
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: /^record re-dispersal$/i }),
-    );
-
-    expect(
-      await within(dialog).findByText(/capture the recipient's signature/i),
-    ).toBeInTheDocument();
-    expect(dispersalApi.create).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("map")).toBeInTheDocument();
+    expect(beneficiariesApi.list).toHaveBeenCalled();
   });
 
-  it("sends the signature with the dispersal once signed", async () => {
-    dispersalApi.create.mockResolvedValue({ id: 99 });
+  it("opens the shared DispersalDialog from a pin's re-disperse action", async () => {
+    renderPage();
 
-    const dialog = await openForm();
-    fillForm(dialog);
+    fireEvent.click(await screen.findByRole("button", { name: /pin re-disperse/i }));
 
-    const canvas = within(dialog).getByTestId("signature-canvas");
-    fireEvent.pointerDown(canvas, { clientX: 10, clientY: 10 });
-    fireEvent.pointerMove(canvas, { clientX: 40, clientY: 30 });
-    fireEvent.pointerUp(canvas, { clientX: 40, clientY: 30 });
+    // The one dialog, in re-disperse mode, with the household's animal already
+    // resolved — proving the pin action feeds the same component as everywhere else.
+    expect(await screen.findByRole("dialog", { name: /re-disperse animal/i })).toBeInTheDocument();
+    await waitFor(() => expect(animalOwnershipApi.beneficiaryAnimals).toHaveBeenCalledWith(1));
+    expect(await screen.findByText(/TAG-42/)).toBeInTheDocument();
+  });
 
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: /^record re-dispersal$/i }),
-    );
+  it("shows the empty state when nothing is geo-tagged", async () => {
+    beneficiariesApi.list.mockResolvedValue([]);
 
-    await waitFor(() => expect(dispersalApi.create).toHaveBeenCalledTimes(1));
+    renderPage();
 
-    expect(dispersalApi.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        beneficiary_id: 1,
-        parent_beneficiary_id: 1,
-        dispersal_type: "re-dispersal",
-        new_name_of_farmer: "Aling Nena",
-        new_address: "Dawis",
-        new_animal_type: "Carabao",
-        signature: "data:image/png;base64,AAAA",
-        signature_captured_at: expect.any(String),
-      }),
-    );
+    expect(await screen.findByText(/no farmers assigned to you yet/i)).toBeInTheDocument();
   });
 });

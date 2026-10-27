@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { beneficiariesApi } from "../api/beneficiariesApi";
+import { fetchOwnershipTrail } from "../lib/ownershipPath";
 import { DispersalMap } from "../components/DispersalMap";
 
 // MapLibre needs WebGL. A tiny fake is enough to observe the GeoJSON the
@@ -92,8 +92,10 @@ vi.mock("maplibre-gl", () => {
   };
 });
 
-vi.mock("../api/beneficiariesApi", () => ({
-  beneficiariesApi: { path: vi.fn() },
+// The trail's source (ownership chain, with the field-visit fallback) is
+// covered by its own tests; here only the drawing of every trail matters.
+vi.mock("../lib/ownershipPath", () => ({
+  fetchOwnershipTrail: vi.fn(),
 }));
 
 function row(id, name, animalType, latitude, longitude) {
@@ -114,7 +116,7 @@ const beneficiaries = [
 
 beforeEach(() => {
   maps.length = 0;
-  beneficiariesApi.path.mockImplementation(async (id) => ({
+  fetchOwnershipTrail.mockImplementation(async (id) => ({
     beneficiary_id: id,
     points: [
       {
@@ -147,9 +149,9 @@ describe("DispersalMap all flight paths", () => {
       await screen.findByRole("button", { name: /show all flight paths/i }),
     );
 
-    await waitFor(() => expect(beneficiariesApi.path).toHaveBeenCalledTimes(2));
-    expect(beneficiariesApi.path).toHaveBeenCalledWith(1);
-    expect(beneficiariesApi.path).toHaveBeenCalledWith(2);
+    await waitFor(() => expect(fetchOwnershipTrail).toHaveBeenCalledTimes(2));
+    expect(fetchOwnershipTrail).toHaveBeenCalledWith(1);
+    expect(fetchOwnershipTrail).toHaveBeenCalledWith(2);
 
     expect(await screen.findByText(/2 flight paths shown/i)).toBeInTheDocument();
 

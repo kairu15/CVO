@@ -18,6 +18,7 @@ import { MonitoringExcelToolbar } from "../components/MonitoringExcelToolbar";
 import { MonthYearDropdown } from "../components/MonthYearDropdown";
 import { AnimalTypeClassificationSelect } from "../components/AnimalTypeClassificationSelect";
 import { VisitFormModal } from "../components/VisitFormModal";
+import { DispersalDialog } from "../components/DispersalDialog";
 import { EmptyState } from "../components/EmptyState";
 import { Modal } from "../components/Modal";
 import { ButtonSpinner } from "../components/LoadingSpinner";
@@ -67,6 +68,8 @@ export default function MonitoringPage({ roleKey }) {
   const [moaBusyId, setMoaBusyId] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+  // The shared DispersalDialog, opened from a record's row action.
+  const [dispersal, setDispersal] = useState(null);
 
   // Row selection for the bulk (select-all) delete.
   const { selected, toggle, toggleAll, clear } = useRowSelection();
@@ -91,6 +94,9 @@ export default function MonitoringPage({ roleKey }) {
   const isTechnician = viewerRole === "technician";
   const canEdit = ["admin", "doctor", "technician"].includes(viewerRole);
   const isAdmin = viewerRole === "admin";
+  // Only the roles that may actually record a handover get the row action
+  // (manage_dispersal / manage_redispersal); a doctor's access is read-only.
+  const canDisperse = viewerRole === "admin" || viewerRole === "technician";
 
   // Polled + refetched-on-focus. `loading` maps to the FIRST fetch only, so
   // background refetches never blank the table into skeletons. The month,
@@ -424,6 +430,22 @@ export default function MonitoringPage({ roleKey }) {
           // MOA is a program-oversight field: only an admin gets the inline
           // switch. Doctors and technicians see the badge read-only.
           onToggleMoa={isAdmin ? (record) => toggleMoa(record) : undefined}
+          onDispersal={
+            canDisperse
+              ? (record) =>
+                  setDispersal({
+                    // The household already holds an animal, so the default
+                    // action is the handover; the dialog offers "disperse a
+                    // new animal" when it finds none.
+                    mode: "re-disperse",
+                    beneficiary: {
+                      id: record.beneficiary_id,
+                      name_of_farmer: record.name_of_farmer,
+                      address: record.address,
+                    },
+                  })
+              : undefined
+          }
           moaBusyId={moaBusyId}
           groupBy={groupBy}
           highlightBeneficiaryId={highlightBeneficiaryId}
@@ -456,6 +478,14 @@ export default function MonitoringPage({ roleKey }) {
         />
         </section>
       )}
+
+      <DispersalDialog
+        open={dispersal !== null}
+        mode={dispersal?.mode ?? "re-disperse"}
+        beneficiary={dispersal?.beneficiary ?? null}
+        onClose={() => setDispersal(null)}
+        onSaved={load}
+      />
 
       <VisitFormModal
         open={formOpen}

@@ -58,6 +58,15 @@ class SettingsService
     /** @var list<string> */
     public const SESSION_KEYS = ['session_idle_minutes'];
 
+    /**
+     * Ownership-chain windows. How far back a dispersal or re-dispersal may be
+     * dated, in days (app timezone). A future date is never allowed; this is
+     * only the past-facing ceiling.
+     *
+     * @var list<string>
+     */
+    public const DISPERSAL_KEYS = ['dispersal_max_backdate_days'];
+
     /** The suggested animal-type vocabulary, stored as a JSON list. */
     public const ANIMAL_TYPES_KEY = 'animal_types';
 
@@ -82,6 +91,10 @@ class SettingsService
         'notify_technician_assigned',
         'notify_technician_reassigned',
         'notify_field_visit_photo',
+        'notify_animal_dispersed',
+        'notify_animal_re_dispersed',
+        'notify_animal_returned',
+        'notify_animal_event_voided',
         'notify_smart_vaccination_overdue',
         'notify_smart_bcs_out_of_range',
         'notify_smart_no_recent_visit',
@@ -102,6 +115,10 @@ class SettingsService
         'technician-assigned' => 'notify_technician_assigned',
         'technician-reassigned' => 'notify_technician_reassigned',
         'field-visit-photo' => 'notify_field_visit_photo',
+        'animal-dispersed' => 'notify_animal_dispersed',
+        'animal-re-dispersed' => 'notify_animal_re_dispersed',
+        'animal-returned' => 'notify_animal_returned',
+        'animal-event-voided' => 'notify_animal_event_voided',
         'smart-vaccination-overdue' => 'notify_smart_vaccination_overdue',
         'smart-bcs-out-of-range' => 'notify_smart_bcs_out_of_range',
         'smart-no-recent-visit' => 'notify_smart_no_recent_visit',
@@ -118,6 +135,7 @@ class SettingsService
         ...self::CONTACT_KEYS,
         ...self::ALERT_KEYS,
         ...self::SESSION_KEYS,
+        ...self::DISPERSAL_KEYS,
         self::ANIMAL_TYPES_KEY,
         self::HEALTH_OUTCOMES_KEY,
         self::FIELD_VISIT_PURPOSES_KEY,
@@ -138,7 +156,7 @@ class SettingsService
     /**
      * All groups, typed — what the System Settings screen renders.
      *
-     * @return array{contact: array<string, string|null>, alerts: array<string, int>, session: array{idle_minutes: int}, verification: array{onsite_threshold_m: int}, office_location: array{latitude: float, longitude: float}, cluster: array{lookback_days: int, min_cases: int, radius_km: float, reportable_outcomes: list<string>}, animal_types: list<string>, notifications: array<string, bool>}
+     * @return array{contact: array<string, string|null>, alerts: array<string, int>, session: array{idle_minutes: int}, dispersal: array{max_backdate_days: int}, verification: array{onsite_threshold_m: int}, office_location: array{latitude: float, longitude: float}, cluster: array{lookback_days: int, min_cases: int, radius_km: float, reportable_outcomes: list<string>}, animal_types: list<string>, notifications: array<string, bool>}
      */
     public function all(): array
     {
@@ -158,6 +176,11 @@ class SettingsService
             ],
             'session' => [
                 'idle_minutes' => (int) $values['session_idle_minutes'],
+            ],
+            'dispersal' => [
+                // How far back a handover may be dated. The floor is a policy
+                // number the office sets; there is no forward window at all.
+                'max_backdate_days' => (int) $values['dispersal_max_backdate_days'],
             ],
             'verification' => [
                 // The radius, in metres, inside which a captured fix counts
@@ -238,7 +261,19 @@ class SettingsService
         return max(1, (int) $this->all()['verification']['onsite_threshold_m']);
     }
 
-    /** The CVO office coordinate — the route planner's fallback start. */
+    /**
+     * How far back a dispersal or re-dispersal may be dated, in days. Never
+     * negative, and expressed in whole days in the application timezone.
+     */
+    public function dispersalMaxBackdateDays(): int
+    {
+        return max(0, (int) $this->all()['dispersal']['max_backdate_days']);
+    }
+
+    /**
+     * The CVO office coordinate — the route planner's fallback start, and the
+     * origin node of every animal flight path.
+     */
     public function officeLatitude(): float
     {
         return $this->all()['office_location']['latitude'];
@@ -497,6 +532,8 @@ class SettingsService
             'field_visit_overdue_days' => (string) config('cvo.smart_alerts.no_recent_visit_days'),
 
             'session_idle_minutes' => (string) config('security.client_idle_minutes'),
+
+            'dispersal_max_backdate_days' => (string) config('cvo.dispersal.max_backdate_days'),
 
             'onsite_threshold_m' => (string) config('cvo.verification.onsite_threshold_m'),
             'office_latitude' => (string) config('cvo.office_location.latitude'),

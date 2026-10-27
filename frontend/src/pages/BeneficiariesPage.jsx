@@ -5,6 +5,7 @@ import { getErrorMessage } from "../api/client";
 import { Modal } from "../components/Modal";
 import { BeneficiaryDetailModal } from "../components/BeneficiaryDetailModal";
 import { BeneficiaryFormModal } from "../components/BeneficiaryFormModal";
+import { DispersalDialog } from "../components/DispersalDialog";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
@@ -143,6 +144,11 @@ export default function BeneficiariesPage() {
   }
 
   const [detail, setDetail] = useState(null);
+
+  // The one dispersal dialog: `{ mode, beneficiary }` while open, null closed.
+  // "Disperse animal" hands the clicked household over as the RECIPIENT;
+  // "Re-disperse" treats it as the current holder and resolves its animal.
+  const [dispersal, setDispersal] = useState(null);
 
   async function saveBulk() {
     setSaving(true);
@@ -353,7 +359,7 @@ export default function BeneficiariesPage() {
                     <col className="w-[18%]" />
                     <col className="w-[8%]" />
                     <col />
-                    <col className="w-20" />
+                    <col className="w-52" />
                   </colgroup>
                   <thead>
                     <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
@@ -408,17 +414,39 @@ export default function BeneficiariesPage() {
                             : <span className="font-medium text-amber-700">Unassigned</span>}
                         </td>
                         <td className="px-4 py-2.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditing(beneficiary);
-                              setFormOpen(true);
-                            }}
-                            className="text-xs font-semibold text-brand-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-                            aria-label={`Edit ${beneficiary.name_of_farmer}`}
-                          >
-                            Edit
-                          </button>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDispersal({ mode: "disperse", beneficiary })
+                              }
+                              className="text-xs font-semibold text-brand-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                              aria-label={`Disperse an animal to ${beneficiary.name_of_farmer}`}
+                            >
+                              Disperse animal
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDispersal({ mode: "re-disperse", beneficiary })
+                              }
+                              className="text-xs font-semibold text-slate-600 underline-offset-2 hover:text-brand-800 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                              aria-label={`Re-disperse ${beneficiary.name_of_farmer}'s animal`}
+                            >
+                              Re-disperse
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditing(beneficiary);
+                                setFormOpen(true);
+                              }}
+                              className="text-xs font-semibold text-brand-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                              aria-label={`Edit ${beneficiary.name_of_farmer}`}
+                            >
+                              Edit
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -443,6 +471,18 @@ export default function BeneficiariesPage() {
         beneficiary={detail}
         onClose={() => setDetail(null)}
         technicianName={technicianName}
+        onOpenDispersal={(beneficiary, mode) => {
+          setDetail(null);
+          setDispersal({ mode, beneficiary });
+        }}
+      />
+
+      <DispersalDialog
+        open={dispersal !== null}
+        mode={dispersal?.mode ?? "disperse"}
+        beneficiary={dispersal?.beneficiary ?? null}
+        onClose={() => setDispersal(null)}
+        onSaved={load}
       />
 
       {/* Mounted only while open: the form pulls auth/offline context and the

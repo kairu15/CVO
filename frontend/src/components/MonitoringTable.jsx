@@ -150,6 +150,8 @@ function MoaCell({ record, editable, busy, onToggle }) {
  * @param {boolean} [props.loading]
  * @param {(record: object) => void} [props.onEdit] renders an actions column when given
  * @param {(record: object) => void} [props.onDelete] renders a Delete action beside Edit
+ * @param {(record: object) => void} [props.onDispersal] renders a Dispersal
+ *   action that opens the shared DispersalDialog for the record's household
  * @param {{title: string, description: string}} [props.emptyState] replaces the
  *   default "no records yet" empty state when the caller knows a more specific
  *   reason the table is empty (e.g. a month tab with no records)
@@ -173,6 +175,7 @@ export function MonitoringTable({
   loading = false,
   onEdit,
   onDelete,
+  onDispersal,
   emptyState,
   selected,
   onToggleRow,
@@ -185,7 +188,7 @@ export function MonitoringTable({
   const [photoRecord, setPhotoRecord] = useState(null);
 
   const hasSelection = Boolean(onToggleRow);
-  const hasActions = Boolean(onEdit || onDelete);
+  const hasActions = Boolean(onEdit || onDelete || onDispersal);
 
   const groups = useMemo(() => {
     const byBarangay = new Map();
@@ -423,6 +426,16 @@ export function MonitoringTable({
                         })}
                         {hasActions && (
                           <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                            {onDispersal && (
+                              <button
+                                type="button"
+                                onClick={() => onDispersal(record)}
+                                className="rounded-pill px-3 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-500 dark:hover:bg-slate-200/60"
+                                aria-label={`Record a dispersal for ${record.name_of_farmer}`}
+                              >
+                                Dispersal
+                              </button>
+                            )}
                             {onEdit && (
                               <button
                                 type="button"

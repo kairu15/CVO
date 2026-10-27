@@ -226,16 +226,34 @@ return [
     | Route planner fallback start point
     |--------------------------------------------------------------------------
     |
-    | The CVO office coordinate used when the technician's device cannot
-    | report its own location. Editable in System Settings; the public `site`
-    | endpoint serves it so the planner can fall back without an admin
-    | round-trip. UNCONFIRMED: placeholder for the Bayawan City hall area —
-    | the office should confirm the exact pin.
+    | The CVO office coordinate. Two consumers: the route planner's fallback
+    | start when the device cannot report its own location, and the ORIGIN
+    | NODE of every animal flight path ("where the animal came from").
+    | Editable in System Settings; the public `site` endpoint serves it so the
+    | planner can fall back without an admin round-trip. UNCONFIRMED:
+    | placeholder for the Bayawan City hall area — the office should confirm
+    | the exact pin.
     |
     */
     'office_location' => [
         'latitude' => 9.6311,
         'longitude' => 123.1980,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Ownership chain (dispersal / re-dispersal)
+    |--------------------------------------------------------------------------
+    |
+    | How far back a dispersal or re-dispersal may be dated, in days, measured
+    | in the application timezone (Asia/Manila). A field record typed up after
+    | a week in the barangay is normal; one dated into a previous year is not.
+    | There is deliberately no forward window — a future date is never allowed.
+    | Editable in System Settings; this is the shipped UNCONFIRMED default.
+    |
+    */
+    'dispersal' => [
+        'max_backdate_days' => 30,
     ],
 
     /*

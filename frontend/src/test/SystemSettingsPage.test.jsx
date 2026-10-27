@@ -54,10 +54,19 @@ const SETTINGS = {
     vaccination_due_soon_days: 30,
     field_visit_overdue_days: 30,
   },
+  // The on-site threshold rides in its own payload group but is edited with
+  // the other thresholds, so the fixture has to carry it too — the input is
+  // `required`, and an empty one blocks the section's save.
+  verification: {
+    onsite_threshold_m: 150,
+  },
   session: {
     idle_minutes: 15,
     server_idle_minutes: 120,
     server_absolute_minutes: 720,
+  },
+  dispersal: {
+    max_backdate_days: 30,
   },
   animal_types: ["Carabao", "Cattle", "Goat"],
   notifications: {
@@ -170,7 +179,7 @@ describe("SystemSettingsPage", () => {
     expect(await screen.findByText(/Contact details saved/)).toBeInTheDocument();
   });
 
-  it("shows the vaccination cycle and saves only those three numbers", async () => {
+  it("shows the vaccination cycle and saves only the threshold numbers", async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -188,6 +197,24 @@ describe("SystemSettingsPage", () => {
       vaccination_interval_days: "90",
       vaccination_due_soon_days: 30,
       field_visit_overdue_days: 30,
+      onsite_threshold_m: 150,
+    });
+  });
+
+  it("shows the ownership backdating window and saves it on its own", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const window_ = await screen.findByLabelText("Backdating window (days)");
+    expect(window_).toHaveValue(30);
+
+    await user.clear(window_);
+    await user.type(window_, "14");
+    await user.click(screen.getByRole("button", { name: /Save backdating window/ }));
+
+    await vi.waitFor(() => expect(settingsApi.save).toHaveBeenCalledTimes(1));
+    expect(settingsApi.save.mock.calls[0][0]).toEqual({
+      dispersal_max_backdate_days: "14",
     });
   });
 
@@ -250,7 +277,10 @@ describe("SystemSettingsPage", () => {
     const payload = settingsApi.save.mock.calls[0][0];
     expect(payload.notify_smart_no_recent_visit).toBe(false);
     expect(payload.notify_beneficiary_added).toBe(true);
-    expect(Object.keys(payload)).toHaveLength(8);
+    // The ownership handovers ride alongside the programme events.
+    expect(payload.notify_animal_dispersed).toBe(true);
+    expect(payload.notify_animal_event_voided).toBe(true);
+    expect(Object.keys(payload)).toHaveLength(12);
   });
 
   it("manages puroks: add, rename, delete with confirm", async () => {

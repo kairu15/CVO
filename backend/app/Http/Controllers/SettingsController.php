@@ -132,6 +132,8 @@ class SettingsController extends Controller
         return [
             'office_profile' => $this->settings->officeProfile(),
             'alerts' => $this->settings->alerts(),
+            // The ownership-chain backdating window.
+            'dispersal' => ['max_backdate_days' => $this->settings->dispersalMaxBackdateDays()],
             // Field-visit verification + route-planner fallback + cluster
             // scan inputs — all three are policy numbers the office owns.
             'verification' => ['onsite_threshold_m' => $this->settings->onsiteThresholdM()],

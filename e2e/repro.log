@@ -1,0 +1,99 @@
+REQ: GET /api/v1/user
+REQ: GET /api/v1/user
+CONSOLE[error]: Failed to load resource: the server responded with a status of 401 (Unauthorized)
+RES: 401 GET /api/v1/user → {"message":"Unauthenticated."}
+REQ: GET /api/v1/site
+REQ: GET /api/v1/site
+REQ: OPTIONS /api/v1/site
+REQ: OPTIONS /api/v1/site
+CONSOLE[error]: Failed to load resource: the server responded with a status of 401 (Unauthorized)
+RES: 401 GET /api/v1/user → {"message":"Unauthenticated."}
+RES: 204 OPTIONS /api/v1/site → 
+RES: 204 OPTIONS /api/v1/site → 
+REQ: OPTIONS /sanctum/csrf-cookie
+REQ: GET /sanctum/csrf-cookie
+RES: 200 GET /api/v1/site → {"data":{"office":{"office_email":"cvo@example.gov.ph","office_phone":"(035) 000-0000","office_hours":"Monday to Friday, 8:00 AM \u2013 5:00 PM","office_address":"City Veterinary Office, City Hall Compound, Bayawan City, Negros Oriental 6221"},"session":{"idle_minutes":15},"office_location":{"latitude":9.6311,"longitude":123.198}}}
+RES: 204 OPTIONS /sanctum/csrf-cookie → 
+RES: 200 GET /api/v1/site → {"data":{"office":{"office_email":"cvo@example.gov.ph","office_phone":"(035) 000-0000","office_hours":"Monday to Friday, 8:00 AM \u2013 5:00 PM","office_address":"City Veterinary Office, City Hall Compound, Bayawan City, Negros Oriental 6221"},"session":{"idle_minutes":15},"office_location":{"latitude":9.6311,"longitude":123.198}}}
+REQ: POST /api/v1/login
+   body: {"identifier":"admin","password":"password","remember":false}
+REQ: OPTIONS /api/v1/login
+RES: 204 GET /sanctum/csrf-cookie → 
+RES: 204 OPTIONS /api/v1/login → 
+RES: 200 POST /api/v1/login → {"data":{"id":1,"name":"CVO Administrator","username":"admin","avatar_url":"\/secure-files\/avatars\/1\/tgtx6sjvsdzbv8z9a5bmxnsoretho8bnqc2cufck.jpg?expires=1793161648&signature=870bb7e4bc58823d0ff11794b4962b826e65b02b949b5c7b32fa22ac02ea8cd6","email":"admin@example.com","role":"admin","permissions":["assign_technicians","beneficiaries.create","beneficiaries.delete","beneficiaries.update","beneficiaries.view","case_notes.create","case_notes.update","case_notes.view","dispersals.create","dispersa
+REQ: GET /api/v1/notifications/unread-count
+REQ: OPTIONS /api/v1/notifications/unread-count
+REQ: GET /api/v1/beneficiaries?per_page=500
+REQ: GET /api/v1/beneficiaries?per_page=500
+REQ: OPTIONS /api/v1/beneficiaries?per_page=500
+REQ: OPTIONS /api/v1/beneficiaries?per_page=500
+RES: 204 OPTIONS /api/v1/notifications/unread-count → 
+AFTER LOGIN URL: http://localhost:5173/dashboard/admin
+
+===== DISPERSE to A =====
+RES: 204 OPTIONS /api/v1/beneficiaries?per_page=500 → 
+REQ: GET /api/v1/user
+REQ: GET /api/v1/user
+REQ: OPTIONS /api/v1/user
+REQ: OPTIONS /api/v1/user
+RES: 204 OPTIONS /api/v1/beneficiaries?per_page=500 → 
+RES: 204 OPTIONS /api/v1/user → 
+RES: 204 OPTIONS /api/v1/user → 
+RES: 200 GET /api/v1/user → {"data":{"id":1,"name":"CVO Administrator","username":"admin","avatar_url":"\/secure-files\/avatars\/1\/tgtx6sjvsdzbv8z9a5bmxnsoretho8bnqc2cufck.jpg?expires=1793161656&signature=10fb26bac65e2c6f66e768ed542c1213d3de54e4b86e7b30077c9543ae4c6d30","email":"admin@example.com","role":"admin","permissions":["assign_technicians","beneficiaries.create","beneficiaries.delete","beneficiaries.update","beneficiaries.view","case_notes.create","case_notes.update","case_notes.view","dispersals.create","dispersa
+REQ: GET /api/v1/notifications/unread-count
+REQ: GET /api/v1/site
+REQ: GET /api/v1/site
+REQ: OPTIONS /api/v1/notifications/unread-count
+REQ: OPTIONS /api/v1/site
+REQ: OPTIONS /api/v1/site
+REQ: GET /api/v1/animal-types
+REQ: GET /api/v1/barangays
+REQ: OPTIONS /api/v1/animal-types
+REQ: GET /api/v1/admin/beneficiaries?per_page=50&page=1
+REQ: GET /api/v1/admin/users?role=technician&per_page=50
+REQ: GET /api/v1/admin/beneficiaries?per_page=50&page=1
+REQ: GET /api/v1/admin/users?role=technician&per_page=50
+REQ: OPTIONS /api/v1/barangays
+REQ: OPTIONS /api/v1/admin/beneficiaries?per_page=50&page=1
+REQ: OPTIONS /api/v1/admin/users?role=technician&per_page=50
+REQ: OPTIONS /api/v1/admin/beneficiaries?per_page=50&page=1
+REQ: OPTIONS /api/v1/admin/users?role=technician&per_page=50
+RES: 200 GET /api/v1/user → {"data":{"id":1,"name":"CVO Administrator","username":"admin","avatar_url":"\/secure-files\/avatars\/1\/tgtx6sjvsdzbv8z9a5bmxnsoretho8bnqc2cufck.jpg?expires=1793161657&signature=318afae094486d932f1ae170db48fc4e6924410a99cdad0f58bef5381634c43b","email":"admin@example.com","role":"admin","permissions":["assign_technicians","beneficiaries.create","beneficiaries.delete","beneficiaries.update","beneficiaries.view","case_notes.create","case_notes.update","case_notes.view","dispersals.create","dispersa
+RES: 204 OPTIONS /api/v1/site → 
+RES: 204 OPTIONS /api/v1/site → 
+RES: 204 OPTIONS /api/v1/notifications/unread-count → 
+RES: 204 OPTIONS /api/v1/animal-types → 
+RES: 204 OPTIONS /api/v1/barangays → 
+RES: 204 OPTIONS /api/v1/admin/beneficiaries?per_page=50&page=1 → 
+RES: 204 OPTIONS /api/v1/admin/users?role=technician&per_page=50 → 
+RES: 200 GET /api/v1/site → {"data":{"office":{"office_email":"cvo@example.gov.ph","office_phone":"(035) 000-0000","office_hours":"Monday to Friday, 8:00 AM \u2013 5:00 PM","office_address":"City Veterinary Office, City Hall Compound, Bayawan City, Negros Oriental 6221"},"session":{"idle_minutes":15},"office_location":{"latitude":9.6311,"longitude":123.198}}}
+RES: 204 OPTIONS /api/v1/admin/beneficiaries?per_page=50&page=1 → 
+RES: 204 OPTIONS /api/v1/admin/users?role=technician&per_page=50 → 
+RES: 200 GET /api/v1/notifications/unread-count → {"data":{"unread":0}}
+RES: 200 GET /api/v1/animal-types → {"data":[{"key":"livestock","label":"Livestock","animal_types":[{"id":1,"main_category":"livestock","category_label":"Livestock","name":"Swine (Pig)","sort_order":1,"classifications":[{"id":1,"animal_type_id":1,"name":"Boar","sort_order":1},{"id":2,"animal_type_id":1,"name":"Sow","sort_order":2},{"id":3,"animal_type_id":1,"name":"Gilt","sort_order":3},{"id":4,"animal_type_id":1,"name":"Barrow","sort_order":4},{"id":5,"animal_type_id":1,"name":"Piglet","sort_order":5},{"id":6,"animal_type_id":1,"
+RES: 200 GET /api/v1/barangays → {"data":[{"id":1,"name":"Ali-is","latitude":"9.5325654","longitude":"122.8933552"},{"id":2,"name":"Banaybanay","latitude":"9.5526855","longitude":"122.8242983"},{"id":3,"name":"Banga","latitude":"9.3699825","longitude":"122.7960402"},{"id":4,"name":"Boyco","latitude":"9.3630844","longitude":"122.8032330"},{"id":5,"name":"Bugay","latitude":"9.6298249","longitude":"122.8334743"},{"id":6,"name":"Cansumalig","latitude":"9.4358945","longitude":"122.9349204"},{"id":7,"name":"Dawis","latitude":"9.57666
+RES: 200 GET /api/v1/admin/beneficiaries?per_page=50&page=1 → {"data":[{"id":507,"name_of_farmer":"Bryan Macapanas","rsbsa_number":null,"address":"Ali-is","barangay_id":null,"purok_id":null,"animal_type":"Unspecified","animal_type_id":null,"classification_id":null,"animal_classification":null,"animal_type_name":"Unspecified","ear_tag_number":null,"sex":null,"moa_signed":null,"latitude":9.5325654,"longitude":122.8933552,"location_source":"manual","technician_id":3,"technician":{"id":3,"name":"Jun Technician","username":"technician","avatar_url":null,"email"
+RES: 200 GET /api/v1/admin/users?role=technician&per_page=50 → {"data":[{"id":3,"name":"Jun Technician","username":"technician","avatar_url":null,"email":"technician@example.com","role":"technician","permissions":["beneficiaries.create","beneficiaries.view","case_notes.view","dispersals.create","dispersals.delete","dispersals.update","dispersals.view","field_visits.create","field_visits.update","field_visits.view","health_records.view","manage_dispersal","manage_redispersal","monitoring.create","monitoring.delete","monitoring.update","monitoring.view","view
+RES: 200 GET /api/v1/site → {"data":{"office":{"office_email":"cvo@example.gov.ph","office_phone":"(035) 000-0000","office_hours":"Monday to Friday, 8:00 AM \u2013 5:00 PM","office_address":"City Veterinary Office, City Hall Compound, Bayawan City, Negros Oriental 6221"},"session":{"idle_minutes":15},"office_location":{"latitude":9.6311,"longitude":123.198}}}
+RES: 200 GET /api/v1/admin/beneficiaries?per_page=50&page=1 → {"data":[{"id":507,"name_of_farmer":"Bryan Macapanas","rsbsa_number":null,"address":"Ali-is","barangay_id":null,"purok_id":null,"animal_type":"Unspecified","animal_type_id":null,"classification_id":null,"animal_classification":null,"animal_type_name":"Unspecified","ear_tag_number":null,"sex":null,"moa_signed":null,"latitude":9.5325654,"longitude":122.8933552,"location_source":"manual","technician_id":3,"technician":{"id":3,"name":"Jun Technician","username":"technician","avatar_url":null,"email"
+file:///C:/Users/kylle/OneDrive/Documents/Kylle%204/CVO/e2e/node_modules/puppeteer-core/lib/puppeteer/common/QueryHandler.js:211
+                const waitForSelectorError = new (error instanceof TimeoutError ? TimeoutError : Error)(`Waiting for selector \`${selector}\` failed`);
+                                             ^
+
+TimeoutError: Waiting for selector `[aria-label="Disperse an animal to Alice Beneficiary A"]` failed
+    at CSSQueryHandler.waitFor (file:///C:/Users/kylle/OneDrive/Documents/Kylle%204/CVO/e2e/node_modules/puppeteer-core/lib/puppeteer/common/QueryHandler.js:211:46)
+    at async CdpFrame.waitForSelector (file:///C:/Users/kylle/OneDrive/Documents/Kylle%204/CVO/e2e/node_modules/puppeteer-core/lib/puppeteer/api/Frame.js:546:21)
+    ... 3 lines matching cause stack trace ...
+    at async file:///C:/Users/kylle/OneDrive/Documents/Kylle%204/CVO/e2e/repro-flightpath.mjs:275:1 {
+  cause: TimeoutError: Waiting failed: 15000ms exceeded
+      at new WaitTask (file:///C:/Users/kylle/OneDrive/Documents/Kylle%204/CVO/e2e/node_modules/puppeteer-core/lib/puppeteer/common/WaitTask.js:46:34)
+      at IsolatedWorld.waitForFunction (file:///C:/Users/kylle/OneDrive/Documents/Kylle%204/CVO/e2e/node_modules/puppeteer-core/lib/puppeteer/api/Realm.js:49:26)
+      at CSSQueryHandler.waitFor (file:///C:/Users/kylle/OneDrive/Documents/Kylle%204/CVO/e2e/node_modules/puppeteer-core/lib/puppeteer/common/QueryHandler.js:176:95)
+      at async CdpFrame.waitForSelector (file:///C:/Users/kylle/OneDrive/Documents/Kylle%204/CVO/e2e/node_modules/puppeteer-core/lib/puppeteer/api/Frame.js:546:21)
+      at async CdpPage.waitForSelector (file:///C:/Users/kylle/OneDrive/Documents/Kylle%204/CVO/e2e/node_modules/puppeteer-core/lib/puppeteer/api/Page.js:1477:20)
+      at async clickSelector (file:///C:/Users/kylle/OneDrive/Documents/Kylle%204/CVO/e2e/repro-flightpath.mjs:80:14)
+      at async main (file:///C:/Users/kylle/OneDrive/Documents/Kylle%204/CVO/e2e/repro-flightpath.mjs:156:3)
+      at async file:///C:/Users/kylle/OneDrive/Documents/Kylle%204/CVO/e2e/repro-flightpath.mjs:275:1
+}
+
+Node.js v24.14.1

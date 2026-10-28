@@ -1,0 +1,12 @@
+import puppeteer from "puppeteer-core";
+const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const b = await puppeteer.launch({ executablePath: CHROME, headless: true });
+const p = await b.newPage();
+p.on("console", m => { if (m.type()==="error") console.log("CONSOLE:", m.text().slice(0,200)); });
+p.on("pageerror", e => console.log("PAGEERROR:", String(e).slice(0,300)));
+await p.goto("http://localhost:5173/login", { waitUntil: "networkidle2" });
+await new Promise(r=>setTimeout(r,2500));
+console.log("URL:", p.url());
+console.log("TEXT:", (await p.evaluate(()=>document.body.innerText)).replace(/\n+/g," | ").slice(0,500));
+console.log("INPUTS:", JSON.stringify(await p.evaluate(()=>[...document.querySelectorAll("input,select,button")].map(el=>({tag:el.tagName,id:el.id,type:el.type,text:(el.innerText||"").slice(0,40)})).slice(0,30))));
+await b.close();

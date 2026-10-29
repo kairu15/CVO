@@ -18,12 +18,14 @@ use Illuminate\Support\Carbon;
  * VOID it (status + voided_by/at/reason). A mistaken record is corrected by
  * voiding it and letting the chain be recomputed from the rows that remain.
  *
- * @property int $id
- * @property int $animal_id
- * @property string $event_type
- * @property int|null $from_beneficiary_id
- * @property int|null $to_beneficiary_id
- * @property Carbon $event_date
+     * @property int $id
+     * @property int $animal_id
+     * @property string $event_type
+     * @property int|null $from_beneficiary_id
+     * @property int|null $to_beneficiary_id
+     * @property int|null $from_barangay_id
+     * @property int|null $to_barangay_id
+     * @property Carbon $event_date
  * @property bool $date_is_estimated
  * @property string|null $location_source
  * @property string $status
@@ -57,7 +59,9 @@ class AnimalOwnershipEvent extends Model
 
     /**
      * Columns that describe WHAT happened. Frozen after insert — only the
-     * void columns may change.
+     * void columns may change. The barangay snapshots are part of that: they
+     * record where each side WAS at handover time, so a beneficiary edited
+     * onto another barangay afterwards cannot rewrite analytics history.
      *
      * @var list<string>
      */
@@ -66,6 +70,8 @@ class AnimalOwnershipEvent extends Model
         'event_type',
         'from_beneficiary_id',
         'to_beneficiary_id',
+        'from_barangay_id',
+        'to_barangay_id',
         'event_date',
         'date_is_estimated',
         'latitude',
@@ -81,6 +87,8 @@ class AnimalOwnershipEvent extends Model
         'event_type',
         'from_beneficiary_id',
         'to_beneficiary_id',
+        'from_barangay_id',
+        'to_barangay_id',
         'event_date',
         'date_is_estimated',
         'latitude',
@@ -100,6 +108,8 @@ class AnimalOwnershipEvent extends Model
         return [
             'event_date' => 'date',
             'date_is_estimated' => 'boolean',
+            'from_barangay_id' => 'integer',
+            'to_barangay_id' => 'integer',
             'latitude' => 'float',
             'longitude' => 'float',
             'accuracy_m' => 'float',

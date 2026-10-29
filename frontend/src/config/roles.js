@@ -62,7 +62,10 @@ export const roles = {
       },
       {
         group: "Program",
-        items: [{ label: "Dispersal Map", icon: "map", to: "/dashboard/admin/map" }],
+        items: [
+          { label: "Dispersal Map", icon: "map", to: "/dashboard/admin/map" },
+          { label: "Barangay Dispersal", icon: "chart", to: "/dashboard/admin/reports/barangay-dispersal" },
+        ],
       },
       {
         group: "Administration",
@@ -104,7 +107,10 @@ export const roles = {
       },
       {
         group: "Program",
-        items: [{ label: "Dispersal Map", icon: "map", to: "/dashboard/doctor/map" }],
+        items: [
+          { label: "Dispersal Map", icon: "map", to: "/dashboard/doctor/map" },
+          { label: "Barangay Dispersal", icon: "chart", to: "/dashboard/doctor/reports/barangay-dispersal" },
+        ],
       },
       {
         group: null,
@@ -135,6 +141,7 @@ export const roles = {
           { label: "Field Visits", icon: "route", to: "/dashboard/technician/field-visits" },
           { label: "Dispersal Records", icon: "truck", to: "/dashboard/technician/map" },
           { label: "Re-Dispersal Tracking", icon: "refresh", to: "/dashboard/technician/map" },
+          { label: "Barangay Dispersal", icon: "chart", to: "/dashboard/technician/reports/barangay-dispersal" },
         ],
       },
       {

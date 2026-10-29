@@ -25,6 +25,94 @@ export function toLngLat(point) {
   return [Number(point.longitude), Number(point.latitude)];
 }
 
+/**
+ * A coordinate pair the map can actually draw, or null.
+ *
+ * The API is trusted to send numbers, but a null, an empty string or a
+ * latitude/longitude that arrived as text must never become `[0, 0]` (the
+ * middle of the Atlantic): `Number(null)` is 0, so each side is checked for
+ * presence BEFORE coercion, and the result is range-checked afterwards.
+ */
+export function validCoordinate(latitude, longitude) {
+  if (
+    latitude === null ||
+    latitude === undefined ||
+    latitude === "" ||
+    longitude === null ||
+    longitude === undefined ||
+    longitude === ""
+  ) {
+    return null;
+  }
+
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90) return null;
+  if (lng < -180 || lng > 180) return null;
+
+  return { latitude: lat, longitude: lng };
+}
+
+/**
+ * Coerce and validate a trail's points before they reach MapLibre.
+ *
+ * Invalid points are DROPPED, never repaired or moved: the brief is explicit
+ * that a position is not invented. Each drop is reported to `warn` (console by
+ * default) so a malformed payload is diagnosable instead of silently short.
+ *
+ * @param {Array<object>} points
+ * @param {(message: string) => void} [warn]
+ * @returns {Array<object>} the drawable points, order preserved
+ */
+export function sanitizePoints(points, warn = (message) => console.warn(message)) {
+  const valid = [];
+
+  for (const point of Array.isArray(points) ? points : []) {
+    const coordinate = validCoordinate(point?.latitude, point?.longitude);
+
+    if (!coordinate) {
+      warn(
+        `Flight path: dropped a point with an invalid coordinate (latitude=${String(
+          point?.latitude,
+        )}, longitude=${String(point?.longitude)}).`,
+      );
+      continue;
+    }
+
+    valid.push({ ...point, ...coordinate });
+  }
+
+  return valid;
+}
+
+/**
+ * Consecutive points that share one spot, so a re-dispersal within the SAME
+ * location still has something to see. `buildSegments` skips zero-length pairs
+ * (they would draw nothing anyway); the map uses these positions to place a
+ * "same location" badge instead.
+ *
+ * @returns {Array<{ index: number, point: object }>} one entry per zero-length segment
+ */
+export function sameLocationPoints(points) {
+  const repeats = [];
+
+  for (let index = 1; index < points.length; index++) {
+    const previous = points[index - 1];
+    const current = points[index];
+
+    if (
+      Number(previous.longitude) === Number(current.longitude) &&
+      Number(previous.latitude) === Number(current.latitude)
+    ) {
+      repeats.push({ index, point: current });
+    }
+  }
+
+  return repeats;
+}
+
 function toRadians(degrees) {
   return (degrees * Math.PI) / 180;
 }
@@ -93,6 +181,9 @@ export function buildSegments(points) {
         age: ageOf(index, points.length - 1),
         from_date: from.occurred_on ?? "",
         to_date: to.occurred_on ?? "",
+        // A stop placed from a barangay centre (not the event or the owner's
+        // geotag) is APPROXIMATE: the map draws that span dashed.
+        approximate: Boolean(from.approximate || to.approximate),
       },
       geometry: { type: "LineString", coordinates },
     });

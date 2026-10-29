@@ -5,6 +5,7 @@ import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icons";
+import { SkeletonList } from "../components/Skeleton";
 import { flatNav, getRole } from "../config/roles";
 import { useAuth } from "../context/AuthContext";
 
@@ -22,6 +23,11 @@ import { useAuth } from "../context/AuthContext";
 // the dashboard's map module is actually shown (admin/doctor).
 const DashboardMap = lazy(() =>
   import("../components/DispersalMap").then((m) => ({ default: m.DispersalMap })),
+);
+
+// The barangay analytics widget (admin/doctor) fetches its own aggregate.
+const BarangayDispersalWidget = lazy(() =>
+  import("../components/BarangayDispersalWidget").then((m) => ({ default: m.BarangayDispersalWidget })),
 );
 
 export default function RoleDashboard({ roleKey }) {
@@ -124,6 +130,14 @@ export default function RoleDashboard({ roleKey }) {
             )}
           </div>
         </section>
+      )}
+
+      {/* Barangay dispersal at a glance — top/bottom five for one metric,
+          linking to the full analytics tab. Admin and doctor oversight. */}
+      {showMap && (
+        <Suspense fallback={<SkeletonList rows={1} rowClassName="h-48" />}>
+          <BarangayDispersalWidget roleKey={roleKey} />
+        </Suspense>
       )}
 
       <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">

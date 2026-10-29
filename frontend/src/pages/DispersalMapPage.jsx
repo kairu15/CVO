@@ -29,6 +29,10 @@ export default function DispersalMapPage({ roleKey }) {
   const [notice, setNotice] = useState(null);
   // The shared dialog: `{ mode, beneficiary }` while open, null closed.
   const [dispersal, setDispersal] = useState(null);
+  // Bumped after every recorded handover so the map refetches the trail for
+  // the household that NOW holds the animal — a saved event is immediately
+  // part of the path, with no page refresh.
+  const [trailRefresh, setTrailRefresh] = useState({ token: 0, beneficiaryId: null });
 
   const role = roleKey ?? user?.role;
   const isTechnician = role === "technician";
@@ -91,6 +95,7 @@ export default function DispersalMapPage({ roleKey }) {
         beneficiaries={beneficiaries}
         loading={loading}
         error={null}
+        refreshTrail={trailRefresh}
         onRedisperse={
           canDisperse
             ? (beneficiary) => setDispersal({ mode: "re-disperse", beneficiary })
@@ -120,9 +125,18 @@ export default function DispersalMapPage({ roleKey }) {
         mode={dispersal?.mode ?? "re-disperse"}
         beneficiary={dispersal?.beneficiary ?? null}
         onClose={() => setDispersal(null)}
-        onSaved={async () => {
+        onSaved={async (result) => {
           setNotice("Ownership recorded — the flight path now draws the recorded events.");
+
+          // Refresh the household list FIRST (a beneficiary created inline in
+          // the dialog exists nowhere else yet), then tell the map to refetch
+          // the trail for the household that now holds the animal. The API
+          // returns the recorded event, and its recipient is exactly that
+          // household.
           await load();
+
+          const ownerId = Number(result?.to_beneficiary_id ?? 0) || null;
+          setTrailRefresh((prev) => ({ token: prev.token + 1, beneficiaryId: ownerId }));
         }}
       />
     </div>

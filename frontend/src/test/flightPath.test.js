@@ -9,6 +9,9 @@ import {
   formatPointDate,
   haversineMeters,
   parseDateOnly,
+  sameLocationPoints,
+  sanitizePoints,
+  validCoordinate,
 } from "../lib/flightPath";
 
 /** Three trail points: origin, one visit, the current pin. */
@@ -75,6 +78,18 @@ describe("buildSegments", () => {
     const { features } = buildSegments(points);
 
     expect(features).toHaveLength(2);
+  });
+
+  it("marks a span touching an approximate stop so the map can dash it", () => {
+    const points = trail();
+    points[1] = { ...points[1], approximate: true };
+
+    const { features } = buildSegments(points);
+
+    expect(features.map((feature) => feature.properties.approximate)).toEqual([true, true]);
+
+    const exact = buildSegments(trail());
+    expect(exact.features.map((feature) => feature.properties.approximate)).toEqual([false, false]);
   });
 });
 
@@ -209,5 +224,54 @@ describe("dates", () => {
         year: "numeric",
       }),
     );
+  });
+});
+
+describe("flight path coordinate hygiene", () => {
+  it("accepts numbers and numeric strings inside the valid ranges", () => {
+    expect(validCoordinate(9.63, 123.19)).toEqual({ latitude: 9.63, longitude: 123.19 });
+    expect(validCoordinate("9.06", "122.98")).toEqual({ latitude: 9.06, longitude: 122.98 });
+  });
+
+  it("rejects missing, non-numeric and out-of-range coordinates", () => {
+    // `Number(null)` is 0 — a missing coordinate must never become [0, 0].
+    expect(validCoordinate(null, 123.19)).toBeNull();
+    expect(validCoordinate(9.63, null)).toBeNull();
+    expect(validCoordinate("", "122.98")).toBeNull();
+    expect(validCoordinate(undefined, undefined)).toBeNull();
+    expect(validCoordinate("north", 122.98)).toBeNull();
+    expect(validCoordinate(91, 122.98)).toBeNull();
+    expect(validCoordinate(9.63, 181)).toBeNull();
+  });
+
+  it("drops invalid points, logs each one, and keeps the order", () => {
+    const warnings = [];
+    const points = sanitizePoints(
+      [
+        { latitude: "9.63", longitude: "123.19", title: "CVO" },
+        { latitude: null, longitude: null, title: "Unplaced owner" },
+        { latitude: 9.06, longitude: 122.98, title: "Bob" },
+      ],
+      (message) => warnings.push(message),
+    );
+
+    expect(points).toEqual([
+      { latitude: 9.63, longitude: 123.19, title: "CVO" },
+      { latitude: 9.06, longitude: 122.98, title: "Bob" },
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/invalid coordinate/i);
+  });
+
+  it("flags consecutive points at the same spot so the move stays visible", () => {
+    const points = [
+      { latitude: 9.63, longitude: 123.19, title: "CVO" },
+      { latitude: 9.37, longitude: 122.81, title: "Alice" },
+      { latitude: 9.37, longitude: 122.81, title: "Alice again" },
+      { latitude: 9.06, longitude: 122.98, title: "Bob" },
+    ];
+
+    expect(sameLocationPoints(points)).toEqual([{ index: 2, point: points[2] }]);
+    expect(sameLocationPoints(points.slice(0, 2))).toEqual([]);
   });
 });

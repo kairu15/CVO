@@ -68,6 +68,9 @@ const SETTINGS = {
   dispersal: {
     max_backdate_days: 30,
   },
+  analytics: {
+    min_rate_animals: 5,
+  },
   animal_types: ["Carabao", "Cattle", "Goat"],
   notifications: {
     "beneficiary-added": true,
@@ -208,6 +211,9 @@ describe("SystemSettingsPage", () => {
     const window_ = await screen.findByLabelText("Backdating window (days)");
     expect(window_).toHaveValue(30);
 
+    // The analytics minimum rides in the same section form.
+    expect(await screen.findByLabelText("Minimum animals to rank a rate")).toHaveValue(5);
+
     await user.clear(window_);
     await user.type(window_, "14");
     await user.click(screen.getByRole("button", { name: /Save backdating window/ }));
@@ -215,7 +221,31 @@ describe("SystemSettingsPage", () => {
     await vi.waitFor(() => expect(settingsApi.save).toHaveBeenCalledTimes(1));
     expect(settingsApi.save.mock.calls[0][0]).toEqual({
       dispersal_max_backdate_days: "14",
+      analytics_min_rate_animals: 5,
     });
+  });
+
+  it("records and clears a barangay population through the barangay PATCH", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const input = await screen.findByLabelText("Population of Banay Banay");
+    expect(input).toHaveValue(null);
+
+    // The row's own Save button, scoped to the label that wraps input + button
+    // (every barangay row has one).
+    const saveButton = within(input.closest("label")).getByRole("button", { name: "Save" });
+
+    await user.type(input, "12000");
+    await user.click(saveButton);
+
+    await vi.waitFor(() => expect(adminApi.updateBarangay).toHaveBeenCalledWith(1, { population: 12000 }));
+
+    // Blanking the field removes the figure instead of saving a zero.
+    await user.clear(input);
+    await user.click(saveButton);
+
+    await vi.waitFor(() => expect(adminApi.updateBarangay).toHaveBeenCalledWith(1, { population: null }));
   });
 
   it("shows the inactivity window beside the server's own read-only ceilings", async () => {

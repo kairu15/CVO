@@ -326,6 +326,11 @@ class AnimalDispersalService
                 'event_type' => AnimalOwnershipEvent::TYPE_DISPERSAL,
                 'from_beneficiary_id' => null,
                 'to_beneficiary_id' => $owner->id,
+                // Snapshot where the household WAS at handover time — the
+                // analytics reads these, so a later edit of the beneficiary's
+                // barangay cannot rewrite history.
+                'from_barangay_id' => null,
+                'to_barangay_id' => $owner->barangay_id,
                 'event_date' => $eventDate,
                 'date_is_estimated' => (bool) ($data['date_is_estimated'] ?? false),
                 ...$this->resolveLocation($data, $owner),
@@ -373,6 +378,8 @@ class AnimalDispersalService
                 'event_type' => AnimalOwnershipEvent::TYPE_RE_DISPERSAL,
                 'from_beneficiary_id' => $from?->id,
                 'to_beneficiary_id' => $to->id,
+                'from_barangay_id' => $from?->barangay_id,
+                'to_barangay_id' => $to->barangay_id,
                 'event_date' => $eventDate,
                 'date_is_estimated' => (bool) ($data['date_is_estimated'] ?? false),
                 ...$this->resolveLocation($data, $to),
@@ -441,6 +448,8 @@ class AnimalDispersalService
                 'event_type' => AnimalOwnershipEvent::TYPE_PASS_ON,
                 'from_beneficiary_id' => $from->id,
                 'to_beneficiary_id' => $to->id,
+                'from_barangay_id' => $from->barangay_id,
+                'to_barangay_id' => $to->barangay_id,
                 'event_date' => $eventDate,
                 'date_is_estimated' => (bool) ($data['date_is_estimated'] ?? false),
                 ...$this->resolveLocation($data, $to),
@@ -488,6 +497,8 @@ class AnimalDispersalService
                 'event_type' => AnimalOwnershipEvent::TYPE_RETURN,
                 'from_beneficiary_id' => $from->id,
                 'to_beneficiary_id' => null,
+                'from_barangay_id' => $from->barangay_id,
+                'to_barangay_id' => null, // a return has no destination barangay: the animal is back at CVO
                 'event_date' => $eventDate,
                 'date_is_estimated' => (bool) ($data['date_is_estimated'] ?? false),
                 ...$this->resolveLocation($data, null),
@@ -645,9 +656,26 @@ class AnimalDispersalService
         usort($dispersals, fn (array $a, array $b): int => $a['date'] <=> $b['date']);
         usort($passOns, fn (array $a, array $b): int => $a['date'] <=> $b['date']);
 
+        // Barangay snapshots for the backfilled events, resolved from the
+        // households' barangay as recorded NOW (the best information that
+        // exists for history). Both delivery recipients and pass-on sources
+        // are covered; a household with no barangay backfills as NULL and is
+        // reported by the command.
+        $barangayByBeneficiaryId = Beneficiary::withTrashed()
+            ->whereIn('id', collect($passOns)->pluck('from')->filter()->unique()->values())
+            ->pluck('barangay_id', 'id')
+            ->map(fn ($id) => $id === null ? null : (int) $id)
+            ->all();
+
+        foreach ($beneficiaries as $id => $beneficiary) {
+            $barangayByBeneficiaryId[(int) $id] = $beneficiary->barangay_id === null
+                ? null
+                : (int) $beneficiary->barangay_id;
+        }
+
         $migrated = 0;
 
-        $write = function (array $spec, bool $isPassOn) use (&$migrated, &$unusable): void {
+        $write = function (array $spec, bool $isPassOn) use (&$migrated, &$unusable, $barangayByBeneficiaryId): void {
             /** @var Beneficiary $beneficiary */
             $beneficiary = $spec['beneficiary'];
 
@@ -687,6 +715,10 @@ class AnimalDispersalService
                 'event_type' => $isPassOn ? AnimalOwnershipEvent::TYPE_PASS_ON : AnimalOwnershipEvent::TYPE_DISPERSAL,
                 'from_beneficiary_id' => $isPassOn ? ($spec['from'] ?? null) : null,
                 'to_beneficiary_id' => $beneficiary->id,
+                'from_barangay_id' => $isPassOn
+                    ? ($barangayByBeneficiaryId[(int) ($spec['from'] ?? 0)] ?? null)
+                    : null,
+                'to_barangay_id' => $barangayByBeneficiaryId[(int) $beneficiary->id] ?? null,
                 'event_date' => $spec['date'],
                 'date_is_estimated' => $spec['estimated'],
                 ...$this->resolveLocation([], $beneficiary),
@@ -1003,7 +1035,13 @@ class AnimalDispersalService
             return now()->startOfDay();
         }
 
-        return Carbon::parse((string) $value)->startOfDay();
+        // Anchor to the app timezone BEFORE taking the start of day: a string
+        // carrying an explicit offset (e.g. 23:59+08:00 from a mobile client)
+        // must land on the calendar day it was in Asia/Manila, not on the day
+        // its UTC rendering starts.
+        return Carbon::parse((string) $value)
+            ->timezone(config('app.timezone'))
+            ->startOfDay();
     }
 
     /**

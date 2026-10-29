@@ -54,6 +54,11 @@ class SettingsRequest extends FormRequest
             // the whole programme in one field visit.
             'dispersal_max_backdate_days' => ['sometimes', 'integer', 'min:0', 'max:3650'],
 
+            // Barangay-dispersal analytics: the smallest number of distinct
+            // dispersed animals a barangay needs before its re-dispersal rate
+            // is ranked instead of greyed out ("n < N").
+            'analytics_min_rate_animals' => ['sometimes', 'integer', 'min:1', 'max:100'],
+
             // The route planner's fallback start (the CVO office pin).
             'office_latitude' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
             'office_longitude' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],

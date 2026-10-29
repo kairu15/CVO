@@ -84,6 +84,13 @@ const DISPERSAL_FIELDS = [
     max: 3650,
     hint: "How far back an animal handover may be dated. A record typed up after a week in the barangay is normal; one dated into a previous year is not. A future date is never accepted, whatever this says.",
   },
+  {
+    key: "analytics_min_rate_animals",
+    label: "Minimum animals to rank a rate",
+    min: 1,
+    max: 100,
+    hint: "A barangay needs this many DISTINCT dispersed animals before its re-dispersal rate is ranked in the analytics. Below it, the rate shows greyed as \"n < N\" and the barangay is left out of the highest/lowest ranking — 1 of 1 = 100% is a lie the tab refuses to tell.",
+  },
 ];
 
 const ALERT_FIELDS = [
@@ -199,6 +206,9 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
   const [confirmingPurokId, setConfirmingPurokId] = useState(null);
   const [newBarangay, setNewBarangay] = useState({ name: "", latitude: "", longitude: "" });
   const [refBusy, setRefBusy] = useState(false);
+  // Optional per-barangay population behind the analytics per-1,000 view:
+  // edited row-by-row like the puroks, saved through the barangay PATCH.
+  const [populationDraftByBarangay, setPopulationDraftByBarangay] = useState({});
   const toast = useToast();
 
   // Which section's Save button is in flight — so only that button shows a
@@ -227,6 +237,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
     // days) rather than the payload group's max_backdate_days.
     setDispersal({
       dispersal_max_backdate_days: settings.dispersal?.max_backdate_days ?? "",
+      analytics_min_rate_animals: settings.analytics?.min_rate_animals ?? "",
     });
     setAnimalTypes(settings.animal_types ?? []);
     setHealthOutcomes(settings.health_outcomes ?? []);
@@ -382,6 +393,30 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
     if (ok) setNewBarangay({ name: "", latitude: "", longitude: "" });
   }
 
+  /**
+   * Record (or clear) one barangay's population — the optional denominator
+   * behind the analytics "per 1,000 residents" view. Blank removes the
+   * figure; the system never invents one.
+   */
+  async function savePopulation(barangay) {
+    const draft = (populationDraftByBarangay[barangay.id] ?? "").trim();
+    const population = draft === "" ? null : Number(draft);
+
+    if (draft !== "" && (!Number.isInteger(population) || population < 0)) {
+      toast.error("Population must be a whole number (or blank to clear it).");
+      return;
+    }
+
+    const ok = await runRefAction(
+      () => adminApi.updateBarangay(barangay.id, { population }),
+      population === null
+        ? `Population removed for ${barangay.name}.`
+        : `Population saved for ${barangay.name}.`,
+    );
+
+    if (ok) setPopulationDraftByBarangay((prev) => ({ ...prev, [barangay.id]: "" }));
+  }
+
   return (
     <div className="space-y-6">
       <section className="card p-6">
@@ -520,15 +555,16 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
           {/* Writable: how far back an animal handover may be dated */}
           <section className="card p-6">
             <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
-              Animal ownership
+              Animal ownership &amp; dispersal analytics
             </h3>
             <p className="mt-1.5 text-xs text-slate-500">
-              How far back a dispersal or re-dispersal may be dated. Field
-              records are typed up after the visit, so a short window is
-              normal; the ceiling is here so a mistyped year cannot backfill
-              the whole programme at once. The ownership chain itself — who
-              held an animal, from when, and where — is recorded per animal,
-              not set here.
+              How far back a dispersal or re-dispersal may be dated, and the
+              small-denominator floor the barangay analytics ranks rates
+              against. Field records are typed up after the visit, so a short
+              window is normal; the ceiling is here so a mistyped year cannot
+              backfill the whole programme at once. The ownership chain itself —
+              who held an animal, from when, and where — is recorded per
+              animal, not set here.
             </p>
 
             <form
@@ -538,7 +574,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
                   "dispersal",
                   DISPERSAL_FIELDS.map((field) => field.key),
                   dispersal,
-                  "Backdating window saved. New handovers follow it now.",
+                  "Handover policy saved. The analytics follows the new minimum immediately.",
                 );
               }}
               className="mt-4 max-w-md"
@@ -916,16 +952,47 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
               registered in them — the Beneficiaries form's dropdown follows
               immediately. Barangays can be added but not renamed: renaming one
               would orphan every historical address that spells it the old way.
+              A barangay's optional population powers the analytics "per 1,000
+              residents" view — leave it blank until a verified figure exists.
             </p>
 
             <div className="mt-4 space-y-4">
               {data.barangays.map((barangay) => (
                 <div key={barangay.id} className="rounded-xl border border-slate-200">
-                  <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
                     <p className="text-sm font-semibold text-slate-800">{barangay.name}</p>
-                    <span className="text-[11px] text-slate-500">
-                      {barangay.puroks.length}{" "}
-                      {barangay.puroks.length === 1 ? "purok" : "puroks"}
+                    <span className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-500">
+                        {barangay.puroks.length}{" "}
+                        {barangay.puroks.length === 1 ? "purok" : "puroks"}
+                      </span>
+                      <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                        Population
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          defaultValue={barangay.population ?? ""}
+                          key={`population-${barangay.id}-${barangay.population ?? ""}`}
+                          placeholder="—"
+                          onChange={(event) =>
+                            setPopulationDraftByBarangay((prev) => ({
+                              ...prev,
+                              [barangay.id]: event.target.value,
+                            }))
+                          }
+                          className="field !w-24 !px-2 !py-1 text-xs"
+                          aria-label={`Population of ${barangay.name}`}
+                        />
+                        <button
+                          type="button"
+                          disabled={refBusy}
+                          onClick={() => savePopulation(barangay)}
+                          className="text-xs font-semibold text-brand-700 hover:text-brand-900 disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                      </label>
                     </span>
                   </div>
 

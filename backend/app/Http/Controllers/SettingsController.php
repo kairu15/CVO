@@ -134,6 +134,9 @@ class SettingsController extends Controller
             'alerts' => $this->settings->alerts(),
             // The ownership-chain backdating window.
             'dispersal' => ['max_backdate_days' => $this->settings->dispersalMaxBackdateDays()],
+            // Barangay-dispersal analytics: the small-denominator floor below
+            // which a barangay's re-dispersal rate stays unranked.
+            'analytics' => ['min_rate_animals' => $this->settings->analyticsMinRateAnimals()],
             // Field-visit verification + route-planner fallback + cluster
             // scan inputs — all three are policy numbers the office owns.
             'verification' => ['onsite_threshold_m' => $this->settings->onsiteThresholdM()],
@@ -192,6 +195,9 @@ class SettingsController extends Controller
                 'name' => $barangay->name,
                 'latitude' => (float) $barangay->latitude,
                 'longitude' => (float) $barangay->longitude,
+                // Optional; the per-1,000-residents analytics view reads it.
+                // Empty by default — the CVO supplies verified figures.
+                'population' => $barangay->population,
                 'puroks' => $barangay->puroks
                     ->map(fn (Purok $purok): array => [
                         'id' => $purok->id,

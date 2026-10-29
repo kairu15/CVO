@@ -287,4 +287,22 @@ return [
         'radius_km' => 2.0,
         'reportable_outcomes' => ['deceased'],
     ],
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Barangay dispersal analytics
+    |--------------------------------------------------------------------------
+    |
+    | Small denominators make a rate lie: a barangay with one dispersal that
+    | was re-dispersed shows 100% and outranks every real programme area.
+    | This is the floor of DISTINCT animals dispersed into a barangay below
+    | which its re-dispersal rate is reported as unranked ("n < N") and left
+    | out of the highest/lowest ranking. A policy number the office owns —
+    | editable in System Settings; this is the shipped UNCONFIRMED default.
+    |
+    */
+    'analytics' => [
+        'min_rate_animals' => 5,
+    ],
 ];

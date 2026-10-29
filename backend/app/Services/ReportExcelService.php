@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\AnimalClassification;
+use App\Models\AnimalType;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
@@ -35,7 +38,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ReportExcelService
 {
-    public function __construct(private readonly ReportService $reports) {}
+    public function __construct(
+        private readonly ReportService $reports,
+        private readonly BarangayDispersalAnalyticsService $analytics,
+    ) {}
 
     /**
      * Build and stream the workbook for the current scope.
@@ -214,6 +220,239 @@ class ReportExcelService
                 ],
                 $trend,
             ), null, 'A2');
+        }
+
+        foreach (range('A', 'D') as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+    }
+
+    /* ------------------------------------------------------------------ *
+     |  Barangay dispersal analytics workbook                              |
+     *                                                                      *
+     *  The Reports tab's own export: the barangay table and the flow matrix
+     *  behind the active filters, with the filter summary on the first
+     *  sheet so a file found later says exactly what it covers.
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Build and stream the barangay dispersal workbook for the current scope.
+     *
+     * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>, per_1000: bool, include_cvo: bool}  $filters
+     */
+    public function barangayDispersalDownloadResponse(User $viewer, array $filters): StreamedResponse
+    {
+        $summary = $this->analytics->barangaySummary($viewer, $filters);
+        $flows = $this->analytics->flows($viewer, $filters, $filters['include_cvo']);
+
+        $writer = new XlsxWriter($this->barangayDispersalWorkbook($summary, $flows, $filters, $viewer));
+
+        $parts = ['cvo-barangay-dispersal'];
+
+        if ($filters['from'] !== null) {
+            $parts[] = 'from-'.$filters['from']->format('Y-m-d');
+        }
+
+        if ($filters['to'] !== null) {
+            $parts[] = 'to-'.$filters['to']->format('Y-m-d');
+        }
+
+        return response()->streamDownload(function () use ($writer): void {
+            $writer->save('php://output');
+        }, implode('-', $parts).'.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     * @param  array<string, mixed>  $flows
+     * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>, per_1000: bool, include_cvo: bool}  $filters
+     */
+    private function barangayDispersalWorkbook(array $summary, array $flows, array $filters, User $viewer): Spreadsheet
+    {
+        $spreadsheet = new Spreadsheet;
+
+        $this->barangayDispersalFiltersSheet($spreadsheet->getActiveSheet(), $filters, $viewer);
+        $this->barangayTableSheet($spreadsheet->createSheet(), $summary['barangays'], $filters['per_1000']);
+        $this->flowMatrixSheet($spreadsheet->createSheet(), $summary['barangays'], $flows['flows']);
+        $this->topFlowsSheet($spreadsheet->createSheet(), $flows['flows']);
+
+        return $spreadsheet;
+    }
+
+    /**
+     * The filter summary — the scope a file found later needs, mirroring the
+     * summary sheet of the program report above.
+     *
+     * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>, per_1000: bool, include_cvo: bool}  $filters
+     */
+    private function barangayDispersalFiltersSheet(Worksheet $sheet, array $filters, User $viewer): void
+    {
+        $sheet->setTitle('Filters');
+
+        $sheet->fromArray(['BARANGAY DISPERSAL ANALYTICS'], null, 'A1');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+
+        $animalType = $filters['animal_type_id'] !== null
+            ? AnimalType::find($filters['animal_type_id'])?->name
+            : null;
+        $classification = $filters['classification_id'] !== null
+            ? AnimalClassification::find($filters['classification_id'])?->name
+            : null;
+
+        $sheet->fromArray([
+            ['From', $filters['from']?->toDateString() ?? 'Not filtered'],
+            ['To', $filters['to']?->toDateString() ?? 'Not filtered'],
+            ['Animal type', $animalType ?? 'All'],
+            ['Classification', $classification ?? 'All'],
+            ['Event types', implode(', ', $filters['event_types'])],
+            ['Per 1,000 residents', $filters['per_1000'] ? 'Yes' : 'No'],
+            ['Include CVO as a source', $filters['include_cvo'] ? 'Yes' : 'No'],
+            ['Scope', $viewer->role === 'technician' ? 'Assigned beneficiaries only' : 'City-wide'],
+            ['Generated at', now()->toDateTimeString()],
+        ], null, 'A3');
+
+        $sheet->getColumnDimension('A')->setWidth(24);
+        $sheet->getColumnDimension('B')->setWidth(40);
+    }
+
+    /**
+     * The barangay table — the numbers behind the map, the bar chart and the
+     * summary cards, one row per barangay, zeros included.
+     *
+     * @param  list<array<string, mixed>>  $barangays
+     */
+    private function barangayTableSheet(Worksheet $sheet, array $barangays, bool $per1000): void
+    {
+        $sheet->setTitle('Barangay dispersal');
+
+        $header = ['Barangay', 'Population', 'Dispersed', 'Re-dispersed out', 'Re-dispersed in', 'Within barangay', 'Net flow', 'Distinct dispersed', 'Distinct re-dispersed out', 'Re-dispersal rate', 'Rate ranked'];
+
+        if ($per1000) {
+            $header = [...$header, 'Dispersed per 1,000', 'Re-dispersed out per 1,000', 'Re-dispersed in per 1,000', 'Net flow per 1,000'];
+        }
+
+        $sheet->fromArray($header, null, 'A1');
+        $this->styleHeaderRow($sheet, 1);
+
+        $rowIndex = 2;
+
+        foreach ($barangays as $row) {
+            $sheet->fromArray([[
+                $row['name'],
+                $row['population'],
+                $row['dispersed'],
+                $row['redispersed_out'],
+                $row['redispersed_in'],
+                $row['within_barangay'],
+                $row['net_flow'],
+                $row['distinct_dispersed'],
+                $row['distinct_redispersed_out'],
+                $row['redispersal_rate'] === null ? '' : round($row['redispersal_rate'] * 100, 1).'%',
+                $row['rate_eligible'] ? 'Yes' : 'No (below minimum)',
+                ...($per1000 ? [$row['dispersed_per_1000'], $row['redispersed_out_per_1000'], $row['redispersed_in_per_1000'], $row['net_flow_per_1000']] : []),
+            ]], null, "A{$rowIndex}");
+            $rowIndex++;
+        }
+
+        foreach (range('A', $sheet->getHighestColumn()) as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+    }
+    /**
+     * The 28 × 28 flow matrix: origin rows, destination columns, counts in
+     * the cells. The diagonal is same-barangay re-dispersal — counted in the
+     * totals, never drawn as a flow line on the map.
+     *
+     * @param  list<array<string, mixed>>  $barangays
+     * @param  list<array<string, mixed>>  $flows
+     */
+    private function flowMatrixSheet(Worksheet $sheet, array $barangays, array $flows): void
+    {
+        $sheet->setTitle('Flow matrix');
+
+        $names = array_column($barangays, 'name');
+        $ids = array_column($barangays, 'barangay_id');
+
+        $counts = [];
+        foreach ($flows as $flow) {
+            if ($flow['origin_barangay_id'] !== null) {
+                $counts[$flow['origin_barangay_id'].'-'.$flow['destination_barangay_id']] = $flow['count'];
+            }
+        }
+
+        $sheet->fromArray(['Origin \\ Destination', ...$names], null, 'A1');
+        $this->styleHeaderRow($sheet, 1);
+
+        $rowIndex = 2;
+
+        foreach ($ids as $originId) {
+            $row = [$names[$originId] ?? $originId];
+
+            foreach ($ids as $destinationId) {
+                $row[] = $counts[$originId.'-'.$destinationId] ?? '';
+            }
+
+            $sheet->fromArray([$row], null, "A{$rowIndex}");
+            $rowIndex++;
+        }
+
+        // A CVO source row when the option was on: its "barangay" column is
+        // the destinations the office dispersed into.
+        $cvoCounts = [];
+        foreach ($flows as $flow) {
+            if ($flow['origin_barangay_id'] === null) {
+                $cvoCounts[$flow['destination_barangay_id']] = $flow['count'];
+            }
+        }
+
+        if ($cvoCounts !== []) {
+            $row = ['CVO'];
+
+            foreach ($ids as $destinationId) {
+                $row[] = $cvoCounts[$destinationId] ?? '';
+            }
+
+            $sheet->fromArray([$row], null, "A{$rowIndex}");
+        }
+
+        $sheet->getColumnDimension('A')->setWidth(24);
+
+        // Columns beyond Z are two letters (28 destinations + header), so the
+        // width loop must go through Coordinate, not a single-byte range.
+        foreach (range(2, Coordinate::columnIndexFromString($sheet->getHighestColumn())) as $columnIndex) {
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($columnIndex))->setWidth(14);
+        }
+    }
+
+    /**
+     * The flows as a flat table, largest first — the sortable "top flows"
+     * beside the matrix on the screen.
+     *
+     * @param  list<array<string, mixed>>  $flows
+     */
+    private function topFlowsSheet(Worksheet $sheet, array $flows): void
+    {
+        $sheet->setTitle('Top flows');
+
+        $sheet->fromArray(['Origin', 'Destination', 'Animals', 'Within barangay'], null, 'A1');
+        $this->styleHeaderRow($sheet, 1);
+
+        $rowIndex = 2;
+
+        foreach ($flows as $flow) {
+            $sheet->fromArray([[
+                $flow['origin_name'] ?? 'Unknown',
+                $flow['destination_name'] ?? 'Unknown',
+                $flow['count'],
+                $flow['within_barangay'] ? 'Yes' : 'No',
+            ]], null, "A{$rowIndex}");
+            $rowIndex++;
+        }
+
+        if ($flows === []) {
+            $sheet->fromArray([['No re-dispersals were recorded in this period.']], null, 'A2');
         }
 
         foreach (range('A', 'D') as $column) {

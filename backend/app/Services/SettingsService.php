@@ -59,13 +59,22 @@ class SettingsService
     public const SESSION_KEYS = ['session_idle_minutes'];
 
     /**
-     * Ownership-chain windows. How far back a dispersal or re-dispersal may be
-     * dated, in days (app timezone). A future date is never allowed; this is
+     * Ownership-chain windows. How far back a dispersal or re-dispersal may
+     * be dated, in days (app timezone). A future date is never allowed; this is
      * only the past-facing ceiling.
      *
      * @var list<string>
      */
     public const DISPERSAL_KEYS = ['dispersal_max_backdate_days'];
+
+    /**
+     * Barangay-dispersal analytics policy numbers. The smallest number of
+     * DISTINCT animals dispersed into a barangay for its re-dispersal rate to
+     * be ranked instead of greyed out ("n < N").
+     *
+     * @var list<string>
+     */
+    public const ANALYTICS_KEYS = ['analytics_min_rate_animals'];
 
     /** The suggested animal-type vocabulary, stored as a JSON list. */
     public const ANIMAL_TYPES_KEY = 'animal_types';
@@ -136,6 +145,7 @@ class SettingsService
         ...self::ALERT_KEYS,
         ...self::SESSION_KEYS,
         ...self::DISPERSAL_KEYS,
+        ...self::ANALYTICS_KEYS,
         self::ANIMAL_TYPES_KEY,
         self::HEALTH_OUTCOMES_KEY,
         self::FIELD_VISIT_PURPOSES_KEY,
@@ -181,6 +191,11 @@ class SettingsService
                 // How far back a handover may be dated. The floor is a policy
                 // number the office sets; there is no forward window at all.
                 'max_backdate_days' => (int) $values['dispersal_max_backdate_days'],
+            ],
+            'analytics' => [
+                // Barangays below this many distinct dispersed animals show
+                // their re-dispersal rate unranked rather than as a number.
+                'min_rate_animals' => (int) $values['analytics_min_rate_animals'],
             ],
             'verification' => [
                 // The radius, in metres, inside which a captured fix counts
@@ -268,6 +283,16 @@ class SettingsService
     public function dispersalMaxBackdateDays(): int
     {
         return max(0, (int) $this->all()['dispersal']['max_backdate_days']);
+    }
+
+    /**
+     * The smallest number of distinct animals dispersed into a barangay for
+     * its re-dispersal rate to be ranked. Never below 1 — a zero floor would
+     * rank every 0-of-0 barangay at a meaningless rate.
+     */
+    public function analyticsMinRateAnimals(): int
+    {
+        return max(1, (int) $this->all()['analytics']['min_rate_animals']);
     }
 
     /**
@@ -534,6 +559,8 @@ class SettingsService
             'session_idle_minutes' => (string) config('security.client_idle_minutes'),
 
             'dispersal_max_backdate_days' => (string) config('cvo.dispersal.max_backdate_days'),
+
+            'analytics_min_rate_animals' => (string) config('cvo.analytics.min_rate_animals'),
 
             'onsite_threshold_m' => (string) config('cvo.verification.onsite_threshold_m'),
             'office_latitude' => (string) config('cvo.office_location.latitude'),

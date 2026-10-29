@@ -214,6 +214,7 @@ class BarangayController extends Controller
             'name' => $barangay->name,
             'latitude' => (float) $barangay->latitude,
             'longitude' => (float) $barangay->longitude,
+            'population' => $barangay->population,
             'puroks' => $barangay->relationLoaded('puroks')
                 ? $barangay->puroks->map(fn (Purok $p) => $this->purokPayload($p))->all()
                 : $barangay->puroks()->get()->map(fn (Purok $p) => $this->purokPayload($p))->all(),

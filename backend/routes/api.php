@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\AnimalDispersalController;
 use App\Http\Controllers\AnimalHealthController;
 use App\Http\Controllers\AnimalTypeController;
@@ -325,6 +326,24 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         ->middleware('permission:view_flight_path')->name('api.animals.ownership-chain');
     Route::get('animals/{animal}/flight-path', [AnimalDispersalController::class, 'flightPath'])
         ->middleware('permission:view_flight_path')->name('api.animals.flight-path');
+
+    // Barangay dispersal analytics — the Reports "Barangay dispersal" tab
+    // and the dashboard widget. Aggregated read-only answers (one row per
+    // barangay, one row per flow); the database computes them, the SPA
+    // renders them. Gated per capability by the role_permissions matrix;
+    // row scoping (a technician sees only their assigned households' events)
+    // is enforced in BarangayDispersalAnalyticsService's query layer.
+    // Deliberately NOT under /admin: doctors and technicians hold the
+    // analytics capability without the rest of the admin module.
+    Route::get('analytics/barangay-dispersal', [AnalyticsController::class, 'barangayDispersal'])
+        ->middleware('permission:view_analytics')->name('api.analytics.barangay-dispersal');
+    Route::get('analytics/barangay-flows', [AnalyticsController::class, 'barangayFlows'])
+        ->middleware('permission:view_analytics')->name('api.analytics.barangay-flows');
+    // Declared before nothing conflicts, but kept grouped with its siblings;
+    // the spreadsheet carries the barangay table + flow matrix + filter
+    // summary behind the same filters as the screen.
+    Route::get('analytics/barangay-dispersal/export', [AnalyticsController::class, 'exportBarangayDispersal'])
+        ->middleware('permission:view_analytics')->name('api.analytics.barangay-dispersal.export');
 
     // Admin: the /admin module, gated PER CAPABILITY by the role_permissions
     // matrix (EnsurePermission) instead of one role check. With the shipped

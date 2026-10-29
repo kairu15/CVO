@@ -208,6 +208,56 @@ class AnimalDispersalTest extends TestCase
         $this->assertSame($b->id, $animal->current_owner_id);
     }
 
+    public function test_flight_path_after_disperse_and_redisperse_has_ordered_numeric_points(): void
+    {
+        $admin = $this->admin();
+        $alice = $this->beneficiary(null, Barangays::all()[0]);
+        $bob = $this->beneficiary(null, Barangays::all()[1]);
+
+        // The reported scenario: disperse to A, then re-disperse the SAME
+        // animal to B. Both events must be on the path, not just the last one.
+        $animal = $this->disperse($admin, $alice, now()->subDays(2));
+        $this->redisperse($admin, $animal->id, $bob, now()->subDay())->assertCreated();
+
+        $path = $this->actingAs($admin)
+            ->getJson("/api/v1/animals/{$animal->id}/flight-path")
+            ->assertOk();
+
+        $nodes = $path->json('data.nodes');
+
+        // Origin + one stop per handover. Fewer than two located points is a
+        // line that cannot be drawn at all.
+        $this->assertGreaterThanOrEqual(3, count($nodes));
+        $this->assertGreaterThanOrEqual(2, count($path->json('data.segments')));
+
+        $previousDate = null;
+
+        foreach (array_slice($nodes, 1) as $node) {
+            $this->assertNotNull($node['event_id']);
+            $this->assertNotNull($node['held_from']);
+
+            // Chronological, and stable when two handovers share a date
+            // (event_date, then id).
+            if ($previousDate !== null) {
+                $this->assertGreaterThanOrEqual($previousDate, $node['held_from']);
+            }
+            $previousDate = $node['held_from'];
+
+            // Coordinates arrive as NUMBERS (not "9.37" strings) inside the
+            // covered city — the map would otherwise place the stop at 0,0.
+            $this->assertTrue(is_int($node['latitude']) || is_float($node['latitude']), 'latitude is numeric JSON');
+            $this->assertTrue(is_int($node['longitude']) || is_float($node['longitude']), 'longitude is numeric JSON');
+            $this->assertGreaterThan(8, (float) $node['latitude']);
+            $this->assertLessThan(11, (float) $node['latitude']);
+            $this->assertGreaterThan(122, (float) $node['longitude']);
+            $this->assertLessThan(124, (float) $node['longitude']);
+        }
+
+        $this->assertSame($alice->id, $nodes[1]['owner_id']);
+        $this->assertSame($bob->id, $nodes[2]['owner_id']);
+        $this->assertTrue($nodes[2]['current']);
+    }
+
     public function test_re_dispersal_to_the_same_owner_is_rejected(): void
     {
         $admin = $this->admin();

@@ -419,6 +419,18 @@ export default function ReportsPage({ roleKey = "admin" }) {
         {/* The printable report: the office's own template, filled for the
             filters above, under an editable report name. */}
         <ReportExportPanel barangay={barangay} month={month} animalType={animalType} from={from} />
+
+        {/* Barangay dispersal analytics — its own tab, with the bubble map,
+            flow matrix and per-barangay ranking. */}
+        <div className="mt-4">
+          <Link
+            to={`/dashboard/${roleKey}/reports/barangay-dispersal`}
+            className="btn-secondary !px-3.5 !py-1.5 text-xs"
+          >
+            Barangay dispersal analytics
+            <Icon name="arrow-right" className="h-3.5 w-3.5" />
+          </Link>
+        </div>
       </section>
 
       {error && (

@@ -59,30 +59,49 @@ function subtitleFor(node) {
  * One household's trail, preferring the recorded ownership chain.
  *
  * The ownership chain is the source of truth for the flight path. Households
- * that have no animal on record yet (the older beneficiary-only rows, before
- * `ownership:backfill` runs) fall back to the field-visit trail that screen
- * drew before, so the map never goes blank mid-migration. Anything else — a
- * permission the caller lacks, a still-older deployment — falls back the same
- * way rather than failing the whole map.
+ * that have no animal on record (the older beneficiary-only rows, before
+ * `ownership:backfill` runs) fall back to the beneficiary's own registered
+ * location trail, so the map never goes blank mid-migration.
+ *
+ * ONLY that "no animal yet" case falls back. A request that FAILS (a 403 for
+ * an unassigned household, a 404 on an animal deleted underneath the caller, a
+ * 500 on a null relation) is rethrown: a failed path request must not look
+ * like "this animal has no movement", which is exactly what swallowing the
+ * error here used to do. The caller shows an error and a Retry instead.
+ *
+ * The response carries `unlocated` — the chain nodes that could not be placed
+ * — so the panel can name the owner whose missing geotag shortened the trail
+ * rather than quietly drawing fewer stops.
  *
  * @param {number} beneficiaryId
- * @returns {Promise<{beneficiary_id: number, points: Array<object>, animal?: object}>}
+ * @returns {Promise<{beneficiary_id: number, points: Array<object>, animal: object|null, nodes: Array<object>|null, unlocated: Array<object>}>}
  */
 export async function fetchOwnershipTrail(beneficiaryId) {
-  try {
-    const animals = await animalOwnershipApi.beneficiaryAnimals(beneficiaryId);
-    const animal = animals.find((row) => row.status === "active") ?? animals[0] ?? null;
+  const animals = await animalOwnershipApi.beneficiaryAnimals(beneficiaryId);
+  const animal = animals.find((row) => row.status === "active") ?? animals[0] ?? null;
 
-    if (!animal) return beneficiariesApi.path(beneficiaryId);
-
-    const flightPath = await animalOwnershipApi.flightPath(animal.id);
+  if (!animal) {
+    const legacy = await beneficiariesApi.path(beneficiaryId);
 
     return {
       beneficiary_id: Number(beneficiaryId),
-      animal,
-      points: ownershipNodesToPoints(flightPath),
+      animal: null,
+      points: Array.isArray(legacy?.points) ? legacy.points : [],
+      nodes: null,
+      unlocated: [],
     };
-  } catch {
-    return beneficiariesApi.path(beneficiaryId);
   }
+
+  const flightPath = await animalOwnershipApi.flightPath(animal.id);
+  const nodes = Array.isArray(flightPath?.nodes) ? flightPath.nodes : [];
+
+  return {
+    beneficiary_id: Number(beneficiaryId),
+    animal,
+    points: ownershipNodesToPoints(flightPath),
+    nodes,
+    unlocated: nodes
+      .filter((node) => node.latitude === null || node.longitude === null)
+      .map((node) => ({ index: node.index, label: node.label, kind: node.kind })),
+  };
 }

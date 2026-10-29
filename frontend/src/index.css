@@ -387,6 +387,59 @@
   height: 100%;
 }
 
+/* A handover recorded at the SAME spot as the previous stop. The segment is
+   zero-length (and draws nothing), so this pill is what keeps the event
+   visible on the map. */
+.cvo-flight-same-location {
+  padding: 2px 8px;
+  border-radius: 9999px;
+  border: 1px solid #c8e6c9;
+  background: #f3f9ee;
+  color: #3f6b22;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 0.25);
+}
+
+/*
+ * The barangay choropleth's hover label: a dark, cursor-side card (the same
+ * language as the LGU barangay-profile maps) instead of the white popup the
+ * pins and flow lines use. Scoped to the popup's own class so every other
+ * MapLibre popup keeps the default light card.
+ */
+.cvo-barangay-popup .maplibregl-popup-content {
+  background: rgb(15 23 42 / 0.92); /* slate-900 */
+  color: #f8fafc;
+  padding: 8px 12px;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgb(15 23 42 / 0.35);
+  min-width: 0;
+}
+
+/* The tip inherits the dark fill on whichever side MapLibre anchors it. */
+.cvo-barangay-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.cvo-barangay-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.cvo-barangay-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: rgb(15 23 42 / 0.92);
+}
+
+.cvo-barangay-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.cvo-barangay-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.cvo-barangay-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: rgb(15 23 42 / 0.92);
+}
+
+.cvo-barangay-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: rgb(15 23 42 / 0.92);
+}
+
+.cvo-barangay-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: rgb(15 23 42 / 0.92);
+}
+
 /*
  * Ear-tag printing.
  *

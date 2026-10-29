@@ -24,6 +24,7 @@ const TechnicianAssignmentsPage = lazy(() => import("../pages/TechnicianAssignme
 const BeneficiariesPage = lazy(() => import("../pages/BeneficiariesPage"));
 const UserManagementPage = lazy(() => import("../pages/UserManagementPage"));
 const ReportsPage = lazy(() => import("../pages/ReportsPage"));
+const BarangayDispersalPage = lazy(() => import("../pages/BarangayDispersalPage"));
 const SystemSettingsPage = lazy(() => import("../pages/SystemSettingsPage"));
 const RolesPermissionsPage = lazy(() => import("../pages/RolesPermissionsPage"));
 const AuditLogPage = lazy(() => import("../pages/AuditLogPage"));
@@ -203,6 +204,34 @@ export default function AppRoutes() {
               element={
                 <RoleRoute dashboard="admin">
                   <ReportsPage roleKey="admin" />
+                </RoleRoute>
+              }
+            />
+
+            {/* Barangay dispersal analytics — the Reports tab's own page:
+                admin/doctor city-wide, technician scoped to their assigned
+                households server-side. */}
+            <Route
+              path="/dashboard/admin/reports/barangay-dispersal"
+              element={
+                <RoleRoute dashboard="admin">
+                  <BarangayDispersalPage roleKey="admin" />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/dashboard/doctor/reports/barangay-dispersal"
+              element={
+                <RoleRoute dashboard="doctor">
+                  <BarangayDispersalPage roleKey="doctor" />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/dashboard/technician/reports/barangay-dispersal"
+              element={
+                <RoleRoute dashboard="technician">
+                  <BarangayDispersalPage roleKey="technician" />
                 </RoleRoute>
               }
             />

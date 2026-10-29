@@ -17,12 +17,15 @@ import { Icon } from "./Icons";
 import { InlineAlert } from "./InlineAlert";
 import { fetchOwnershipTrail } from "../lib/ownershipPath";
 import { getErrorMessage } from "../api/client";
+import { useOptionalToast } from "../context/ToastContext";
 import {
   buildArrows,
   buildPointMarkers,
   buildSegments,
   dateRangeLabel,
   formatPointDate,
+  sameLocationPoints,
+  sanitizePoints,
   toLngLat,
 } from "../lib/flightPath";
 import { spreadPositions } from "../lib/mapPositions";
@@ -123,6 +126,7 @@ const PATH_SOURCES = {
 const PATH_LAYERS = {
   casing: "cvo-flight-casing",
   line: "cvo-flight-line",
+  approximate: "cvo-flight-approximate",
   arrows: "cvo-flight-arrows",
   points: "cvo-flight-points",
 };
@@ -226,6 +230,36 @@ function pathPointHtml(properties) {
   );
 }
 
+/**
+ * Why a selected household's trail cannot be drawn — in plain language.
+ *
+ * "No line" has two very different meanings (a failed request vs. an animal
+ * with only one recorded stop), and the user can act on each one. Returning
+ * null means there IS a line, so the panel shows its normal heading.
+ */
+function noPathReason(flightPath) {
+  if (flightPath.error) return "Couldn't load the path. Try again.";
+  if (!flightPath.empty) return null;
+
+  const points = flightPath.points ?? [];
+  const unlocated = flightPath.unlocated ?? [];
+  const namedOwner = unlocated.find((node) => node.kind !== "origin" && node.label);
+
+  if (points.length === 0) {
+    return namedOwner
+      ? `Owner ${namedOwner.label} has no location yet. Add a geotag to draw this stop.`
+      : "No location recorded for this household yet. Add a geotag to draw it.";
+  }
+
+  if (unlocated.length > 0) {
+    return namedOwner
+      ? `Owner ${namedOwner.label} has no location yet. Add a geotag to draw this stop.`
+      : "Only one location recorded. Re-disperse this animal to see a path.";
+  }
+
+  return "Only one location recorded. Re-disperse this animal to see a path.";
+}
+
 function escapeHtml(text) {
   return String(text ?? "").replace(/[&<>"']/g, (char) => {
     switch (char) {
@@ -260,7 +294,9 @@ export function DispersalMap({
   center,
   selected = null,
   onRedisperse,
+  refreshTrail = null,
 }) {
+  const toast = useOptionalToast();
   const containerRef = useRef(null);
   const shellRef = useRef(null); // the box that flips to fullscreen (container + overlay)
   const mapRef = useRef(null);
@@ -284,6 +320,7 @@ export function DispersalMap({
     name: null,
     beneficiary: null,
     points: null,
+    unlocated: [],
     loading: false,
     error: null,
     empty: false,
@@ -301,6 +338,7 @@ export function DispersalMap({
   const hoverPopupRef = useRef(null); // segment tooltip, reused while hovering
   const toggleRef = useRef(null); // latest reveal/hide, read by popup clicks
   const previousPathIdRef = useRef(null); // pin popup that needs relabelling
+  const refreshTokenRef = useRef(0); // last `refreshTrail` token acted on
 
   // Keep the latest callback without re-creating the map on every render.
   useEffect(() => {
@@ -483,6 +521,7 @@ export function DispersalMap({
       name: beneficiary.name_of_farmer,
       beneficiary,
       points: null,
+      unlocated: [],
       loading: true,
       error: null,
       empty: false,
@@ -496,20 +535,29 @@ export function DispersalMap({
       // it was dismissed.
       if (flightRef.current.id !== id) return;
 
-      const points = Array.isArray(payload?.points) ? payload.points : [];
+      // Drop (and report) anything that is not a real coordinate: MapLibre
+      // would otherwise draw the point at [0, 0].
+      const points = sanitizePoints(Array.isArray(payload?.points) ? payload.points : []);
+      const unlocated = Array.isArray(payload?.unlocated) ? payload.unlocated : [];
 
-      // Fewer than two distinct spots means there is no journey to draw yet —
-      // an animal still sitting exactly where it was dispersed. Saying so is
-      // better than drawing an empty map and leaving the user guessing.
+      // Fewer than two spots means there is no journey to draw yet. The panel
+      // says WHICH reason applies (one stop only, or a stop with no geotag)
+      // rather than leaving the user guessing why the line is missing.
       if (points.length < 2) {
-        setFlightPath({ ...base, loading: false, empty: true });
+        // Keep the (few) points: the panel needs their count to say WHY there
+        // is no line (one stop vs none).
+        setFlightPath({ ...base, loading: false, empty: true, points, unlocated });
         return;
       }
 
-      setFlightPath({ ...base, loading: false, points });
+      setFlightPath({ ...base, loading: false, points, unlocated });
     } catch (err) {
       if (flightRef.current.id !== id) return;
-      setFlightPath({ ...base, loading: false, error: getErrorMessage(err) });
+      const message = getErrorMessage(err);
+      setFlightPath({ ...base, loading: false, error: message });
+      // A failed request must never look like "no path": say so, both on the
+      // panel and in a toast, with the panel's Retry re-running this fetch.
+      toast?.error("Couldn't load the flight path. Try again.");
     }
   }
 
@@ -521,6 +569,7 @@ export function DispersalMap({
       name: null,
       beneficiary: null,
       points: null,
+      unlocated: [],
       loading: false,
       error: null,
       empty: false,
@@ -573,7 +622,7 @@ export function DispersalMap({
         if (points === undefined) {
           try {
             const payload = await fetchOwnershipTrail(id);
-            points = Array.isArray(payload?.points) ? payload.points : [];
+            points = sanitizePoints(Array.isArray(payload?.points) ? payload.points : []);
             cache.set(id, points);
           } catch {
             points = null; // not cached, so a retry can try again
@@ -613,6 +662,44 @@ export function DispersalMap({
   useEffect(() => {
     onRedisperseRef.current = onRedisperse;
   }, [onRedisperse]);
+
+  // A handover just saved: the trail on screen (and the overview cache) were
+  // built before the new event existed, so they are stale by definition. The
+  // page bumps `refreshTrail` after every save, naming the household that now
+  // holds the animal; refetch THAT trail so the new stop appears immediately,
+  // with no page refresh. Live polling of the household list is unchanged.
+  useEffect(() => {
+    const token = refreshTrail?.token ?? 0;
+    if (token === refreshTokenRef.current) return;
+    refreshTokenRef.current = token;
+
+    // Every cached trail predates the handover. The overview is re-assembled
+    // from scratch; a single revealed trail is refetched below.
+    pathCacheRef.current.clear();
+
+    if (allPaths.active) {
+      showAllFlightPaths();
+      return;
+    }
+
+    // Nothing was on screen, so there is nothing to refresh — and popping a
+    // trail up unasked after a save would be a surprise.
+    if (flightRef.current.id === null) return;
+
+    const targetId = Number(refreshTrail?.beneficiaryId ?? 0);
+    const target = visible.find((row) => Number(row.id) === targetId);
+
+    // The animal left for a household the map cannot draw (filtered out, or
+    // with no pin): the old line must go rather than keep pointing at a
+    // household that no longer holds it.
+    if (!target) {
+      hideFlightPath();
+      return;
+    }
+
+    showFlightPath(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the token is the trigger; re-running on `visible` would refetch on every poll
+  }, [refreshTrail?.token]);
 
   // Latest toggle, read by the delegated popup click — popups are created
   // once per marker, so a closure would pin a stale state.
@@ -747,7 +834,9 @@ export function DispersalMap({
 
     map.on("click", PATH_LAYERS.points, onPointClick);
     map.on("mousemove", PATH_LAYERS.line, onSegmentMove);
+    map.on("mousemove", PATH_LAYERS.approximate, onSegmentMove);
     map.on("mouseleave", PATH_LAYERS.line, onSegmentLeave);
+    map.on("mouseleave", PATH_LAYERS.approximate, onSegmentLeave);
     map.on("mouseenter", PATH_LAYERS.points, onPointEnter);
     map.on("mouseleave", PATH_LAYERS.points, onPointLeave);
 
@@ -755,7 +844,9 @@ export function DispersalMap({
       try {
         map.off("click", PATH_LAYERS.points, onPointClick);
         map.off("mousemove", PATH_LAYERS.line, onSegmentMove);
+        map.off("mousemove", PATH_LAYERS.approximate, onSegmentMove);
         map.off("mouseleave", PATH_LAYERS.line, onSegmentLeave);
+        map.off("mouseleave", PATH_LAYERS.approximate, onSegmentLeave);
         map.off("mouseenter", PATH_LAYERS.points, onPointEnter);
         map.off("mouseleave", PATH_LAYERS.points, onPointLeave);
       } catch {
@@ -876,6 +967,31 @@ export function DispersalMap({
         .addTo(map);
 
       pathMarkersRef.current = [originMarker, endMarker];
+
+      // A handover at the SAME spot produces a zero-length segment, which draws
+      // nothing. A badge keeps that real event visible instead of silently
+      // shortening the trail.
+      for (const { point } of sameLocationPoints(positioned)) {
+        const badgeEl = document.createElement("div");
+        badgeEl.className = "cvo-flight-same-location";
+        badgeEl.setAttribute("aria-hidden", "true");
+        badgeEl.textContent = "same location";
+
+        pathMarkersRef.current.push(
+          new Marker({ element: badgeEl, offset: [0, 14] })
+            .setLngLat(toLngLat(point))
+            .setPopup(
+              new Popup({ offset: 12 }).setHTML(
+                pathPointHtml({
+                  title: point.title,
+                  subtitle: point.subtitle,
+                  label: formatPointDate(point.occurred_on),
+                }),
+              ),
+            )
+            .addTo(map),
+        );
+      }
     }
 
     // The overview appears in one frame: animating hundreds of trails at once
@@ -1130,40 +1246,65 @@ export function DispersalMap({
 
       {/* Which trail is up, and the one control that takes it down again. */}
       {!onPick && flightPath.id !== null && (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span
-            role="status"
-            className={`cvo-flight-chip inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-medium ${
-              flightPath.error
-                ? "bg-amber-50 text-amber-800"
-                : "bg-brand-100 text-brand-800"
-            }`}
-          >
-            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-brand-700" />
-            {flightPath.loading && `Loading flight path — ${flightPath.name}…`}
-            {!flightPath.loading &&
-              (flightPath.error
-                ? `Flight path unavailable — ${flightPath.name}`
-                : flightPath.empty
-                  ? `No recorded movement yet — ${flightPath.name}`
-                  : `Flight path — ${flightPath.name}`)}
-          </span>
-          {flightPath.error && flightPath.beneficiary && (
+        <div className="space-y-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              role="status"
+              className={`cvo-flight-chip inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-medium ${
+                flightPath.error
+                  ? "bg-amber-50 text-amber-800"
+                  : "bg-brand-100 text-brand-800"
+              }`}
+            >
+              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-brand-700" />
+              {flightPath.loading && `Loading flight path — ${flightPath.name}…`}
+              {flightPath.error
+                ? `Couldn't load the path — ${flightPath.name}`
+                : flightPath.loading
+                  ? null
+                  : flightPath.empty
+                    ? `No route to draw yet — ${flightPath.name}`
+                    : `Flight path — ${flightPath.name}`}
+            </span>
+            {flightPath.error && flightPath.beneficiary && (
+              <button
+                type="button"
+                className="rounded-full px-3 py-1.5 font-semibold text-brand-800 underline hover:bg-brand-100"
+                onClick={() => showFlightPath(flightPath.beneficiary)}
+              >
+                Retry
+              </button>
+            )}
             <button
               type="button"
-              className="rounded-full px-3 py-1.5 font-semibold text-brand-800 underline hover:bg-brand-100"
-              onClick={() => showFlightPath(flightPath.beneficiary)}
+              className="rounded-full px-3 py-1.5 font-medium text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50"
+              onClick={hideFlightPath}
             >
-              Try again
+              Hide path
             </button>
+          </div>
+
+          {/* Why there is no line — in plain language, never just a blank map. */}
+          {!flightPath.loading && noPathReason(flightPath) && (
+            <p role="status" className="text-slate-600">
+              {noPathReason(flightPath)}
+            </p>
           )}
-          <button
-            type="button"
-            className="rounded-full px-3 py-1.5 font-medium text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50"
-            onClick={hideFlightPath}
-          >
-            Hide path
-          </button>
+
+          {/* Stops the chain could not place are listed, never silently dropped.
+              When NOTHING could be drawn the reason above already names the
+              first missing owner, so the list would only repeat it. */}
+          {!flightPath.loading && !flightPath.error && !flightPath.empty && flightPath.unlocated.length > 0 && (
+            <ul className="space-y-1 text-slate-600">
+              {flightPath.unlocated.map((node) => (
+                <li key={`${node.index}-${node.label}`}>
+                  {node.kind === "origin" || !node.label
+                    ? "The animal's origin has no location yet."
+                    : `Owner ${node.label} has no location yet. Add a geotag to draw this stop.`}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -1322,15 +1463,42 @@ function ensurePathLayers(map) {
     paint: { "line-color": "#ffffff", "line-opacity": 0.85, "line-width": 6 },
   });
 
+  // A stop placed only from its barangay centre is approximate, and its span
+  // is drawn DASHED: the line is an estimate, not a recorded location. The
+  // solid and dashed spans are the same source split by a filter, so both
+  // follow the reveal animation without a second data set.
   map.addLayer({
     id: PATH_LAYERS.line,
     type: "line",
     source: PATH_SOURCES.segments,
+    filter: ["!=", ["get", "approximate"], true],
     layout: { "line-cap": "round", "line-join": "round" },
     paint: {
       "line-width": 3,
       // Faded at the origin, saturated at the most recent segment: direction
       // and recency read from colour alone, before an arrowhead is noticed.
+      "line-color": [
+        "interpolate",
+        ["linear"],
+        ["get", "age"],
+        0,
+        PATH_OLD_COLOR,
+        1,
+        PATH_NEW_COLOR,
+      ],
+      "line-opacity": ["interpolate", ["linear"], ["get", "age"], 0, 0.55, 1, 0.95],
+    },
+  });
+
+  map.addLayer({
+    id: PATH_LAYERS.approximate,
+    type: "line",
+    source: PATH_SOURCES.segments,
+    filter: ["==", ["get", "approximate"], true],
+    layout: { "line-cap": "butt", "line-join": "round" },
+    paint: {
+      "line-width": 3,
+      "line-dasharray": [2, 1.6],
       "line-color": [
         "interpolate",
         ["linear"],

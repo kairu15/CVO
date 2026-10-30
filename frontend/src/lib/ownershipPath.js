@@ -105,3 +105,29 @@ export async function fetchOwnershipTrail(beneficiaryId) {
       .map((node) => ({ index: node.index, label: node.label, kind: node.kind })),
   };
 }
+
+/**
+ * One ANIMAL's trail, from the animal's own flight-path endpoint — the
+ * date-view pins are animal-keyed, so the popup reveals the chain of the
+ * animal the pin represents, not of a household.
+ *
+ * Same contract as fetchOwnershipTrail: points in the map's shape, plus the
+ * `unlocated` nodes so the panel can say WHY the trail stops short. An
+ * animal with a single recorded stop yields <2 points and the panel reports
+ * "only one location recorded" — no invented geometry.
+ *
+ * @param {number} animalId
+ * @returns {Promise<{animal_id: number, points: Array<object>, unlocated: Array<object>}>}
+ */
+export async function fetchAnimalTrail(animalId) {
+  const flightPath = await animalOwnershipApi.flightPath(animalId);
+  const nodes = Array.isArray(flightPath?.nodes) ? flightPath.nodes : [];
+
+  return {
+    animal_id: Number(animalId),
+    points: ownershipNodesToPoints(flightPath),
+    unlocated: nodes
+      .filter((node) => node.latitude === null || node.longitude === null)
+      .map((node) => ({ index: node.index, label: node.label, kind: node.kind })),
+  };
+}

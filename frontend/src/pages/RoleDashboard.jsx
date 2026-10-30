@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { useAutoRefresh } from "../api/queries";
@@ -8,6 +8,9 @@ import { Icon } from "../components/Icons";
 import { SkeletonList } from "../components/Skeleton";
 import { flatNav, getRole } from "../config/roles";
 import { useAuth } from "../context/AuthContext";
+import { useBarangayBoundaries } from "../hooks/useBarangayBoundaries";
+import { buildChoropleth, choroplethTooltipHtml } from "../lib/barangayBoundaries";
+import { validCoordinates } from "../lib/mapPins";
 
 /**
  * Role dashboard.
@@ -25,6 +28,10 @@ const DashboardMap = lazy(() =>
   import("../components/DispersalMap").then((m) => ({ default: m.DispersalMap })),
 );
 
+// The same barangay choropleth the Dispersal Map page wears. Loaded with the
+// map, never with the page, so the maplibre bundle stays out of the first paint.
+const DashboardChoropleth = lazy(() => import("../components/BarangayChoropleth"));
+
 // The barangay analytics widget (admin/doctor) fetches its own aggregate.
 const BarangayDispersalWidget = lazy(() =>
   import("../components/BarangayDispersalWidget").then((m) => ({ default: m.BarangayDispersalWidget })),
@@ -40,6 +47,49 @@ export default function RoleDashboard({ roleKey }) {
   // Admin and doctor have city-wide oversight, so the dashboard opens with
   // the live dispersal map. Technician keeps scaffold modules for now.
   const showMap = roleKey === "admin" || roleKey === "doctor";
+  const boundaries = useBarangayBoundaries();
+
+  // The Overview pins HOUSEHOLDS, not a date's dispatches: every beneficiary
+  // becomes one pin at its registered location, keyed by its own id. Shaping
+  // the rows as pins puts them on the shared CLUSTERED layer the Dispersal Map
+  // uses, so the two maps look and behave alike without the Overview growing
+  // a date selector or a per-date side list.
+  const locationPins = useMemo(
+    () =>
+      beneficiaries.map((row) => ({
+        animal_id: row.id,
+        owner: {
+          id: row.id,
+          label: row.name_of_farmer ?? "Unknown owner",
+          masked: false,
+        },
+        barangay: row.address ?? "",
+        animal_type: row.animal_type_name ?? row.animal_type ?? "Unspecified",
+        ear_tag_number: row.ear_tag_number ?? null,
+        latitude: row.latitude,
+        longitude: row.longitude,
+      })),
+    [beneficiaries],
+  );
+
+  // The same pins, counted per barangay, are the choropleth's fill: the
+  // polygons answer "how many households are pinned here" — the Overview's
+  // question, not the Dispersal Map's per-date counts. Rows whose address is
+  // not a covered barangay simply get no count.
+  const barangayRows = useMemo(() => {
+    const counts = new Map();
+    for (const pin of locationPins) {
+      if (!pin.barangay) continue;
+      if (!validCoordinates(Number(pin.latitude), Number(pin.longitude))) continue;
+      counts.set(pin.barangay, (counts.get(pin.barangay) ?? 0) + 1);
+    }
+    return [...counts].map(([name, pins]) => ({ name, pins }));
+  }, [locationPins]);
+
+  const choropleth = useMemo(() => {
+    if (boundaries.status !== "ready") return null;
+    return buildChoropleth(boundaries.collection, barangayRows, { metric: "pins" });
+  }, [boundaries, barangayRows]);
 
   const load = useCallback(
     async (quiet = false) => {
@@ -104,11 +154,12 @@ export default function RoleDashboard({ roleKey }) {
             <div>
               <p className="eyebrow">Geo-Tagged Records</p>
               <h3 className="mt-2 font-display text-base font-bold text-slate-900">
-                Dispersal map
+                Pinned locations
               </h3>
               <p className="mt-1 text-sm text-slate-600">
-                Where the program's animals are, and a table view of the same
-                records below for accessibility.
+                Every household on record, pinned on the barangay map. A pin
+                names its farmer and animal; the table below lists the same
+                records for accessibility.
               </p>
             </div>
             <Link
@@ -125,7 +176,38 @@ export default function RoleDashboard({ roleKey }) {
               <p className="text-sm text-red-700">{error}</p>
             ) : (
               <Suspense fallback={<p className="text-sm text-slate-500">Loading map…</p>}>
-                <DashboardMap beneficiaries={beneficiaries} loading={loading} />
+                <DashboardMap
+                  pins={locationPins}
+                  pinMode="beneficiary"
+                  loading={loading}
+                  renderChoropleth={(onMapReady) => (
+                    <Suspense
+                      fallback={<div className="h-[26rem] w-full rounded-xl bg-slate-100" />}
+                    >
+                      <DashboardChoropleth
+                        boundaries={boundaries}
+                        choropleth={choropleth}
+                        height="h-[26rem]"
+                        // The pin layers are added by the map; the polygons
+                        // insert beneath them so a pin is never buried.
+                        beforeLayerId="cvo-date-pins-clusters"
+                        clickThroughLayers={[
+                          "cvo-date-pins-clusters",
+                          "cvo-date-pins-point",
+                          "cvo-date-pins-spider-point",
+                        ]}
+                        onMapReady={onMapReady}
+                        ariaLabel="Map of Bayawan City's barangays with the program's geo-tagged households pinned."
+                        legend={{
+                          stops: ["#eaf3dd", "#c7e2a6", "#8bc34a", "#558b2f", "#33691e"],
+                          minLabel: "fewer pins",
+                          maxLabel: "more",
+                        }}
+                        tooltipHtml={choroplethTooltipHtml}
+                      />
+                    </Suspense>
+                  )}
+                />
               </Suspense>
             )}
           </div>

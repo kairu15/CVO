@@ -656,7 +656,7 @@ try {
     );
     ok(
       `${role}: ${expected.showsMap ? "dispersal map shown" : "empty state shown"}`,
-      expected.showsMap ? /Dispersal map/.test(state.body) : /No data yet/.test(state.body),
+      expected.showsMap ? /Pinned locations/.test(state.body) : /No data yet/.test(state.body),
     );
 
     await page.screenshot({ path: `${shots}/dash-${role}.png`, fullPage: true });

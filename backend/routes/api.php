@@ -11,6 +11,7 @@ use App\Http\Controllers\BarangayController;
 use App\Http\Controllers\BeneficiaryController;
 use App\Http\Controllers\CaseNoteController;
 use App\Http\Controllers\DispersalEventController;
+use App\Http\Controllers\DispersalMapController;
 use App\Http\Controllers\FieldVisitController;
 use App\Http\Controllers\HealthRecordController;
 use App\Http\Controllers\MonitoringRecordController;
@@ -344,6 +345,18 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     // summary behind the same filters as the screen.
     Route::get('analytics/barangay-dispersal/export', [AnalyticsController::class, 'exportBarangayDispersal'])
         ->middleware('permission:view_analytics')->name('api.analytics.barangay-dispersal.export');
+
+    // The dispersal map's dated snapshot — the pins AND the barangay polygon
+    // counts for one date, from one query snapshot, plus the list of dates
+    // that have records for the date selector. Gated per capability by the
+    // role_permissions matrix (the same view_flight_path gate behind every
+    // ownership chain); row scoping (a technician sees only events touching
+    // their assigned households) is enforced in DispersalMapService's query
+    // layer, never in the client.
+    Route::get('map/dates', [DispersalMapController::class, 'dates'])
+        ->middleware('permission:view_flight_path')->name('api.map.dates');
+    Route::get('map/pins', [DispersalMapController::class, 'pins'])
+        ->middleware('permission:view_flight_path')->name('api.map.pins');
 
     // Admin: the /admin module, gated PER CAPABILITY by the role_permissions
     // matrix (EnsurePermission) instead of one role check. With the shipped

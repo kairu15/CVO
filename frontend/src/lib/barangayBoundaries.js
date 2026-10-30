@@ -44,6 +44,40 @@ export function normalizeBarangayName(name) {
     .trim();
 }
 
+/**
+ * The choropleth's dark hover label: the barangay name and its pin count.
+ * Shared by every pins-on-polygons page, so the label cannot drift between
+ * the Dispersal Map and the Overview.
+ */
+export function choroplethTooltipHtml(properties) {
+  const row = properties?.row;
+  let parsed = row;
+  if (typeof row === "string") {
+    try {
+      parsed = JSON.parse(row);
+    } catch {
+      parsed = null;
+    }
+  }
+
+  const name = parsed?.name ?? properties?.name ?? "";
+  const count = parsed?.pins ?? 0;
+  const escaped = String(name).replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[ch]);
+
+  return (
+    `<div style="min-width:140px">` +
+    `<p style="margin:0;font-weight:600;color:#f8fafc">${escaped}</p>` +
+    `<p style="margin:2px 0 0;font-size:12px;color:#cbd5e1">Pins: <strong>${count}</strong></p>` +
+    `</div>`
+  );
+}
+
 /** Blend a hex colour toward white — the choropleth's hover lift. */
 export function lightenColor(hex, amount = 0.45) {
   const raw = String(hex ?? "").replace("#", "");

@@ -16,6 +16,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { Icon } from "./Icons";
 import { InlineAlert } from "./InlineAlert";
 import { fetchOwnershipTrail } from "../lib/ownershipPath";
+import { colorFor, pinFeatures, spiderPositions, validCoordinates } from "../lib/mapPins";
 import { getErrorMessage } from "../api/client";
 import { useOptionalToast } from "../context/ToastContext";
 import {
@@ -66,44 +67,6 @@ const OSM_STYLE = {
   },
   layers: [{ id: "osm", type: "raster", source: "osm" }],
 };
-
-/**
- * Legend colors keyed by animal type.
- *
- * Deliberately avoids red, blue, green and yellow: those either disappear into
- * the basemap (water, parks, roads) or clash with the green flight path, so the
- * palette stays within brown, gray, purple, orange and pink. Types are
- * administered in Settings, so a type added later falls through to a stable
- * pick from the same palette instead of sharing one green.
- */
-const ANIMAL_COLORS = {
-  Carabao: "#ea580c", // orange
-  Cattle: "#7e22ce", // purple
-  Goat: "#78350f", // brown
-  Poultry: "#db2777", // pink
-  Swine: "#57534e", // gray
-  Boar: "#9a3412", // burnt orange
-  Unspecified: "#78716c", // light gray
-};
-
-/** Allowed pin palette for animal types added later — no red/blue/green/yellow. */
-const ANIMAL_FALLBACK_COLORS = [
-  "#ea580c", // orange
-  "#7e22ce", // purple
-  "#78350f", // brown
-  "#db2777", // pink
-  "#57534e", // gray
-  "#9a3412", // burnt orange
-  "#6b21a8", // deep purple
-  "#78716c", // light gray
-];
-
-/** Same type always gets the same colour, across reloads and devices. */
-function fallbackColor(animalType) {
-  let hash = 0;
-  for (const char of animalType) hash = (hash * 31 + char.codePointAt(0)) >>> 0;
-  return ANIMAL_FALLBACK_COLORS[hash % ANIMAL_FALLBACK_COLORS.length];
-}
 
 const RE_DISPERSAL_COLOR = "#2d4d19";
 
@@ -167,12 +130,6 @@ const PATH_ARROW_SVG =
   '<svg viewBox="0 0 12 12" width="12" height="12" xmlns="http://www.w3.org/2000/svg">' +
   '<path d="M6 0.7 10.9 10.5 6 8.1 1.1 10.5Z" fill="#2d4d19" stroke="#ffffff" stroke-width="0.9" stroke-linejoin="round"/>' +
   "</svg>";
-
-function colorFor(beneficiary) {
-  if (beneficiary.is_re_dispersal) return RE_DISPERSAL_COLOR;
-  const animalType = beneficiary.animal_type ?? "";
-  return ANIMAL_COLORS[animalType] ?? fallbackColor(animalType);
-}
 
 /**
  * @param {object} props
@@ -277,9 +234,166 @@ function escapeHtml(text) {
   });
 }
 
+/*
+ * The DATE-VIEW pin layer: animal-keyed pins on a CLUSTERED MapLibre source.
+ *
+ * Why clustered: several animals share one household pin (and barangay-
+ * centroid fallbacks share a centre), so plain markers stack into one dot
+ * and hide each other. Clusters carry a count badge and expand on click;
+ * zooming past the cluster threshold leaves single pins. No jitter is added
+ * — a pin sits where the record says it is.
+ */
+
+const PIN_SOURCE = "cvo-date-pins";
+const SPIDER_SOURCE = "cvo-date-pins-spider";
+const PIN_LAYERS = {
+  clusters: "cvo-date-pins-clusters",
+  clusterCount: "cvo-date-pins-cluster-count",
+  points: "cvo-date-pins-point",
+  selected: "cvo-date-pins-selected",
+  spider: "cvo-date-pins-spider-point",
+};
+
+/** The cluster sources and layers, added once per map instance. */
+function ensurePinLayers(map) {
+  if (map.getSource(PIN_SOURCE)) return;
+
+  map.addSource(PIN_SOURCE, {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+    cluster: true,
+    clusterRadius: 44,
+    clusterMaxZoom: 15,
+  });
+  map.addSource(SPIDER_SOURCE, {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  map.addLayer({
+    id: PIN_LAYERS.clusters,
+    type: "circle",
+    source: PIN_SOURCE,
+    filter: ["has", "point_count"],
+    paint: {
+      "circle-color": "#3f6b22",
+      "circle-stroke-color": "#ffffff",
+      "circle-stroke-width": 2,
+      "circle-opacity": 0.9,
+      "circle-radius": ["step", ["get", "point_count"], 13, 5, 17, 15, 22],
+    },
+  });
+  map.addLayer({
+    id: PIN_LAYERS.clusterCount,
+    type: "symbol",
+    source: PIN_SOURCE,
+    filter: ["has", "point_count"],
+    layout: {
+      "text-field": ["get", "point_count_abbreviated"],
+      "text-size": 11,
+      "text-allow-overlap": true,
+    },
+    paint: { "text-color": "#ffffff" },
+  });
+  map.addLayer({
+    id: PIN_LAYERS.points,
+    type: "circle",
+    source: PIN_SOURCE,
+    filter: ["!", ["has", "point_count"]],
+    paint: {
+      "circle-radius": 7,
+      // Approximate pins (barangay-centroid fallbacks) are HOLLOW — a shape
+      // cue that survives colour blindness and the printout alike.
+      "circle-color": ["case", ["get", "approximate"], "#ffffff", ["get", "color"]],
+      "circle-opacity": 0.95,
+      "circle-stroke-color": ["get", "color"],
+      "circle-stroke-width": ["case", ["get", "approximate"], 2.5, 2],
+    },
+  });
+  map.addLayer({
+    id: PIN_LAYERS.selected,
+    type: "circle",
+    source: PIN_SOURCE,
+    filter: ["==", ["get", "animal_id"], -1],
+    paint: {
+      "circle-radius": 11,
+      "circle-color": "transparent",
+      "circle-stroke-color": "#2d4d19",
+      "circle-stroke-width": 3,
+    },
+  });
+  map.addLayer({
+    id: PIN_LAYERS.spider,
+    type: "circle",
+    source: SPIDER_SOURCE,
+    paint: {
+      "circle-radius": 7,
+      "circle-color": ["get", "color"],
+      "circle-opacity": 0.95,
+      "circle-stroke-color": "#ffffff",
+      "circle-stroke-width": 2,
+    },
+  });
+}
+
+/** Popup for one animal pin — the same card language as the household pins. */
+function pinPopupHtml(pin, { flightActive = false, showFlightPath = false, offerRedisperse = false } = {}) {
+  const badge = pin.approximate
+    ? '<p style="margin:4px 0 0;padding:1px 8px;display:inline-block;border-radius:9999px;background:#fef9c3;color:#854d0e;font-size:10px;font-weight:600;text-transform:uppercase">Approximate location</p>'
+    : "";
+  const redisperse = offerRedisperse && pin.owner?.id !== null && !pin.owner?.masked
+    ? '<button type="button" class="cvo-redisperse"' +
+      ` data-redisperse-id="${escapeHtml(String(pin.animal_id))}"` +
+      ' style="margin-top:8px;margin-left:6px;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:3px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">' +
+      "Re-disperse</button>"
+    : "";
+  const toggle = showFlightPath
+    ? '<button type="button" class="cvo-path-toggle"' +
+      ` data-path-id="${escapeHtml(String(pin.animal_id))}"` +
+      ' style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:3px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">' +
+      `<svg viewBox="0 0 20 20" width="11" height="11" aria-hidden="true" style="flex:none"><path d="M5 2v16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M6 3h8l-2.6 3L14 9H6z" fill="currentColor"/></svg>` +
+      (flightActive ? "Hide flight path" : "Show flight path") +
+      "</button>"
+    : "";
+  const earTag = pin.ear_tag_number
+    ? `<p style="margin:0;font-size:12px;color:#64748b">Ear tag: ${escapeHtml(pin.ear_tag_number)}</p>`
+    : "";
+
+  return (
+    `<div style="min-width:12rem;font-size:13px;line-height:1.4">` +
+    `<p style="margin:0;font-weight:600;color:#0f172a">${escapeHtml(pin.owner?.label ?? "Unknown owner")}</p>` +
+    `<p style="margin:0;font-size:12px;color:#64748b">${escapeHtml(pin.barangay ?? "No barangay on record")} &middot; ${escapeHtml(pin.animal_type ?? "Unspecified animal")}</p>` +
+    earTag +
+    badge +
+    toggle +
+    redisperse +
+    `</div>`
+  );
+}
+
 /**
  * @param {object} props
- * @param {Array<object>} props.beneficiaries geo-tagged rows (latitude/longitude set)
+ * @param {Array<object>} [props.beneficiaries] geo-tagged household rows (the
+ *   legacy view) — ignored when `pins` is provided
+ * @param {Array<object>} [props.pins] ANIMAL-keyed date-view pins (animal_id,
+ *   owner, barangay, latitude, longitude, approximate, animal_type, ear tag);
+ *   rendered on a clustered source instead of household markers
+ * @param {Function} [props.renderChoropleth] (onMapReady) => ReactNode — the
+ *   shared BarangayChoropleth rendered INSIDE this component's shell; this
+ *   component adopts its map (controls, camera and removal stay with the
+ *   choropleth) instead of creating its own
+ * @param {Function} [props.trailFetcher] (row) => trail payload; defaults to
+ *   the household trail — the date view passes the ANIMAL trail fetcher
+ * @param {number|null} [props.selectedAnimalId] ring this animal's pin (the
+ *   side list's hover/selection)
+ * @param {Function} [props.onRowHover] (animalId|null) => void — the built-in
+ *   table's rows highlight their pins
+ * @param {boolean} [props.showTable] render the built-in accessible table
+ *   (the date view renders its own side list instead)
+ * @param {string} [props.pinMode] what a clustered pin STANDS FOR: "animal"
+ *   (the date view's animal-keyed pins) or "beneficiary" (the Overview's
+ *   household locations). Both draw the same clustered layer; only the
+ *   wording (table headings, ear-tag column) follows it.
  * @param {boolean} [props.loading]
  * @param {string|null} [props.error]
  * @param {Function} [props.onPick] — picker mode: reports [lat, lng] on map click
@@ -288,6 +402,13 @@ function escapeHtml(text) {
  */
 export function DispersalMap({
   beneficiaries = [],
+  pins = null,
+  pinMode = "animal",
+  renderChoropleth = null,
+  trailFetcher = null,
+  selectedAnimalId = null,
+  onRowHover = null,
+  showTable = true,
   loading = false,
   error = null,
   onPick,
@@ -339,6 +460,18 @@ export function DispersalMap({
   const toggleRef = useRef(null); // latest reveal/hide, read by popup clicks
   const previousPathIdRef = useRef(null); // pin popup that needs relabelling
   const refreshTokenRef = useRef(0); // last `refreshTrail` token acted on
+  const spiderfiedRef = useRef(null); // the cluster currently spiderfied, if any
+  const pinKeyRef = useRef(null); // the animal set the spiderfy was built from
+  const selectedAnimalIdRef = useRef(selectedAnimalId); // row-hover ring, read by the data effect
+  const onRowHoverRef = useRef(onRowHover); // side-list hover → pin ring
+
+  useEffect(() => {
+    selectedAnimalIdRef.current = selectedAnimalId;
+  }, [selectedAnimalId]);
+
+  useEffect(() => {
+    onRowHoverRef.current = onRowHover;
+  }, [onRowHover]);
 
   // Keep the latest callback without re-creating the map on every render.
   useEffect(() => {
@@ -351,43 +484,111 @@ export function DispersalMap({
 
   const centerTo = center ?? selected ?? DEFAULT_CENTER;
 
+  // The date view: ANIMAL-keyed pins normalised into the row shape every
+  // downstream effect already speaks (id, name_of_farmer, address, …). Keyed
+  // by animal_id, so a date change updates pins in place instead of
+  // remounting them, and an animal can never appear twice.
+  const pinRows = useMemo(
+    () =>
+      (pins ?? []).map((pin) => ({
+        ...pin,
+        id: pin.animal_id,
+        name_of_farmer: pin.owner?.label ?? "Unknown owner",
+        address: pin.barangay ?? "",
+        is_re_dispersal: false,
+      })),
+    [pins],
+  );
+  // Cluster pins either stand for ANIMALS (the date view) or for the
+  // HOUSEHOLDS that hold them (the Overview's location map). The pin layer is
+  // the same; only the wording follows `pinMode`.
+  const hasPins = pins !== null;
+  const isDateView = hasPins && pinMode === "animal";
+
   const animalTypes = useMemo(
-    () => [...new Set(beneficiaries.map((b) => b.animal_type))].sort(),
-    [beneficiaries],
+    () =>
+      [...new Set((hasPins ? pinRows : beneficiaries).map((b) => b.animal_type).filter(Boolean))].sort(),
+    [hasPins, pinRows, beneficiaries],
   );
 
-  // Only rows carrying coordinates can be pinned. Without this guard a
+  // Only rows carrying sane coordinates can be pinned. Without this guard a
   // coordinate-less row (e.g. an import whose address named no covered
-  // barangay) would render at 0,0 in the ocean.
+  // barangay) would render at 0,0 in the ocean. The date view additionally
+  // rejects out-of-range pairs (the Negros Oriental sanity window in
+  // validCoordinates) so a botched import can never draw a pin abroad.
   const pinnable = useMemo(
     () =>
-      beneficiaries.filter(
-        (b) =>
-          Number.isFinite(Number(b.latitude)) &&
-          Number.isFinite(Number(b.longitude)) &&
-          b.latitude !== null &&
-          b.longitude !== null &&
-          !(Number(b.latitude) === 0 && Number(b.longitude) === 0),
-      ),
-    [beneficiaries],
+      hasPins
+        ? pinRows.filter((row) => validCoordinates(Number(row.latitude), Number(row.longitude)))
+        : beneficiaries.filter(
+            (b) =>
+              Number.isFinite(Number(b.latitude)) &&
+              Number.isFinite(Number(b.longitude)) &&
+              b.latitude !== null &&
+              b.longitude !== null &&
+              !(Number(b.latitude) === 0 && Number(b.longitude) === 0),
+          ),
+    [hasPins, pinRows, beneficiaries],
   );
 
   const visible = useMemo(
     () =>
       animalFilter === "all"
-        ? pinnable
-        : pinnable.filter((b) => b.animal_type === animalFilter),
-    [pinnable, animalFilter],
+        ? (isDateView ? pinRows : pinnable)
+        : (isDateView ? pinRows : pinnable).filter((b) => b.animal_type === animalFilter),
+    [isDateView, pinRows, pinnable, animalFilter],
   );
 
-  // Households in the directory that cannot be placed — an address naming no
-  // covered barangay ('Unlisted', a typo). Surfaced explicitly so the pin
-  // count never silently disagrees with the monitoring table's farmer count.
-  const unpinned = beneficiaries.length - pinnable.length;
+  // Rows that cannot be placed — no coordinates, or a malformed pair.
+  // Surfaced explicitly so the pin count never silently disagrees with the
+  // side list, and so "Location not recorded" has its section.
+  const unpinned = (hasPins ? pinRows : beneficiaries).length - pinnable.length;
 
-  // Create the map once.
+  // The shared choropleth's map, adopted when renderChoropleth is used (the
+  // date view): the owner keeps its lifecycle (controls, camera, removal);
+  // this component only draws on it.
+  const [sharedMapState, setSharedMapState] = useState({ map: null, ready: false });
+  const handleChoroplethMapReady = useCallback((map) => {
+    // The choropleth calls this inside its own load event, so the map is
+    // ready the moment we get it.
+    setSharedMapState({ map, ready: true });
+  }, []);
+  const sharedMap = renderChoropleth ? sharedMapState.map : null;
+  const sharedReady = sharedMapState.ready;
+  // The render function is a fresh closure on every parent render; the map
+  // adoption must NOT churn with it (every re-render would tear the layers
+  // and handlers down), so the effect reads it through a ref.
+  const renderChoroplethRef = useRef(renderChoropleth);
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+    renderChoroplethRef.current = renderChoropleth;
+  }, [renderChoropleth]);
+
+  // Create the map once — or ADOPT the shared choropleth's map when one is
+  // provided (the date view). Picker mode always creates its own map,
+  // exactly as before.
+  useEffect(() => {
+    if (sharedMap && !onPick) {
+      if (!sharedReady || mapRef.current === sharedMap) return undefined;
+
+      mapRef.current = sharedMap;
+      markersRef.current = [];
+      selectedMarkerRef.current = null;
+      setMapReady(true);
+
+      return () => {
+        // The shared map is removed by its owner (BarangayChoropleth); stop
+        // our own in-flight work from touching a dying map and clear refs.
+        allPathsTokenRef.current += 1;
+        mapRef.current = null;
+        markersRef.current = [];
+        selectedMarkerRef.current = null;
+        setMapReady(false);
+      };
+    }
+
+    if (renderChoroplethRef.current && !onPick) return undefined;
+
+    if (!containerRef.current || mapRef.current) return undefined;
 
     const map = new MapLibreMap({
       container: containerRef.current,
@@ -429,7 +630,7 @@ export function DispersalMap({
       setMapReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- center/selected only recenter via the effect below; the map is created once
-  }, []);
+  }, [sharedMap, sharedReady, onPick]);
 
   async function toggleFullscreen() {
     const shell = shellRef.current;
@@ -529,7 +730,10 @@ export function DispersalMap({
     setFlightPath(base);
 
     try {
-      const payload = await fetchOwnershipTrail(id);
+      // The date view trails the ANIMAL (its own flight path); the legacy
+      // household view trails the beneficiary chain. Same point shape both
+      // ways, so the drawing pipeline is untouched.
+      const payload = await (trailFetcher ?? fetchOwnershipTrail)(id);
       // The user may have hidden the trail (or opened another) while this was
       // in flight: applying the result then would pop the chip back up after
       // it was dismissed.
@@ -621,7 +825,7 @@ export function DispersalMap({
 
         if (points === undefined) {
           try {
-            const payload = await fetchOwnershipTrail(id);
+            const payload = await (trailFetcher ?? fetchOwnershipTrail)(id);
             points = sanitizePoints(Array.isArray(payload?.points) ? payload.points : []);
             cache.set(id, points);
           } catch {
@@ -686,8 +890,14 @@ export function DispersalMap({
     // trail up unasked after a save would be a surprise.
     if (flightRef.current.id === null) return;
 
+    // The date view trails ANIMALS: the revealed trail's own animal is the
+    // one that must refetch (the save named no household in that world).
     const targetId = Number(refreshTrail?.beneficiaryId ?? 0);
-    const target = visible.find((row) => Number(row.id) === targetId);
+    const target = targetId
+      ? visible.find((row) => Number(row.id) === targetId)
+      : (isDateView
+        ? visible.find((row) => String(row.id) === String(flightRef.current.id))
+        : undefined);
 
     // The animal left for a household the map cannot draw (filtered out, or
     // with no pin): the old line must go rather than keep pointing at a
@@ -880,7 +1090,10 @@ export function DispersalMap({
     map.getSource(PATH_SOURCES.points)?.setData(empty);
     // Observable without reaching into the map instance: how many points the
     // revealed trail(s) were built from (also handy when supporting a report).
-    containerRef.current?.removeAttribute("data-flight-path-points");
+    // The date view renders no container of its own — the attribute rides on
+    // whichever container actually hosts the map.
+    const host = containerRef.current ?? map.getContainer();
+    host?.removeAttribute("data-flight-path-points");
 
     // One group per trail: the overview draws every household's trail, a pin
     // popup draws exactly one.
@@ -920,7 +1133,7 @@ export function DispersalMap({
       type: "FeatureCollection",
       features: positionedGroups.flatMap((points) => buildPointMarkers(points).features),
     };
-    containerRef.current?.setAttribute(
+    (containerRef.current ?? map.getContainer())?.setAttribute(
       "data-flight-path-points",
       String(positionedGroups.reduce((count, points) => count + points.length, 0)),
     );
@@ -1059,10 +1272,12 @@ export function DispersalMap({
     [],
   );
 
-  // Reconcile markers with the visible rows — add, move, remove.
+  // Reconcile markers with the visible rows — add, move, remove. The date
+  // view draws on the CLUSTERED source instead (below), so DOM markers are
+  // legacy-view only.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || onPick) return;
+    if (!map || !mapReady || onPick || hasPins) return;
 
     // Households sharing a barangay centre would otherwise stack into one dot;
     // see spreadPositions for why the ring is presentational only.
@@ -1105,7 +1320,197 @@ export function DispersalMap({
       entry.marker.remove();
       return false;
     });
-  }, [mapReady, visible, onPick, popupFor]);
+  }, [mapReady, visible, onPick, popupFor, hasPins]);
+
+  // The date view's clustered pins: features keyed by animal_id so MapLibre
+  // diffs the source in place — a date change moves/adds/removes only what
+  // changed, with no blank flash and no remount. A pin can never appear
+  // twice (one feature per animal; the server guarantees one row per animal).
+  const drawnPins = useMemo(() => pinFeatures(pins ?? []), [pins]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || onPick || !hasPins) return;
+
+    ensurePinLayers(map);
+
+    // Spiderfy state dies when the ANIMAL SET changes (a date or filter
+    // switch collapses any open cluster back to the source of truth) — but
+    // a quiet refresh of the SAME date keeps it: the ring still points at
+    // the same animals, and a poll must not snap it shut mid-reading.
+    const pinKey = (pins ?? []).map((pin) => pin.animal_id).sort().join(",");
+    if (pinKeyRef.current !== null && pinKeyRef.current !== pinKey) {
+      spiderfiedRef.current = null;
+      map.getSource(SPIDER_SOURCE)?.setData({ type: "FeatureCollection", features: [] });
+    }
+    pinKeyRef.current = pinKey;
+
+    map.getSource(PIN_SOURCE)?.setData({
+      type: "FeatureCollection",
+      features: drawnPins.features,
+    });
+
+    const selected = selectedAnimalIdRef.current;
+    map.setFilter(PIN_LAYERS.selected, ["==", ["get", "animal_id"], selected ?? -1]);
+  }, [mapReady, onPick, hasPins, drawnPins, pins]);
+
+  // Keep the selection ring in sync without rebuilding the source.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || onPick || !hasPins) return;
+    map.setFilter(PIN_LAYERS.selected, ["==", ["get", "animal_id"], selectedAnimalId ?? -1]);
+  }, [mapReady, onPick, hasPins, selectedAnimalId]);
+
+  // Cluster / pin interactions: a cluster expands (zooms in; at the zoom
+  // ceiling it SPIDERFIES onto a ring so every animal stays clickable), a
+  // pin opens its card, a click elsewhere clears both.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || onPick || !hasPins) return undefined;
+
+    ensurePinLayers(map);
+    let popupOpen = false;
+
+    const popup = new Popup({ offset: 12 }).addTo(map);
+
+    const openPinPopup = (feature, lngLat) => {
+      const row = visible.find((candidate) => String(candidate.id) === String(feature.properties?.animal_id));
+      if (!row) return;
+      popup
+        .setLngLat(lngLat)
+        .setHTML(
+          pinPopupHtml(row, {
+            showFlightPath: true,
+            offerRedisperse: Boolean(onRedisperseRef.current),
+            flightActive: String(flightRef.current.id) === String(row.id),
+          }),
+        )
+        .addTo(map);
+      popupOpen = true;
+    };
+
+    const spiderfy = (leaves, center) => {
+      const positions = spiderPositions(center, leaves.length);
+      spiderfiedRef.current = { center };
+      // Rebuild the features from their PLAIN parts only: query-rendered
+      // leaves carry style-layer objects (with paint functions) that the
+      // source's worker transfer cannot serialize.
+      map.getSource(SPIDER_SOURCE)?.setData({
+        type: "FeatureCollection",
+        features: leaves.map((leaf, index) => ({
+          type: "Feature",
+          id: leaf.id,
+          properties: { ...(leaf.properties ?? {}), spider: true },
+          geometry: { type: "Point", coordinates: positions[index] },
+        })),
+      });
+    };
+
+    const onClusterClick = async (event) => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      const clusterId = feature.properties?.cluster_id;
+      const source = map.getSource(PIN_SOURCE);
+      if (!source) return;
+
+      // MapLibre v6: BOTH cluster queries resolve PROMISES (the callback
+      // shape is gone — passing one would try to serialize a function into
+      // the worker and reject).
+      const expansionZoom = Math.min(
+        (await source.getClusterExpansionZoom(clusterId)) ?? map.getMaxZoom(),
+        16,
+      );
+      const currentZoom = map.getZoom();
+
+      try {
+        const leaves = await source.getClusterLeaves(clusterId, 200);
+        if (!leaves?.length) return;
+
+        // How far apart the cluster's animals actually are decides the
+        // expansion: pins sharing ONE spot (several animals at a household,
+        // barangay-centroid fallbacks) can never separate by zooming, no
+        // matter how deep the camera goes — they spiderfy right away.
+        const lons = leaves.map((leaf) => leaf.geometry.coordinates[0]);
+        const lats = leaves.map((leaf) => leaf.geometry.coordinates[1]);
+        const spread = Math.max(
+          Math.max(...lons) - Math.min(...lons),
+          Math.max(...lats) - Math.min(...lats),
+        );
+
+        if (spread < 0.001 || expansionZoom <= currentZoom + 0.4) {
+          spiderfy(leaves, feature.geometry.coordinates);
+          return;
+        }
+
+        // There is room to resolve the cluster by zooming — the map reads
+        // that as "these pins separate as you approach", which is what the
+        // user expects from a map.
+        map.easeTo({
+          center: feature.geometry.coordinates,
+          zoom: Math.min(expansionZoom, 16),
+        });
+      } catch {
+        // The cluster (or its source) was torn down mid-click.
+      }
+    };
+
+    const onSpiderClick = (event) => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      openPinPopup({ properties: feature.properties }, event.lngLat);
+    };
+
+    const onPinClick = (event) => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      openPinPopup(feature, event.lngLat);
+    };
+
+    const onMapClick = () => {
+      if (!popupOpen && !spiderfiedRef.current) return;
+      spiderfiedRef.current = null;
+      map.getSource(SPIDER_SOURCE)?.setData({ type: "FeatureCollection", features: [] });
+    };
+
+    const onEnter = () => {
+      map.getCanvas().style.cursor = "pointer";
+    };
+    const onLeave = () => {
+      map.getCanvas().style.cursor = "";
+    };
+
+    map.on("click", PIN_LAYERS.clusters, onClusterClick);
+    map.on("click", PIN_LAYERS.spider, onSpiderClick);
+    map.on("click", PIN_LAYERS.points, onPinClick);
+    map.on("click", onMapClick);
+    map.on("mouseenter", PIN_LAYERS.clusters, onEnter);
+    map.on("mouseleave", PIN_LAYERS.clusters, onLeave);
+    map.on("mouseenter", PIN_LAYERS.points, onEnter);
+    map.on("mouseleave", PIN_LAYERS.points, onLeave);
+    map.on("mouseenter", PIN_LAYERS.spider, onEnter);
+    map.on("mouseleave", PIN_LAYERS.spider, onLeave);
+
+    return () => {
+      try {
+        map.off("click", PIN_LAYERS.clusters, onClusterClick);
+        map.off("click", PIN_LAYERS.spider, onSpiderClick);
+        map.off("click", PIN_LAYERS.points, onPinClick);
+        map.off("click", onMapClick);
+        map.off("mouseenter", PIN_LAYERS.clusters, onEnter);
+        map.off("mouseleave", PIN_LAYERS.clusters, onLeave);
+        map.off("mouseenter", PIN_LAYERS.points, onEnter);
+        map.off("mouseleave", PIN_LAYERS.points, onLeave);
+        map.off("mouseenter", PIN_LAYERS.spider, onEnter);
+        map.off("mouseleave", PIN_LAYERS.spider, onLeave);
+      } catch {
+        // Map already removed — nothing left to unbind.
+      }
+      popup.remove();
+    };
+    // `visible` feeds the popup lookup; rebound with the flight state so the
+    // show/hide label follows the active trail.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, onPick, hasPins, visible]);
 
   // Picker mode: keep exactly one marker on the selected spot.
   useEffect(() => {
@@ -1145,7 +1550,9 @@ export function DispersalMap({
   const pinKey = visible.map((beneficiary) => beneficiary.id).join(",");
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || onPick || center || selected) return;
+    // The shared choropleth owns the camera (it frames the whole city); a
+    // pin-fit here would yank it right back.
+    if (!map || !mapReady || onPick || center || selected || sharedMap || hasPins) return;
 
     const positions = [...spreadPositions(visible).values()];
     if (positions.length === 0) return;
@@ -1170,7 +1577,9 @@ export function DispersalMap({
     return <InlineAlert message={error} />;
   }
 
-  if (!loading && pinnable.length === 0 && !onPick) {
+  // The date view never blank-plates: an empty day still shows the city and
+  // its polygons — the page renders its own empty state beside the map.
+  if (!isDateView && !loading && pinnable.length === 0 && !onPick) {
     return (
       <div className="py-2">
         <InlineAlert
@@ -1353,13 +1762,20 @@ export function DispersalMap({
                 // page chrome such as the sticky dashboard header when the
                 // card scrolls beneath it.
                 "cvo-map-shell fixed inset-0 z-[70] isolate bg-white"
-              : "cvo-map-shell relative isolate h-[26rem] w-full"
+              : renderChoropleth
+                ? // The choropleth slot brings its own height (and legend).
+                  "cvo-map-shell relative isolate w-full"
+                : "cvo-map-shell relative isolate h-[26rem] w-full"
           }
         >
           <button
             type="button"
             onClick={toggleFullscreen}
-            className="absolute left-3 top-3 z-[600] grid h-9 w-9 place-items-center rounded-md bg-white text-slate-600 shadow-md ring-1 ring-slate-900/10 transition hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+            className={`absolute z-[600] grid h-9 w-9 place-items-center rounded-md bg-white text-slate-600 shadow-md ring-1 ring-slate-900/10 transition hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 ${
+              // The shared choropleth puts the +/− controls top-left; the
+              // fullscreen toggle takes the other corner so they never stack.
+              renderChoropleth ? "right-3 top-3" : "left-3 top-3"
+            }`}
             aria-pressed={isFullscreen}
             aria-label={isFullscreen ? "Exit map full screen" : "View map full screen"}
             title={isFullscreen ? "Exit full screen (Esc)" : "View map full screen"}
@@ -1374,19 +1790,27 @@ export function DispersalMap({
               <span className="text-sm text-slate-500">Loading map…</span>
             </div>
           )}
-          <div
-            ref={containerRef}
-            aria-hidden="true"
-            className="h-full w-full [&_.maplibregl-canvas:focus]:outline-none"
-          />
+          {renderChoropleth ? (
+            renderChoroplethRef.current(handleChoroplethMapReady)
+          ) : (
+            <div
+              ref={containerRef}
+              aria-hidden="true"
+              className="h-full w-full [&_.maplibregl-canvas:focus]:outline-none"
+            />
+          )}
         </div>
       </div>
 
-      {/* Accessible alternative: same data, screen-reader friendly. */}
+      {/* Accessible alternative: same data, screen-reader friendly. The date
+          view renders its own side list beside the map instead. */}
+      {showTable && (
       <div className="card overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <h3 className="font-display text-sm font-semibold text-slate-900">
-            Geo-tagged beneficiaries ({visible.length})
+            {isDateView
+              ? `Animals on this view (${visible.length})`
+              : `Geo-tagged beneficiaries (${visible.length})`}
           </h3>
           <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
             <Icon name="info" className="h-3.5 w-3.5" />
@@ -1395,9 +1819,9 @@ export function DispersalMap({
         </div>
         {unpinned > 0 && (
           <p className="border-b border-slate-100 bg-amber-50/60 px-4 py-2 text-xs text-amber-800">
-            {unpinned} of {beneficiaries.length} households have no coordinates
-            yet, so they have no pin. A covered barangay address places them on
-            the map.
+            {isDateView
+              ? `${unpinned} of ${pinRows.length} animals have no location recorded for this view, so they have no pin. They are listed here rather than invented on the map.`
+              : `${unpinned} of ${hasPins ? pinRows.length : beneficiaries.length} households have no coordinates yet, so they have no pin. A covered barangay address places them on the map.`}
           </p>
         )}
         <div className="overflow-x-auto">
@@ -1405,34 +1829,60 @@ export function DispersalMap({
             <colgroup>
               <col className="w-[40%]" />
               <col className="w-[30%]" />
+              {isDateView && <col className="w-[12%]" />}
               <col />
             </colgroup>
             <caption className="sr-only">
-              Beneficiaries with coordinates, sorted by farmer name
+              {isDateView
+                ? "Animals on this view, sorted by owner name"
+                : "Beneficiaries with coordinates, sorted by farmer name"}
             </caption>
             <thead>
               <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
-                <th scope="col" className="px-4 py-2.5 font-semibold">Farmer</th>
+                <th scope="col" className="px-4 py-2.5 font-semibold">
+                  {isDateView ? "Owner" : "Farmer"}
+                </th>
                 <th scope="col" className="px-4 py-2.5 font-semibold">Barangay</th>
+                {isDateView && (
+                  <th scope="col" className="px-4 py-2.5 font-semibold">Ear tag</th>
+                )}
                 <th scope="col" className="px-4 py-2.5 font-semibold">Animal</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {[...visible]
                 .sort((a, b) => a.name_of_farmer.localeCompare(b.name_of_farmer))
-                .map((beneficiary) => (
-                  <tr key={beneficiary.id} className="transition hover:bg-brand-50/40">
+                .map((row) => (
+                  <tr
+                    key={row.id}
+                    className={`transition hover:bg-brand-50/40 ${
+                      selectedAnimalId !== null && String(row.id) === String(selectedAnimalId)
+                        ? "bg-brand-50"
+                        : ""
+                    }`}
+                    onMouseEnter={() => onRowHoverRef.current?.(row.id)}
+                    onMouseLeave={() => onRowHoverRef.current?.(null)}
+                  >
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap text-slate-900">
-                      {beneficiary.name_of_farmer}
+                      {row.name_of_farmer}
+                      {row.approximate && (
+                        <span className="ml-2 rounded-pill bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                          approximate
+                        </span>
+                      )}
                     </td>
-                    <td className="px-4 py-2.5 text-slate-600">{beneficiary.address}</td>
-                    <td className="px-4 py-2.5 text-slate-600">{beneficiary.animal_type}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{row.address}</td>
+                    {isDateView && (
+                      <td className="px-4 py-2.5 text-slate-600">{row.ear_tag_number ?? "—"}</td>
+                    )}
+                    <td className="px-4 py-2.5 text-slate-600">{row.animal_type}</td>
                   </tr>
                 ))}
             </tbody>
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }

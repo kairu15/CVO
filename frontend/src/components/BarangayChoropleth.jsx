@@ -32,6 +32,11 @@ const BOUNDARY_SOURCE = "cvo-barangay-boundaries";
 const FILL_LAYER = "barangay-boundaries-fill";
 const OUTLINE_LAYER = "barangay-boundaries-outline";
 
+/** The polygon fill layer — exported so a parent can tell a polygon click
+ *  apart from a click on the background (the selection card closes on the
+ *  latter). */
+export const BARANGAY_FILL_LAYER = FILL_LAYER;
+
 /**
  * @param {object} props
  * @param {{status: string, collection: object|null}} props.boundaries
@@ -238,7 +243,9 @@ export function BarangayChoropleth({
     const polygonClick = (event) => {
       if (polygonBlocked(event)) return;
       const name = event.features?.[0]?.properties?.name ?? null;
-      clickRef.current?.(name);
+      // The event rides along: a parent that opens an anchored card needs the
+      // clicked lngLat and the polygon geometry, not just the name.
+      clickRef.current?.(name, event);
     };
 
     // Bound lazily: the fill layer may not exist yet (asset still loading).

@@ -203,6 +203,93 @@ class BarangayDispersalAnalyticsService
         );
     }
 
+    /**
+     * One barangay's card: the SAME filtered row the table/map use, plus the
+     * recipients those movements delivered animals to.
+     *
+     * The card is opened by clicking a polygon, so it must never disagree
+     * with the polygon's fill or the barangay table: the row is taken from
+     * barangaySummary() (same filters, same cache) rather than recomputed
+     * with a second set of rules. Null when the barangay is not one of the
+     * covered rows.
+     *
+     * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>, per_1000: bool}  $filters
+     * @return array<string, mixed>|null
+     */
+    public function barangayDetail(User $viewer, int $barangayId, array $filters): ?array
+    {
+        $summary = $this->barangaySummary($viewer, $filters);
+
+        $row = collect($summary['barangays'])
+            ->first(fn (array $candidate): bool => (int) $candidate['barangay_id'] === $barangayId);
+
+        if ($row === null) {
+            return null;
+        }
+
+        return [
+            'barangay' => $row,
+            'recipients' => $this->recipients($viewer, $filters, $barangayId),
+            'filters' => $summary['filters'],
+            'scoped' => $summary['scoped'],
+            'generated_at' => now()->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Who received animals IN one barangay, under the active filters.
+     *
+     * This is the destination side of the metrics above: the barangay's own
+     * dispersals plus re-dispersals/pass-ons arriving from elsewhere. Rows are
+     * GROUPED by animal type, recipient and date so the card can say
+     * "2 × Swine (Pig) · Aling Nena · 12 Oct 2026" instead of repeating the
+     * same household once per animal. Ear tags are deliberately omitted — the
+     * card answers "who received what, when", and the animal list belongs on
+     * the animal screens.
+     *
+     * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>}  $filters
+     * @return list<array{event_date: string, animal_type: string, recipient_name: string, quantity: int}>
+     */
+    private function recipients(User $viewer, array $filters, int $barangayId): array
+    {
+        $types = array_values(array_intersect(
+            [AnimalOwnershipEvent::TYPE_DISPERSAL, ...self::RE_DISPERSAL_TYPES],
+            $filters['event_types'],
+        ));
+
+        if ($types === []) {
+            return [];
+        }
+
+        return $this->baseQuery($viewer, $filters, $types)
+            ->where('e.to_barangay_id', $barangayId)
+            ->whereNotNull('e.to_beneficiary_id')
+            ->leftJoin('animals as ra', 'ra.id', '=', 'e.animal_id')
+            ->leftJoin('beneficiaries as rb', 'rb.id', '=', 'e.to_beneficiary_id')
+            // The event TYPE is deliberately not grouped on: the card does not
+            // show it, and splitting on it would print two identical rows for
+            // an initial dispersal and a handover to the same household on the
+            // same day.
+            ->groupBy('e.event_date', 'ra.animal_type', 'rb.name_of_farmer')
+            ->orderByDesc('e.event_date')
+            ->orderBy('rb.name_of_farmer')
+            ->selectRaw(implode(', ', [
+                'e.event_date as event_date',
+                "coalesce(ra.animal_type, 'Unspecified') as animal_type",
+                "coalesce(rb.name_of_farmer, 'Unknown recipient') as recipient_name",
+                'count(*) as quantity',
+            ]))
+            ->limit(200)
+            ->get()
+            ->map(fn (object $row): array => [
+                'event_date' => substr((string) $row->event_date, 0, 10),
+                'animal_type' => (string) $row->animal_type,
+                'recipient_name' => (string) $row->recipient_name,
+                'quantity' => (int) $row->quantity,
+            ])
+            ->all();
+    }
+
     /* ------------------------------------------------------------------ *
      |  Internals                                                          |
      * ------------------------------------------------------------------ */

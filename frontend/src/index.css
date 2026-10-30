@@ -441,6 +441,212 @@
 }
 
 /*
+ * Barangay dispersal report: the click-to-open barangay card.
+ *
+ * A dark navy floating card anchored to the polygon the admin tapped — the
+ * same language as the hover label above, but persistent, scrollable, and
+ * sized to the viewport so it never covers the whole map on a phone. The
+ * pointer (MapLibre's tip) is recoloured to match the card.
+ */
+.cvo-barangay-selection .maplibregl-popup-content {
+  padding: 0;
+  background: #0f172a; /* slate-900 */
+  color: #f8fafc;
+  border-radius: 16px;
+  box-shadow: 0 18px 40px -12px rgb(15 23 42 / 0.55);
+  max-width: min(22rem, calc(100vw - 2rem));
+  max-height: min(60vh, 26rem);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cvo-barangay-selection .maplibregl-popup-tip {
+  border-width: 8px;
+}
+
+.cvo-barangay-selection.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.cvo-barangay-selection.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.cvo-barangay-selection.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: #0f172a;
+}
+
+.cvo-barangay-selection.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.cvo-barangay-selection.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.cvo-barangay-selection.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: #0f172a;
+}
+
+.cvo-barangay-selection.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: #0f172a;
+}
+
+.cvo-barangay-selection.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: #0f172a;
+}
+
+.cvo-barangay-selection .maplibregl-popup-close-button {
+  top: 6px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 9999px;
+  color: #cbd5e1;
+  font-size: 18px;
+  line-height: 22px;
+}
+
+.cvo-barangay-selection .maplibregl-popup-close-button:hover {
+  background: rgb(255 255 255 / 0.1);
+  color: #ffffff;
+}
+
+.cvo-detail {
+  padding: 14px 16px 16px;
+}
+
+.cvo-detail-head {
+  padding-right: 26px;
+}
+
+.cvo-detail-eyebrow {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.cvo-detail-title {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.cvo-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.cvo-detail-grid > div {
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.06);
+  padding: 8px 10px;
+}
+
+.cvo-detail-label {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.cvo-detail-value {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f8fafc;
+  font-variant-numeric: tabular-nums;
+}
+
+.cvo-detail-value.is-positive {
+  color: #86efac;
+}
+
+.cvo-detail-value.is-negative {
+  color: #fbbf24;
+}
+
+.cvo-detail-section {
+  margin: 14px 0 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.cvo-detail-status {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #cbd5e1;
+}
+
+.cvo-detail-error {
+  color: #fcd34d;
+}
+
+.cvo-detail-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.cvo-detail-recipient {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.05);
+}
+
+.cvo-detail-qty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  background: rgb(134 239 172 / 0.16);
+  color: #86efac;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cvo-detail-who {
+  display: grid;
+  min-width: 0;
+}
+
+.cvo-detail-animal,
+.cvo-detail-name,
+.cvo-detail-date {
+  margin: 0;
+}
+
+.cvo-detail-animal {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.cvo-detail-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.cvo-detail-date {
+  white-space: nowrap;
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+/*
  * Ear-tag printing.
  *
  * Printing a dashboard page would otherwise output the sidebar, header and

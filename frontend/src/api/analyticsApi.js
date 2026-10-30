@@ -47,6 +47,24 @@ export const analyticsApi = {
   },
 
   /**
+   * One barangay's floating card: its filtered metrics plus the recipients
+   * (animal type, quantity, name, date) those movements delivered to.
+   *
+   * @param {number} barangayId
+   * @param {object} [params]  Same filters as barangayDispersal.
+   * @param {AbortSignal} [params.signal]
+   * @returns {Promise<{barangay: object, recipients: Array<object>}>}
+   */
+  barangayDetail: async (barangayId, { signal, ...params } = {}) => {
+    const response = await api.get(`/api/v1/analytics/barangay-dispersal/${barangayId}`, {
+      params,
+      signal,
+      timeout: ANALYTICS_READ_TIMEOUT_MS,
+    });
+    return response.data?.data ?? {};
+  },
+
+  /**
    * Barangay → barangay re-dispersal flows (and CVO → barangay when asked).
    *
    * @param {object} [params]  Same filters, plus include_cvo.

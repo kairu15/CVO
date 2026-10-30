@@ -132,6 +132,64 @@ class BarangayDispersalAnalyticsTest extends TestCase
             ->assertOk();
     }
 
+    /**
+     * The map's click-to-open card: the SAME filtered row as the table, plus
+     * the recipients those movements delivered to, and a 404 outside the
+     * covered barangays.
+     */
+    public function test_barangay_detail_card_returns_filtered_metrics_and_recipients(): void
+    {
+        $admin = $this->admin();
+        $a = $this->barangay(0);
+        $b = $this->barangay(1);
+        $ownerA = $this->beneficiaryIn($a);
+        $ownerB = $this->beneficiaryIn($b);
+
+        $animal = $this->disperse($admin, $ownerA, now()->subDays(3), 'TAG-CARD-1');
+        $this->disperse($admin, $ownerA, now()->subDays(2), 'TAG-CARD-2');
+        $this->redisperse($admin, $animal->id, $ownerB, now()->subDays(1))->assertCreated();
+
+        $detail = $this->actingAs($admin)
+            ->getJson("/api/v1/analytics/barangay-dispersal/{$a->id}")
+            ->assertOk()
+            ->json('data');
+
+        // The card's numbers are the map's/table's numbers, not a re-derivation.
+        $this->assertSame($a->id, $detail['barangay']['barangay_id']);
+        $this->assertSame(2, $detail['barangay']['dispersed']);
+        $this->assertSame(1, $detail['barangay']['redispersed_out']);
+        $this->assertSame(0, $detail['barangay']['redispersed_in']);
+        $this->assertSame(-1, $detail['barangay']['net_flow']);
+
+        // Recipients are the two animals that ARRIVED in the barangay (one
+        // group per type + recipient + date; the handover OUT is not a row).
+        $this->assertCount(2, $detail['recipients']);
+        $this->assertSame(2, array_sum(array_column($detail['recipients'], 'quantity')));
+        $this->assertSame(
+            [$ownerA->name_of_farmer],
+            array_values(array_unique(array_column($detail['recipients'], 'recipient_name'))),
+        );
+
+        $expectedType = Animal::findOrFail($animal->id)->animal_type ?? 'Unspecified';
+        foreach ($detail['recipients'] as $recipient) {
+            $this->assertSame($expectedType, $recipient['animal_type']);
+            $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $recipient['event_date']);
+        }
+
+        // The window applies to the card exactly as it does to the table.
+        $filtered = $this->actingAs($admin)
+            ->getJson("/api/v1/analytics/barangay-dispersal/{$a->id}?from=".now()->addDay()->toDateString())
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame(0, $filtered['barangay']['dispersed']);
+        $this->assertSame([], $filtered['recipients']);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/analytics/barangay-dispersal/999999')
+            ->assertNotFound();
+    }
+
     /* ------------------------------------------------------------------ *
      |  Rows, zeros, voids, snapshots                                      |
      * ------------------------------------------------------------------ */

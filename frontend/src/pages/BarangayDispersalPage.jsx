@@ -520,9 +520,14 @@ export default function BarangayDispersalPage({ roleKey = "admin" }) {
             {/* The bubble map with the flow layer. */}
             <section className="card p-6">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
-                  Barangay map · {metricConfig.label}
-                </h3>
+                <div>
+                  <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
+                    Barangay map · {metricConfig.label}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Click a barangay for its totals and recipients.
+                  </p>
+                </div>
                 <label className="flex items-center gap-1.5 text-xs text-slate-500">
                   Top flows drawn
                   <select
@@ -550,6 +555,7 @@ export default function BarangayDispersalPage({ roleKey = "admin" }) {
                     minRateAnimals={minRateAnimals}
                     topFlows={topFlows}
                     includeCvo={includeCvo}
+                    query={query}
                   />
                 </Suspense>
               </div>

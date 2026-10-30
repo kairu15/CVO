@@ -1,6 +1,6 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { beneficiariesApi } from "../api/beneficiariesApi";
+import { mapApi } from "../api/mapApi";
 import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
@@ -10,7 +10,7 @@ import { flatNav, getRole } from "../config/roles";
 import { useAuth } from "../context/AuthContext";
 import { useBarangayBoundaries } from "../hooks/useBarangayBoundaries";
 import { buildChoropleth, choroplethTooltipHtml } from "../lib/barangayBoundaries";
-import { validCoordinates } from "../lib/mapPins";
+import { fetchAnimalTrail } from "../lib/ownershipPath";
 
 /**
  * Role dashboard.
@@ -37,87 +37,91 @@ const BarangayDispersalWidget = lazy(() =>
   import("../components/BarangayDispersalWidget").then((m) => ({ default: m.BarangayDispersalWidget })),
 );
 
+/** The latest recorded day, spelled the way the Dispersal Map page spells it. */
+function formatDay(iso) {
+  const parsed = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(parsed.getTime())
+    ? iso
+    : parsed.toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+}
+
 export default function RoleDashboard({ roleKey }) {
   const { user } = useAuth();
   const config = getRole(roleKey);
-  const [beneficiaries, setBeneficiaries] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [snapshot, setSnapshot] = useState(null);
+  const [mapLoading, setMapLoading] = useState(true);
+  const [mapError, setMapError] = useState(null);
 
   // Admin and doctor have city-wide oversight, so the dashboard opens with
   // the live dispersal map. Technician keeps scaffold modules for now.
   const showMap = roleKey === "admin" || roleKey === "doctor";
   const boundaries = useBarangayBoundaries();
 
-  // The Overview pins HOUSEHOLDS, not a date's dispatches: every beneficiary
-  // becomes one pin at its registered location, keyed by its own id. Shaping
-  // the rows as pins puts them on the shared CLUSTERED layer the Dispersal Map
-  // uses, so the two maps look and behave alike without the Overview growing
-  // a date selector or a per-date side list.
-  const locationPins = useMemo(
-    () =>
-      beneficiaries.map((row) => ({
-        animal_id: row.id,
-        owner: {
-          id: row.id,
-          label: row.name_of_farmer ?? "Unknown owner",
-          masked: false,
-        },
-        barangay: row.address ?? "",
-        animal_type: row.animal_type_name ?? row.animal_type ?? "Unspecified",
-        ear_tag_number: row.ear_tag_number ?? null,
-        latitude: row.latitude,
-        longitude: row.longitude,
-      })),
-    [beneficiaries],
-  );
+  // The Overview reads the SAME dated snapshot as the Dispersal Map page:
+  // the newest day with ownership events, in "on this date" mode — exactly
+  // what the Dispersal Map opens on. Its pins and per-barangay counts come
+  // from ONE server answer, so the two maps cannot disagree about where an
+  // animal is, and a handover recorded there shows up here on the next poll.
+  const snapshotAbortRef = useRef(null);
+  const snapshotTokenRef = useRef(0);
 
-  // The same pins, counted per barangay, are the choropleth's fill: the
-  // polygons answer "how many households are pinned here" — the Overview's
-  // question, not the Dispersal Map's per-date counts. Rows whose address is
-  // not a covered barangay simply get no count.
-  const barangayRows = useMemo(() => {
-    const counts = new Map();
-    for (const pin of locationPins) {
-      if (!pin.barangay) continue;
-      if (!validCoordinates(Number(pin.latitude), Number(pin.longitude))) continue;
-      counts.set(pin.barangay, (counts.get(pin.barangay) ?? 0) + 1);
-    }
-    return [...counts].map(([name, pins]) => ({ name, pins }));
-  }, [locationPins]);
-
-  const choropleth = useMemo(() => {
-    if (boundaries.status !== "ready") return null;
-    return buildChoropleth(boundaries.collection, barangayRows, { metric: "pins" });
-  }, [boundaries, barangayRows]);
-
-  const load = useCallback(
+  const loadMap = useCallback(
     async (quiet = false) => {
       if (!showMap) {
-        setLoading(false);
+        setMapLoading(false);
         return;
       }
 
-      if (!quiet) setLoading(true);
-      setError(null);
+      if (!quiet) {
+        snapshotAbortRef.current?.abort();
+        snapshotAbortRef.current = new AbortController();
+        setMapLoading(true);
+      }
+      const signal = snapshotAbortRef.current?.signal;
+      const token = ++snapshotTokenRef.current;
+      setMapError(null);
 
       try {
-        setBeneficiaries((await beneficiariesApi.list({ per_page: 500 })) ?? []);
+        const dates = await mapApi.dates({ perPage: 1, signal });
+        const latest = dates?.dates?.[0]?.date ?? null;
+        const data = latest
+          ? await mapApi.pins({ date: latest, mode: "on", signal })
+          : { pins: [], barangays: [], skipped_no_location: 0, date: null };
+
+        // A slow earlier answer must never overwrite a newer one.
+        if (token !== snapshotTokenRef.current) return;
+
+        setSnapshot(data);
+        setMapLoading(false);
       } catch (err) {
-        if (!quiet) setError(getErrorMessage(err));
-      } finally {
-        if (!quiet) setLoading(false);
+        if (token !== snapshotTokenRef.current) return;
+        if (err?.name === "AbortError" || err?.code === "ERR_CANCELED") return;
+        if (!quiet) setMapLoading(false);
+        setMapError(getErrorMessage(err));
       }
     },
     [showMap],
   );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadMap();
+  }, [loadMap]);
 
-  // Quietly re-fetch so the dashboard map tracks beneficiary additions made elsewhere.
-  useAutoRefresh(load);
+  // Quietly re-fetch so an update made on the Dispersal Map — or anywhere
+  // else — appears here too, without a manual reload.
+  useAutoRefresh(loadMap, { enabled: showMap });
+
+  const pins = useMemo(() => snapshot?.pins ?? [], [snapshot]);
+  const choropleth = useMemo(() => {
+    if (boundaries.status !== "ready") return null;
+    return buildChoropleth(boundaries.collection, snapshot?.barangays ?? [], {
+      metric: "pins",
+    });
+  }, [boundaries, snapshot]);
 
   if (!config) {
     return (
@@ -157,9 +161,10 @@ export default function RoleDashboard({ roleKey }) {
                 Pinned locations
               </h3>
               <p className="mt-1 text-sm text-slate-600">
-                Every household on record, pinned on the barangay map. A pin
-                names its farmer and animal; the table below lists the same
-                records for accessibility.
+                The same live pins as the Dispersal Map — the latest recorded
+                day, taken straight from the ownership records. A pin names
+                its animal and current owner; the table below lists the same
+                animals for accessibility.
               </p>
             </div>
             <Link
@@ -172,14 +177,14 @@ export default function RoleDashboard({ roleKey }) {
           </div>
 
           <div className="mt-5">
-            {error ? (
-              <p className="text-sm text-red-700">{error}</p>
+            {mapError ? (
+              <p className="text-sm text-red-700">{mapError}</p>
             ) : (
               <Suspense fallback={<p className="text-sm text-slate-500">Loading map…</p>}>
                 <DashboardMap
-                  pins={locationPins}
-                  pinMode="beneficiary"
-                  loading={loading}
+                  pins={pins}
+                  trailFetcher={fetchAnimalTrail}
+                  loading={mapLoading}
                   renderChoropleth={(onMapReady) => (
                     <Suspense
                       fallback={<div className="h-[26rem] w-full rounded-xl bg-slate-100" />}
@@ -197,7 +202,7 @@ export default function RoleDashboard({ roleKey }) {
                           "cvo-date-pins-spider-point",
                         ]}
                         onMapReady={onMapReady}
-                        ariaLabel="Map of Bayawan City's barangays with the program's geo-tagged households pinned."
+                        ariaLabel="Map of Bayawan City's barangays with the program's geo-tagged animals pinned."
                         legend={{
                           stops: ["#eaf3dd", "#c7e2a6", "#8bc34a", "#558b2f", "#33691e"],
                           minLabel: "fewer pins",
@@ -209,6 +214,13 @@ export default function RoleDashboard({ roleKey }) {
                   )}
                 />
               </Suspense>
+            )}
+            {!mapLoading && !mapError && (
+              <p className="mt-2 text-xs text-slate-500">
+                {snapshot?.date
+                  ? `Showing ${pins.length} animal${pins.length === 1 ? "" : "s"} on ${formatDay(snapshot.date)} — the same snapshot the Dispersal Map opens on.`
+                  : "No dispersal records yet — a recorded dispersal appears here and on the Dispersal Map."}
+              </p>
             )}
           </div>
         </section>
@@ -250,7 +262,7 @@ export default function RoleDashboard({ roleKey }) {
           </article>
         ))}
 
-        {showMap && user && beneficiaries.length > 0 && (
+        {showMap && user && pins.length > 0 && (
           <article className="card flex flex-col p-5">
             <div className="flex items-start justify-between gap-3">
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-700">

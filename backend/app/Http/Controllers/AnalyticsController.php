@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\BarangayAnalyticsRequest;
+use App\Models\Barangay;
 use App\Services\AuditLogger;
 use App\Services\BarangayDispersalAnalyticsService;
 use App\Services\ReportExcelService;
@@ -35,6 +36,19 @@ class AnalyticsController extends Controller
         return response()->json([
             'data' => $this->analytics->barangaySummary($request->user(), $request->filters()),
         ]);
+    }
+
+    /**
+     * One barangay's card — totals + recipients, from the same filtered,
+     * role-scoped queries as the table and map. Opened by a polygon click.
+     */
+    public function barangayDetail(BarangayAnalyticsRequest $request, Barangay $barangay): JsonResponse
+    {
+        $detail = $this->analytics->barangayDetail($request->user(), $barangay->id, $request->filters());
+
+        abort_if($detail === null, 404, 'Barangay not found.');
+
+        return response()->json(['data' => $detail]);
     }
 
     /** Barangay → barangay flows (and, on request, CVO → barangay). */

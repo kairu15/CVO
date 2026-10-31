@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AnimalOwnershipEvent;
+use App\Models\AnimalType;
 use App\Models\Barangay;
 use App\Models\User;
 use Illuminate\Database\Query\Builder;
@@ -204,90 +205,257 @@ class BarangayDispersalAnalyticsService
     }
 
     /**
-     * One barangay's card: the SAME filtered row the table/map use, plus the
-     * recipients those movements delivered animals to.
+     * One barangay's floating card: the SAME filtered row the table and map
+     * use, the mix of animals it received, and the newest handovers in and
+     * out of it.
      *
      * The card is opened by clicking a polygon, so it must never disagree
-     * with the polygon's fill or the barangay table: the row is taken from
-     * barangaySummary() (same filters, same cache) rather than recomputed
-     * with a second set of rules. Null when the barangay is not one of the
-     * covered rows.
+     * with the polygon's fill, the hover label or the barangay table: `totals`
+     * is the row from barangaySummary() (same filters, same cache) rather than
+     * a second, independently filtered derivation. Null when the barangay is
+     * not one of the covered rows — the controller turns that into a 404.
+     *
+     * Every list below rides the same baseQuery(), so voided events stay out,
+     * the filters apply, and a technician's row scope is enforced in SQL.
+     * `limit` bounds the newest items per list (1..100); `total` still reports
+     * the full match count so the card can say "showing N of M".
      *
      * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>, per_1000: bool}  $filters
      * @return array<string, mixed>|null
      */
-    public function barangayDetail(User $viewer, int $barangayId, array $filters): ?array
+    public function barangayDetail(User $viewer, int $barangayId, array $filters, int $limit = 25): ?array
     {
         $summary = $this->barangaySummary($viewer, $filters);
 
-        $row = collect($summary['barangays'])
+        $totals = collect($summary['barangays'])
             ->first(fn (array $candidate): bool => (int) $candidate['barangay_id'] === $barangayId);
 
-        if ($row === null) {
+        if ($totals === null) {
             return null;
         }
 
-        return [
-            'barangay' => $row,
-            'recipients' => $this->recipients($viewer, $filters, $barangayId),
-            'filters' => $summary['filters'],
-            'scoped' => $summary['scoped'],
-            'generated_at' => now()->toIso8601String(),
-        ];
-    }
+        $limit = max(1, min(100, $limit));
 
-    /**
-     * Who received animals IN one barangay, under the active filters.
-     *
-     * This is the destination side of the metrics above: the barangay's own
-     * dispersals plus re-dispersals/pass-ons arriving from elsewhere. Rows are
-     * GROUPED by animal type, recipient and date so the card can say
-     * "2 × Swine (Pig) · Aling Nena · 12 Oct 2026" instead of repeating the
-     * same household once per animal. Ear tags are deliberately omitted — the
-     * card answers "who received what, when", and the animal list belongs on
-     * the animal screens.
-     *
-     * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>}  $filters
-     * @return list<array{event_date: string, animal_type: string, recipient_name: string, quantity: int}>
-     */
-    private function recipients(User $viewer, array $filters, int $barangayId): array
-    {
-        $types = array_values(array_intersect(
+        // What ARRIVED here: initial dispersals plus either flavour of
+        // household-to-household handover. `return` events never count (they
+        // leave the barangay programme entirely).
+        $receivedTypes = array_values(array_intersect(
             [AnimalOwnershipEvent::TYPE_DISPERSAL, ...self::RE_DISPERSAL_TYPES],
             $filters['event_types'],
         ));
 
+        // What LEFT here: only the re-dispersal shapes, so the event-type
+        // filter can silence this half without touching the received half.
+        $passedOnTypes = array_values(array_intersect(self::RE_DISPERSAL_TYPES, $filters['event_types']));
+
+        return [
+            'barangay' => [
+                'id' => $barangayId,
+                'name' => $totals['name'],
+                'population' => $totals['population'],
+            ],
+            'totals' => $totals,
+            'categories' => $this->receivedCategories($viewer, $filters, $barangayId, $receivedTypes),
+            'received' => $this->handovers($viewer, $filters, $barangayId, $receivedTypes, 'to_barangay_id', $limit),
+            'passed_on' => $this->handovers($viewer, $filters, $barangayId, $passedOnTypes, 'from_barangay_id', $limit),
+            'scoped' => $summary['scoped'],
+            'filters' => $summary['filters'],
+            'limit' => $limit,
+        ];
+    }
+
+    /**
+     * The mix of animals one barangay RECEIVED, grouped by the master list's
+     * main category (livestock / poultry / other) and then by type name.
+     *
+     * One grouped query with the joins it needs — no per-type round trips.
+     * The join is a LEFT join so an imported animal whose master-list row was
+     * deleted still shows under its stored display string rather than
+     * vanishing from the totals.
+     *
+     * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>}  $filters
+     * @param  list<string>  $types
+     * @return list<array{category: string, label: string, total: int, types: list<array{name: string, count: int}>}>
+     */
+    private function receivedCategories(User $viewer, array $filters, int $barangayId, array $types): array
+    {
         if ($types === []) {
             return [];
         }
 
-        return $this->baseQuery($viewer, $filters, $types)
+        $rows = $this->baseQuery($viewer, $filters, $types)
             ->where('e.to_barangay_id', $barangayId)
-            ->whereNotNull('e.to_beneficiary_id')
-            ->leftJoin('animals as ra', 'ra.id', '=', 'e.animal_id')
-            ->leftJoin('beneficiaries as rb', 'rb.id', '=', 'e.to_beneficiary_id')
-            // The event TYPE is deliberately not grouped on: the card does not
-            // show it, and splitting on it would print two identical rows for
-            // an initial dispersal and a handover to the same household on the
-            // same day.
-            ->groupBy('e.event_date', 'ra.animal_type', 'rb.name_of_farmer')
-            ->orderByDesc('e.event_date')
-            ->orderBy('rb.name_of_farmer')
+            ->leftJoin('animals as ca', 'ca.id', '=', 'e.animal_id')
+            ->leftJoin('animal_types as ct', 'ct.id', '=', 'ca.animal_type_id')
+            ->groupByRaw("coalesce(ct.main_category, 'other'), coalesce(ct.name, ca.animal_type, 'Unspecified')")
+            ->orderByRaw("coalesce(ct.main_category, 'other')")
+            ->orderByRaw("coalesce(ct.name, ca.animal_type, 'Unspecified')")
             ->selectRaw(implode(', ', [
-                'e.event_date as event_date',
-                "coalesce(ra.animal_type, 'Unspecified') as animal_type",
-                "coalesce(rb.name_of_farmer, 'Unknown recipient') as recipient_name",
-                'count(*) as quantity',
+                "coalesce(ct.main_category, 'other') as main_category",
+                "coalesce(ct.name, ca.animal_type, 'Unspecified') as type_name",
+                'count(*) as total',
             ]))
-            ->limit(200)
-            ->get()
-            ->map(fn (object $row): array => [
-                'event_date' => substr((string) $row->event_date, 0, 10),
+            ->get();
+
+        $groups = [];
+
+        foreach ($rows as $row) {
+            $key = (string) $row->main_category;
+
+            $groups[$key] ??= [
+                'category' => $key,
+                'label' => AnimalType::CATEGORY_LABELS[$key] ?? ucfirst($key),
+                'total' => 0,
+                'types' => [],
+            ];
+
+            $groups[$key]['total'] += (int) $row->total;
+            $groups[$key]['types'][] = [
+                'name' => (string) $row->type_name,
+                'count' => (int) $row->total,
+            ];
+        }
+
+        // Display order is the master list's: livestock, poultry, then the
+        // rest — the same order the animal-type cascade offers.
+        $order = array_flip(AnimalType::MAIN_CATEGORIES);
+
+        usort($groups, fn (array $a, array $b): int => ($order[$a['category']] ?? PHP_INT_MAX)
+            <=> ($order[$b['category']] ?? PHP_INT_MAX));
+
+        return array_values($groups);
+    }
+
+    /**
+     * The newest handovers on one side of a barangay: every event whose
+     * `from_barangay_id` (passed on) or `to_barangay_id` (received) is this
+     * barangay, newest first.
+     *
+     * Two queries per list — one COUNT for the true total, one page of rows
+     * with every join the payload needs — so the card's "showing N of M" is
+     * honest without loading M rows.
+     *
+     * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>}  $filters
+     * @param  list<string>  $types
+     * @param  'from_barangay_id'|'to_barangay_id'  $column
+     * @return array{total: int, items: list<array<string, mixed>>}
+     */
+    private function handovers(User $viewer, array $filters, int $barangayId, array $types, string $column, int $limit): array
+    {
+        if ($types === []) {
+            return ['total' => 0, 'items' => []];
+        }
+
+        $query = $this->baseQuery($viewer, $filters, $types)
+            ->where("e.{$column}", $barangayId);
+
+        $total = (clone $query)->count();
+
+        if ($total === 0) {
+            return ['total' => 0, 'items' => []];
+        }
+
+        $rows = $query
+            ->leftJoin('animals as ia', 'ia.id', '=', 'e.animal_id')
+            ->leftJoin('animal_types as it', 'it.id', '=', 'ia.animal_type_id')
+            ->leftJoin('animal_classifications as ic', 'ic.id', '=', 'ia.classification_id')
+            ->leftJoin('beneficiaries as fb', 'fb.id', '=', 'e.from_beneficiary_id')
+            ->leftJoin('beneficiaries as tb', 'tb.id', '=', 'e.to_beneficiary_id')
+            // Barangay names come from the event's SNAPSHOT columns, not the
+            // households' current barangay, so a household edited afterwards
+            // cannot relabel history.
+            ->leftJoin('barangays as fbg', 'fbg.id', '=', 'e.from_barangay_id')
+            ->leftJoin('barangays as tbg', 'tbg.id', '=', 'e.to_barangay_id')
+            ->orderByDesc('e.event_date')
+            ->orderByDesc('e.id')
+            ->limit($limit)
+            ->selectRaw(implode(', ', [
+                'e.id as event_id',
+                'e.animal_id as animal_id',
+                'e.event_type as event_type',
+                'e.event_date as event_date',
+                "coalesce(it.name, ia.animal_type, 'Unspecified') as animal_type",
+                "coalesce(it.main_category, 'other') as category",
+                'ic.name as classification',
+                'ia.ear_tag_number as ear_tag_number',
+                'e.from_beneficiary_id as from_beneficiary_id',
+                'e.to_beneficiary_id as to_beneficiary_id',
+                'fb.name_of_farmer as from_name',
+                'tb.name_of_farmer as to_name',
+                'fb.technician_id as from_technician_id',
+                'tb.technician_id as to_technician_id',
+                'fbg.name as from_barangay',
+                'tbg.name as to_barangay',
+            ]))
+            ->get();
+
+        return [
+            'total' => (int) $total,
+            'items' => $rows->map(fn (object $row): array => [
+                'event_id' => (int) $row->event_id,
+                'animal_id' => (int) $row->animal_id,
+                'event_type' => (string) $row->event_type,
+                'event_date' => Carbon::parse((string) $row->event_date, 'Asia/Manila')->toDateString(),
                 'animal_type' => (string) $row->animal_type,
-                'recipient_name' => (string) $row->recipient_name,
-                'quantity' => (int) $row->quantity,
-            ])
-            ->all();
+                'category' => (string) $row->category,
+                'classification' => $row->classification !== null ? (string) $row->classification : null,
+                'ear_tag_number' => $row->ear_tag_number !== null ? (string) $row->ear_tag_number : null,
+                'from' => $this->household(
+                    $row->from_beneficiary_id,
+                    $row->from_name,
+                    $row->from_barangay,
+                    $row->from_technician_id,
+                    $viewer,
+                ),
+                'to' => $this->household(
+                    $row->to_beneficiary_id,
+                    $row->to_name,
+                    $row->to_barangay,
+                    $row->to_technician_id,
+                    $viewer,
+                ),
+            ])->all(),
+        ];
+    }
+
+    /**
+     * One side of a handover, as the card may show it.
+     *
+     * PRIVACY: admin and doctor see every household name. A technician sees a
+     * name only for a household assigned to them; every other household is
+     * replaced with "Beneficiary in {barangay}" (or "Beneficiary (location
+     * hidden)" when even the barangay is unknown) and flagged `masked`. No
+     * RSBSA number, phone number or coordinate ever leaves this method.
+     *
+     * A null beneficiary is the CVO office — the source of a first dispersal.
+     *
+     * @return array{name: string, barangay: ?string, masked: bool}
+     */
+    private function household(mixed $beneficiaryId, mixed $name, mixed $barangayName, mixed $technicianId, User $viewer): array
+    {
+        $barangay = $barangayName !== null && $barangayName !== '' ? (string) $barangayName : null;
+
+        if ($beneficiaryId === null) {
+            return ['name' => 'CVO', 'barangay' => null, 'masked' => false];
+        }
+
+        $visible = ! $this->isScoped($viewer) || (int) $technicianId === (int) $viewer->id;
+
+        if ($visible) {
+            return [
+                'name' => $name !== null && $name !== '' ? (string) $name : 'Unknown household',
+                'barangay' => $barangay,
+                'masked' => false,
+            ];
+        }
+
+        return [
+            'name' => $barangay !== null
+                ? "Beneficiary in {$barangay}"
+                : 'Beneficiary (location hidden)',
+            'barangay' => $barangay,
+            'masked' => true,
+        ];
     }
 
     /* ------------------------------------------------------------------ *

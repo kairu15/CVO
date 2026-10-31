@@ -119,6 +119,9 @@ export function DispersalDialog({
   const [animalLoading, setAnimalLoading] = useState(false);
   const [animalError, setAnimalError] = useState(null);
   const [latestEventId, setLatestEventId] = useState(null);
+  // True while the ownership chain (the concurrency token's source) is in
+  // flight for the resolved animal.
+  const [chainLoading, setChainLoading] = useState(false);
   const [currentOwner, setCurrentOwner] = useState(null);
 
   const [form, setForm] = useState(() => emptyForm());
@@ -250,6 +253,12 @@ export function DispersalDialog({
   const loadChain = useCallback(async () => {
     if (!resolvedAnimal?.id) return;
 
+    // The chain carries the base_event_id the write needs as its concurrency
+    // token — until it lands the submit has nothing to send, so it stays
+    // disabled rather than answering "Some fields need attention" with no
+    // visible culprit (a real gap on a slow connection: the chain fetch can
+    // take seconds behind the animal resolution).
+    setChainLoading(true);
     try {
       const chain = await animalOwnershipApi.ownershipChain(resolvedAnimal.id);
       setLatestEventId(chain?.latest_event_id ?? null);
@@ -257,6 +266,8 @@ export function DispersalDialog({
     } catch {
       setLatestEventId(null);
       setCurrentOwner(null);
+    } finally {
+      setChainLoading(false);
     }
   }, [resolvedAnimal?.id]);
 
@@ -447,8 +458,19 @@ export function DispersalDialog({
     setNotice(null);
 
     const clientErrors = validate();
+    if (config.needsAnimal && latestEventId === null && !chainLoading) {
+      // The chain failed to load (offline, a 404 on a deleted animal): the
+      // write cannot carry its concurrency token. Name it instead of a
+      // blank "attention" banner with no culprit.
+      clientErrors.base_event_id = "The animal's ownership chain could not be loaded, so this handover cannot be verified. Check your connection and try again.";
+    }
     if (Object.keys(clientErrors).length > 0) {
       setFormErrors(clientErrors);
+      setError(
+        config.needsAnimal && latestEventId === null
+          ? "The animal's ownership chain is still loading or could not be loaded — the handover needs it before it can be saved."
+          : "Some fields need attention before this can be saved.",
+      );
       return;
     }
 
@@ -926,7 +948,7 @@ export function DispersalDialog({
               <button type="button" className="btn-secondary" onClick={requestClose}>
                 Cancel
               </button>
-              <button type="submit" className="btn-primary" disabled={submitting} aria-busy={submitting}>
+              <button type="submit" className="btn-primary" disabled={submitting || (config.needsAnimal && !latestEventId)} aria-busy={submitting || (config.needsAnimal && !latestEventId)}>
                 {submitting ? (
                   <>
                     <ButtonSpinner />

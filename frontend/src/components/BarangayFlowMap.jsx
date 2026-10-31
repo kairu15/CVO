@@ -14,10 +14,9 @@ import {
   metricValue,
   normalizeBarangayName,
 } from "../lib/barangayBoundaries";
-import { analyticsApi } from "../api/analyticsApi";
-import { getErrorMessage } from "../api/client";
 import { useBarangayBoundaries } from "../hooks/useBarangayBoundaries";
 import { BARANGAY_FILL_LAYER, BarangayChoropleth } from "./BarangayChoropleth";
+import { BarangayDetailPopup } from "./BarangayDetailPopup";
 
 /**
  * The barangay flow map: the shared barangay choropleth (polygon fills
@@ -35,6 +34,12 @@ import { BARANGAY_FILL_LAYER, BarangayChoropleth } from "./BarangayChoropleth";
  * at its centroid, bubble AREA carrying the dispersed volume — so the
  * numbers stay on screen either way.
  *
+ * CLICKING a polygon (or a fallback bubble) selects that barangay: the fill
+ * turns yellow through feature-state `selected` and BarangayDetailPopup opens
+ * beside the click point. The card is a React node positioned by projecting
+ * the clicked lngLat, not a MapLibre popup, so it can stay attached while the
+ * map moves, scroll its own body, and become a bottom sheet on a phone.
+ *
  * The tooltip is a convenience — the exact numbers live in the barangay table
  * and the flow matrix beside this card, which are the keyboard-reachable
  * equivalents of everything drawn here.
@@ -46,11 +51,12 @@ const FLOW_SOURCE = "cvo-barangay-flows";
 const ARROW_SOURCE = "cvo-barangay-flow-arrows";
 const FLOW_ARROW_IMAGE = "cvo-flow-arrow";
 
-/** The selected barangay's outline — drawn from the clicked polygon itself. */
-const SELECTION_SOURCE = "cvo-barangay-selected";
-const SELECTION_LAYER = "cvo-barangay-selected-outline";
+const EMPTY_QUERY = {};
 
-const EMPTY_COLLECTION = { type: "FeatureCollection", features: [] };
+/** Widths at which the card becomes a bottom sheet instead of a side card. */
+const SHEET_MAX_WIDTH = 560;
+const CARD_WIDTH = 320;
+const CARD_GAP = 16;
 
 const FLOW_ARROW_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">' +
@@ -111,81 +117,19 @@ function flowPopupHtml(flow) {
   );
 }
 
-/** AY-m-d date as the card shows it; the API sends date-only strings. */
-function formatEventDate(iso) {
-  if (!iso) return "";
-  const parsed = new Date(`${iso}T00:00:00`);
-  return Number.isNaN(parsed.getTime())
-    ? iso
-    : parsed.toLocaleDateString(undefined, {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
-}
+/** The row a click event's feature carries, whether it was stored as text. */
+function rowFromFeature(feature) {
+  let row = feature?.properties?.row;
 
-/**
- * The click-to-open barangay card (dark, anchored, with the popup's own
- * pointer). Built as HTML because a MapLibre popup is a DOM node; every value
- * is escaped and the SAME popup is re-filled as the detail arrives, so an open
- * card never flickers shut while it loads.
- */
-function selectionPopupHtml({ name, row, recipients, loading, error }) {
-  const head =
-    `<div class="cvo-detail-head">` +
-    `<p class="cvo-detail-eyebrow">Barangay</p>` +
-    `<p class="cvo-detail-title">${escapeHtml(name)}</p>` +
-    `</div>`;
-
-  if (loading) {
-    return `<div class="cvo-detail">${head}<p class="cvo-detail-status">Loading barangay details…</p></div>`;
+  if (typeof row === "string") {
+    try {
+      row = JSON.parse(row);
+    } catch {
+      row = null;
+    }
   }
 
-  if (error) {
-    return `<div class="cvo-detail">${head}<p class="cvo-detail-status cvo-detail-error">${escapeHtml(error)}</p></div>`;
-  }
-
-  if (!row) {
-    return `<div class="cvo-detail">${head}<p class="cvo-detail-status">No details recorded for this barangay.</p></div>`;
-  }
-
-  const net = Number(row.net_flow) || 0;
-  const animals = recipients.reduce(
-    (total, entry) => total + Number(entry.quantity ?? 0),
-    0,
-  );
-
-  const list = recipients.length
-    ? `<ul class="cvo-detail-list">` +
-      recipients
-        .map(
-          (entry) =>
-            `<li class="cvo-detail-recipient">` +
-            `<span class="cvo-detail-qty">${Number(entry.quantity ?? 0)}×</span>` +
-            `<span class="cvo-detail-who">` +
-            `<span class="cvo-detail-animal">${escapeHtml(entry.animal_type)}</span>` +
-            `<span class="cvo-detail-name">${escapeHtml(entry.recipient_name)}</span>` +
-            `</span>` +
-            `<span class="cvo-detail-date">${escapeHtml(formatEventDate(entry.event_date))}</span>` +
-            `</li>`,
-        )
-        .join("") +
-      `</ul>`
-    : `<p class="cvo-detail-status">No recipients recorded for the active filters.</p>`;
-
-  return (
-    `<div class="cvo-detail">` +
-    head +
-    `<div class="cvo-detail-grid">` +
-    `<div><p class="cvo-detail-label">Total dispersed</p><p class="cvo-detail-value">${Number(row.dispersed) || 0}</p></div>` +
-    `<div><p class="cvo-detail-label">Outgoing (out)</p><p class="cvo-detail-value">${Number(row.redispersed_out) || 0}</p></div>` +
-    `<div><p class="cvo-detail-label">Incoming (in)</p><p class="cvo-detail-value">${Number(row.redispersed_in) || 0}</p></div>` +
-    `<div><p class="cvo-detail-label">Net</p><p class="cvo-detail-value ${net >= 0 ? "is-positive" : "is-negative"}">${net >= 0 ? "+" : ""}${net}</p></div>` +
-    `</div>` +
-    `<p class="cvo-detail-section">Recipients · ${animals} animal${animals === 1 ? "" : "s"}</p>` +
-    list +
-    `</div>`
-  );
+  return row ?? null;
 }
 
 export function BarangayFlowMap({
@@ -197,17 +141,15 @@ export function BarangayFlowMap({
   minRateAnimals = 5,
   topFlows = 10,
   includeCvo = false,
-  query = {},
+  detailQuery = EMPTY_QUERY,
 }) {
   const mapRef = useRef(null);
   const popupRef = useRef(null);
-  const selectionPopupRef = useRef(null);
-  const selectionAttachedRef = useRef(false);
-  const [selected, setSelected] = useState(null); // { id, name, lngLat }
-  const [detail, setDetail] = useState(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState(null);
   const [mapReady, setMapReady] = useState(false);
+  // { barangayId, name, lngLat: [lng, lat], featureId }
+  const [selection, setSelection] = useState(null);
+  // Where the card sits: { mode: "card"|"sheet", style: {...} }
+  const [anchor, setAnchor] = useState(null);
   const boundaries = useBarangayBoundaries();
   const withBoundaries = boundaries.status === "ready";
 
@@ -269,15 +211,6 @@ export function BarangayFlowMap({
   function handleMapReady(map) {
     mapRef.current = map;
     popupRef.current = new Popup({ closeButton: false, offset: 10 });
-    // The click-to-open card: persistent until dismissed, with a close button
-    // and the same anchor tip the hover label uses.
-    selectionPopupRef.current = new Popup({
-      closeButton: true,
-      closeOnClick: false,
-      offset: 14,
-      maxWidth: "min(22rem, calc(100vw - 2rem))",
-      className: "cvo-barangay-selection",
-    });
 
     map.addSource(FLOW_SOURCE, { type: "geojson", data: flowData.arcs });
     map.addLayer({
@@ -317,178 +250,143 @@ export function BarangayFlowMap({
       },
     });
 
-    // The selected polygon's outline. Added after the flow layers so it sits
-    // above them; the boundary fills insert below the flow casing later.
-    map.addSource(SELECTION_SOURCE, { type: "geojson", data: EMPTY_COLLECTION });
-    map.addLayer({
-      id: SELECTION_LAYER,
-      type: "line",
-      source: SELECTION_SOURCE,
-      layout: { "line-join": "round" },
-      paint: {
-        "line-color": "#0f172a",
-        "line-width": 2.5,
-        "line-opacity": 0.9,
-      },
-    });
-
     setMapReady(true);
   }
 
-  /** Dismiss the card and clear its outline. */
+  /** Dismiss the card (close button, Escape, or a click on empty map). */
   const clearSelection = useCallback(() => {
-    setSelected(null);
-    setDetail(null);
-    setDetailError(null);
-    setDetailLoading(false);
-    mapRef.current?.getSource(SELECTION_SOURCE)?.setData(EMPTY_COLLECTION);
+    setSelection(null);
+    setAnchor(null);
   }, []);
 
   /**
-   * A polygon click opens the card AT THE CLICK POINT (so the popup's pointer
-   * marks the chosen barangay) and outlines the clicked shape. Clicking the
-   * same barangay again closes it.
+   * A polygon click opens the card at the click point and selects the
+   * polygon. The feature id comes from the choropleth source's generateId,
+   * which is what the yellow fill's feature-state is keyed on.
    */
   const handleBarangayClick = useCallback(
     (name, event) => {
       const feature = event?.features?.[0];
       if (!feature || !event?.lngLat) return;
 
-      let row = feature.properties?.row;
-      if (typeof row === "string") {
-        try {
-          row = JSON.parse(row);
-        } catch {
-          row = null;
-        }
-      }
+      let row = rowFromFeature(feature);
       row ??= rows.find(
         (candidate) =>
           normalizeBarangayName(candidate.name) === normalizeBarangayName(name),
       );
       if (!row) return;
 
-      if (selected?.id === row.barangay_id) {
-        clearSelection();
+      setSelection({
+        barangayId: row.barangay_id,
+        name: row.name,
+        lngLat: [event.lngLat.lng, event.lngLat.lat],
+        featureId: feature.id ?? null,
+      });
+    },
+    [rows],
+  );
+
+  /**
+   * Anchor the card to the selected coordinate: project it to CSS pixels and
+   * clamp the card inside the map. Recomputed on every move/resize through
+   * requestAnimationFrame, so panning and zooming never detach it. Narrow
+   * maps get a bottom sheet at ~60% of the map's height, which keeps the
+   * selected polygon visible above it.
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map || !selection) {
+      setAnchor(null);
+      return undefined;
+    }
+
+    let frame = null;
+
+    const measure = () => {
+      frame = null;
+      const point = map.project(selection.lngLat);
+      const container = map.getContainer();
+      const width = container.clientWidth ?? 0;
+      const height = container.clientHeight ?? 0;
+
+      if (width > 0 && width < SHEET_MAX_WIDTH) {
+        setAnchor({
+          mode: "sheet",
+          style: {
+            left: 8,
+            right: 8,
+            bottom: 8,
+            height: Math.max(160, Math.round(height * 0.6)),
+          },
+        });
         return;
       }
 
-      setSelected({
-        id: row.barangay_id,
-        name: row.name,
-        lngLat: [event.lngLat.lng, event.lngLat.lat],
+      // Beside the click point: right when there is room, otherwise left.
+      const left =
+        point.x + CARD_GAP + CARD_WIDTH <= width
+          ? point.x + CARD_GAP
+          : Math.max(CARD_GAP, point.x - CARD_GAP - CARD_WIDTH);
+      const top = Math.min(
+        Math.max(CARD_GAP, point.y - 48),
+        Math.max(CARD_GAP, height - 260),
+      );
+
+      setAnchor({
+        mode: "card",
+        style: {
+          left,
+          top,
+          width: CARD_WIDTH,
+          maxHeight: Math.max(180, height - top - CARD_GAP),
+        },
       });
-      mapRef.current?.getSource(SELECTION_SOURCE)?.setData({
-        type: "Feature",
-        properties: { name: row.name },
-        geometry: feature.geometry,
-      });
-    },
-    [rows, selected, clearSelection],
-  );
+    };
 
-  // Fetch the card from the SAME filtered endpoint as the table. A quick
-  // second click aborts the first request; that abort is never an error.
-  useEffect(() => {
-    if (!selected) return undefined;
+    const schedule = () => {
+      if (frame === null) frame = requestAnimationFrame(measure);
+    };
 
-    const controller = new AbortController();
-    let active = true;
-
-    setDetailLoading(true);
-    setDetailError(null);
-    setDetail(null);
-
-    analyticsApi
-      .barangayDetail(selected.id, { ...query, signal: controller.signal })
-      .then((data) => {
-        if (!active) return;
-        setDetail(data);
-        setDetailLoading(false);
-      })
-      .catch((error) => {
-        if (!active) return;
-        if (error?.name === "AbortError" || error?.code === "ERR_CANCELED") return;
-        setDetailError(getErrorMessage(error));
-        setDetailLoading(false);
-      });
+    measure();
+    map.on("move", schedule);
+    map.on("resize", schedule);
 
     return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [selected, query]);
-
-  // Re-fill the OPEN popup as the detail arrives (setHTML instead of a new
-  // popup, which would slam it shut on every update).
-  useEffect(() => {
-    const popup = selectionPopupRef.current;
-    const map = mapRef.current;
-    if (!popup || !map) return;
-
-    if (!selected) {
-      if (selectionAttachedRef.current) {
-        selectionAttachedRef.current = false;
-        popup.remove();
+      if (frame !== null) cancelAnimationFrame(frame);
+      try {
+        map.off("move", schedule);
+        map.off("resize", schedule);
+      } catch {
+        // Map already removed — nothing left to unbind.
       }
-      return;
-    }
+    };
+  }, [mapReady, selection]);
 
-    const row =
-      detail?.barangay && Number(detail.barangay.barangay_id) === Number(selected.id)
-        ? detail.barangay
-        : null;
-
-    popup.setLngLat(selected.lngLat).setHTML(
-      selectionPopupHtml({
-        name: selected.name,
-        row,
-        recipients: row ? (detail.recipients ?? []) : [],
-        loading: detailLoading || (!row && !detailError),
-        error: detailError,
-      }),
-    );
-
-    // Attach ONCE per open: MapLibre's addTo() removes and re-adds an open
-    // popup, which emits "close" — re-attaching on every data update would
-    // dismiss the card the moment its detail arrived.
-    if (!selectionAttachedRef.current) {
-      popup.addTo(map);
-      selectionAttachedRef.current = true;
-    }
-  }, [selected, detail, detailLoading, detailError]);
-
-  // The popup's × and a click on the map background dismiss the card; a click
-  // on a polygon is the choropleth's selection and must NOT close it.
+  // A click on the map background dismisses the card. A click that lands on a
+  // polygon or a fallback bubble is a selection, not a dismissal — and the
+  // choropleth's own fill handler has already decided which barangay it was.
   useEffect(() => {
     const map = mapRef.current;
-    const popup = selectionPopupRef.current;
-    if (!mapReady || !map || !popup) return undefined;
+    if (!mapReady || !map) return undefined;
 
-    const onClose = () => {
-      selectionAttachedRef.current = false;
-      clearSelection();
-    };
     const onMapClick = (event) => {
-      if (!map.getLayer(BARANGAY_FILL_LAYER)) return;
-      const hits = map.queryRenderedFeatures(event.point, {
-        layers: [BARANGAY_FILL_LAYER],
-      });
-      if (hits.length === 0) clearSelection();
+      const layers = [BARANGAY_FILL_LAYER, BUBBLE_LAYER].filter((id) => map.getLayer(id));
+      if (layers.length === 0) return;
+
+      const hits = map.queryRenderedFeatures(event.point, { layers });
+      if (hits.length === 0) setSelection(null);
     };
 
-    popup.on("close", onClose);
     map.on("click", onMapClick);
 
     return () => {
-      // Off FIRST, then remove: removal emits "close", and a cleared listener
-      // must never try to update an unmounted component.
-      popup.off("close", onClose);
-      map.off("click", onMapClick);
-      selectionAttachedRef.current = false;
-      popup.remove();
+      try {
+        map.off("click", onMapClick);
+      } catch {
+        // Map already removed — nothing left to unbind.
+      }
     };
-  }, [mapReady, clearSelection]);
+  }, [mapReady]);
 
   // Register the arrow sprite once the style can take an image.
   useEffect(() => {
@@ -510,7 +408,7 @@ export function BarangayFlowMap({
   }, [mapReady]);
 
   // The bubble fallback: added UNDER the flow lines when the boundary asset
-  // is missing, with its own hover tooltip.
+  // is missing, with its own hover tooltip and click selection.
   useEffect(() => {
     if (!mapReady || withBoundaries) return;
     const map = mapRef.current;
@@ -557,7 +455,8 @@ export function BarangayFlowMap({
   }, [mapReady, flowData]);
 
   // Hover behaviour for the bubble fallback and the flow lines — the shared
-  // choropleth owns the polygon hover itself.
+  // choropleth owns the polygon hover itself — plus the bubble click, which
+  // is the fallback's equivalent of clicking a polygon.
   useEffect(() => {
     const map = mapRef.current;
     if (!mapReady || !map) return undefined;
@@ -568,12 +467,12 @@ export function BarangayFlowMap({
 
     const bubbleEnter = (event) => {
       map.getCanvas().style.cursor = "pointer";
-      const row = event.features?.[0]?.properties?.row;
+      const row = rowFromFeature(event.features?.[0]);
       if (!row) return;
       popup
         .setLngLat(event.features[0].geometry.coordinates)
         .setHTML(
-          bubblePopupHtml(typeof row === "string" ? JSON.parse(row) : row, {
+          bubblePopupHtml(row, {
             metric,
             per1000,
             metricLabel,
@@ -581,6 +480,19 @@ export function BarangayFlowMap({
           }),
         )
         .addTo(map);
+    };
+
+    const bubbleClick = (event) => {
+      const feature = event.features?.[0];
+      const row = rowFromFeature(feature);
+      if (!row || !event.lngLat) return;
+
+      setSelection({
+        barangayId: row.barangay_id,
+        name: row.name,
+        lngLat: [event.lngLat.lng, event.lngLat.lat],
+        featureId: feature.id ?? null,
+      });
     };
 
     const flowEnter = (event) => {
@@ -601,6 +513,7 @@ export function BarangayFlowMap({
       if (bubbleBound || !map.getLayer(BUBBLE_LAYER)) return;
       map.on("mousemove", BUBBLE_LAYER, bubbleEnter);
       map.on("mouseleave", BUBBLE_LAYER, leave);
+      map.on("click", BUBBLE_LAYER, bubbleClick);
       bubbleBound = true;
     };
     const bindFlows = () => {
@@ -622,6 +535,7 @@ export function BarangayFlowMap({
         if (bubbleBound) {
           map.off("mousemove", BUBBLE_LAYER, bubbleEnter);
           map.off("mouseleave", BUBBLE_LAYER, leave);
+          map.off("click", BUBBLE_LAYER, bubbleClick);
         }
         if (flowBound) {
           map.off("mousemove", "barangay-flow-lines", flowEnter);
@@ -634,6 +548,16 @@ export function BarangayFlowMap({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rebinds with the tooltip wording
   }, [mapReady, withBoundaries, metric, per1000, metricLabel, minRateAnimals]);
+
+  // The card reads the live row from the map's own data, so a quiet refresh
+  // updates its headline numbers while it stays open.
+  const selectedRow = useMemo(
+    () =>
+      selection
+        ? rows.find((row) => Number(row.barangay_id) === Number(selection.barangayId)) ?? null
+        : null,
+    [rows, selection],
+  );
 
   const legend = useMemo(() => {
     const max = withBoundaries ? (choropleth?.max ?? 0) : bubbleData.max;
@@ -658,64 +582,82 @@ export function BarangayFlowMap({
   }, [withBoundaries, choropleth, bubbleData, metric, per1000]);
 
   return (
-    <BarangayChoropleth
-      boundaries={boundaries}
-      choropleth={choropleth}
-      onMapReady={handleMapReady}
-      onBarangayClick={handleBarangayClick}
-      beforeLayerId="barangay-flow-casing"
-      // A flow-line click belongs to the line's tooltip, not the barangay
-      // polygon underneath (MapLibre layer events are not occlusion-aware).
-      clickThroughLayers={["barangay-flow-lines"]}
-      ariaLabel={`Map of Bayawan City's barangays coloured by ${metricLabel}. The barangay table below carries the same numbers.`}
-      legend={{
-        stops: legend.stops,
-        minLabel: legend.minLabel,
-        maxLabel: legend.maxLabel,
-      }}
-      legendNotes={
-        <>
-          {!withBoundaries && (
-            <div className="flex items-center gap-2">
-              <span className="font-semibold">Bubble size</span>
-              <span>dispersed volume (area)</span>
-              <span className="flex items-end gap-1" aria-hidden="true">
-                {legend.sizeSamples.map((sample) => (
-                  <span
-                    key={sample.value}
-                    className="inline-block rounded-full bg-brand-700/80"
-                    style={{ width: sample.size, height: sample.size }}
-                    title={`${sample.value}`}
-                  />
-                ))}
-              </span>
-            </div>
-          )}
-          {metric === "redispersal_rate" && (
-            <span className="text-slate-500">Greyed: not ranked (n &lt; {minRateAnimals})</span>
-          )}
-          {withBoundaries && metric !== "redispersal_rate" && choropleth?.max === 0 && (
-            <span className="text-slate-500">Greyed: no dispersals recorded in this period</span>
-          )}
-          {!withBoundaries && metric !== "redispersal_rate" && bubbleData.max === 0 && (
-            <span className="text-slate-500">Greyed: no population recorded</span>
-          )}
-          {includeCvo && (
-            <span className="text-slate-500">CVO → barangay lines included via the source toggle</span>
-          )}
-        </>
-      }
-      tooltipHtml={(properties) => {
-        const row = properties?.row;
-        const parsed = typeof row === "string" ? JSON.parse(row) : row;
-        return barangayTooltipHtml(parsed, properties?.name, {
-          metric,
-          per1000,
-          metricLabel,
-          minRateAnimals,
-        });
-      }}
-    />
+    <div className="relative">
+      <BarangayChoropleth
+        boundaries={boundaries}
+        choropleth={choropleth}
+        onMapReady={handleMapReady}
+        onBarangayClick={handleBarangayClick}
+        selectedFeatureId={selection?.featureId ?? null}
+        beforeLayerId="barangay-flow-casing"
+        // A flow-line click belongs to the line's tooltip, not the barangay
+        // polygon underneath (MapLibre layer events are not occlusion-aware).
+        clickThroughLayers={["barangay-flow-lines"]}
+        ariaLabel={`Map of Bayawan City's barangays coloured by ${metricLabel}. Click or tap a barangay for its animal mix and handovers. The barangay table below carries the same numbers.`}
+        legend={{
+          stops: legend.stops,
+          minLabel: legend.minLabel,
+          maxLabel: legend.maxLabel,
+        }}
+        legendNotes={
+          <>
+            {!withBoundaries && (
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">Bubble size</span>
+                <span>dispersed volume (area)</span>
+                <span className="flex items-end gap-1" aria-hidden="true">
+                  {legend.sizeSamples.map((sample) => (
+                    <span
+                      key={sample.value}
+                      className="inline-block rounded-full bg-brand-700/80"
+                      style={{ width: sample.size, height: sample.size }}
+                      title={`${sample.value}`}
+                    />
+                  ))}
+                </span>
+              </div>
+            )}
+            {metric === "redispersal_rate" && (
+              <span className="text-slate-500">Greyed: not ranked (n &lt; {minRateAnimals})</span>
+            )}
+            {withBoundaries && metric !== "redispersal_rate" && choropleth?.max === 0 && (
+              <span className="text-slate-500">Greyed: no dispersals recorded in this period</span>
+            )}
+            {!withBoundaries && metric !== "redispersal_rate" && bubbleData.max === 0 && (
+              <span className="text-slate-500">Greyed: no population recorded</span>
+            )}
+            {includeCvo && (
+              <span className="text-slate-500">CVO → barangay lines included via the source toggle</span>
+            )}
+          </>
+        }
+        tooltipHtml={(properties) => {
+          const row = properties?.row;
+          const parsed = typeof row === "string" ? JSON.parse(row) : row;
+          return barangayTooltipHtml(parsed, properties?.name, {
+            metric,
+            per1000,
+            metricLabel,
+            minRateAnimals,
+          });
+        }}
+      />
+
+      {selection && anchor && (
+        <BarangayDetailPopup
+          // Re-keyed per barangay so clicking another one replays the
+          // entrance animation instead of morphing the old card's numbers.
+          key={selection.barangayId}
+          barangayId={selection.barangayId}
+          name={selection.name}
+          row={selectedRow}
+          detailQuery={detailQuery}
+          onClose={clearSelection}
+          mode={anchor.mode}
+          style={anchor.style}
+        />
+      )}
+    </div>
   );
 }
 

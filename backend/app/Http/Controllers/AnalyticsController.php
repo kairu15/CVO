@@ -39,12 +39,18 @@ class AnalyticsController extends Controller
     }
 
     /**
-     * One barangay's card — totals + recipients, from the same filtered,
-     * role-scoped queries as the table and map. Opened by a polygon click.
+     * One barangay's card — its summary row, the animal mix it received, and
+     * the newest handovers in and out, from the same filtered, role-scoped
+     * queries as the table and map. Opened by a polygon click.
      */
     public function barangayDetail(BarangayAnalyticsRequest $request, Barangay $barangay): JsonResponse
     {
-        $detail = $this->analytics->barangayDetail($request->user(), $barangay->id, $request->filters());
+        $detail = $this->analytics->barangayDetail(
+            $request->user(),
+            $barangay->id,
+            $request->filters(),
+            (int) ($request->validated('limit') ?? 25),
+        );
 
         abort_if($detail === null, 404, 'Barangay not found.');
 

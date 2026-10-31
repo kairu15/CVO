@@ -99,6 +99,14 @@ class BarangayDispersalAnalyticsTest extends TestCase
             ->json('data');
     }
 
+    private function detail(User $viewer, int $barangayId, array $query = []): array
+    {
+        return $this->actingAs($viewer)
+            ->getJson("/api/v1/analytics/barangay-dispersal/{$barangayId}".(count($query) > 0 ? '?'.http_build_query($query) : ''))
+            ->assertOk()
+            ->json('data');
+    }
+
     private function rowFor(array $data, int $barangayId): array
     {
         return collect($data['barangays'])->firstOrFail(fn (array $row) => $row['barangay_id'] === $barangayId);
@@ -133,11 +141,11 @@ class BarangayDispersalAnalyticsTest extends TestCase
     }
 
     /**
-     * The map's click-to-open card: the SAME filtered row as the table, plus
-     * the recipients those movements delivered to, and a 404 outside the
-     * covered barangays.
+     * The map's click-to-open card: the SAME filtered row as the table and the
+     * polygon's colour, what the barangay received, and the handovers that
+     * left it — with both sides of every movement named for an admin.
      */
-    public function test_barangay_detail_card_returns_filtered_metrics_and_recipients(): void
+    public function test_barangay_detail_lists_received_and_passed_on_handovers(): void
     {
         $admin = $this->admin();
         $a = $this->barangay(0);
@@ -146,48 +154,144 @@ class BarangayDispersalAnalyticsTest extends TestCase
         $ownerB = $this->beneficiaryIn($b);
 
         $animal = $this->disperse($admin, $ownerA, now()->subDays(3), 'TAG-CARD-1');
-        $this->disperse($admin, $ownerA, now()->subDays(2), 'TAG-CARD-2');
         $this->redisperse($admin, $animal->id, $ownerB, now()->subDays(1))->assertCreated();
 
-        $detail = $this->actingAs($admin)
-            ->getJson("/api/v1/analytics/barangay-dispersal/{$a->id}")
-            ->assertOk()
-            ->json('data');
+        $detailB = $this->detail($admin, $b->id);
+        $detailA = $this->detail($admin, $a->id);
 
-        // The card's numbers are the map's/table's numbers, not a re-derivation.
-        $this->assertSame($a->id, $detail['barangay']['barangay_id']);
-        $this->assertSame(2, $detail['barangay']['dispersed']);
-        $this->assertSame(1, $detail['barangay']['redispersed_out']);
-        $this->assertSame(0, $detail['barangay']['redispersed_in']);
-        $this->assertSame(-1, $detail['barangay']['net_flow']);
+        // B received the animal from A's household — the receiver AND the
+        // sender are both named on B's card.
+        $this->assertSame(1, $detailB['received']['total']);
+        $received = $detailB['received']['items'][0];
+        $this->assertSame($ownerB->name_of_farmer, $received['to']['name']);
+        $this->assertSame($ownerA->name_of_farmer, $received['from']['name']);
+        $this->assertSame('re_dispersal', $received['event_type']);
+        $this->assertSame('TAG-CARD-1', $received['ear_tag_number']);
+        $this->assertSame('Swine (Pig)', $received['animal_type']);
+        $this->assertSame('livestock', $received['category']);
+        $this->assertSame($b->name, $received['to']['barangay']);
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $received['event_date']);
+        $this->assertFalse($received['to']['masked']);
+        $this->assertSame(0, $detailB['passed_on']['total']);
 
-        // Recipients are the two animals that ARRIVED in the barangay (one
-        // group per type + recipient + date; the handover OUT is not a row).
-        $this->assertCount(2, $detail['recipients']);
-        $this->assertSame(2, array_sum(array_column($detail['recipients'], 'quantity')));
-        $this->assertSame(
-            [$ownerA->name_of_farmer],
-            array_values(array_unique(array_column($detail['recipients'], 'recipient_name'))),
-        );
+        // A passed the animal on, and its first dispersal came from CVO.
+        $this->assertSame(1, $detailA['passed_on']['total']);
+        $passed = $detailA['passed_on']['items'][0];
+        $this->assertSame($ownerA->name_of_farmer, $passed['from']['name']);
+        $this->assertSame($ownerB->name_of_farmer, $passed['to']['name']);
 
-        $expectedType = Animal::findOrFail($animal->id)->animal_type ?? 'Unspecified';
-        foreach ($detail['recipients'] as $recipient) {
-            $this->assertSame($expectedType, $recipient['animal_type']);
-            $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $recipient['event_date']);
-        }
+        $this->assertSame(1, $detailA['received']['total']);
+        $first = $detailA['received']['items'][0];
+        $this->assertSame('dispersal', $first['event_type']);
+        $this->assertSame('CVO', $first['from']['name']);
+        $this->assertSame($ownerA->name_of_farmer, $first['to']['name']);
 
-        // The window applies to the card exactly as it does to the table.
-        $filtered = $this->actingAs($admin)
-            ->getJson("/api/v1/analytics/barangay-dispersal/{$a->id}?from=".now()->addDay()->toDateString())
-            ->assertOk()
-            ->json('data');
+        // The card's headline numbers ARE the summary row behind the polygon
+        // and the table — never a second, independently filtered derivation.
+        $this->assertSame($this->rowFor($this->analytics($admin), $a->id), $detailA['totals']);
+        $this->assertSame($a->id, $detailA['barangay']['id']);
+        $this->assertSame($a->name, $detailA['barangay']['name']);
+        $this->assertSame($detailA['totals']['population'], $detailA['barangay']['population']);
 
-        $this->assertSame(0, $filtered['barangay']['dispersed']);
-        $this->assertSame([], $filtered['recipients']);
+        // The received mix is grouped by the master list's category first.
+        $this->assertSame('livestock', $detailB['categories'][0]['category']);
+        $this->assertSame('Livestock', $detailB['categories'][0]['label']);
+        $this->assertSame(1, $detailB['categories'][0]['total']);
+        $this->assertSame('Swine (Pig)', $detailB['categories'][0]['types'][0]['name']);
+        $this->assertSame(1, $detailB['categories'][0]['types'][0]['count']);
 
+        // Private identifiers never travel with the card.
+        $this->assertSame(['name', 'barangay', 'masked'], array_keys($received['to']));
+
+        // Outside the covered barangays.
         $this->actingAs($admin)
             ->getJson('/api/v1/analytics/barangay-dispersal/999999')
             ->assertNotFound();
+        $this->actingAs($admin)
+            ->getJson('/api/v1/analytics/barangay-dispersal/not-a-number')
+            ->assertNotFound();
+    }
+
+    /**
+     * A technician's card shows their own household's name and masks every
+     * other one — the same row scope the numbers already honour.
+     */
+    public function test_a_technician_sees_only_their_household_unmasked_on_the_card(): void
+    {
+        $admin = $this->admin();
+        $technician = User::factory()->create(['role' => 'technician']);
+        $a = $this->barangay(0);
+        $b = $this->barangay(1);
+
+        $mine = $this->beneficiaryIn($a, $technician);
+        $theirs = $this->beneficiaryIn($b);
+
+        $animal = $this->disperse($admin, $mine, now()->subDays(3), 'TAG-MASK-1');
+        $this->redisperse($admin, $animal->id, $theirs, now()->subDays(1))->assertCreated();
+
+        // The handover touches the technician's household as the SENDER, so
+        // the scoped query still surfaces it on B's card.
+        $detail = $this->detail($technician, $b->id);
+
+        $this->assertTrue($detail['scoped']);
+        $this->assertSame(1, $detail['received']['total']);
+
+        $item = $detail['received']['items'][0];
+        $this->assertSame($mine->name_of_farmer, $item['from']['name']);
+        $this->assertFalse($item['from']['masked']);
+        $this->assertTrue($item['to']['masked']);
+        $this->assertSame("Beneficiary in {$b->name}", $item['to']['name']);
+        $this->assertStringNotContainsString($theirs->name_of_farmer, json_encode($detail));
+    }
+
+    /**
+     * The card honours the page's filters — date window, animal type and
+     * event-type selection — and a voided handover disappears from both sides.
+     */
+    public function test_barangay_detail_follows_the_filters_and_excludes_voided_events(): void
+    {
+        $admin = $this->admin();
+        $a = $this->barangay(0);
+        $b = $this->barangay(1);
+        $ownerA = $this->beneficiaryIn($a);
+        $ownerB = $this->beneficiaryIn($b);
+
+        $animal = $this->disperse($admin, $ownerA, now()->subDays(10), 'TAG-FD-1');
+        $this->redisperse($admin, $animal->id, $ownerB, now()->subDays(5));
+        $this->disperse($admin, $ownerA, now()->subDays(2), 'TAG-FD-2');
+
+        // Date window: only the newest dispersal is inside it.
+        $windowed = $this->detail($admin, $a->id, [
+            'from' => now()->subDays(3)->toDateString(),
+            'to' => now()->toDateString(),
+        ]);
+        $this->assertSame(1, $windowed['received']['total']);
+        $this->assertSame('TAG-FD-2', $windowed['received']['items'][0]['ear_tag_number']);
+        $this->assertSame(0, $windowed['passed_on']['total']);
+
+        // Animal type: a type no animal here has hides both lists.
+        $otherType = \App\Models\AnimalType::query()->where('name', '!=', 'Swine (Pig)')->firstOrFail();
+        $wrongType = $this->detail($admin, $a->id, ['animal_type_id' => $otherType->id]);
+        $this->assertSame(0, $wrongType['received']['total']);
+        $this->assertSame([], $wrongType['categories']);
+
+        // Event-type filter: dispersals only keeps the arrivals, not the
+        // handovers that left.
+        $dispersalsOnly = $this->detail($admin, $a->id, ['event_types' => ['dispersal']]);
+        $this->assertSame(2, $dispersalsOnly['received']['total']);
+        $this->assertSame(0, $dispersalsOnly['passed_on']['total']);
+
+        // Voiding the handover removes it from BOTH barangays' cards.
+        $eventId = (int) DB::table('animal_ownership_events')
+            ->where('animal_id', $animal->id)
+            ->where('event_type', 're_dispersal')
+            ->value('id');
+        $this->actingAs($admin)->postJson("/api/v1/ownership-events/{$eventId}/void", [
+            'void_reason' => 'Wrong household.',
+        ])->assertOk();
+
+        $this->assertSame(0, $this->detail($admin, $a->id)['passed_on']['total']);
+        $this->assertSame(0, $this->detail($admin, $b->id)['received']['total']);
     }
 
     /* ------------------------------------------------------------------ *

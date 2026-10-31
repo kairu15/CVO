@@ -85,9 +85,31 @@ try {
           body: await r.json().catch(() => null),
         }));
 
-      const beneficiaries = await call("/api/v1/beneficiaries?per_page=500");
-      const households = beneficiaries.body?.data ?? [];
-      if (households.length < 2) return { error: "fewer than two beneficiaries" };
+      let beneficiaries = await call("/api/v1/beneficiaries?per_page=500");
+      let households = beneficiaries.body?.data ?? [];
+
+      // A freshly seeded database has no households: create the two this
+      // test needs (in covered barangays, with pins) so the run is
+      // self-sufficient on any database state.
+      if (households.length < 2) {
+        for (const [index, name] of ["E2E Owner A", "E2E Owner B"].entries()) {
+          const created = await call("/api/v1/beneficiaries", {
+            method: "POST",
+            body: JSON.stringify({
+              name_of_farmer: `${name} ${tag}`,
+              address: "Tinago (Poblacion)",
+              animal_type: "Swine",
+              sex: index === 0 ? "F" : "M",
+            }),
+          });
+          if (created.status !== 201) {
+            return { error: `could not create ${name}`, detail: JSON.stringify(created.body).slice(0, 300) };
+          }
+        }
+        beneficiaries = await call("/api/v1/beneficiaries?per_page=500");
+        households = beneficiaries.body?.data ?? [];
+        if (households.length < 2) return { error: "households did not persist" };
+      }
 
       const barangays = (await call("/api/v1/barangays")).body?.data ?? [];
       if (barangays.length === 0) return { error: "no barangays seeded" };
@@ -137,14 +159,19 @@ try {
 
   await page.evaluateOnNewDocument(() => {
     window.__redispersalResponses = [];
-    const original = window.fetch;
-    window.fetch = async (...args) => {
-      const response = await original(...args);
-      if (String(args[0]).includes("redispersals")) {
-        const clone = response.clone();
-        window.__redispersalResponses.push({ status: response.status, body: await clone.text() });
+    const open = XMLHttpRequest.prototype.open;
+    const send = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+      this.__url = String(url);
+      return open.call(this, method, url, ...rest);
+    };
+    XMLHttpRequest.prototype.send = function (...args) {
+      if (this.__url?.includes("redispersals")) {
+        this.addEventListener("load", () => {
+          window.__redispersalResponses.push({ status: this.status, body: this.responseText?.slice(0, 600) });
+        });
       }
-      return response;
+      return send.apply(this, args);
     };
   });
 
@@ -166,45 +193,73 @@ try {
       const map = canvas?.closest(".cvo-map-shell")?.__cvoMap;
       if (!map) return { found: false, reason: "no map" };
 
-      // The spider layer first: once a stacked cluster is expanded, its
-      // pins live THERE, not on the clustered point layer.
-      const individualLayers = ["cvo-date-pins-spider-point", "cvo-date-pins-point"];
-      for (const layer of individualLayers) {
-        const features = map.queryRenderedFeatures(undefined, { layers: [layer] });
-        const mine = features.find((feature) =>
-          JSON.stringify(feature.properties?.pin ?? {}).includes(tag),
-        );
-        if (mine) {
-          const rect = canvas.getBoundingClientRect();
-          const p = map.project(mine.geometry.coordinates);
-          return { found: true, layer, x: rect.left + p.x, y: rect.top + p.y };
-        }
+      const source = map.getSource("cvo-date-pins");
+      const data = source?.serialize?.().data;
+      const features = typeof data === "string" ? JSON.parse(data).features : (data?.features ?? []);
+      const mine = features.find((feature) =>
+        String(feature.properties?.pin?.ear_tag_number ?? "") === tag,
+      );
+      if (!mine) return { found: false, reason: "animal not in the snapshot" };
+
+      const rect = canvas.getBoundingClientRect();
+
+      // Spiderfy already active: the animal sits on the ring at the same
+      // index spiderPositions assigned it — recompute that exact position.
+      const spider = map.getSource("cvo-date-pins-spider");
+      const spiderData = spider?.serialize?.().data;
+      const ring = typeof spiderData === "string" ? JSON.parse(spiderData).features : (spiderData?.features ?? []);
+      const onRing = ring.find((feature) =>
+        String(feature.properties?.pin?.ear_tag_number ?? "") === tag,
+      );
+      if (onRing) {
+        const p = map.project(onRing.geometry.coordinates);
+        return { found: true, layer: "ring", x: rect.left + p.x, y: rect.top + p.y };
       }
-      // The animal may still sit inside a cluster: expand the biggest.
+
+      // Unclustered: the true coordinates ARE the pin.
       const clusters = map.queryRenderedFeatures(undefined, { layers: ["cvo-date-pins-clusters"] });
-      const biggest = clusters.sort(
-        (a, b) => b.properties.point_count - a.properties.point_count,
-      )[0];
-      if (biggest) {
-        const rect = canvas.getBoundingClientRect();
-        const p = map.project(biggest.geometry.coordinates);
-        return { found: true, layer: "cvo-date-pins-clusters", x: rect.left + p.x, y: rect.top + p.y, cluster: true };
+      const inside = clusters.find((cluster) => {
+        const dx = cluster.geometry.coordinates[0] - mine.geometry.coordinates[0];
+        const dy = cluster.geometry.coordinates[1] - mine.geometry.coordinates[1];
+        return Math.hypot(dx, dy) < 0.02; // within the cluster's reach
+      });
+      if (!inside) {
+        const p = map.project(mine.geometry.coordinates);
+        return { found: true, layer: "point", x: rect.left + p.x, y: rect.top + p.y };
       }
-      return { found: false, reason: "pin not rendered" };
+
+      // Inside a cluster: click the cluster — the handler spiderfies the
+      // leaves onto a ring; the NEXT attempt finds the animal on the ring.
+      const p = map.project(inside.geometry.coordinates);
+      return { found: true, layer: "cluster", x: rect.left + p.x, y: rect.top + p.y, cluster: true };
     }, EAR_TAG);
   }
 
   let pinPoint = null;
+  const attempts = [];
   for (let attempt = 0; attempt < 14; attempt += 1) {
     pinPoint = await findPinScreenPoint();
     if (pinPoint.found && !pinPoint.cluster) break;
     if (pinPoint.found) {
       await page.mouse.click(pinPoint.x, pinPoint.y);
       await sleep(1800);
+      const spiderState = await page.evaluate(() => {
+        const canvas = document.querySelector("canvas.maplibregl-canvas");
+        const map = canvas?.closest(".cvo-map-shell")?.__cvoMap;
+        if (!map) return { noMap: true };
+        const spider = map.getSource("cvo-date-pins-spider");
+        const data = spider?.serialize?.().data;
+        const features = typeof data === "string" ? JSON.parse(data).features : (data?.features ?? []);
+        return { spiderFeatures: features.length, zoom: Math.round(map.getZoom() * 100) / 100 };
+      });
+      attempts.push({ attempt, ...spiderState });
     } else {
+      attempts.push({ attempt, waiting: true });
       await sleep(4000); // the snapshot fetch can be slow on a loaded backend
     }
   }
+  console.log("ATTEMPTS:", JSON.stringify(attempts));
+  console.log("RING SAMPLE:", JSON.stringify(await page.evaluate(() => window.__ringSample ?? null)));
   ok(
     "the dispersed animal's pin renders on the date map",
     Boolean(pinPoint?.found && !pinPoint?.cluster),
@@ -304,9 +359,19 @@ try {
   ok("the dialog's target select took the new owner", picked.domValue === String(seeded.otherId),
     JSON.stringify(picked));
 
+  // The submit stays disabled while the ownership chain (the concurrency
+  // token) loads — wait for it rather than firing a blind submit.
+  await page.waitForFunction(
+    () => {
+      const button = [...(document.querySelector('[role="dialog"]')?.querySelectorAll("button[type=submit]") ?? [])][0];
+      return button && !button.disabled;
+    },
+    { timeout: 120000 },
+  );
+
   await page.evaluate(() => {
     const button = [...document.querySelectorAll("form button[type=submit]")].find(
-      (candidate) => candidate.textContent.trim() === "Re-disperse",
+      (candidate) => (candidate.textContent ?? "").trim() === "Re-disperse",
     );
     button?.click();
   });
@@ -321,8 +386,8 @@ try {
         stillOpen: Boolean(dialog),
         selectValueNow: document.querySelector("#dispersal-target")?.value ?? null,
         invalidFields: [...(document.querySelectorAll('[role="dialog"] .field-invalid') ?? [])].map((field) => ({ id: field.id, value: field.value ?? null })),
-        inlineMessages: [...(document.querySelectorAll('[role="dialog"] p, [role="dialog"] [class*="text-red"], [role="dialog"] [class*="text-amber"], [role="dialog"] [class*="text-rose"]') ?? [])].map((p) => p.innerText.trim()).filter(Boolean).slice(0, 20),
-        submitButtons: [...(dialog?.querySelectorAll("button[type=submit]") ?? [])].map((b) => ({ label: b.textContent.trim(), disabled: b.disabled })),
+        inlineMessages: [...(document.querySelectorAll('[role="dialog"] p, [role="dialog"] [class*="text-red"], [role="dialog"] [class*="text-amber"], [role="dialog"] [class*="text-rose"]') ?? [])].map((p) => (p.innerText ?? "").trim()).filter(Boolean).slice(0, 20),
+        submitButtons: [...(dialog?.querySelectorAll("button[type=submit]") ?? [])].map((b) => ({ label: (b.textContent ?? "").trim(), disabled: b.disabled })),
         serverError: (dialog?.innerText.match(/attention[^\n]*[\s\S]*$/) ?? [""])[0].slice(0, 400),
       };
     });
@@ -332,23 +397,48 @@ try {
     throw new Error("the re-dispersal dialog never closed");
   }
 
-  // No reload, no navigation: give the snapshot refetch + trail refetch a
-  // moment, then assert on the same document.
-  await sleep(12000);
+  // No reload, no navigation. The save landed on TODAY (a new latest date):
+  // the open trail grows in place, and the polling offers the new date via
+  // the chip instead of dragging the user off the day they are viewing.
+  await sleep(3000);
 
-  const afterSave = await readTrail();
   const sameDocument = await page.evaluate(() => window.__flightPathE2E === "still-here");
-
   ok("the page was never reloaded", sameDocument);
+
+  // The open trail refetches itself (the refreshTrail token) and gains the
+  // handover stop without any user action.
+  let afterSave = await readTrail();
+  for (let attempt = 0; attempt < 6 && afterSave.points < 3; attempt += 1) {
+    await sleep(8000);
+    afterSave = await readTrail();
+  }
   ok(
-    "the polyline is present without a refresh",
+    "the polyline grows to the new handover without a refresh",
     afterSave.points >= 3 && afterSave.segments >= 2,
     `points=${afterSave.points} segments=${afterSave.segments}`,
   );
 
-  // The ANIMAL's pin moved to its new owner: the source feature for this
-  // animal now names the new household (the snapshot refetched; the trail is
-  // the same animal's either way).
+  // The polling offers the newer date; the map did NOT auto-switch (the user
+  // is viewing the 30th on purpose).
+  let chipShown = false;
+  for (let attempt = 0; attempt < 8 && !chipShown; attempt += 1) {
+    chipShown = await page.evaluate(() =>
+      /New records on/.test(document.body.textContent),
+    );
+    if (!chipShown) await sleep(8000); // the 30s poll cadence
+  }
+  ok("a 'New records' chip offers the newer date", chipShown);
+
+  // Jump to latest: the snapshot switches and the animal's pin now names its
+  // NEW owner.
+  await page.evaluate(() => {
+    const button = [...document.querySelectorAll("button")].find((candidate) =>
+      /Jump to latest/.test(candidate.textContent ?? ""),
+    );
+    button?.click();
+  });
+  await sleep(12000);
+
   const ownerNow = await page.evaluate(
     ({ tag, animalId }) => {
       const canvas = document.querySelector("canvas.maplibregl-canvas");
@@ -366,7 +456,7 @@ try {
     { tag: EAR_TAG, animalId: seeded.animalId },
   );
   ok(
-    "the animal's pin now sits at its new owner",
+    "after jumping to latest, the animal's pin sits at its new owner",
     Boolean(ownerNow) && !ownerNow.includes(seeded.ownerName),
     `owner="${ownerNow}" (was "${seeded.ownerName}")`,
   );

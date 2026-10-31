@@ -47,13 +47,17 @@ export const analyticsApi = {
   },
 
   /**
-   * One barangay's floating card: its filtered metrics plus the recipients
-   * (animal type, quantity, name, date) those movements delivered to.
+   * One barangay's floating card: its summary row (`totals`), the animal mix
+   * it received, and the newest handovers in (`received`) and out
+   * (`passed_on`), under the same filters as the map and the table.
    *
    * @param {number} barangayId
-   * @param {object} [params]  Same filters as barangayDispersal.
+   * @param {object} [params]  Same filters as barangayDispersal, plus limit.
    * @param {AbortSignal} [params.signal]
-   * @returns {Promise<{barangay: object, recipients: Array<object>}>}
+   * @returns {Promise<{barangay: object, totals: object, categories: Array<object>,
+   *   received: {total: number, items: Array<object>},
+   *   passed_on: {total: number, items: Array<object>},
+   *   scoped: boolean, filters: object, limit: number}>}
    */
   barangayDetail: async (barangayId, { signal, ...params } = {}) => {
     const response = await api.get(`/api/v1/analytics/barangay-dispersal/${barangayId}`, {

@@ -345,13 +345,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     // summary behind the same filters as the screen.
     Route::get('analytics/barangay-dispersal/export', [AnalyticsController::class, 'exportBarangayDispersal'])
         ->middleware('permission:view_analytics')->name('api.analytics.barangay-dispersal.export');
-    // One barangay's information card — the polygon click's totals + the
-    // recipients behind them, under the same filters and row scope. The
-    // numeric constraint keeps "export" (above) from ever being read as an
-    // id, whatever the route order becomes later.
+    // One barangay's information card — the polygon click's totals, animal
+    // mix and handovers in and out, under the same filters and row scope.
+    // The numeric constraint keeps "export" (above) from ever being read as
+    // an id, whatever the route order becomes later.
     Route::get('analytics/barangay-dispersal/{barangay}', [AnalyticsController::class, 'barangayDetail'])
         ->whereNumber('barangay')
-        ->middleware('permission:view_analytics')->name('api.analytics.barangay-detail');
+        ->middleware('permission:view_analytics')->name('api.analytics.barangay-dispersal.detail');
 
     // The dispersal map's dated snapshot — the pins AND the barangay polygon
     // counts for one date, from one query snapshot, plus the list of dates

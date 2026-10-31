@@ -525,7 +525,7 @@ export default function BarangayDispersalPage({ roleKey = "admin" }) {
                     Barangay map · {metricConfig.label}
                   </h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    Click a barangay for its totals and recipients.
+                    Click or tap a barangay for its animal mix and handovers.
                   </p>
                 </div>
                 <label className="flex items-center gap-1.5 text-xs text-slate-500">
@@ -555,7 +555,7 @@ export default function BarangayDispersalPage({ roleKey = "admin" }) {
                     minRateAnimals={minRateAnimals}
                     topFlows={topFlows}
                     includeCvo={includeCvo}
-                    query={query}
+                    detailQuery={query}
                   />
                 </Suspense>
               </div>

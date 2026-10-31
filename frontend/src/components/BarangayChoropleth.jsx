@@ -49,6 +49,8 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  * @param {(event: {lngLat: {lat: number, lng: number}}) => void} [props.onPick]
  *   picker mode: report map clicks instead of polygon selection
  * @param {string|null} [props.selectedName] the selected barangay (highlight)
+ * @param {number|string|null} [props.selectedFeatureId] the clicked polygon's
+ *   feature id — painted yellow through feature-state `selected`, above hover
  * @param {(name: string|null) => void} [props.onBarangayClick]
  *   polygon click; the parent owns selection state (click again = clear)
  * @param {string[]} [props.clickThroughLayers] parent layer ids that SWALLOW
@@ -74,6 +76,7 @@ export function BarangayChoropleth({
   onMapReady = null,
   onPick = null,
   selectedName = null,
+  selectedFeatureId = null,
   onBarangayClick = null,
   clickThroughLayers = null,
   tooltipHtml = null,
@@ -89,6 +92,7 @@ export function BarangayChoropleth({
   const mapRef = useRef(null);
   const popupRef = useRef(null);
   const hoveredRef = useRef(null);
+  const selectedRef = useRef(null);
   const onMapReadyRef = useRef(onMapReady);
   const onPickRef = useRef(onPick);
   const tooltipRef = useRef(tooltipHtml);
@@ -294,10 +298,14 @@ export function BarangayChoropleth({
           type: "fill",
           source: BOUNDARY_SOURCE,
           paint: {
-            // Hover lifts the fill toward white — the case reads the
-            // feature-state the pointer handlers set and clear.
+            // Selection (the clicked barangay the detail card describes)
+            // paints yellow and wins over hover; hover otherwise lifts the
+            // fill toward white. Both read the feature-state the parent and
+            // the pointer handlers set.
             "fill-color": [
               "case",
+              ["boolean", ["feature-state", "selected"], false],
+              "#fde047",
               ["boolean", ["feature-state", "hover"], false],
               ["get", "hoverColor"],
               ["get", "color"],
@@ -325,6 +333,33 @@ export function BarangayChoropleth({
       map.getSource(BOUNDARY_SOURCE).setData(choropleth.collection);
     }
   }, [ready, withBoundaries, choropleth, beforeLayerId]);
+
+  // The selected polygon stays yellow while the card is open — and the flag
+  // is re-applied whenever the choropleth's data is replaced, because a
+  // setData() can drop the state a previous click set.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !withBoundaries) return;
+
+    try {
+      if (selectedRef.current !== null) {
+        map.setFeatureState(
+          { source: BOUNDARY_SOURCE, id: selectedRef.current },
+          { selected: false },
+        );
+      }
+      if (selectedFeatureId !== null && selectedFeatureId !== undefined) {
+        map.setFeatureState(
+          { source: BOUNDARY_SOURCE, id: selectedFeatureId },
+          { selected: true },
+        );
+      }
+    } catch {
+      // Source already torn down with the map.
+    }
+
+    selectedRef.current = selectedFeatureId ?? null;
+  }, [ready, withBoundaries, choropleth, selectedFeatureId]);
 
   // Camera: frame the whole city when the polygons arrive (they span more
   // than the centre points do), and zoom to a barangay when it is selected.

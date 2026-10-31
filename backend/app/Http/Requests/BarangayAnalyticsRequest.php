@@ -47,6 +47,9 @@ class BarangayAnalyticsRequest extends FormRequest
             'event_types.*' => [Rule::in(BarangayDispersalAnalyticsService::FILTERABLE_EVENT_TYPES)],
             'per_1000' => ['sometimes', 'boolean'],
             'include_cvo' => ['sometimes', 'boolean'],
+            // Only the barangay detail card pages its lists; the service
+            // clamps it to 1..100 regardless of what arrives here.
+            'limit' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:100'],
         ];
     }
 

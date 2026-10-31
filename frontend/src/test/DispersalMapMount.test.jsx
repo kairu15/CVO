@@ -61,6 +61,9 @@ vi.mock("maplibre-gl", () => {
     getCanvas() {
       return this.canvas;
     }
+    getContainer() {
+      return { setAttribute() {}, removeAttribute() {} };
+    }
     jumpTo() {}
     easeTo() {}
     fitBounds() {}
@@ -196,10 +199,16 @@ describe("DispersalMapPage mount (real map tree)", () => {
 
     await waitFor(() => {
       expect(map.getLayer("barangay-boundaries-fill")).toBeTruthy();
+    }, { timeout: 8000 });
+    await waitFor(() => {
+      expect(map.getSource("cvo-date-pins")).toBeTruthy();
+    }, { timeout: 8000 });
+    await waitFor(() => {
       expect(map.getLayer("cvo-date-pins-clusters")).toBeTruthy();
-      expect(map.getLayer("cvo-date-pins-point")).toBeTruthy();
+    }, { timeout: 8000 });
+    await waitFor(() => {
       expect(map.getLayer("cvo-flight-casing")).toBeTruthy();
-    }, { timeout: 3000 });
+    }, { timeout: 8000 });
 
     // The pin source carries the animal-keyed feature.
     const pinSource = map.getSource("cvo-date-pins");

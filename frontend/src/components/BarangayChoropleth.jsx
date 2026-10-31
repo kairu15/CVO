@@ -1,17 +1,44 @@
 import { useEffect, useRef, useState } from "react";
 // Named imports, exactly like DispersalMap — the maplibre-gl build this app
 // ships does not expose a default export.
-import { AttributionControl, Map as MapLibreMap, NavigationControl, Popup } from "maplibre-gl";
+import {
+  AttributionControl,
+  Map as MapLibreMap,
+  Marker,
+  NavigationControl,
+  Popup,
+} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { OSM_STYLE } from "../config/mapStyle";
-import { boundaryBounds, normalizeBarangayName } from "../lib/barangayBoundaries";
+import {
+  barangayLabelPoint,
+  barangayLabelSpanMeters,
+  boundaryBounds,
+  normalizeBarangayName,
+} from "../lib/barangayBoundaries";
+
+/**
+ * A label shows only when its barangay spans at least this many on-screen
+ * pixels at the current zoom — the poblacion cluster's small shapes otherwise
+ * stack into an unreadable pile at the city-wide view. Zooming in reveals
+ * them one by one, the way every proper map declutters.
+ */
+const LABEL_MIN_PIXELS = 40;
+
+/** Metres per screen pixel at a given zoom, for a given latitude. */
+function metresPerPixel(zoom, latitude) {
+  return (156543.03392 * Math.cos((latitude * Math.PI) / 180)) / 2 ** zoom;
+}
 
 /**
  * The shared barangay choropleth: one MapLibre map wearing the 28 Bayawan
  * City barangay polygons — green fills, white borders, a YELLOW hover
- * highlight with a dark cursor-side label, and the +/− controls at the
- * top-left, in the style of the LGU's own barangay-profile maps. The yellow
- * hover is the same on every page that wears this choropleth.
+ * highlight, and the +/− controls at the top-left, in the style of the LGU's
+ * own barangay-profile maps. The yellow hover is the same on every page that
+ * wears this choropleth. Pages pass `showLabels` to pin a permanent name
+ * (and, with `labelShowCounts`, the barangay's dispersal count) inside each
+ * polygon; pages that pass `tooltipHtml` also get their dark cursor-side
+ * metric label back on hover.
  *
  * This component OWNS the map instance and the polygon layers; the pages
  * that use it (BarangayFlowMap, the Dispersal Map) add their own data on top
@@ -70,6 +97,13 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  * @param {string|null} [props.beforeLayerId] first PARENT layer id — the
  *   boundary layers insert before it so parent data paints above the fills
  * @param {boolean} [props.fitToBoundaries] frame the city once polygons load
+ * @param {boolean} [props.showLabels] pin each barangay's name to a point
+ *   INSIDE its polygon (the pole of inaccessibility), so every boundary is
+ *   named at a glance — no hover needed. Labels follow the map through zoom
+ *   and resize because they are anchored to geography, not pixels.
+ * @param {boolean} [props.labelShowCounts] under each name, the barangay's
+ *   dispersal count from the joined row (`row.pins` — the animals currently
+ *   dispersed there). Pages without a joined row simply show names.
  */
 export function BarangayChoropleth({
   boundaries,
@@ -88,10 +122,14 @@ export function BarangayChoropleth({
   ariaLabel = "Map of Bayawan City's barangays",
   beforeLayerId = null,
   fitToBoundaries = true,
+  showLabels = false,
+  labelShowCounts = false,
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const popupRef = useRef(null);
+  const labelMarkersRef = useRef([]);
+  const labelVisibilityRef = useRef(null);
   const hoveredRef = useRef(null);
   const selectedRef = useRef(null);
   const onMapReadyRef = useRef(onMapReady);
@@ -220,10 +258,16 @@ export function BarangayChoropleth({
         map.setFeatureState({ source: BOUNDARY_SOURCE, id: feature.id }, { hover: true });
       }
 
-      const html = tooltipRef.current
-        ? tooltipRef.current(feature.properties ?? {})
-        : `<p style="margin:0;font-weight:600;color:#f8fafc">${String(feature.properties?.name ?? "")}</p>`;
-      popupRef.current?.setLngLat(event.lngLat).setHTML(html).addTo(map);
+      // The dark cursor-side label only exists where a page passes its own
+      // tooltip (the flow map's metric readout). Pages with the permanent
+      // name labels skip it: a second, cursor-side label would just cover
+      // the map and its controls — the overlap the floating-window redesign
+      // was asked to remove.
+      if (!tooltipRef.current) return;
+      popupRef.current
+        ?.setLngLat(event.lngLat)
+        .setHTML(tooltipRef.current(feature.properties ?? {}))
+        .addTo(map);
     };
 
     const onLeave = () => {
@@ -253,6 +297,15 @@ export function BarangayChoropleth({
       clickRef.current?.(name, event);
     };
 
+    // A click anywhere on the map clears the dark hover label: it is
+    // cursor-side hover UI, and on TOUCH there is no hover phase — without
+    // this, a tap on a pin would be swallowed by the label sitting under it.
+    const onMapClickCloseTooltip = () => {
+      clearHover();
+      popupRef.current?.remove();
+    };
+    map.on("click", onMapClickCloseTooltip);
+
     // Bound lazily: the fill layer may not exist yet (asset still loading).
     const bindFill = () => {
       if (fillHandlersBound || !map.getLayer(FILL_LAYER)) return;
@@ -266,6 +319,7 @@ export function BarangayChoropleth({
 
     return () => {
       try {
+        map.off("click", onMapClickCloseTooltip);
         map.off("sourcedata", bindFill);
         if (fillHandlersBound) {
           map.off("mousemove", FILL_LAYER, onMove);
@@ -361,6 +415,113 @@ export function BarangayChoropleth({
 
     selectedRef.current = selectedFeatureId ?? null;
   }, [ready, withBoundaries, choropleth, selectedFeatureId]);
+
+  // The barangay name labels: one DOM marker per polygon, anchored to a
+  // point INSIDE the polygon (see barangayLabelPoint), so the name rides the
+  // map through zoom and resize and always sits on its own barangay. The
+  // markers are pointer-transparent — they never block a click or hover.
+  // Created once from the first paint-ready collection; later collections
+  // (a fresh snapshot) only refresh the count line, in place.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !withBoundaries || !showLabels || !choropleth) return;
+
+    const collection = choropleth.collection;
+    const features = Array.isArray(collection?.features) ? collection.features : [];
+
+    if (labelMarkersRef.current.length === 0) {
+      const created = [];
+      for (const feature of features) {
+        const point = barangayLabelPoint(feature);
+        if (!point) continue;
+        const name = String(feature.properties?.name ?? "");
+        const element = document.createElement("div");
+        element.className = "cvo-barangay-label";
+        const nameLine = document.createElement("p");
+        nameLine.className = "cvo-barangay-label-name";
+        nameLine.textContent = name;
+        element.appendChild(nameLine);
+        const countLine = document.createElement("p");
+        countLine.className = "cvo-barangay-label-count";
+        element.appendChild(countLine);
+        try {
+          const marker = new Marker({ element, anchor: "center" })
+            .setLngLat(point)
+            .addTo(map);
+          created.push({
+            marker,
+            element,
+            countLine,
+            name: normalizeBarangayName(name),
+            spanMeters: barangayLabelSpanMeters(feature),
+            latitude: point[1],
+          });
+        } catch {
+          // A map mid-teardown can refuse a marker — skip it rather than
+          // break the page.
+        }
+      }
+      labelMarkersRef.current = created;
+
+      // Declutter: reveal each label as its barangay grows past
+      // LABEL_MIN_PIXELS on screen, and re-evaluate while the camera moves.
+      const applyVisibility = () => {
+        const zoom = map.getZoom();
+        const latitude = map.getCenter().lat;
+        const metres = metresPerPixel(zoom, latitude);
+        for (const entry of labelMarkersRef.current) {
+          entry.element.style.visibility =
+            entry.spanMeters / metres >= LABEL_MIN_PIXELS ? "visible" : "hidden";
+        }
+      };
+      labelVisibilityRef.current = applyVisibility;
+      map.on("move", applyVisibility);
+      applyVisibility();
+    }
+
+    // Refresh the counts from the CURRENT collection (the markers' geometry
+    // never changes, but a new snapshot changes the numbers).
+    if (labelShowCounts) {
+      const countByName = new Map(
+        features.map((feature) => [
+          normalizeBarangayName(feature.properties?.name),
+          feature.properties?.row?.pins,
+        ]),
+      );
+      for (const entry of labelMarkersRef.current) {
+        const count = countByName.get(entry.name);
+        if (typeof count === "number" && Number.isFinite(count)) {
+          entry.countLine.textContent = `Total Dispersed: ${count}`;
+          entry.countLine.hidden = false;
+        } else {
+          entry.countLine.textContent = "";
+          entry.countLine.hidden = true;
+        }
+      }
+    }
+  }, [ready, withBoundaries, showLabels, labelShowCounts, choropleth]);
+
+  // Labels switched off (or the component unmounting): take the markers down
+  // and unbind their visibility handler.
+  useEffect(() => {
+    if (showLabels) return;
+    const map = mapRef.current;
+    if (map && labelVisibilityRef.current) map.off("move", labelVisibilityRef.current);
+    labelVisibilityRef.current = null;
+    for (const entry of labelMarkersRef.current) entry.marker.remove();
+    labelMarkersRef.current = [];
+  }, [showLabels]);
+
+  useEffect(
+    () => () => {
+      const map = mapRef.current;
+      if (map && labelVisibilityRef.current) map.off("move", labelVisibilityRef.current);
+      labelVisibilityRef.current = null;
+      for (const entry of labelMarkersRef.current) entry.marker.remove();
+      labelMarkersRef.current = [];
+    },
+    [],
+  );
 
   // Camera: frame the whole city when the polygons arrive (they span more
   // than the centre points do), and zoom to a barangay when it is selected.

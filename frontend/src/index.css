@@ -419,6 +419,15 @@
   min-width: 0;
 }
 
+/*
+ * The label is pure hover UI: clicks pass THROUGH it to the map, so
+ * selecting the barangay it describes never requires moving the pointer
+ * off the label first (a tap on touch has no hover phase to move out of).
+ */
+.cvo-barangay-popup {
+  pointer-events: none;
+}
+
 /* The tip inherits the dark fill on whichever side MapLibre anchors it. */
 .cvo-barangay-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
 .cvo-barangay-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
@@ -434,6 +443,53 @@
 
 .cvo-barangay-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
   border-right-color: rgb(15 23 42 / 0.92);
+}
+
+/*
+ * Permanent barangay name labels — one DOM marker per polygon, anchored to
+ * a point inside the boundary (the pole of inaccessibility), shared by the
+ * Overview, the Dispersal Map and the Barangay Dispersal report. They are
+ * pointer-transparent (clicks and hovers pass through to the polygons) and
+ * legible over every fill on the light OSM basemap: dark type with a white
+ * halo instead of a boxed chip, in the style of the LGU's own maps.
+ */
+.cvo-barangay-label {
+  pointer-events: none;
+  text-align: center;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.cvo-barangay-label-name {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #0f172a; /* slate-900 */
+  text-shadow:
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff,
+    1px 1px 0 #fff,
+    0 0 4px #fff;
+}
+
+.cvo-barangay-label-count {
+  margin: 1px 0 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: #1e293b; /* slate-800 */
+  text-shadow:
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff,
+    1px 1px 0 #fff,
+    0 0 4px #fff;
+}
+
+.cvo-barangay-label-count[hidden] {
+  display: none;
 }
 
 .cvo-barangay-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {

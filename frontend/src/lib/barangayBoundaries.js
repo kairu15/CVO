@@ -206,3 +206,242 @@ export function boundaryBounds(collection) {
 
   return [west, south, east, north];
 }
+
+/* ---------------------------------------------------------------------- */
+/*  Interior label points                                                 */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * The point inside a polygon furthest from every edge — the "visual centre"
+ * a map label belongs on. A plain centroid of a concave coastal barangay can
+ * fall OUTSIDE the polygon (into the sea or a neighbour); this search never
+ * does: it walks a quad of square cells from the bounding box inward,
+ * keeping the cell whose centre is inside the polygon and furthest from all
+ * rings (the classic pole-of-inaccessibility). Deterministic, ~a few
+ * thousand point-in-ring tests per barangay, computed once and cached.
+ */
+
+/** Squared distance from point p to segment ab. */
+function segmentDistanceSq(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq === 0) return (px - ax) ** 2 + (py - ay) ** 2;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq));
+  return (px - (ax + t * dx)) ** 2 + (py - (ay + t * dy)) ** 2;
+}
+
+/** Squared distance from p to the CLOSEST point on a ring (its edges). */
+function ringDistanceSq(ring, px, py) {
+  let best = Infinity;
+  const n = ring.length;
+  for (let i = 0; i < n; i += 1) {
+    // `i + 1` wraps: rings may or may not repeat the first vertex, and the
+    // closing edge is a real edge either way — dropping it let the search
+    // drift toward that side of an unclosed ring.
+    const [ax, ay] = ring[i];
+    const [bx, by] = ring[(i + 1) % n];
+    const d = segmentDistanceSq(px, py, ax, ay, bx, by);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/** Even-odd ray cast: is p inside the ring? */
+function ringContains(ring, px, py) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Inside the OUTER ring and outside every hole. */
+function polygonContains(polygon, px, py) {
+  if (!polygon.length || !ringContains(polygon[0], px, py)) return false;
+  for (let h = 1; h < polygon.length; h += 1) {
+    if (ringContains(polygon[h], px, py)) return false;
+  }
+  return true;
+}
+
+/** Distance from p to the polygon's nearest edge, in coordinate units². */
+function polygonDistanceSq(polygon, px, py) {
+  let best = Infinity;
+  for (const ring of polygon) {
+    const d = ringDistanceSq(ring, px, py);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/**
+ * The pole of inaccessibility of one polygon (outer ring + holes), as
+ * [lng, lat]. Falls back to a bbox grid point for degenerate slivers whose
+ * search never finds an interior cell.
+ */
+function polygonLabelPoint(polygon, precision) {
+  let west = Infinity;
+  let south = Infinity;
+  let east = -Infinity;
+  let north = -Infinity;
+  for (const [lng, lat] of polygon[0]) {
+    if (lng < west) west = lng;
+    if (lat < south) south = lat;
+    if (lng > east) east = lng;
+    if (lat > north) north = lat;
+  }
+
+  const centerX = (west + east) / 2;
+  const centerY = (south + north) / 2;
+  const centerInside = polygonContains(polygon, centerX, centerY);
+  let bestPoint = [centerX, centerY];
+  let bestDistSq = centerInside ? polygonDistanceSq(polygon, centerX, centerY) : -1;
+
+  // Breadth-first cell refinement, most promising cell first. Cells outside
+  // the polygon (d = -1) still expand: a child of an outside cell can be
+  // inside, which is how concave shapes get found.
+  const queue = [
+    {
+      x: centerX,
+      y: centerY,
+      h: Math.max(east - west, north - south) / 2,
+      d: bestDistSq,
+    },
+  ];
+
+  while (queue.length > 0) {
+    // Plain breadth-first: order does not change the converged result, only
+    // the early-exit would — and the precision guard below bounds the work.
+    const cell = queue.shift();
+    if (cell.d > bestDistSq) {
+      bestDistSq = cell.d;
+      bestPoint = [cell.x, cell.y];
+    }
+    // Stop splitting once children would be refined beyond the precision —
+    // deeper cells move the label by less than we care about on a map.
+    if (cell.h / 2 < precision) continue;
+
+    const h = cell.h / 2;
+    for (const [ox, oy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const childX = cell.x + ox * h;
+      const childY = cell.y + oy * h;
+      if (childX < west || childX > east || childY < south || childY > north) continue;
+      const inside = polygonContains(polygon, childX, childY);
+      queue.push({
+        x: childX,
+        y: childY,
+        h,
+        d: inside ? polygonDistanceSq(polygon, childX, childY) : -1,
+      });
+    }
+  }
+
+  // Degenerate sliver: the refinement never found an interior cell. Scan a
+  // coarse grid so the label still lands inside the polygon.
+  if (bestDistSq < 0) {
+    for (let gx = 1; gx < 10; gx += 1) {
+      for (let gy = 1; gy < 10; gy += 1) {
+        const px = west + ((east - west) * gx) / 10;
+        const py = south + ((north - south) * gy) / 10;
+        if (polygonContains(polygon, px, py)) return [px, py];
+      }
+    }
+  }
+
+  return bestPoint;
+}
+
+const labelPointCache = new Map();
+
+/**
+ * A label position guaranteed inside the barangay: [lng, lat].
+ *
+ * @param {object} feature a boundary GeoJSON feature (Polygon|MultiPolygon)
+ * @param {number} [precision] stop refining below this cell size (degrees)
+ * @returns {[number, number]|null}
+ */
+export function barangayLabelPoint(feature, precision = 0.005) {
+  const geometry = feature?.geometry;
+  if (!geometry) return null;
+
+  const polygons =
+    geometry.type === "Polygon"
+      ? [geometry.coordinates]
+      : geometry.type === "MultiPolygon"
+        ? geometry.coordinates
+        : [];
+
+  if (polygons.length === 0) return null;
+
+  // Cache key: the geometry itself. Two fixtures can share a corner vertex
+  // and a ring count; only the full shape guarantees no collision. The
+  // asset is static, so the handful of kilobytes per key is fine.
+  let key = null;
+  try {
+    key = JSON.stringify(geometry);
+  } catch {
+    key = null; // unserializable geometry: compute uncached
+  }
+  if (key && labelPointCache.has(key)) return labelPointCache.get(key);
+
+  let best = null;
+  let bestDistSq = -1;
+  for (const polygon of polygons) {
+    const point = polygonLabelPoint(polygon, precision);
+    if (!point) continue;
+    const d = polygonDistanceSq(polygon, ...point);
+    if (d > bestDistSq) {
+      bestDistSq = d;
+      best = point;
+    }
+  }
+
+  if (best && key) labelPointCache.set(key, best);
+  return best;
+}
+
+/**
+ * The barangay's widest span, in whole metres — the metric that decides when
+ * its label fits on screen. Bayawan packs eight small poblacion barangays
+ * into a couple of kilometres; labelling all of them at the city-wide zoom
+ * stacks them into an unreadable pile. A map shows each label only when its
+ * polygon is big enough at the current zoom (progressive disclosure), and
+ * this span is the per-barangay measure of "big enough".
+ *
+ * @param {object} feature a boundary GeoJSON feature
+ * @returns {number} the bounding box's larger side, in metres
+ */
+export function barangayLabelSpanMeters(feature) {
+  const geometry = feature?.geometry;
+  const polygons =
+    geometry?.type === "Polygon"
+      ? [geometry.coordinates]
+      : geometry?.type === "MultiPolygon"
+        ? geometry.coordinates
+        : [];
+
+  let west = Infinity;
+  let south = Infinity;
+  let east = -Infinity;
+  let north = -Infinity;
+  for (const polygon of polygons) {
+    for (const [lng, lat] of polygon[0] ?? []) {
+      if (lng < west) west = lng;
+      if (lat < south) south = lat;
+      if (lng > east) east = lng;
+      if (lat > north) north = lat;
+    }
+  }
+  if (!Number.isFinite(west)) return 0;
+
+  // Local metres-per-degree at the polygon's middle latitude.
+  const middle = ((south + north) / 2) * (Math.PI / 180);
+  const widthM = (east - west) * 111320 * Math.max(0.2, Math.cos(middle));
+  const heightM = (north - south) * 110574;
+  return Math.round(Math.max(widthM, heightM));
+}

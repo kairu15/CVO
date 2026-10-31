@@ -470,6 +470,15 @@ export function DispersalMap({
   trailFetcher = null,
   selectedAnimalId = null,
   onRowHover = null,
+  // The barangay-records redesign: when false, the map draws NO pin layers
+  // (clusters, points, spider rings) — animals are reached through the
+  // page's records panel instead, and flight paths are revealed on request.
+  showPins = true,
+  // Handed the panel controls once the map is ready:
+  // { showFlightPath(animalId), hideFlightPath() } — stable across renders.
+  onControlsReady = null,
+  // Fired whenever the revealed flight path changes (animal id or null).
+  onFlightPathChange = null,
   showTable = true,
   // Flight-paths-only mode (the Overview dashboard): the map opens with
   // EVERY visible animal's trail drawn and NO individual pins — the trails
@@ -529,11 +538,17 @@ export function DispersalMap({
   const toggleRef = useRef(null); // latest reveal/hide, read by popup clicks
   const previousPathIdRef = useRef(null); // pin popup that needs relabelling
   const refreshTokenRef = useRef(0); // last `refreshTrail` token acted on
+  const showFlightPathRef = useRef(null);
+  const hideFlightPathRef = useRef(null);
+  const onFlightPathChangeRef = useRef(onFlightPathChange);
+  const onControlsReadyRef = useRef(onControlsReady);
   const spiderfiedRef = useRef(null); // the cluster currently spiderfied, if any
   const pinKeyRef = useRef(null); // the animal set the spiderfy was built from
   const selectedAnimalIdRef = useRef(selectedAnimalId); // row-hover ring, read by the data effect
   const onRowHoverRef = useRef(onRowHover); // side-list hover → pin ring
-
+  // The records panel's handles: reveal one animal's trail (fit to it) and
+  // hide it again. The callbacks read the LATEST rows through a ref, so the
+  // api object stays stable across renders.
   useEffect(() => {
     selectedAnimalIdRef.current = selectedAnimalId;
   }, [selectedAnimalId]);
@@ -541,6 +556,14 @@ export function DispersalMap({
   useEffect(() => {
     onRowHoverRef.current = onRowHover;
   }, [onRowHover]);
+
+  useEffect(() => {
+    onFlightPathChangeRef.current = onFlightPathChange;
+  }, [onFlightPathChange]);
+
+  useEffect(() => {
+    onControlsReadyRef.current = onControlsReady;
+  }, [onControlsReady]);
 
   // Keep the latest callback without re-creating the map on every render.
   useEffect(() => {
@@ -612,6 +635,34 @@ export function DispersalMap({
   // Surfaced explicitly so the pin count never silently disagrees with the
   // side list, and so "Location not recorded" has its section.
   const unpinned = (hasPins ? pinRows : beneficiaries).length - pinnable.length;
+
+  // The records panel's controls: reveal one animal's trail (fit to it) and
+  // hide it again. The callbacks read the LATEST rows through this ref, so
+  // the api object handed to the panel stays stable across renders.
+  const visibleRef = useRef(visible);
+
+  // Keep the ref on the latest rows — the api object below is handed out
+  // once, so its lookups must see the rows as they are NOW, not as they
+  // were at first render (the pins arrive after mount).
+  useEffect(() => {
+    visibleRef.current = visible;
+  }, [visible]);
+
+  useEffect(() => {
+    if (!onControlsReadyRef.current) return;
+    const api = {
+      showFlightPath(animalId) {
+        const row = (visibleRef.current ?? []).find(
+          (candidate) => String(candidate.id) === String(animalId),
+        );
+        if (row) showFlightPathRef.current?.(row);
+      },
+      hideFlightPath() {
+        hideFlightPathRef.current?.();
+      },
+    };
+    onControlsReadyRef.current(api);
+  }, []);
 
   // The shared choropleth's map, adopted when renderChoropleth is used (the
   // date view): the owner keeps its lifecycle (controls, camera, removal);
@@ -848,6 +899,11 @@ export function DispersalMap({
       empty: false,
     });
   }
+  // Keep the exposed controls pointing at the latest closures.
+  useEffect(() => {
+    showFlightPathRef.current = showFlightPath;
+    hideFlightPathRef.current = hideFlightPath;
+  });
 
   /** Tear the overview down and cancel any fetches still assembling it. */
   function resetAllPaths() {
@@ -1140,6 +1196,11 @@ export function DispersalMap({
   // segment's `age` property rather than a whole-line gradient.
   const pathPoints = flightPath.points;
   const pathKey = flightPath.id;
+
+  // The records panel reads this to flip its per-card button labels.
+  useEffect(() => {
+    onFlightPathChangeRef.current?.(flightPath.loading ? null : flightPath.id);
+  }, [flightPath.id, flightPath.loading]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || onPick) return undefined;
@@ -1186,6 +1247,27 @@ export function DispersalMap({
       });
 
     const positionedGroups = groups.map((group) => align(group.points));
+
+    // A trail revealed on request (the records panel's Show Flight Path)
+    // pans and zooms to its own route — the admin asked for THIS animal, so
+    // the camera follows it instead of staying on the city view.
+    if (!allPaths.active && pathPoints && pathPoints.length >= 2) {
+      const lons = pathPoints.map((point) => point.longitude).filter((value) => value !== null);
+      const lats = pathPoints.map((point) => point.latitude).filter((value) => value !== null);
+      if (lons.length > 0 && lats.length > 0) {
+        const reduced = typeof window !== "undefined" &&
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        map.fitBounds(
+          [
+            [Math.min(...lons), Math.min(...lats)],
+            [Math.max(...lons), Math.max(...lats)],
+          ],
+          { padding: 90, maxZoom: 14, duration: reduced ? 0 : 800 },
+        );
+      }
+    }
+
     const segments = {
       type: "FeatureCollection",
       features: positionedGroups.flatMap((points) => buildSegments(points).features),
@@ -1400,7 +1482,7 @@ export function DispersalMap({
   useEffect(() => {
     const map = mapRef.current;
     // Flight-paths-only draws NO pins at all — the trails are the content.
-    if (!map || !mapReady || onPick || !hasPins || flightPathsOnly) return;
+    if (!map || !mapReady || onPick || !hasPins || flightPathsOnly || !showPins) return;
 
     ensurePinLayers(map);
 
@@ -1424,16 +1506,16 @@ export function DispersalMap({
     if (map.getLayer(PIN_LAYERS.selected)) {
       map.setFilter(PIN_LAYERS.selected, ["==", ["get", "animal_id"], selected ?? -1]);
     }
-  }, [mapReady, onPick, hasPins, drawnPins, pins, flightPathsOnly]);
+  }, [mapReady, onPick, hasPins, drawnPins, pins, flightPathsOnly, showPins]);
 
   // Keep the selection ring in sync without rebuilding the source.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || onPick || !hasPins || flightPathsOnly) return;
+    if (!map || !mapReady || onPick || !hasPins || flightPathsOnly || !showPins) return;
     if (map.getLayer(PIN_LAYERS.selected)) {
       map.setFilter(PIN_LAYERS.selected, ["==", ["get", "animal_id"], selectedAnimalId ?? -1]);
     }
-  }, [mapReady, onPick, hasPins, selectedAnimalId, flightPathsOnly]);
+  }, [mapReady, onPick, hasPins, selectedAnimalId, flightPathsOnly, showPins]);
 
   // Flight-paths-only mode (the Overview): the trails ARE the map, so the
   // overview assembles itself the moment there is something to draw — no
@@ -1454,8 +1536,9 @@ export function DispersalMap({
   // animals read at a glance while the rest keeps its context.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || onPick || !hasPins || flightPathsOnly) return;
-    if (!map.getLayer(PIN_LAYERS.points)) return;
+    if (!map || !mapReady || onPick || !hasPins || flightPathsOnly || !showPins) return;
+    // The fake map in tests has no paint API — guard like setFilter above.
+    if (typeof map.setPaintProperty !== "function" || !map.getLayer(PIN_LAYERS.points)) return;
 
     const opacity = selectedBarangay
       ? ["case", ["==", ["get", "barangay"], ["literal", selectedBarangay]], 0.95, 0.12]
@@ -1469,7 +1552,7 @@ export function DispersalMap({
       map.setPaintProperty(PIN_LAYERS.spider, "circle-opacity", opacity);
       map.setPaintProperty(PIN_LAYERS.spider, "circle-stroke-opacity", stroke);
     }
-  }, [mapReady, onPick, hasPins, flightPathsOnly, selectedBarangay]);
+  }, [mapReady, onPick, hasPins, flightPathsOnly, selectedBarangay, showPins]);
 
   // Cluster / pin interactions: a cluster expands (zooms in; at the zoom
   // ceiling it SPIDERFIES onto a ring so every animal stays clickable), a
@@ -1477,7 +1560,7 @@ export function DispersalMap({
   useEffect(() => {
     const map = mapRef.current;
     // No pin layers in flight-paths-only mode — nothing to click.
-    if (!map || !mapReady || onPick || !hasPins || flightPathsOnly) return undefined;
+    if (!map || !mapReady || onPick || !hasPins || flightPathsOnly || !showPins) return undefined;
 
     ensurePinLayers(map);
     let popupOpen = false;
@@ -1621,7 +1704,7 @@ export function DispersalMap({
     // `visible` feeds the popup lookup; rebound with the flight state so the
     // show/hide label follows the active trail.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, onPick, hasPins, visible, flightPathsOnly]);
+  }, [mapReady, onPick, hasPins, visible, flightPathsOnly, showPins]);
 
   // Picker mode: keep exactly one marker on the selected spot.
   useEffect(() => {
@@ -1706,16 +1789,19 @@ export function DispersalMap({
       {!onPick && (
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-600">
           <span className="font-semibold text-slate-700">Legend:</span>
-          {animalTypes.map((type) => (
-            <span key={type} className="inline-flex items-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className="h-3 w-3 rounded-full ring-2 ring-white"
-                style={{ backgroundColor: colorFor({ animal_type: type }), boxShadow: "0 0 0 1px rgb(15 23 42 / 0.2)" }}
-              />
-              {type}
-            </span>
-          ))}
+          {/* The per-type dots describe pin colours — meaningless when the
+              map draws no pins (the barangay-records redesign). */}
+          {showPins &&
+            animalTypes.map((type) => (
+              <span key={type} className="inline-flex items-center gap-1.5">
+                <span
+                  aria-hidden="true"
+                  className="h-3 w-3 rounded-full ring-2 ring-white"
+                  style={{ backgroundColor: colorFor({ animal_type: type }), boxShadow: "0 0 0 1px rgb(15 23 42 / 0.2)" }}
+                />
+                {type}
+              </span>
+            ))}
           <span className="inline-flex items-center gap-1.5" title="Shown when a pin asks for its animal's history">
             <span
               aria-hidden="true"
@@ -1741,27 +1827,31 @@ export function DispersalMap({
               {allPaths.active ? "Hide all flight paths" : "Show all flight paths"}
             </button>
             )}
-            <label className="flex items-center gap-2">
-              <span className="sr-only">Filter by animal type</span>
-              <select
-                className="field !w-auto !py-1.5 text-xs"
-                value={animalFilter}
-                onChange={(event) => {
-                  setAnimalFilter(event.target.value);
-                  // The overview was fetched for the old visible set; leaving
-                  // its trails up would point at pins the filter just hid.
-                  resetAllPaths();
-                }}
-                aria-label="Filter map by animal type"
-              >
-                <option value="all">All animal types</option>
-                {animalTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {/* The type filter narrows the pins; without pins it has nothing
+                to do (the records panel has its own search instead). */}
+            {showPins && (
+              <label className="flex items-center gap-2">
+                <span className="sr-only">Filter by animal type</span>
+                <select
+                  className="field !w-auto !py-1.5 text-xs"
+                  value={animalFilter}
+                  onChange={(event) => {
+                    setAnimalFilter(event.target.value);
+                    // The overview was fetched for the old visible set; leaving
+                    // its trails up would point at pins the filter just hid.
+                    resetAllPaths();
+                  }}
+                  aria-label="Filter map by animal type"
+                >
+                  <option value="all">All animal types</option>
+                  {animalTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
         </div>
       )}
@@ -1904,7 +1994,13 @@ export function DispersalMap({
             </div>
           )}
           {renderChoropleth ? (
-            renderChoroplethRef.current(handleChoroplethMapReady)
+            // Render with the FRESH closure, not the ref: the ref exists so
+            // the map-adoption effect (deps []) never churns, but reading it
+            // here would draw the choropleth one commit behind the page's
+            // data — a new snapshot's counts reached the polygons a render
+            // late. React reconciles the same <BarangayChoropleth> type, so
+            // the map instance survives; only its props update.
+            renderChoropleth(handleChoroplethMapReady)
           ) : (
             <div
               ref={containerRef}

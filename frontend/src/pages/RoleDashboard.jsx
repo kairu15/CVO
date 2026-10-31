@@ -9,7 +9,7 @@ import { SkeletonList } from "../components/Skeleton";
 import { flatNav, getRole } from "../config/roles";
 import { useAuth } from "../context/AuthContext";
 import { useBarangayBoundaries } from "../hooks/useBarangayBoundaries";
-import { buildChoropleth, choroplethTooltipHtml } from "../lib/barangayBoundaries";
+import { buildChoropleth } from "../lib/barangayBoundaries";
 import { fetchAnimalTrail } from "../lib/ownershipPath";
 
 /**
@@ -209,7 +209,11 @@ export default function RoleDashboard({ roleKey }) {
                           minLabel: "fewer animals",
                           maxLabel: "more",
                         }}
-                        tooltipHtml={choroplethTooltipHtml}
+                        // Every barangay wears its name and its dispersal
+                        // count on the map itself — no hover needed, and no
+                        // cursor-side label to cover the controls.
+                        showLabels
+                        labelShowCounts
                       />
                     </Suspense>
                   )}

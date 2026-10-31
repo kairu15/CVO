@@ -15,6 +15,8 @@ import { ToastProvider } from "../context/ToastContext";
  */
 
 const maps = [];
+// The choropleth's barangay name labels: one element per marker created.
+const markerElements = [];
 
 vi.mock("maplibre-gl", () => {
   class FakeMap {
@@ -68,10 +70,19 @@ vi.mock("maplibre-gl", () => {
     easeTo() {}
     fitBounds() {}
     resize() {}
+    getZoom() {
+      return 11;
+    }
+    getCenter() {
+      return { lat: 9.4, lng: 122.85 };
+    }
     remove() {}
   }
 
   class FakeMarker {
+    constructor(options) {
+      markerElements.push(options?.element ?? null);
+    }
     setLngLat() {
       return this;
     }
@@ -175,6 +186,7 @@ const PINS = {
 beforeEach(() => {
   vi.clearAllMocks();
   maps.length = 0;
+  markerElements.length = 0;
   mapApi.dates.mockResolvedValue(DATES);
   mapApi.pins.mockResolvedValue(PINS);
 });
@@ -210,6 +222,17 @@ describe("RoleDashboard mount (flight-paths-only)", () => {
 
     // The polygons wear the choropleth beneath the trails.
     expect(map.getLayer("barangay-boundaries-fill")).toBeTruthy();
+
+    // Every barangay wears a permanent name label (names + dispersal counts
+    // on the dashboard), one marker per polygon.
+    await waitFor(
+      () => expect(markerElements.filter(Boolean)).toHaveLength(28),
+      { timeout: 8000 },
+    );
+    const counted = markerElements.some(
+      (el) => el.querySelector(".cvo-barangay-label-count")?.textContent === "Total Dispersed: 1",
+    );
+    expect(counted).toBe(true);
   });
 });
 
@@ -235,26 +258,31 @@ describe("DispersalMapPage mount (real map tree)", () => {
       expect(map.getLayer("barangay-boundaries-fill")).toBeTruthy();
     }, { timeout: 8000 });
     await waitFor(() => {
-      expect(map.getSource("cvo-date-pins")).toBeTruthy();
-    }, { timeout: 8000 });
-    await waitFor(() => {
-      expect(map.getLayer("cvo-date-pins-clusters")).toBeTruthy();
-    }, { timeout: 8000 });
-    await waitFor(() => {
       expect(map.getLayer("cvo-flight-casing")).toBeTruthy();
     }, { timeout: 8000 });
 
-    // The pin source carries the animal-keyed feature.
-    const pinSource = map.getSource("cvo-date-pins");
-    expect(pinSource).toBeTruthy();
-    await waitFor(() => {
-      expect(pinSource.setData).toHaveBeenCalled();
-    });
-    const pushed = pinSource.setData.mock.calls.at(-1)?.[0];
-    expect(pushed?.features).toHaveLength(1);
-    expect(pushed?.features[0].id).toBe(42);
+    // The records panel replaces the pin layers: NO pin source or layers.
+    expect(map.getSource("cvo-date-pins")).toBeFalsy();
+    expect(map.getLayer("cvo-date-pins-clusters")).toBeFalsy();
+    expect(map.getLayer("cvo-date-pins-point")).toBeFalsy();
 
     // The boundary layers exist alongside — one map, not two.
     expect(maps).toHaveLength(1);
+
+    // The barangay name labels render on the map page too — with the
+    // snapshot's dispersal count under each name.
+    await waitFor(
+      () => expect(markerElements.filter(Boolean)).toHaveLength(28),
+      { timeout: 8000 },
+    );
+    const counted = markerElements.some(
+      (el) => el.querySelector(".cvo-barangay-label-count")?.textContent === "Total Dispersed: 1",
+    );
+    expect(counted).toBe(true);
+    // No label carries the old hover-only text; every count comes from the
+    // joined snapshot row.
+    expect(
+      markerElements.every((el) => el.querySelector(".cvo-barangay-label-name")?.textContent),
+    ).toBe(true);
   });
 });

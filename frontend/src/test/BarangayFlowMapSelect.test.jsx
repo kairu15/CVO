@@ -92,6 +92,12 @@ vi.mock("maplibre-gl", () => {
     addImage() {}
     fitBounds() {}
     resize() {}
+    getZoom() {
+      return 11;
+    }
+    getCenter() {
+      return { lat: 9.4, lng: 122.85 };
+    }
     remove() {}
   }
 

@@ -594,6 +594,9 @@ export function BarangayFlowMap({
         // polygon underneath (MapLibre layer events are not occlusion-aware).
         clickThroughLayers={["barangay-flow-lines"]}
         ariaLabel={`Map of Bayawan City's barangays coloured by ${metricLabel}. Click or tap a barangay for its animal mix and handovers. The barangay table below carries the same numbers.`}
+        // The same permanent name labels the Overview and Dispersal Map wear
+        // (no counts here — the fill colour carries this page's metric).
+        showLabels
         legend={{
           stops: legend.stops,
           minLabel: legend.minLabel,

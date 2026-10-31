@@ -10,19 +10,37 @@ import { ToastProvider } from "../context/ToastContext";
 // MapLibre needs WebGL; the maps are not what these tests cover. The
 // choropleth stub hands its onMapReady through; the DispersalMap stub hands
 // back the pin's "Re-disperse" action so the page's wiring can be asserted.
+const { choroplethProps } = vi.hoisted(() => ({ choroplethProps: {} }));
+
 vi.mock("../components/BarangayChoropleth", () => ({
-  BarangayChoropleth: ({ onMapReady, ariaLabel }) => (
-    <div data-testid="choropleth" aria-label={ariaLabel}>
-      <button type="button" onClick={() => onMapReady?.({})}>
-        map ready
-      </button>
-    </div>
-  ),
+  BarangayChoropleth: ({ onMapReady, onBarangayClick, ariaLabel, ...rest }) => {
+    // The latest render's props, for the page-wiring assertions below.
+    Object.assign(choroplethProps, rest);
+    return (
+      <div data-testid="choropleth" aria-label={ariaLabel}>
+        <button type="button" onClick={() => onMapReady?.({})}>
+          map ready
+        </button>
+        <button
+          type="button"
+          data-testid="barangay-select"
+          onClick={() =>
+            onBarangayClick?.("Tabuan", {
+              features: [{ id: 5, properties: { name: "Tabuan" } }],
+            })
+          }
+        >
+          select barangay
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock("../components/DispersalMap", () => ({
-  DispersalMap: ({ onRedisperse }) => (
+  DispersalMap: ({ onRedisperse, renderChoropleth }) => (
     <div data-testid="map">
+      {renderChoropleth?.(() => {})}
       {onRedisperse && (
         <button
           type="button"
@@ -152,7 +170,9 @@ describe("DispersalMapPage", () => {
     const call = mapApi.pins.mock.calls.at(-1)[0];
     expect(call.date).toBe("2026-10-30");
     expect(call.mode).toBe("on");
-    expect(screen.getByText(/Showing 2 animals on/)).toBeInTheDocument();
+    // findBy (not the sync getBy): the fetch starting is not the render —
+    // under a busy suite the text lands a tick later.
+    expect(await screen.findByText(/Showing 2 animals on/)).toBeInTheDocument();
   });
 
   it("restores the date and mode from the URL on refresh", async () => {
@@ -250,11 +270,35 @@ describe("DispersalMapPage", () => {
     expect(await screen.findByText(/No farmers assigned to you yet/i)).toBeInTheDocument();
   });
 
-  it("lists animals without a recorded location under the side list's own section", async () => {
-    renderPage();
+  it("opens the barangay records panel with the unplaced animal flagged", async () => {
+    // The choropleth stub hands the page a barangay click.
+    const { BarangayChoropleth } = await import("../components/BarangayChoropleth");
+    const onBarangayClick = vi.fn();
 
-    expect(await screen.findByText(/Location not recorded \(1\)/)).toBeInTheDocument();
-    expect(screen.getAllByText(/Beneficiary in Tabuan/).length).toBeGreaterThan(0);
+    renderPage();
+    await screen.findByTestId("map");
+
+    // The stub's select button fires the page's onBarangayClick with Tabuan.
+    fireEvent.click(screen.getByTestId("barangay-select"));
+
+    // The panel opens for the clicked barangay, names it, and flags the
+    // animal without a recorded location.
+    await waitFor(() =>
+      expect(screen.getByTestId("barangay-records-panel")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Barangay: Tabuan")).toBeInTheDocument();
+    expect(screen.getAllByText(/Not recorded/i).length).toBeGreaterThan(0);
+  });
+
+  it("wears permanent barangay name labels with dispersal counts, no hover label", async () => {
+    renderPage();
+    await screen.findByTestId("map");
+
+    await waitFor(() => expect(choroplethProps.showLabels).toBe(true));
+    expect(choroplethProps.labelShowCounts).toBe(true);
+    // The dark cursor-side label is replaced by the permanent labels: two
+    // sources for the same numbers would only drift apart.
+    expect(choroplethProps.tooltipHtml).toBeUndefined();
   });
 });
 

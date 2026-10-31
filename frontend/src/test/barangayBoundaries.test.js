@@ -3,6 +3,8 @@ import {
   BOUNDARY_URL,
   NO_DATA_COLOR,
   NO_ROW_COLOR,
+  barangayLabelPoint,
+  barangayLabelSpanMeters,
   boundaryBounds,
   bubbleColor,
   bubbleRadius,
@@ -190,5 +192,137 @@ describe("bubbleRadius", () => {
 describe("asset URL", () => {
   it("serves the boundaries from the public directory", () => {
     expect(BOUNDARY_URL).toContain("geojson/bayawan-city-barangays.geojson");
+  });
+});
+
+describe("barangayLabelPoint", () => {
+  // Independent even-odd ray cast, so the test does not trust the code it
+  // is testing to decide what "inside" means.
+  const inRing = (ring, x, y) => {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+  const inPolygon = (poly, x, y) => inRing(poly[0], x, y) && !poly.slice(1).some((hole) => inRing(hole, x, y));
+
+  it("lands inside a simple polygon", () => {
+    const feature = {
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [[[122.7, 9.4], [122.8, 9.4], [122.8, 9.5], [122.7, 9.5], [122.7, 9.4]]],
+      },
+    };
+    const point = barangayLabelPoint(feature);
+    expect(inPolygon(feature.geometry.coordinates, point[0], point[1])).toBe(true);
+  });
+
+  it("stays inside a CONCAVE polygon whose centroid falls outside it", () => {
+    // An L-shape: the centroid of its bbox sits in the notch, outside the
+    // polygon — exactly where a naive label would float over a neighbour.
+    const ring = [
+      [122.70, 9.40],
+      [122.80, 9.40],
+      [122.80, 9.44],
+      [122.74, 9.44],
+      [122.74, 9.50],
+      [122.70, 9.50],
+      [122.70, 9.40],
+    ];
+    const feature = { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] } };
+    const [cx, cy] = [122.75, 9.45];
+    expect(inPolygon([ring], cx, cy)).toBe(false);
+
+    const point = barangayLabelPoint(feature);
+    expect(inPolygon([ring], point[0], point[1])).toBe(true);
+
+    // And it is not hugging an edge: the L's widest span is ~0.021°, so the
+    // visual centre lands well clear of the boundary.
+    const edgeDistance = (px, py) => {
+      let best = Infinity;
+      for (let i = 0; i < ring.length - 1; i += 1) {
+        const [ax, ay] = ring[i];
+        const [bx, by] = ring[i + 1];
+        const dx = bx - ax;
+        const dy = by - ay;
+        const lengthSq = dx * dx + dy * dy;
+        const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq));
+        const d = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+        if (d < best) best = d;
+      }
+      return best;
+    };
+    expect(edgeDistance(point[0], point[1])).toBeGreaterThan(0.015);
+  });
+
+  it("picks a point in the largest part of a MultiPolygon", () => {
+    const feature = {
+      type: "Feature",
+      geometry: {
+        type: "MultiPolygon",
+        coordinates: [
+          [[[122.60, 9.40], [122.61, 9.40], [122.61, 9.41], [122.60, 9.41], [122.60, 9.40]]],
+          [[[122.70, 9.40], [122.80, 9.40], [122.80, 9.50], [122.70, 9.50], [122.70, 9.40]]],
+        ],
+      },
+    };
+    const point = barangayLabelPoint(feature);
+    expect(inPolygon(feature.geometry.coordinates[1], point[0], point[1])).toBe(true);
+  });
+
+  it("avoids a hole when one is punched into the polygon", () => {
+    const outer = [[122.70, 9.40], [122.80, 9.40], [122.80, 9.50], [122.70, 9.50], [122.70, 9.40]];
+    const hole = [[122.74, 9.44], [122.76, 9.44], [122.76, 9.46], [122.74, 9.46], [122.74, 9.44]];
+    const feature = {
+      type: "Feature",
+      geometry: { type: "Polygon", coordinates: [outer, hole] },
+    };
+    const point = barangayLabelPoint(feature);
+    expect(inPolygon(feature.geometry.coordinates, point[0], point[1])).toBe(true);
+  });
+
+  it("returns null for unusable geometry", () => {
+    expect(barangayLabelPoint(null)).toBeNull();
+    expect(barangayLabelPoint({ type: "Feature", geometry: null })).toBeNull();
+    expect(barangayLabelPoint({ type: "Feature", geometry: { type: "Point", coordinates: [122, 9] } })).toBeNull();
+  });
+});
+
+describe("barangayLabelSpanMeters", () => {
+  it("measures the wider side of the bounding box in metres", () => {
+    // 0.1° of longitude at ~9.45° latitude ≈ 10.98 km; 0.1° of latitude
+    // ≈ 11.06 km — here the taller side wins.
+    const feature = {
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [[[122.7, 9.4], [122.8, 9.4], [122.8, 9.5], [122.7, 9.5], [122.7, 9.4]]],
+      },
+    };
+    expect(barangayLabelSpanMeters(feature)).toBeGreaterThan(10900);
+    expect(barangayLabelSpanMeters(feature)).toBeLessThan(11200);
+  });
+
+  it("is small for the poblacion-scale strips that must declutter away", () => {
+    // A 0.02° × 0.008° coastal strip ≈ 2.2 km × 0.9 km — the wider side
+    // carries the label fit check.
+    const feature = {
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [[[122.74, 9.44], [122.76, 9.44], [122.76, 9.448], [122.74, 9.448], [122.74, 9.44]]],
+      },
+    };
+    expect(barangayLabelSpanMeters(feature)).toBeGreaterThan(1500);
+    expect(barangayLabelSpanMeters(feature)).toBeLessThan(2600);
+  });
+
+  it("is zero without usable geometry", () => {
+    expect(barangayLabelSpanMeters(null)).toBe(0);
+    expect(barangayLabelSpanMeters({ type: "Feature", geometry: { type: "Point", coordinates: [122, 9] } })).toBe(0);
   });
 });

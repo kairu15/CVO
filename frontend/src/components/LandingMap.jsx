@@ -1,41 +1,37 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import {
-  AttributionControl,
-  Map as MapLibreMap,
-  Marker,
-  NavigationControl,
-  Popup,
-} from "maplibre-gl";
-import { OSM_STYLE } from "../config/mapStyle";
+  buildChoropleth,
+  normalizeBarangayName,
+  SEQUENTIAL_STOPS,
+} from "../lib/barangayBoundaries";
+import { useBarangayBoundaries } from "../hooks/useBarangayBoundaries";
+import { BarangayChoropleth } from "./BarangayChoropleth";
 
 /**
- * The landing page's live dispersal map — aggregated program statistics on a
- * real, pannable MapLibre map.
+ * The landing page's live dispersal map — the REAL Bayawan City barangay
+ * boundaries on a pannable MapLibre map, the same choropleth the admin pages
+ * wear: green fills by dispersal count, a YELLOW hover following the actual
+ * boundary, and a dark cursor-side label naming the barangay and its count.
  *
- * Data comes from the public map-summary endpoint: one bubble per barangay,
- * sized by how many animals were dispersed there, sitting on the barangay
- * centroid. Aggregate-only by design — the landing page has no session, so
- * no farmer names or exact farm coordinates are ever sent to it. The
+ * Data comes from the public map-summary endpoint: aggregate per-barangay
+ * counts only. Aggregate-only by design — the landing page has no session,
+ * so no farmer names or exact farm coordinates are ever sent to it. The
  * dashboard's DispersalMap is the authenticated, per-farm view.
  *
- * When the API is unreachable (offline demo, backend down) the card falls
- * back to the original illustrative SVG via `renderFallback`, so the landing
+ * Barangays the summary has not counted yet render in the lightest fill
+ * (they are covered barangays of the program, not "no data"), so the whole
+ * city reads as one shape. The camera fits the barangay boundaries, which
+ * crops the surrounding municipalities to the edges.
+ *
+ * When the summary API is unreachable (offline demo, backend down) the card
+ * falls back to the illustrative SVG via `renderFallback`, so the landing
  * page never shows an empty box.
  */
-
-/** Bayawan City centre — the fallback view before/without data. */
-const FALLBACK_CENTER = [122.8022, 9.3638]; // [lng, lat] — MapLibre order
-
-/** Bubble size ramp: radius in pixels across the count scale. */
-function radiusFor(count, max) {
-  if (max <= 1) return 12;
-  const t = Math.min(count / max, 1);
-  return 8 + t * 10; // 8px → 18px
-}
 
 /**
  * @param {object} props
  * @param {Array<{name: string, lat: number, lng: number, count: number}>} [props.barangays]
+ *   per-barangay dispersal counts from the public summary (count>0 rows only)
  * @param {{lat: number, lng: number}} [props.center]
  * @param {boolean} [props.loading]
  * @param {string|null} [props.error]
@@ -48,167 +44,66 @@ export function LandingMap({
   error = null,
   renderFallback,
 }) {
-  const containerRef = useRef(null);
-  const mapRef = useRef(null);
-  const markersRef = useRef([]);
-  const [ready, setReady] = useState(false);
+  const boundaries = useBarangayBoundaries();
 
-  const mapCenter = useMemo(
-    () => [center?.lng ?? FALLBACK_CENTER[0], center?.lat ?? FALLBACK_CENTER[1]],
-    [center?.lng, center?.lat],
-  );
+  // Join the public counts onto the boundary polygons by barangay name —
+  // covered barangays the summary has not counted yet disperse zero, so the
+  // whole city paints in one shape instead of greying out.
+  const rows = useMemo(() => {
+    if (boundaries.status !== "ready") return [];
+    const counts = new Map(
+      barangays.map((barangay) => [
+        normalizeBarangayName(barangay.name),
+        barangay.count,
+      ]),
+    );
+    return boundaries.collection.features.map((feature) => ({
+      name: feature.properties?.name ?? "",
+      count: counts.get(normalizeBarangayName(feature.properties?.name)) ?? 0,
+    }));
+  }, [boundaries, barangays]);
 
-  // Create the map once — or re-create it if the fallback boundary flips
-  // (error cleared after a retry).
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current || error) return undefined;
-
-    const map = new MapLibreMap({
-      container: containerRef.current,
-      style: OSM_STYLE,
-      center: mapCenter,
-      zoom: 10,
-      attributionControl: false,
-    });
-    mapRef.current = map;
-
-    map.addControl(new NavigationControl({ showCompass: false }), "top-right");
-    map.addControl(new AttributionControl({ compact: true }), "bottom-right");
-    map.on("load", () => setReady(true));
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-      markersRef.current = [];
-      setReady(false);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- created once; the camera is managed below
-  }, [error]);
-
-  // Reconcile bubbles with the barangay rows — add, move, resize, remove.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !ready || error) return;
-
-    const max = Math.max(1, ...barangays.map((b) => b.count));
-    const byName = new Map(barangays.map((b) => [b.name, b]));
-    const seen = new Set();
-
-    for (const entry of markersRef.current) {
-      const barangay = byName.get(entry.name);
-      if (!barangay) continue;
-
-      seen.add(entry.name);
-      const position = [barangay.lng, barangay.lat];
-
-      if (entry.count !== barangay.count || entry.position !== position.join(",")) {
-        entry.marker.remove();
-        entry.marker = makeBubble(map, position, barangay, max);
-        entry.count = barangay.count;
-        entry.position = position.join(",");
-      }
-    }
-
-    for (const [name, barangay] of byName) {
-      if (seen.has(name)) continue;
-      const position = [barangay.lng, barangay.lat];
-      markersRef.current.push({
-        name,
-        marker: makeBubble(map, position, barangay, max),
-        count: barangay.count,
-        position: position.join(","),
-      });
-    }
-
-    markersRef.current = markersRef.current.filter((entry) => {
-      if (byName.has(entry.name)) return true;
-      entry.marker.remove();
-      return false;
-    });
-  }, [ready, barangays, error]);
-
-  // Reframe when the computed center changes (e.g. first data arrival).
-  const centerKey = `${mapCenter[1]},${mapCenter[0]}`;
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !ready) return;
-    const [lat, lng] = centerKey.split(",").map(Number);
-    map.jumpTo({ center: [lng, lat], zoom: 10 });
-  }, [ready, centerKey]);
+  const choropleth = useMemo(() => {
+    if (boundaries.status !== "ready") return null;
+    return buildChoropleth(boundaries.collection, rows, { metric: "count" });
+  }, [boundaries, rows]);
 
   if (error && renderFallback) {
     return renderFallback();
   }
 
   return (
-    <div className="relative h-64 w-full sm:h-72">
-      {(loading || !ready) && (
-        <div className="absolute inset-0 z-[10] grid place-items-center bg-brand-50">
-          <span className="text-xs font-medium text-slate-500">Loading map…</span>
-        </div>
-      )}
-      <div
-        ref={containerRef}
-        aria-hidden="true"
-        className="h-full w-full [&_.maplibregl-canvas:focus]:outline-none"
-      />
-    </div>
+    <BarangayChoropleth
+      boundaries={boundaries}
+      choropleth={choropleth}
+      height="h-72 sm:h-96"
+      ariaLabel="Map of Bayawan City's barangays, shaded by how many animals were dispersed to each"
+      legend={{
+        stops: SEQUENTIAL_STOPS,
+        minLabel: "fewer dispersals",
+        maxLabel: "more",
+      }}
+      tooltipHtml={(properties) => {
+        const row = properties?.row;
+        const parsed = typeof row === "string" ? JSON.parse(row) : row;
+        const name = parsed?.name ?? properties?.name ?? "";
+        const count = parsed?.count ?? 0;
+        const safeName = String(name).replace(/[&<>"']/g, (ch) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[ch]);
+        return (
+          `<div style="min-width:150px">` +
+          `<p style="margin:0;font-weight:600;color:#f8fafc">${safeName}</p>` +
+          `<p style="margin:2px 0 0;font-size:12px;color:#cbd5e1">${count === 0 ? "No dispersals yet" : `<strong>${count}</strong> dispersed`}</p>` +
+          `</div>`
+        );
+      }}
+    />
   );
 }
 
-/**
- * A count bubble: brand circle with the number inside, sized relative to the
- * busiest barangay so the map reads at a glance even before anyone opens a
- * popup, which names the barangay.
- */
-function makeBubble(map, position, barangay, max) {
-  const el = document.createElement("div");
-  el.setAttribute("aria-hidden", "true");
-  const radius = radiusFor(barangay.count, max);
-  const fontSize = radius >= 14 ? 11 : 10;
-
-  el.style.cssText =
-    `width:${radius * 2}px;height:${radius * 2}px;border-radius:9999px;` +
-    "display:grid;place-items:center;" +
-    // `--color-white` is the theme ink token: white in light mode, dark in
-    // dark mode, so the count stays legible on the lightened brand-600 bubble.
-    "background:var(--color-brand-600);color:var(--color-white);" +
-    `font-size:${fontSize}px;font-weight:700;line-height:1;` +
-    "border:2px solid #fff;" +
-    "box-shadow:0 1px 4px rgb(15 23 42 / 0.35);cursor:pointer;" +
-    "font-family:Inter,system-ui,sans-serif;";
-
-  const label = document.createElement("span");
-  label.textContent = String(barangay.count);
-  el.appendChild(label);
-
-  const marker = new Marker({ element: el })
-    .setLngLat(position)
-    .setPopup(
-      new Popup({ offset: 14 }).setHTML(
-        `<div style="font-size:12px;line-height:1.4">` +
-          `<p style="margin:0;font-weight:600;color:#0f172a">${escapeHtml(barangay.name)}</p>` +
-          `<p style="margin:2px 0 0;color:#64748b">${barangay.count} dispersed</p>` +
-          `</div>`,
-      ),
-    )
-    .addTo(map);
-  return marker;
-}
-
-function escapeHtml(text) {
-  return String(text ?? "").replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case '"':
-        return "&quot;";
-      default:
-        return "&#39;";
-    }
-  });
-}
+export default LandingMap;

@@ -57,13 +57,22 @@ export const site = {
   passwordResetPolicy: `Password resets are handled by the CVO administrator for security reasons. Contact the office at ${CONTACT_EMAIL} or ${CONTACT_PHONE} to request a new password.`,
 };
 
-/** Top navigation for the landing page — all anchors into page sections. */
+/**
+ * Top navigation for the public pages — one list shared by the header and
+ * footer. Section links are ROUTE links (`/#about`), so they work from any
+ * public page: arriving at `/#about` from `/transparency` lands on the
+ * landing page and scrolls to the section. "Contact" is the footer.
+ */
 export const navLinks = [
-  { label: "Home", href: "#home" },
-  { label: "About", href: "#about" },
-  { label: "Services", href: "#services" },
-  { label: "Contact", href: "#contact" },
+  { label: "Home", href: "/#home" },
+  { label: "About", href: "/#about" },
+  { label: "Services", href: "/#services" },
+  { label: "Contact", href: "/#contact" },
 ];
+
+/** True when a nav/social link is a real destination (not a placeholder). */
+export const isRealLink = (href) =>
+  Boolean(href) && href !== "#";
 
 /** The four capability highlights in the About/Services section. */
 export const features = [

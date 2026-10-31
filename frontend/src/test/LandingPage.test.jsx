@@ -33,7 +33,14 @@ const SUMMARY = {
     { name: "Dawis", lat: 9.471, lng: 122.832, count: 12 },
     { name: "Banay Banay", lat: 9.438, lng: 122.818, count: 5 },
   ],
-  totals: { beneficiaries: 17, geo_tagged: 14, re_dispersals: 3, vaccinations_due: 6 },
+  totals: {
+    beneficiaries: 17,
+    geo_tagged: 14,
+    animals_dispersed: 12,
+    barangays_covered: 2,
+    re_dispersals: 3,
+    vaccinations_due: 6,
+  },
   center: { lat: 9.4545, lng: 122.825 },
   generated_at: "2026-09-24T08:00:00+08:00",
 };
@@ -53,7 +60,7 @@ beforeEach(() => {
 });
 
 describe("LandingPage dispersal map", () => {
-  it("shows the live badge, map bubbles and real totals when the summary loads", async () => {
+  it("shows the live badge, the barangay map and the unified totals when the summary loads", async () => {
     summaryMock.mockResolvedValue(SUMMARY);
     renderPage();
 
@@ -64,13 +71,13 @@ describe("LandingPage dispersal map", () => {
     expect(map).toHaveAttribute("data-barangays", "2");
     expect(map).toHaveAttribute("data-center", "9.4545,122.825");
 
-    // Footer stats come from the same payload — one number per programme total.
-    expect(screen.getByText("Beneficiaries")).toBeInTheDocument();
-    expect(screen.getByText("17")).toBeInTheDocument();
+    // The hero stats use the SAME vocabulary as the transparency page.
+    expect(screen.getByText("Animals dispersed")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
+    expect(screen.getByText("Barangays covered")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("Re-dispersals")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("Vaccination due")).toBeInTheDocument();
-    expect(screen.getByText("6")).toBeInTheDocument();
 
     // The illustrative SVG placeholder is gone once the real map renders.
     expect(screen.queryByTestId("illustrative-map")).not.toBeInTheDocument();
@@ -90,7 +97,8 @@ describe("LandingPage dispersal map", () => {
     expect(screen.queryByTestId("landing-map")).not.toBeInTheDocument();
 
     // Decorative labels stay; no fabricated numbers.
-    expect(screen.getByText("Farm location")).toBeInTheDocument();
-    expect(screen.queryByText("Beneficiaries")).not.toBeInTheDocument();
+    expect(screen.getByText("Animals dispersed")).toBeInTheDocument();
+    expect(screen.getByText("Barangays covered")).toBeInTheDocument();
+    expect(screen.queryByText("17")).not.toBeInTheDocument();
   });
 });

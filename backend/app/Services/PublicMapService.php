@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AnimalOwnershipEvent;
 use App\Models\Beneficiary;
 use App\Models\DispersalEvent;
 use Carbon\CarbonImmutable;
@@ -76,6 +77,21 @@ class PublicMapService
             'totals' => [
                 'beneficiaries' => Beneficiary::count(),
                 'geo_tagged' => Beneficiary::whereNotNull('latitude')->whereNotNull('longitude')->count(),
+                // A count of ANIMALS placed (active dispersal events into a
+                // barangay) — the same number, word for word, as the
+                // transparency page's "Animals dispersed".
+                'animals_dispersed' => AnimalOwnershipEvent::query()
+                    ->where('status', AnimalOwnershipEvent::STATUS_ACTIVE)
+                    ->where('event_type', AnimalOwnershipEvent::TYPE_DISPERSAL)
+                    ->whereNotNull('to_barangay_id')
+                    ->count(),
+                // Barangays that received at least one animal.
+                'barangays_covered' => AnimalOwnershipEvent::query()
+                    ->where('status', AnimalOwnershipEvent::STATUS_ACTIVE)
+                    ->where('event_type', AnimalOwnershipEvent::TYPE_DISPERSAL)
+                    ->whereNotNull('to_barangay_id')
+                    ->distinct('to_barangay_id')
+                    ->count('to_barangay_id'),
                 're_dispersals' => DispersalEvent::query()
                     ->where('dispersal_type', DispersalEvent::TYPE_RE_DISPERSAL)
                     ->count(),

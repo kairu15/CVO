@@ -337,36 +337,98 @@ function ensurePinLayers(map) {
 }
 
 /** Popup for one animal pin — the same card language as the household pins. */
+const LOCATION_SOURCE_LABELS = {
+  device_gps: "GPS pin",
+  manual_pin: "Manual pin",
+  owner_geotag: "Owner geotag",
+  barangay_centroid: "Barangay centre",
+};
+
+const EVENT_TYPE_LABELS = {
+  dispersal: "Dispersal",
+  re_dispersal: "Re-dispersal",
+  pass_on: "Pass-on",
+  return: "Return to CVO",
+};
+
+/** One label/value row of the pin's info box. */
+function infoRow(label, value) {
+  if (value === null || value === undefined || value === "") return "";
+  return (
+    `<tr>` +
+    `<td style="padding:1px 14px 1px 0;font-size:10px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#94a3b8;white-space:nowrap;vertical-align:top">${label}</td>` +
+    `<td style="padding:1px 0;font-size:12px;font-weight:600;color:#0f172a">${value}</td>` +
+    `</tr>`
+  );
+}
+
+/** A date-only API string, spelled the way the side list spells dates. */
+function formatPopupDate(iso) {
+  const parsed = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(parsed.getTime())
+    ? iso
+    : parsed.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+/**
+ * The pin's information box: the beneficiary and the animal they hold, laid
+ * out as label/value ROWS so the details scan like a form rather than a
+ * sentence. Everything the record carries is on the card — who holds the
+ * animal, where, what it is, how the location was captured and when the
+ * animal last moved — with the flight-path and re-disperse actions beneath.
+ */
 function pinPopupHtml(pin, { flightActive = false, showFlightPath = false, offerRedisperse = false } = {}) {
-  const badge = pin.approximate
-    ? '<p style="margin:4px 0 0;padding:1px 8px;display:inline-block;border-radius:9999px;background:#fef9c3;color:#854d0e;font-size:10px;font-weight:600;text-transform:uppercase">Approximate location</p>'
+  const ownerLabel = escapeHtml(pin.owner?.label ?? "Unknown owner");
+  const maskedNote = pin.owner?.masked
+    ? '<span style="margin-left:6px;padding:1px 8px;border-radius:9999px;background:#f1f5f9;color:#64748b;font-size:10px;font-weight:600;text-transform:uppercase">Hidden</span>'
     : "";
-  const redisperse = offerRedisperse && pin.owner?.id !== null && !pin.owner?.masked
-    ? '<button type="button" class="cvo-redisperse"' +
-      ` data-redisperse-id="${escapeHtml(String(pin.animal_id))}"` +
-      ' style="margin-top:8px;margin-left:6px;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:3px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">' +
-      "Re-disperse</button>"
-    : "";
-  const toggle = showFlightPath
-    ? '<button type="button" class="cvo-path-toggle"' +
-      ` data-path-id="${escapeHtml(String(pin.animal_id))}"` +
-      ' style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:3px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">' +
-      `<svg viewBox="0 0 20 20" width="11" height="11" aria-hidden="true" style="flex:none"><path d="M5 2v16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M6 3h8l-2.6 3L14 9H6z" fill="currentColor"/></svg>` +
-      (flightActive ? "Hide flight path" : "Show flight path") +
-      "</button>"
-    : "";
-  const earTag = pin.ear_tag_number
-    ? `<p style="margin:0;font-size:12px;color:#64748b">Ear tag: ${escapeHtml(pin.ear_tag_number)}</p>`
+  const approximateNote = pin.approximate
+    ? '<span style="margin-left:6px;padding:1px 8px;border-radius:9999px;background:#fef9c3;color:#854d0e;font-size:10px;font-weight:600;text-transform:uppercase">Approximate</span>'
     : "";
 
+  const sourceLabel = pin.location_source
+    ? escapeHtml(LOCATION_SOURCE_LABELS[pin.location_source] ?? pin.location_source)
+    : null;
+  const locationValue = pin.latitude !== null && pin.longitude !== null
+    ? `${sourceLabel ?? "Recorded"}${pin.approximate ? " · centre" : ""}`
+    : "Not recorded";
+
+  const lastEvent = pin.last_event_date
+    ? `${escapeHtml(formatPopupDate(pin.last_event_date))}${pin.event_type ? ` · ${escapeHtml(EVENT_TYPE_LABELS[pin.event_type] ?? pin.event_type)}` : ""}`
+    : null;
+
+  const redisperse = offerRedisperse && pin.owner?.id !== null && !pin.owner?.masked
+    ? `<button type="button" class="cvo-redisperse"` +
+      ` data-redisperse-id="${escapeHtml(String(pin.animal_id))}"` +
+      ` style="flex:1;justify-content:center;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:4px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">` +
+      `Re-disperse</button>`
+    : "";
+  const toggle = showFlightPath
+    ? `<button type="button" class="cvo-path-toggle"` +
+      ` data-path-id="${escapeHtml(String(pin.animal_id))}"` +
+      ` style="flex:1;justify-content:center;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:4px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">` +
+      `<svg viewBox="0 0 20 20" width="11" height="11" aria-hidden="true" style="flex:none"><path d="M5 2v16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M6 3h8l-2.6 3L14 9H6z" fill="currentColor"/></svg>` +
+      (flightActive ? "Hide flight path" : "Show flight path") +
+      `</button>`
+    : "";
+
+  const hasActions = Boolean(toggle || redisperse);
+
   return (
-    `<div style="min-width:12rem;font-size:13px;line-height:1.4">` +
-    `<p style="margin:0;font-weight:600;color:#0f172a">${escapeHtml(pin.owner?.label ?? "Unknown owner")}</p>` +
-    `<p style="margin:0;font-size:12px;color:#64748b">${escapeHtml(pin.barangay ?? "No barangay on record")} &middot; ${escapeHtml(pin.animal_type ?? "Unspecified animal")}</p>` +
-    earTag +
-    badge +
-    toggle +
-    redisperse +
+    `<div style="min-width:230px;max-width:290px;font-size:13px;line-height:1.45">` +
+    `<p style="margin:0 0 1px;font-weight:700;font-size:13.5px;color:#0f172a">${ownerLabel}${maskedNote}</p>` +
+    `<p style="margin:0 0 8px;font-size:12px;color:#64748b">${escapeHtml(pin.barangay ?? "No barangay on record")}${approximateNote}</p>` +
+    `<table style="border-collapse:collapse;width:100%;margin:0 0 8px">` +
+    `<tbody>` +
+    infoRow("Animal", escapeHtml(pin.animal_type ?? "Unspecified")) +
+    infoRow("Ear tag", pin.ear_tag_number ? `#${escapeHtml(pin.ear_tag_number)}` : null) +
+    infoRow("Status", pin.animal_status ? escapeHtml(pin.animal_status.charAt(0).toUpperCase() + pin.animal_status.slice(1)) : null) +
+    infoRow("Location", locationValue) +
+    infoRow("Last event", lastEvent) +
+    `</tbody></table>` +
+    (hasActions
+      ? `<div style="display:flex;gap:6px;margin-top:2px">${toggle}${redisperse}</div>`
+      : "") +
     `</div>`
   );
 }
@@ -409,6 +471,13 @@ export function DispersalMap({
   selectedAnimalId = null,
   onRowHover = null,
   showTable = true,
+  // Flight-paths-only mode (the Overview dashboard): the map opens with
+  // EVERY visible animal's trail drawn and NO individual pins — the trails
+  // are the content, not something the admin switches on.
+  flightPathsOnly = false,
+  // When a barangay is selected on the map page, pins OUTSIDE it dim so the
+  // selected barangay's animals read at a glance.
+  selectedBarangay = null,
   loading = false,
   error = null,
   onPick,
@@ -1330,7 +1399,8 @@ export function DispersalMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || onPick || !hasPins) return;
+    // Flight-paths-only draws NO pins at all — the trails are the content.
+    if (!map || !mapReady || onPick || !hasPins || flightPathsOnly) return;
 
     ensurePinLayers(map);
 
@@ -1351,22 +1421,63 @@ export function DispersalMap({
     });
 
     const selected = selectedAnimalIdRef.current;
-    map.setFilter(PIN_LAYERS.selected, ["==", ["get", "animal_id"], selected ?? -1]);
-  }, [mapReady, onPick, hasPins, drawnPins, pins]);
+    if (map.getLayer(PIN_LAYERS.selected)) {
+      map.setFilter(PIN_LAYERS.selected, ["==", ["get", "animal_id"], selected ?? -1]);
+    }
+  }, [mapReady, onPick, hasPins, drawnPins, pins, flightPathsOnly]);
 
   // Keep the selection ring in sync without rebuilding the source.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || onPick || !hasPins) return;
-    map.setFilter(PIN_LAYERS.selected, ["==", ["get", "animal_id"], selectedAnimalId ?? -1]);
-  }, [mapReady, onPick, hasPins, selectedAnimalId]);
+    if (!map || !mapReady || onPick || !hasPins || flightPathsOnly) return;
+    if (map.getLayer(PIN_LAYERS.selected)) {
+      map.setFilter(PIN_LAYERS.selected, ["==", ["get", "animal_id"], selectedAnimalId ?? -1]);
+    }
+  }, [mapReady, onPick, hasPins, selectedAnimalId, flightPathsOnly]);
+
+  // Flight-paths-only mode (the Overview): the trails ARE the map, so the
+  // overview assembles itself the moment there is something to draw — no
+  // switch to look for. A data refresh (poll, handover saved elsewhere)
+  // rebuilds it through the same entry point, so the trails never go stale.
+  const showAllPathsRef = useRef(null);
+  useEffect(() => {
+    showAllPathsRef.current = showAllFlightPaths;
+  });
+  const visibleKey = visible.map((row) => row.id).join(",");
+  useEffect(() => {
+    if (!flightPathsOnly || !mapReady || onPick || visible.length === 0) return;
+    showAllPathsRef.current?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the visible KEY is the trigger; a same-key refetch must not rebuild the overview
+  }, [flightPathsOnly, mapReady, onPick, visibleKey]);
+
+  // A selected barangay dims every pin OUTSIDE it — the selected barangay's
+  // animals read at a glance while the rest keeps its context.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || onPick || !hasPins || flightPathsOnly) return;
+    if (!map.getLayer(PIN_LAYERS.points)) return;
+
+    const opacity = selectedBarangay
+      ? ["case", ["==", ["get", "barangay"], ["literal", selectedBarangay]], 0.95, 0.12]
+      : 0.95;
+    const stroke = selectedBarangay
+      ? ["case", ["==", ["get", "barangay"], ["literal", selectedBarangay]], 2, 0.4]
+      : 2;
+    map.setPaintProperty(PIN_LAYERS.points, "circle-opacity", opacity);
+    map.setPaintProperty(PIN_LAYERS.points, "circle-stroke-opacity", stroke);
+    if (map.getLayer(PIN_LAYERS.spider)) {
+      map.setPaintProperty(PIN_LAYERS.spider, "circle-opacity", opacity);
+      map.setPaintProperty(PIN_LAYERS.spider, "circle-stroke-opacity", stroke);
+    }
+  }, [mapReady, onPick, hasPins, flightPathsOnly, selectedBarangay]);
 
   // Cluster / pin interactions: a cluster expands (zooms in; at the zoom
   // ceiling it SPIDERFIES onto a ring so every animal stays clickable), a
   // pin opens its card, a click elsewhere clears both.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || onPick || !hasPins) return undefined;
+    // No pin layers in flight-paths-only mode — nothing to click.
+    if (!map || !mapReady || onPick || !hasPins || flightPathsOnly) return undefined;
 
     ensurePinLayers(map);
     let popupOpen = false;
@@ -1510,7 +1621,7 @@ export function DispersalMap({
     // `visible` feeds the popup lookup; rebound with the flight state so the
     // show/hide label follows the active trail.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, onPick, hasPins, visible]);
+  }, [mapReady, onPick, hasPins, visible, flightPathsOnly]);
 
   // Picker mode: keep exactly one marker on the selected spot.
   useEffect(() => {
@@ -1616,6 +1727,7 @@ export function DispersalMap({
             Flight path
           </span>
           <div className="ml-auto flex items-center gap-2">
+            {!flightPathsOnly && (
             <button
               type="button"
               onClick={allPaths.active ? resetAllPaths : showAllFlightPaths}
@@ -1628,6 +1740,7 @@ export function DispersalMap({
               />
               {allPaths.active ? "Hide all flight paths" : "Show all flight paths"}
             </button>
+            )}
             <label className="flex items-center gap-2">
               <span className="sr-only">Filter by animal type</span>
               <select

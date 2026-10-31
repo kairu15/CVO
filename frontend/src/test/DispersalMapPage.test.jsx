@@ -265,14 +265,17 @@ describe("DispersalMapPage", () => {
 describe("pin layer data", () => {
   it("keys one feature per animal — never an array index — and skips unplaceable pins", () => {
     const { features, skipped } = pinFeatures([
-      { animal_id: 7, latitude: 9.5, longitude: 122.8, animal_type: "Carabao" },
-      { animal_id: 8, latitude: 9.5, longitude: 122.8, animal_type: "Goat" }, // same spot
-      { animal_id: 9, latitude: null, longitude: null, animal_type: "Goat" },
-      { animal_id: 10, latitude: 999, longitude: 122.8, animal_type: "Goat" }, // invalid
+      { animal_id: 7, latitude: 9.5, longitude: 122.8, animal_type: "Carabao", barangay: "Tayawan" },
+      { animal_id: 8, latitude: 9.5, longitude: 122.8, animal_type: "Goat", barangay: "Tayawan" }, // same spot
+      { animal_id: 9, latitude: null, longitude: null, animal_type: "Goat", barangay: "Tayawan" },
+      { animal_id: 10, latitude: 999, longitude: 122.8, animal_type: "Goat", barangay: "Tayawan" }, // invalid
     ]);
 
     expect(features.map((feature) => feature.id)).toEqual([7, 8]);
     expect(features.every((feature) => feature.properties.pin.animal_id === feature.id)).toBe(true);
+    // The barangay rides TOP-LEVEL so the map's paint expressions can dim
+    // pins outside the selected barangay.
+    expect(features[0].properties.barangay).toBe("Tayawan");
     expect(skipped).toHaveLength(2);
   });
 

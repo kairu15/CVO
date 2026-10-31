@@ -158,13 +158,13 @@ export default function RoleDashboard({ roleKey }) {
             <div>
               <p className="eyebrow">Geo-Tagged Records</p>
               <h3 className="mt-2 font-display text-base font-bold text-slate-900">
-                Pinned locations
+                Flight paths
               </h3>
               <p className="mt-1 text-sm text-slate-600">
-                The same live pins as the Dispersal Map — the latest recorded
-                day, taken straight from the ownership records. A pin names
-                its animal and current owner; the table below lists the same
-                animals for accessibility.
+                Every dispersed animal's journey at once — origin, handovers
+                and where each one stands today — drawn automatically from the
+                ownership records for the latest recorded day. Open the
+                Dispersal Map to work with a single animal.
               </p>
             </div>
             <Link
@@ -184,6 +184,7 @@ export default function RoleDashboard({ roleKey }) {
                 <DashboardMap
                   pins={pins}
                   trailFetcher={fetchAnimalTrail}
+                  flightPathsOnly
                   loading={mapLoading}
                   renderChoropleth={(onMapReady) => (
                     <Suspense
@@ -205,7 +206,7 @@ export default function RoleDashboard({ roleKey }) {
                         ariaLabel="Map of Bayawan City's barangays with the program's geo-tagged animals pinned."
                         legend={{
                           stops: ["#eaf3dd", "#c7e2a6", "#8bc34a", "#558b2f", "#33691e"],
-                          minLabel: "fewer pins",
+                          minLabel: "fewer animals",
                           maxLabel: "more",
                         }}
                         tooltipHtml={choroplethTooltipHtml}
@@ -218,7 +219,7 @@ export default function RoleDashboard({ roleKey }) {
             {!mapLoading && !mapError && (
               <p className="mt-2 text-xs text-slate-500">
                 {snapshot?.date
-                  ? `Showing ${pins.length} animal${pins.length === 1 ? "" : "s"} on ${formatDay(snapshot.date)} — the same snapshot the Dispersal Map opens on.`
+                  ? `${pins.length} flight path${pins.length === 1 ? "" : "s"} drawn for ${formatDay(snapshot.date)} — the same snapshot the Dispersal Map opens on.`
                   : "No dispersal records yet — a recorded dispersal appears here and on the Dispersal Map."}
               </p>
             )}

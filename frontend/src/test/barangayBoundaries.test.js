@@ -8,7 +8,6 @@ import {
   bubbleRadius,
   buildChoropleth,
   formatMetricReadout,
-  lightenColor,
   metricValue,
   normalizeBarangayName,
 } from "../lib/barangayBoundaries";
@@ -53,27 +52,6 @@ describe("normalizeBarangayName", () => {
   });
 });
 
-describe("lightenColor", () => {
-  it("lifts a colour toward white", () => {
-    const lifted = lightenColor("#33691e");
-    expect(lifted).not.toBe("#33691e");
-
-    // Every channel moves toward 255, never past it.
-    for (const [at, original] of [[1, 0x33], [3, 0x69], [5, 0x1e]]) {
-      const channel = parseInt(lifted.slice(at, at + 2), 16);
-      expect(channel).toBeGreaterThan(original);
-      expect(channel).toBeLessThanOrEqual(255);
-    }
-  });
-
-  it("expands three-digit hex", () => {
-    expect(lightenColor("#000")).toBe(lightenColor("#000000"));
-  });
-
-  it("never returns anything but hex", () => {
-    expect(lightenColor("#eaf3dd")).toMatch(/^#[0-9a-f]{6}$/);
-  });
-});
 
 describe("buildChoropleth", () => {
   it("joins polygons to rows by normalized name, database name winning", () => {
@@ -101,11 +79,6 @@ describe("buildChoropleth", () => {
     expect(nangka.color).toBe(bubbleColor(10, 40, "dispersed"));
     // More dispersed = darker green: a higher step on the same scale.
     expect(tayawan.color).not.toBe(nangka.color);
-
-    for (const paint of [tayawan, nangka]) {
-      expect(paint.hoverColor).toMatch(/^#[0-9a-f]{6}$/);
-      expect(paint.hoverColor).not.toBe(paint.color);
-    }
   });
 
   it("greys a polygon whose barangay has no row, keeping its dataset name", () => {

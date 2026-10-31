@@ -179,6 +179,40 @@ beforeEach(() => {
   mapApi.pins.mockResolvedValue(PINS);
 });
 
+describe("RoleDashboard mount (flight-paths-only)", () => {
+  it("draws the trails automatically and adds NO pin layers", async () => {
+    const { default: RoleDashboard } = await import("../pages/RoleDashboard");
+    render(
+      <MemoryRouter initialEntries={["/dashboard/admin"]}>
+        <ToastProvider>
+          <RoleDashboard roleKey="admin" />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+
+    // The dashboard fetches the same dated snapshot...
+    await waitFor(() => expect(mapApi.pins).toHaveBeenCalled(), { timeout: 3000 });
+
+    // ...adopts ONE map...
+    await waitFor(() => expect(maps.length).toBe(1), { timeout: 3000 });
+    const map = maps[0];
+
+    // ...draws the flight trails automatically...
+    await waitFor(() => {
+      expect(map.getLayer("cvo-flight-casing")).toBeTruthy();
+      expect(map.getLayer("cvo-flight-line")).toBeTruthy();
+    }, { timeout: 8000 });
+
+    // ...and never adds the pin layers: the dashboard map is the trails.
+    expect(map.getSource("cvo-date-pins")).toBeFalsy();
+    expect(map.getLayer("cvo-date-pins-clusters")).toBeFalsy();
+    expect(map.getLayer("cvo-date-pins-point")).toBeFalsy();
+
+    // The polygons wear the choropleth beneath the trails.
+    expect(map.getLayer("barangay-boundaries-fill")).toBeTruthy();
+  });
+});
+
 describe("DispersalMapPage mount (real map tree)", () => {
   it("mounts the shared choropleth, adopts its map and adds the pin layers", async () => {
     render(

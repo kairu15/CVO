@@ -78,15 +78,6 @@ export function choroplethTooltipHtml(properties) {
   );
 }
 
-/** Blend a hex colour toward white — the choropleth's hover lift. */
-export function lightenColor(hex, amount = 0.45) {
-  const raw = String(hex ?? "").replace("#", "");
-  const value = raw.length === 3 ? raw.split("").map((ch) => ch + ch).join("") : raw;
-  const channels = [0, 2, 4].map((at) => Number.parseInt(value.slice(at, at + 2), 16) || 0);
-  const [r, g, b] = channels.map((channel) => Math.round(channel + (255 - channel) * amount));
-  return `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
-}
-
 /** The metric value a barangay shows, honouring the per-1,000 switch. */
 export function metricValue(row, metric, per1000) {
   if (per1000 && metric !== "redispersal_rate") {
@@ -170,7 +161,6 @@ export function buildChoropleth(collection, rows, { metric, per1000 = false }) {
         name: row?.name ?? name,
         psgc: feature.properties?.psgc ?? null,
         color,
-        hoverColor: lightenColor(color),
         value: value ?? 0,
         row,
       },

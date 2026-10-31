@@ -8,9 +8,10 @@ import { boundaryBounds, normalizeBarangayName } from "../lib/barangayBoundaries
 
 /**
  * The shared barangay choropleth: one MapLibre map wearing the 28 Bayawan
- * City barangay polygons — green fills, white borders, a hover lift with a
- * dark cursor-side label, and the +/− controls at the top-left, in the style
- * of the LGU's own barangay-profile maps.
+ * City barangay polygons — green fills, white borders, a YELLOW hover
+ * highlight with a dark cursor-side label, and the +/− controls at the
+ * top-left, in the style of the LGU's own barangay-profile maps. The yellow
+ * hover is the same on every page that wears this choropleth.
  *
  * This component OWNS the map instance and the polygon layers; the pages
  * that use it (BarangayFlowMap, the Dispersal Map) add their own data on top
@@ -60,7 +61,7 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  *   belongs to one of these layers, the polygons ignore the event.
  * @param {(properties: object) => string} [props.tooltipHtml]
  *   the dark hover label's HTML, from the feature properties buildChoropleth
- *   attached (name, color, hoverColor, value, row)
+ *   attached (name, color, value, row)
  * @param {{stops: string[], minLabel: string, maxLabel: string}|null} [props.legend]
  * @param {import("react").ReactNode} [props.legendNotes] appended legend text
  * @param {boolean} [props.showCredit] the boundaries/OSM credit line
@@ -298,16 +299,16 @@ export function BarangayChoropleth({
           type: "fill",
           source: BOUNDARY_SOURCE,
           paint: {
-            // Selection (the clicked barangay the detail card describes)
-            // paints yellow and wins over hover; hover otherwise lifts the
-            // fill toward white. Both read the feature-state the parent and
-            // the pointer handlers set.
+            // Hover and selection both paint the SAME yellow on every page
+            // that wears this choropleth (Dispersal Map, Overview dashboard,
+            // Barangay Dispersal) — one hover behaviour, learned once. The
+            // clicked barangay keeps its yellow while its card is open.
             "fill-color": [
               "case",
               ["boolean", ["feature-state", "selected"], false],
               "#fde047",
               ["boolean", ["feature-state", "hover"], false],
-              ["get", "hoverColor"],
+              "#fde047",
               ["get", "color"],
             ],
             "fill-opacity": 0.92,

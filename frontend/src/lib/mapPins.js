@@ -99,6 +99,9 @@ export function pinFeatures(pins) {
         animal_id: Number(pin.animal_id),
         color: colorFor(pin),
         approximate: Boolean(pin.approximate),
+        // Top-level so the map's paint expressions can dim pins outside the
+        // selected barangay without reaching into the nested pin object.
+        barangay: pin.barangay ?? null,
         pin,
       },
       geometry: { type: "Point", coordinates: [longitude, latitude] },

@@ -25,7 +25,7 @@ export const adminApi = {
   },
 
   /**
-   * Create a staff account (admin/doctor/technician) — every account is
+   * Create a staff account (admin/technician) — every account is
    * staff; beneficiaries are program records, not login accounts.
    *
    * With `password` + `password_confirmation` (matching the password policy

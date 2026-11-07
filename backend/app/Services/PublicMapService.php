@@ -107,7 +107,7 @@ class PublicMapService
      *
      * Same thresholds as VaccinationScheduleService::scheduleFor(), expressed
      * against the same correlated subquery the schedule endpoint orders by —
-     * the landing page's number cannot disagree with the doctor's list.
+     * the landing page's number cannot disagree with the technician's list.
      */
     protected function vaccinationsDue(): int
     {

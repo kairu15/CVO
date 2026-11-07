@@ -11,7 +11,7 @@ import { Icon } from "../components/Icons";
 import { getRole } from "../config/roles";
 
 /**
- * Doctor "Animal Health Monitoring" screen.
+ * Technician "Animal Health Monitoring" screen.
  *
  * A rollup rather than a data-entry screen: each animal's health at a glance,
  * aggregated from records captured elsewhere (visits, health records, case
@@ -44,7 +44,7 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
 }
 
-export default function AnimalHealthPage({ roleKey = "doctor" }) {
+export default function AnimalHealthPage({ roleKey = "technician" }) {
   const config = getRole(roleKey);
 
   const [rows, setRows] = useState([]);
@@ -86,7 +86,7 @@ export default function AnimalHealthPage({ roleKey = "doctor" }) {
   return (
     <div className="space-y-6">
       <section className="card p-6">
-        <p className="eyebrow">{config?.label ?? "Veterinarian"}</p>
+        <p className="eyebrow">{config?.label ?? "Technician"}</p>
         <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl">
           Animal Health Monitoring
         </h2>

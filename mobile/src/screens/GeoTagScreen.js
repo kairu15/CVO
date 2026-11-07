@@ -35,7 +35,7 @@ const BARANGAYS = [
  *
  * Registers a dispersed animal with its household and captures the GPS
  * position at the farm via expo-location, so the record appears on the
- * admin/doctor dispersal map. Calls the same `/api/v1/beneficiaries`
+ * dispersal map. Calls the same `/api/v1/beneficiaries`
  * endpoint as the web app.
  */
 export default function GeoTagScreen() {

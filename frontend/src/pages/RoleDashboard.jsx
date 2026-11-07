@@ -23,7 +23,7 @@ import { fetchAnimalTrail } from "../lib/ownershipPath";
  */
 
 // MapLibre is heavy — keep it out of the main bundle and load it only when
-// the dashboard's map module is actually shown (admin/doctor).
+// the dashboard's map module is actually shown (admin/technician).
 const DashboardMap = lazy(() =>
   import("../components/DispersalMap").then((m) => ({ default: m.DispersalMap })),
 );
@@ -32,7 +32,7 @@ const DashboardMap = lazy(() =>
 // map, never with the page, so the maplibre bundle stays out of the first paint.
 const DashboardChoropleth = lazy(() => import("../components/BarangayChoropleth"));
 
-// The barangay analytics widget (admin/doctor) fetches its own aggregate.
+// The barangay analytics widget (admin/technician) fetches its own aggregate.
 const BarangayDispersalWidget = lazy(() =>
   import("../components/BarangayDispersalWidget").then((m) => ({ default: m.BarangayDispersalWidget })),
 );
@@ -56,9 +56,9 @@ export default function RoleDashboard({ roleKey }) {
   const [mapLoading, setMapLoading] = useState(true);
   const [mapError, setMapError] = useState(null);
 
-  // Admin and doctor have city-wide oversight, so the dashboard opens with
-  // the live dispersal map. Technician keeps scaffold modules for now.
-  const showMap = roleKey === "admin" || roleKey === "doctor";
+  // Both staff roles have city-wide oversight (the technician absorbed the
+  // old doctor role's), so the dashboard opens with the live dispersal map.
+  const showMap = roleKey === "admin" || roleKey === "technician";
   const boundaries = useBarangayBoundaries();
 
   // The Overview reads the SAME dated snapshot as the Dispersal Map page:
@@ -232,7 +232,8 @@ export default function RoleDashboard({ roleKey }) {
       )}
 
       {/* Barangay dispersal at a glance — top/bottom five for one metric,
-          linking to the full analytics tab. Admin and doctor oversight. */}
+          linking to the full analytics tab. City-wide oversight for both
+          staff roles. */}
       {showMap && (
         <Suspense fallback={<SkeletonList rows={1} rowClassName="h-48" />}>
           <BarangayDispersalWidget roleKey={roleKey} />

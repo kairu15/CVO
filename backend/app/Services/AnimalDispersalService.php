@@ -50,44 +50,30 @@ class AnimalDispersalService
      * ------------------------------------------------------------------ */
 
     /**
-     * The animals this user may see. Admin and doctor have program-wide
-     * oversight; a technician only sees animals whose chain touches a
-     * household assigned to them (their current holder, or any past handover).
+     * The animals this user may see. Every staff role has program-wide
+     * oversight — the technician carries the field work AND the chain/
+     * health oversight the old doctor role held.
      */
     public function scopeQueryFor(User $user): Builder
     {
-        if (in_array($user->role, ['admin', 'doctor'], true)) {
+        if (in_array($user->role, ['admin', 'technician'], true)) {
             return Animal::query();
-        }
-
-        if ($user->role === 'technician') {
-            return Animal::query()->visibleTo($user->id);
         }
 
         return Animal::query()->whereRaw('0 = 1');
     }
 
     /**
-     * One animal, scoped. A technician pointing at an animal outside their
-     * assignment is an access boundary (403), not a missing row (404) — the
-     * same distinction BeneficiaryService::findFor makes.
+     * One animal, scoped. There is no assigned-only read slice left, so an
+     * unknown animal is simply not found (404).
      *
      * @throws ModelNotFoundException
-     * @throws AuthorizationException
      */
     public function findFor(User $user, int $animalId): Animal
     {
-        $animal = $this->scopeQueryFor($user)->with(['animalType', 'animalClassification'])->find($animalId);
-
-        if ($animal) {
-            return $animal;
-        }
-
-        if ($user->role === 'technician' && Animal::query()->whereKey($animalId)->exists()) {
-            throw new AuthorizationException('This animal is not assigned to you.');
-        }
-
-        abort(404);
+        return $this->scopeQueryFor($user)
+            ->with(['animalType', 'animalClassification'])
+            ->findOrFail($animalId);
     }
 
     /**
@@ -109,10 +95,10 @@ class AnimalDispersalService
             abort(404);
         }
 
-        // A technician may only look up a household assigned to them — the same
-        // boundary BeneficiaryService::findFor enforces.
-        if (! in_array($user->role, ['admin', 'doctor'], true)
-            && (int) $beneficiary->technician_id !== (int) $user->id) {
+        // Staff roles may look up any household (the technician absorbed the
+        // old doctor role's oversight); an unknown role fails closed — the
+        // same boundary BeneficiaryService::findFor enforces for reads.
+        if (! in_array($user->role, ['admin', 'technician'], true)) {
             throw new AuthorizationException('This farmer is not assigned to you.');
         }
 
@@ -1223,18 +1209,13 @@ class AnimalDispersalService
         ];
     }
 
-    /** A technician is masked for any owner they are not assigned to. */
+    /**
+     * Every staff role sees owner names/pins unmasked — the technician
+     * carries the program-wide oversight the old doctor role held.
+     */
     private function isMaskedFor(User $user, Beneficiary $owner): bool
     {
-        if (in_array($user->role, ['admin', 'doctor'], true)) {
-            return false;
-        }
-
-        if ($user->role === 'technician') {
-            return (int) $owner->technician_id !== (int) $user->id;
-        }
-
-        return true;
+        return ! in_array($user->role, ['admin', 'technician'], true);
     }
 
     /** @return array<string, mixed> */

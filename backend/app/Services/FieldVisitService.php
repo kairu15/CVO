@@ -82,8 +82,7 @@ class FieldVisitService
         $query = FieldVisit::query();
 
         return match ($user->role) {
-            'admin', 'doctor' => $query,
-            'technician' => $query->where('technician_id', $user->id),
+            'admin', 'technician' => $query,
             // No other role exists; fail closed.
             default => $query->whereRaw('0 = 1'),
         };

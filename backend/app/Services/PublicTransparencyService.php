@@ -180,7 +180,7 @@ class PublicTransparencyService
      * as compliant — it has a current shot, it is simply approaching renewal.
      * The boundary is the same one VaccinationScheduleService uses for OVERDUE
      * (last < today − interval), so this number cannot disagree with the
-     * doctor's schedule.
+     * technician's schedule.
      *
      * @return array{compliant: int, total: int, rate: float|null}
      */

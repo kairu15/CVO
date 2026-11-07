@@ -107,8 +107,8 @@ export default function LandingPage() {
 
             <p className="mt-6 flex items-center gap-2 text-sm text-slate-500">
               <Icon name="info" className="h-4 w-4 shrink-0 text-brand-600" />
-              Built for the CVO's administrators, veterinarians and field
-              technicians; beneficiaries are records the office maintains, not
+              Built for the CVO's administrators and field technicians;
+              beneficiaries are records the office maintains, not
               logins.
             </p>
           </div>
@@ -251,7 +251,7 @@ export default function LandingPage() {
           <div className="max-w-2xl">
             <p className="eyebrow">Who uses it</p>
             <h2 className="mt-3 font-display text-2xl font-bold text-slate-900 sm:text-3xl">
-              Three roles, one shared record
+              Two roles, one shared record
             </h2>
             <p className="mt-4 text-base text-slate-600">
               Each role signs in to a dashboard scoped to what it needs. Staff
@@ -261,7 +261,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-10 grid gap-5 sm:grid-cols-2">
             {publicRoles.map((role) => (
               <article
                 key={role.key}

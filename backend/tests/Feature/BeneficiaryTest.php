@@ -18,33 +18,38 @@ class BeneficiaryTest extends TestCase
         $this->getJson('/api/v1/beneficiaries')->assertUnauthorized();
     }
 
-    public function test_technicians_see_only_assigned_beneficiaries(): void
+    /**
+     * The technician absorbed the old doctor role's oversight: its list is
+     * the city-wide record, assignments notwithstanding.
+     */
+    public function test_technicians_see_the_city_wide_list(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
         Beneficiary::factory()->count(2)->assignedTo($technician)->create();
-        Beneficiary::factory()->create(); // unassigned
+        $unassigned = Beneficiary::factory()->create(); // nobody's assignment
 
         $response = $this->actingAs($technician)->getJson('/api/v1/beneficiaries');
 
-        $response->assertOk()->assertJsonCount(2, 'data');
+        $response->assertOk()->assertJsonCount(3, 'data');
+        $this->assertTrue(collect($response->json('data'))->pluck('id')->contains($unassigned->id));
     }
 
-    public function test_technician_direct_fetch_of_an_unassigned_beneficiary_is_403(): void
+    public function test_a_technician_reads_any_existing_beneficiary(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
         $mine = Beneficiary::factory()->assignedTo($technician)->create();
         $other = Beneficiary::factory()->create(); // exists, assigned to nobody
 
-        // Assigned: fine. Unassigned but existing: an explicit 403 — a
-        // permissions boundary, not a missing row.
+        // There is no assigned-only read slice any more: assigned or not,
+        // every existing row answers 200. Only a missing row is an error.
         $this->actingAs($technician)
             ->getJson("/api/v1/beneficiaries/{$mine->id}")
             ->assertOk();
 
         $this->actingAs($technician)
             ->getJson("/api/v1/beneficiaries/{$other->id}")
-            ->assertForbidden()
-            ->assertJsonPath('message', 'This farmer is not assigned to you.');
+            ->assertOk()
+            ->assertJsonPath('data.id', $other->id);
     }
 
     public function test_a_missing_beneficiary_is_still_404_for_a_technician(): void
@@ -56,26 +61,31 @@ class BeneficiaryTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_reassignment_moves_visibility_between_technicians(): void
+    /**
+     * Reads are city-wide for every staff role, so a reassignment changes
+     * WHO is responsible for a household — not who may read it. What it
+     * must still do is record the audit trail.
+     */
+    public function test_reassignment_moves_responsibility_and_records_the_trail(): void
     {
         $first = User::factory()->create(['role' => 'technician']);
         $second = User::factory()->create(['role' => 'technician']);
         $admin = User::factory()->create(['role' => 'admin']);
         $beneficiary = Beneficiary::factory()->assignedTo($first)->create();
 
-        // Before: only the first technician can see it; the second hits 403.
+        // Both technicians can read it either way — responsibility moved,
+        // not visibility.
         $this->actingAs($first)->getJson("/api/v1/beneficiaries/{$beneficiary->id}")->assertOk();
-        $this->actingAs($second)->getJson("/api/v1/beneficiaries/{$beneficiary->id}")->assertForbidden();
+        $this->actingAs($second)->getJson("/api/v1/beneficiaries/{$beneficiary->id}")->assertOk();
 
         // Admin reassigns to the second technician.
         $this->actingAs($admin)
             ->patchJson("/api/v1/admin/beneficiaries/{$beneficiary->id}/assign-technician", [
                 'technician_id' => $second->id,
-            ])->assertOk();
+            ])->assertOk()
+            ->assertJsonPath('data.technician_id', $second->id);
 
-        // After: access has flipped — the first is now the one outside.
         $this->actingAs($second)->getJson("/api/v1/beneficiaries/{$beneficiary->id}")->assertOk();
-        $this->actingAs($first)->getJson("/api/v1/beneficiaries/{$beneficiary->id}")->assertForbidden();
 
         // The audit trail recorded the chain: null → first → second.
         $this->assertDatabaseHas('technician_assignments', [
@@ -86,7 +96,7 @@ class BeneficiaryTest extends TestCase
         ]);
     }
 
-    public function test_clearing_an_assignment_revokes_technician_access(): void
+    public function test_clearing_an_assignment_detaches_the_technician(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
         $admin = User::factory()->create(['role' => 'admin']);
@@ -95,14 +105,21 @@ class BeneficiaryTest extends TestCase
         $this->actingAs($admin)
             ->patchJson("/api/v1/admin/beneficiaries/{$beneficiary->id}/assign-technician", [
                 'technician_id' => null,
-            ])->assertOk();
+            ])->assertOk()
+            ->assertJsonPath('data.technician_id', null);
 
+        $this->assertDatabaseHas('beneficiaries', [
+            'id' => $beneficiary->id,
+            'technician_id' => null,
+        ]);
+
+        // Detachment no longer revokes reads: the record is city-wide.
         $this->actingAs($technician)
             ->getJson("/api/v1/beneficiaries/{$beneficiary->id}")
-            ->assertForbidden();
+            ->assertOk();
     }
 
-    public function test_technician_scoping_covers_monitoring_records(): void
+    public function test_a_technicians_monitoring_records_are_city_wide(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
         $mine = Beneficiary::factory()->assignedTo($technician)->create();
@@ -112,11 +129,11 @@ class BeneficiaryTest extends TestCase
         MonitoringRecord::factory()->create(['beneficiary_id' => $other->id]);
 
         // The monitoring list is scoped through the same beneficiary query —
-        // only records of assigned households can appear.
+        // which is now the city-wide record for every staff role.
         $response = $this->actingAs($technician)->getJson('/api/v1/monitoring-records');
-        $ids = collect($response->assertOk()->json('data'))->pluck('beneficiary_id')->unique();
+        $ids = collect($response->assertOk()->json('data'))->pluck('beneficiary_id')->unique()->sort()->values();
 
-        $this->assertSame([$mine->id], $ids->values()->all());
+        $this->assertSame([$mine->id, $other->id], $ids->all());
     }
 
     public function test_admin_sees_all_beneficiaries(): void
@@ -240,11 +257,13 @@ class BeneficiaryTest extends TestCase
     {
         $admin = User::factory()->create(['role' => 'admin']);
         $beneficiary = Beneficiary::factory()->create();
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        // Only two roles exist: the other staff role — an administrator —
+        // is still not a valid assignee.
+        $colleague = User::factory()->create(['role' => 'admin']);
 
         $this->actingAs($admin)
             ->patchJson("/api/v1/admin/beneficiaries/{$beneficiary->id}/assign-technician", [
-                'technician_id' => $doctor->id,
+                'technician_id' => $colleague->id,
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['technician_id']);
@@ -305,10 +324,11 @@ class BeneficiaryTest extends TestCase
     }
 
     /**
-     * Search is applied INSIDE the role scope: a technician typing a name
-     * they are not assigned to must not see that household.
+     * Search is applied INSIDE the role scope — which is city-wide for every
+     * staff role now, so a technician's search reaches households nobody
+     * is assigned to.
      */
-    public function test_search_cannot_widen_a_technicians_scope(): void
+    public function test_search_reaches_every_household_for_a_technician(): void
     {
         $technician = $this->technicianUser();
 
@@ -316,7 +336,7 @@ class BeneficiaryTest extends TestCase
             'name_of_farmer' => 'Assigned Household',
             'technician_id' => $technician->id,
         ]);
-        Beneficiary::factory()->create([
+        $unassigned = Beneficiary::factory()->create([
             'name_of_farmer' => 'Someone Elses Household',
             'technician_id' => null,
         ]);
@@ -324,7 +344,8 @@ class BeneficiaryTest extends TestCase
         $this->actingAs($technician)
             ->getJson('/api/v1/beneficiaries?search=Someone')
             ->assertOk()
-            ->assertJsonCount(0, 'data');
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $unassigned->id);
     }
 
     /**

@@ -66,9 +66,9 @@ class AnimalTypeMasterListTest extends TestCase
 
     public function test_only_an_admin_can_manage_the_list(): void
     {
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        $technician = User::factory()->create(['role' => 'technician']);
 
-        $this->actingAs($doctor)
+        $this->actingAs($technician)
             ->postJson('/api/v1/admin/animal-types', [
                 'main_category' => 'other',
                 'name' => 'Wildebeest',

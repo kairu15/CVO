@@ -24,7 +24,7 @@ const isOnline = () =>
   typeof navigator === "undefined" ? true : navigator.onLine !== false;
 
 /**
- * Veterinarian's case note form.
+ * Technician's case note form.
  *
  * Deliberately plainer than the health record form: this is freeform text, and
  * asking for a diagnosis here would push observations out of the note and into

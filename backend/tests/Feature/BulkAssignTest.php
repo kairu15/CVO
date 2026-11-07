@@ -70,13 +70,15 @@ class BulkAssignTest extends TestCase
     public function test_bulk_assign_rejects_a_non_technician_user(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        // Only two roles exist — the other staff role is still not a valid
+        // assignee for households.
+        $colleague = User::factory()->create(['role' => 'admin']);
         $beneficiary = Beneficiary::factory()->create();
 
         $this->actingAs($admin)
             ->patchJson('/api/v1/admin/beneficiaries/bulk-assign-technician', [
                 'ids' => [$beneficiary->id],
-                'technician_id' => $doctor->id,
+                'technician_id' => $colleague->id,
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['technician_id']);

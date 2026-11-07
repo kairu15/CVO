@@ -102,51 +102,56 @@ class ServerSideRoleEnforcementTest extends TestCase
             '/api/v1/admin/activity-logs',
         ];
 
-        foreach (['doctor', 'technician'] as $role) {
-            $user = User::factory()->create(['role' => $role]);
+        // The technician is the only non-admin role left (the old doctor
+        // role was merged into it).
+        $user = User::factory()->create(['role' => 'technician']);
 
-            foreach ($routes as $route) {
-                $this->actingAs($user)
-                    ->getJson($route)
-                    ->assertForbidden("{$role} must be forbidden on {$route} (server-side, not just in the SPA).");
-            }
+        foreach ($routes as $route) {
+            $this->actingAs($user)
+                ->getJson($route)
+                ->assertForbidden("technician must be forbidden on {$route} (server-side, not just in the SPA).");
         }
     }
 
-    public function test_doctor_writes_are_rejected_for_other_roles(): void
+    public function test_health_record_writes_belong_to_the_technician_role(): void
     {
         $beneficiary = \App\Models\Beneficiary::factory()->create();
 
-        // Every non-doctor role the system recognises — the removed
-        // `farmer` role is not one of them (it validates nowhere and holds
-        // no grants after the removal migration).
-        foreach (['admin', 'technician'] as $role) {
-            $user = User::factory()->create(['role' => $role]);
+        // The clinical author is the technician now — it absorbed the old
+        // doctor role's `health_records.create` grant, so the write goes
+        // through for the technician...
+        $this->actingAs(User::factory()->create(['role' => 'technician']))
+            ->postJson('/api/v1/health-records', [
+                'beneficiary_id' => $beneficiary->id,
+                'date_recorded' => '2026-09-27',
+                'diagnosis' => 'hernia',
+                'treatment' => 'surgery',
+            ])->assertCreated();
 
-            $this->actingAs($user)
-                ->postJson('/api/v1/health-records', [
-                    'beneficiary_id' => $beneficiary->id,
-                    'date_recorded' => '2026-09-27',
-                    'diagnosis' => 'hernia',
-                    'treatment' => 'surgery',
-                ])->assertForbidden();
-        }
+        // ...and stays forbidden for the admin (the removed `farmer` role is
+        // not one the system recognises — it validates nowhere and holds no
+        // grants after the removal migration).
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->postJson('/api/v1/health-records', [
+                'beneficiary_id' => $beneficiary->id,
+                'date_recorded' => '2026-09-27',
+                'diagnosis' => 'hernia',
+                'treatment' => 'surgery',
+            ])->assertForbidden();
     }
 
     public function test_technician_visits_are_rejected_for_other_roles(): void
     {
         $beneficiary = \App\Models\Beneficiary::factory()->create();
 
-        foreach (['admin', 'doctor'] as $role) {
-            $user = User::factory()->create(['role' => $role]);
-
-            $this->actingAs($user)
-                ->postJson('/api/v1/field-visits', [
-                    'beneficiary_id' => $beneficiary->id,
-                    'visited_on' => '2026-09-27',
-                    'purpose' => 'routine-monitoring',
-                ])->assertForbidden();
-        }
+        // The admin is the only staff role barred from logging trips (the
+        // old doctor role was merged into technician, which logs them).
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->postJson('/api/v1/field-visits', [
+                'beneficiary_id' => $beneficiary->id,
+                'visited_on' => '2026-09-27',
+                'purpose' => 'routine-monitoring',
+            ])->assertForbidden();
     }
 
     public function test_role_scoping_hides_other_rows_even_for_valid_ids(): void

@@ -53,9 +53,9 @@ class SymptomRuleTest extends TestCase
 
     public function test_a_non_admin_cannot_change_rules(): void
     {
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        $technician = User::factory()->create(['role' => 'technician']);
 
-        $this->actingAs($doctor)
+        $this->actingAs($technician)
             ->postJson('/api/v1/admin/symptom-rules', [
                 'label' => 'Sneaky',
                 'keywords' => ['x'],
@@ -103,7 +103,7 @@ class SymptomRuleTest extends TestCase
         SymptomRule::factory()->create(['label' => 'First', 'sort_order' => 10]);
         SymptomRule::factory()->inactive()->create(['label' => 'Retired']);
 
-        $response = $this->actingAs(User::factory()->create(['role' => 'doctor']))
+        $response = $this->actingAs(User::factory()->create(['role' => 'technician']))
             ->getJson('/api/v1/symptom-rules')
             ->assertOk()
             ->assertJsonCount(2, 'data');

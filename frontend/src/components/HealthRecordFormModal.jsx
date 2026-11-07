@@ -31,7 +31,7 @@ const isOnline = () =>
   typeof navigator === "undefined" ? true : navigator.onLine !== false;
 
 /**
- * Veterinarian's health record form.
+ * Technician's health record form.
  *
  * The beneficiary identity block renders read-only from the beneficiary
  * record, the same way the technician's visit form works — the vet fills in

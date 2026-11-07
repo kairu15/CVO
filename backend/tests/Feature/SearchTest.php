@@ -98,16 +98,20 @@ class SearchTest extends TestCase
         $this->assertSame('Banay Farms Inc', $results[0]['title']);
     }
 
-    public function test_a_technician_only_searches_their_assigned_households(): void
+    public function test_a_technician_searches_households_city_wide(): void
     {
+        // The technician absorbed the old doctor role's oversight, so its
+        // search reaches every household in the program — not only the ones
+        // assigned to them.
         $technician = User::factory()->create(['role' => 'technician']);
         $assigned = Beneficiary::factory()->assignedTo($technician)->create(['name_of_farmer' => 'My Household']);
-        Beneficiary::factory()->create(['name_of_farmer' => 'My Household']);
+        $unassigned = Beneficiary::factory()->create(['name_of_farmer' => 'My Household']);
 
         $body = $this->searchAs($technician, 'my household');
 
-        $this->assertSame(1, $body['total']);
-        $this->assertSame($assigned->id, $body['groups'][0]['results'][0]['id']);
+        $this->assertSame(2, $body['total']);
+        $ids = collect($body['groups'][0]['results'])->pluck('id')->all();
+        $this->assertEqualsCanonicalizing([$assigned->id, $unassigned->id], $ids);
     }
 
     public function test_monitoring_visits_match_through_remarks_and_household(): void
@@ -125,8 +129,10 @@ class SearchTest extends TestCase
         $this->assertSame('/dashboard/admin/monitoring', $body['groups'][0]['results'][0]['link']);
     }
 
-    public function test_a_technician_searching_a_remark_finds_only_their_own_visits(): void
+    public function test_a_technician_searching_a_remark_finds_visits_city_wide(): void
     {
+        // City-wide oversight reads: the technician's remark search reaches
+        // visits logged against households assigned to other technicians too.
         $technician = User::factory()->create(['role' => 'technician']);
         $mine = Beneficiary::factory()->assignedTo($technician)->create();
         $theirs = Beneficiary::factory()->create();
@@ -136,11 +142,12 @@ class SearchTest extends TestCase
 
         $body = $this->searchAs($technician, 'follow up');
 
-        $this->assertSame(1, $body['total']);
-        $this->assertSame($mine->id, $body['groups'][0]['results'][0]['id']);
+        $this->assertSame(2, $body['total']);
+        $ids = collect($body['groups'][0]['results'])->pluck('id')->all();
+        $this->assertEqualsCanonicalizing([$mine->id, $theirs->id], $ids);
     }
 
-    public function test_accounts_group_is_admin_and_doctor_only(): void
+    public function test_accounts_group_appears_for_admin_and_technician(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
         User::factory()->create(['name' => 'Aling Nena Staff', 'email' => 'nena@example.com']);
@@ -148,10 +155,11 @@ class SearchTest extends TestCase
         $adminBody = $this->searchAs($admin, 'nena');
         $this->assertContains('account', $this->groupTypes($adminBody));
 
-        // Same term as a technician: the account group must not appear at all.
+        // Same term as a technician: since the doctor role merged into the
+        // technician, technicians search accounts too.
         $technician = User::factory()->create(['role' => 'technician']);
         $technicianBody = $this->searchAs($technician, 'nena');
-        $this->assertNotContains('account', $this->groupTypes($technicianBody));
+        $this->assertContains('account', $this->groupTypes($technicianBody));
     }
 
     public function test_an_account_search_never_lists_the_caller(): void
@@ -163,6 +171,14 @@ class SearchTest extends TestCase
         // The only match would be the caller themself; the group is absent.
         $this->assertSame([], $body['groups']);
         $this->assertSame(0, $body['total']);
+
+        // The exclusion holds for every staff role — a technician searching
+        // their own name also finds nothing.
+        $technician = User::factory()->create(['role' => 'technician', 'name' => 'Tee Technician']);
+        $techBody = $this->searchAs($technician, 'tee');
+
+        $this->assertSame([], $techBody['groups']);
+        $this->assertSame(0, $techBody['total']);
     }
 
     public function test_an_account_result_links_to_user_management(): void
@@ -176,15 +192,15 @@ class SearchTest extends TestCase
         $this->assertSame('/dashboard/admin/users', $accountGroup['results'][0]['link']);
     }
 
-    public function test_a_household_result_links_to_the_lineage_page_for_staff(): void
+    public function test_a_household_result_links_to_the_lineage_page_for_admins(): void
     {
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        $admin = User::factory()->create(['role' => 'admin']);
         $beneficiary = Beneficiary::factory()->create(['name_of_farmer' => 'Lineage Target']);
 
-        $body = $this->searchAs($doctor, 'lineage');
+        $body = $this->searchAs($admin, 'lineage');
 
         $this->assertSame(
-            "/dashboard/doctor/beneficiaries/{$beneficiary->id}/lineage",
+            "/dashboard/admin/beneficiaries/{$beneficiary->id}/lineage",
             $body['groups'][0]['results'][0]['link'],
         );
     }
@@ -192,7 +208,9 @@ class SearchTest extends TestCase
     public function test_a_household_result_links_to_the_lineage_page_for_every_role(): void
     {
         // Every account is staff now: a household result always lands on the
-        // lineage screen, never a farmer dashboard (that role is gone).
+        // lineage screen, never a farmer dashboard (that role is gone). The
+        // technician absorbed the old doctor role, so its results carry the
+        // technician prefix the doctors' links used to carry.
         $technician = User::factory()->create(['role' => 'technician']);
         $beneficiary = Beneficiary::factory()->assignedTo($technician)->create(['name_of_farmer' => 'My Own Household']);
 

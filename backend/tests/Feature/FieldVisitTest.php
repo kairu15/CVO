@@ -122,11 +122,11 @@ class FieldVisitTest extends TestCase
             'purpose' => 'routine-monitoring',
         ];
 
-        foreach (['doctor', 'admin'] as $role) {
-            $this->actingAs(User::factory()->create(['role' => $role]))
-                ->postJson('/api/v1/field-visits', $payload)
-                ->assertForbidden();
-        }
+        // The admin is the only non-technician staff role left (the old
+        // doctor role was merged into technician — and technicians log trips).
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->postJson('/api/v1/field-visits', $payload)
+            ->assertForbidden();
     }
 
     public function test_create_validates_the_purpose_and_required_fields(): void
@@ -235,9 +235,9 @@ class FieldVisitTest extends TestCase
     }
 
     /**
-     * The technician scope is by visiting technician, not by assigned
-     * beneficiary — a deliberate departure from every other module, because a
-     * visit is the technician's own activity log.
+     * Reads are oversight-wide: every staff role sees every trip, so the
+     * technician finds their own trip against another technician's
+     * beneficiary AND the colleague's trips.
      */
     public function test_a_technician_sees_their_own_trips_even_for_another_technicians_beneficiary(): void
     {
@@ -247,25 +247,38 @@ class FieldVisitTest extends TestCase
         // Our technician visits a farm assigned to someone else.
         $mine = FieldVisit::factory()->by($this->technician)->forBeneficiary($otherBeneficiary)->create();
         // And a trip they did not make.
-        FieldVisit::factory()->by($otherTechnician)->forBeneficiary($otherBeneficiary)->create();
+        $theirs = FieldVisit::factory()->by($otherTechnician)->forBeneficiary($otherBeneficiary)->create();
 
-        $this->actingAs($this->technician)
+        $response = $this->actingAs($this->technician)
             ->getJson('/api/v1/field-visits')
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $mine->id);
+            ->assertJsonCount(2, 'data');
+
+        $ids = collect($response->json('data'))->pluck('id')->all();
+        $this->assertEqualsCanonicalizing([$mine->id, $theirs->id], $ids);
     }
 
-    public function test_a_technician_cannot_read_another_authors_visit_by_id(): void
+    public function test_a_technician_can_read_but_not_rewrite_another_authors_visit(): void
     {
-        // Visits scope by author: another technician's trip is invisible, not
-        // merely forbidden — it must not even confirm the row exists.
+        // Reads are city-wide (the technician absorbed the old doctor role's
+        // oversight), but the WRITE boundary is still the author's: a
+        // colleague's trip cannot be rewritten by another technician.
         $other = User::factory()->create(['role' => 'technician']);
         $visit = FieldVisit::factory()->by($other)->forBeneficiary($this->beneficiary)->create();
 
         $this->actingAs($this->technician)
             ->getJson("/api/v1/field-visits/{$visit->id}")
-            ->assertNotFound();
+            ->assertOk()
+            ->assertJsonPath('data.id', $visit->id);
+
+        $this->actingAs($this->technician)
+            ->patchJson("/api/v1/field-visits/{$visit->id}", ['notes' => 'Rewriting.'])
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('field_visits', [
+            'id' => $visit->id,
+            'notes' => $visit->notes,
+        ]);
     }
 
     public function test_visits_are_returned_newest_first(): void

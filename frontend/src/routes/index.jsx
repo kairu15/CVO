@@ -120,14 +120,6 @@ export default function AppRoutes() {
               }
             />
             <Route
-              path="/dashboard/doctor"
-              element={
-                <RoleRoute dashboard="doctor">
-                  <RoleDashboard roleKey="doctor" />
-                </RoleRoute>
-              }
-            />
-            <Route
               path="/dashboard/technician"
               element={
                 <RoleRoute dashboard="technician">
@@ -141,14 +133,6 @@ export default function AppRoutes() {
               element={
                 <RoleRoute dashboard="admin">
                   <MonitoringPage roleKey="admin" />
-                </RoleRoute>
-              }
-            />
-            <Route
-              path="/dashboard/doctor/monitoring"
-              element={
-                <RoleRoute dashboard="doctor">
-                  <MonitoringPage roleKey="doctor" />
                 </RoleRoute>
               }
             />
@@ -209,21 +193,13 @@ export default function AppRoutes() {
             />
 
             {/* Barangay dispersal analytics — the Reports tab's own page:
-                admin/doctor city-wide, technician scoped to their assigned
-                households server-side. */}
+                city-wide for every staff role (the technician absorbed the
+                old doctor role's oversight). */}
             <Route
               path="/dashboard/admin/reports/barangay-dispersal"
               element={
                 <RoleRoute dashboard="admin">
                   <BarangayDispersalPage roleKey="admin" />
-                </RoleRoute>
-              }
-            />
-            <Route
-              path="/dashboard/doctor/reports/barangay-dispersal"
-              element={
-                <RoleRoute dashboard="doctor">
-                  <BarangayDispersalPage roleKey="doctor" />
                 </RoleRoute>
               }
             />
@@ -267,42 +243,42 @@ export default function AppRoutes() {
               }
             />
 
-            {/* Clinical health records — veterinarian-authored */}
+            {/* Clinical health records — technician-authored */}
             <Route
-              path="/dashboard/doctor/health-records"
+              path="/dashboard/technician/health-records"
               element={
-                <RoleRoute dashboard="doctor">
-                  <HealthRecordsPage roleKey="doctor" />
+                <RoleRoute dashboard="technician">
+                  <HealthRecordsPage roleKey="technician" />
                 </RoleRoute>
               }
             />
 
             {/* Vaccination schedule — derived, read-only */}
             <Route
-              path="/dashboard/doctor/vaccination-schedule"
+              path="/dashboard/technician/vaccination-schedule"
               element={
-                <RoleRoute dashboard="doctor">
-                  <VaccinationSchedulePage roleKey="doctor" />
+                <RoleRoute dashboard="technician">
+                  <VaccinationSchedulePage roleKey="technician" />
                 </RoleRoute>
               }
             />
 
-            {/* Case notes — freeform, veterinarian-authored */}
+            {/* Case notes — freeform, technician-authored */}
             <Route
-              path="/dashboard/doctor/case-notes"
+              path="/dashboard/technician/case-notes"
               element={
-                <RoleRoute dashboard="doctor">
-                  <CaseNotesPage roleKey="doctor" />
+                <RoleRoute dashboard="technician">
+                  <CaseNotesPage roleKey="technician" />
                 </RoleRoute>
               }
             />
 
             {/* Animal health rollup — derived, read-only */}
             <Route
-              path="/dashboard/doctor/animal-health"
+              path="/dashboard/technician/animal-health"
               element={
-                <RoleRoute dashboard="doctor">
-                  <AnimalHealthPage roleKey="doctor" />
+                <RoleRoute dashboard="technician">
+                  <AnimalHealthPage roleKey="technician" />
                 </RoleRoute>
               }
             />
@@ -328,14 +304,6 @@ export default function AppRoutes() {
               }
             />
             <Route
-              path="/dashboard/doctor/notifications"
-              element={
-                <RoleRoute dashboard="doctor">
-                  <NotificationsPage roleKey="doctor" />
-                </RoleRoute>
-              }
-            />
-            <Route
               path="/dashboard/technician/notifications"
               element={
                 <RoleRoute dashboard="technician">
@@ -351,16 +319,6 @@ export default function AppRoutes() {
                 <RoleRoute dashboard="admin">
                   <Suspense fallback={<MapFallback />}>
                     <DispersalMapPage roleKey="admin" />
-                  </Suspense>
-                </RoleRoute>
-              }
-            />
-            <Route
-              path="/dashboard/doctor/map"
-              element={
-                <RoleRoute dashboard="doctor">
-                  <Suspense fallback={<MapFallback />}>
-                    <DispersalMapPage roleKey="doctor" />
                   </Suspense>
                 </RoleRoute>
               }

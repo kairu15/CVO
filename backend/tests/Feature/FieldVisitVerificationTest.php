@@ -171,9 +171,11 @@ class FieldVisitVerificationTest extends TestCase
         $beneficiary = Beneficiary::factory()->assignedTo($owner)->create();
         $visit = FieldVisit::factory()->forBeneficiary($beneficiary)->by($owner)->create();
 
+        // Reads are city-wide now, so the row is visible — but annotating it
+        // is an update, and the write stays with the visit's author.
         $this->actingAs($other)
             ->patchJson("/api/v1/field-visits/{$visit->id}/verification-note", ['note' => 'nope'])
-            ->assertNotFound();
+            ->assertForbidden();
     }
 
     public function test_off_site_needs_review_filter_is_server_side(): void
@@ -314,7 +316,7 @@ class FieldVisitVerificationTest extends TestCase
     public function test_report_summary_counts_the_review_bucket(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        $nonAdmin = User::factory()->create(['role' => 'technician']);
         $beneficiary = $this->beneficiaryWithPin();
         $technician = $beneficiary->technician;
 
@@ -337,8 +339,10 @@ class FieldVisitVerificationTest extends TestCase
         $this->assertSame(2, $response->json('data.total'));
         $this->assertSame(100, $response->json('data.threshold_m'));
 
-        // Reporting stays behind view_reports (admin-only by seed).
-        $this->actingAs($doctor)->getJson('/api/v1/admin/report/verification')->assertForbidden();
+        // Reporting stays behind view_reports (admin-only by seed), so the
+        // technician — the other staff role since doctor merged into it — is
+        // refused as well.
+        $this->actingAs($nonAdmin)->getJson('/api/v1/admin/report/verification')->assertForbidden();
     }
 
     public function test_options_expose_the_threshold_to_the_field_form(): void

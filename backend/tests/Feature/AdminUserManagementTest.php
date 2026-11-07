@@ -24,34 +24,34 @@ class AdminUserManagementTest extends TestCase
     {
         $target = User::factory()->create(['role' => 'technician']);
 
-        foreach (['doctor', 'technician'] as $role) {
-            $user = User::factory()->create(['role' => $role]);
+        // The only non-admin role left: the technician (the old doctor role
+        // was merged into it).
+        $user = User::factory()->create(['role' => 'technician']);
 
-            $this->actingAs($user)
-                ->postJson('/api/v1/admin/users', [
-                    'name' => 'New Staff',
-                    'email' => 'new.staff@example.com',
-                    'role' => 'technician',
-                    'password' => 'Str0ng!Pass',
-                    'password_confirmation' => 'Str0ng!Pass',
-                ])
-                ->assertForbidden();
+        $this->actingAs($user)
+            ->postJson('/api/v1/admin/users', [
+                'name' => 'New Staff',
+                'email' => 'new.staff@example.com',
+                'role' => 'technician',
+                'password' => 'Str0ng!Pass',
+                'password_confirmation' => 'Str0ng!Pass',
+            ])
+            ->assertForbidden();
 
-            $this->actingAs($user)
-                ->patchJson("/api/v1/admin/users/{$target->id}", [
-                    'name' => 'Renamed',
-                    'email' => $target->email,
-                ])
-                ->assertForbidden();
+        $this->actingAs($user)
+            ->patchJson("/api/v1/admin/users/{$target->id}", [
+                'name' => 'Renamed',
+                'email' => $target->email,
+            ])
+            ->assertForbidden();
 
-            $this->actingAs($user)
-                ->deleteJson("/api/v1/admin/users/{$target->id}")
-                ->assertForbidden();
+        $this->actingAs($user)
+            ->deleteJson("/api/v1/admin/users/{$target->id}")
+            ->assertForbidden();
 
-            $this->actingAs($user)
-                ->postJson("/api/v1/admin/users/{$target->id}/reactivate")
-                ->assertForbidden();
-        }
+        $this->actingAs($user)
+            ->postJson("/api/v1/admin/users/{$target->id}/reactivate")
+            ->assertForbidden();
 
         // Nothing was touched by the rejected calls.
         $this->assertDatabaseHas('users', [
@@ -66,20 +66,20 @@ class AdminUserManagementTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
 
         $response = $this->actingAs($admin)->postJson('/api/v1/admin/users', [
-            'name' => 'Doc Reyes',
-            'email' => 'Doc.Reyes@Example.com',
-            'role' => 'doctor',
+            'name' => 'Tech Reyes',
+            'email' => 'Tech.Reyes@Example.com',
+            'role' => 'technician',
             'password' => 'Str0ng!Pass',
             'password_confirmation' => 'Str0ng!Pass',
         ]);
 
         $response->assertCreated()
-            ->assertJsonPath('data.role', 'doctor')
+            ->assertJsonPath('data.role', 'technician')
             ->assertJsonPath('data.status', 'active')
             // Email is normalised, so the account signs in with one spelling.
-            ->assertJsonPath('data.email', 'doc.reyes@example.com');
+            ->assertJsonPath('data.email', 'tech.reyes@example.com');
 
-        $created = User::query()->where('email', 'doc.reyes@example.com')->firstOrFail();
+        $created = User::query()->where('email', 'tech.reyes@example.com')->firstOrFail();
 
         $this->assertNotSame('Str0ng!Pass', $created->password);
         $this->assertTrue(Hash::check('Str0ng!Pass', $created->password));
@@ -173,7 +173,9 @@ class AdminUserManagementTest extends TestCase
     public function test_editing_an_account_can_change_its_role(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $target = User::factory()->create(['role' => 'doctor']);
+        // A second administrator the actor demotes — the other endpoint of
+        // the admin<->technician pair now that doctor is gone.
+        $target = User::factory()->create(['role' => 'admin']);
 
         $this->actingAs($admin)
             ->patchJson("/api/v1/admin/users/{$target->id}", [
@@ -199,7 +201,9 @@ class AdminUserManagementTest extends TestCase
             ->patchJson("/api/v1/admin/users/{$admin->id}", [
                 'name' => $admin->name,
                 'email' => $admin->email,
-                'role' => 'doctor',
+                // A perfectly valid role value — the refusal is about
+                // changing your OWN role, not about the vocabulary.
+                'role' => 'technician',
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['role']);
@@ -491,7 +495,7 @@ class AdminUserManagementTest extends TestCase
         $technician = User::factory()->create(['role' => 'technician']);
 
         $this->actingAs($admin)
-            ->patchJson("/api/v1/admin/users/{$technician->id}/role", ['role' => 'doctor'])
+            ->patchJson("/api/v1/admin/users/{$technician->id}/role", ['role' => 'admin'])
             ->assertOk();
 
         $activity = $this->actingAs($admin)
@@ -502,7 +506,7 @@ class AdminUserManagementTest extends TestCase
         $roleChange = collect($activity)->firstWhere('action', 'role_changed');
         $this->assertNotNull($roleChange);
         $this->assertSame('technician', $roleChange['context']['previous_role']);
-        $this->assertSame('doctor', $roleChange['context']['new_role']);
+        $this->assertSame('admin', $roleChange['context']['new_role']);
     }
 
     // ── Barangay filter ─────────────────────────────────────────────────────
@@ -513,17 +517,15 @@ class AdminUserManagementTest extends TestCase
         // (the farmer slice). With no farmer accounts that filter is gone;
         // the role filter is the remaining slice.
         $admin = User::factory()->create(['role' => 'admin']);
-        $doctor = User::factory()->create(['role' => 'doctor']);
         $tech = User::factory()->create(['role' => 'technician']);
 
         $ids = $this->actingAs($admin)
-            ->getJson('/api/v1/admin/users?role=doctor')
+            ->getJson('/api/v1/admin/users?role=technician')
             ->assertOk()
             ->collect('data.*.id');
 
-        $this->assertContains($doctor->id, $ids);
+        $this->assertContains($tech->id, $ids);
         $this->assertNotContains($admin->id, $ids);
-        $this->assertNotContains($tech->id, $ids);
     }
 
     public function test_the_list_rejects_the_removed_farmer_role_filter(): void
@@ -544,9 +546,9 @@ class AdminUserManagementTest extends TestCase
 
         $response = $this->actingAs($admin)
             ->postJson('/api/v1/admin/users', [
-                'name' => 'Invited Vet',
-                'email' => 'invited.vet@example.com',
-                'role' => 'doctor',
+                'name' => 'Invited Tech',
+                'email' => 'invited.aide@example.com',
+                'role' => 'technician',
             ])
             ->assertStatus(201);
 
@@ -555,7 +557,7 @@ class AdminUserManagementTest extends TestCase
 
         // The account cannot sign in yet — nobody knows its password.
         $this->postJson('/api/v1/login', [
-            'identifier' => 'invited.vet@example.com',
+            'identifier' => 'invited.aide@example.com',
             'password' => 'whatever-comes-to-mind',
         ])->assertUnprocessable();
     }
@@ -598,9 +600,9 @@ class AdminUserManagementTest extends TestCase
 
         $this->actingAs($admin)
             ->postJson('/api/v1/admin/users', [
-                'name' => 'Invited Vet',
-                'email' => 'invited2.vet@example.com',
-                'role' => 'doctor',
+                'name' => 'Invited Tech',
+                'email' => 'invited2.tech@example.com',
+                'role' => 'technician',
             ])
             ->assertStatus(201);
 

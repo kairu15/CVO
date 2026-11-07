@@ -13,26 +13,29 @@
  *
  * There is deliberately no `farmer` role: beneficiaries are program records the
  * administrator maintains (see the Beneficiaries screen), never login accounts.
+ * There is deliberately no separate `doctor` role either: the technician covers
+ * the field work AND the clinical record-keeping (health records, case notes,
+ * vaccination schedule, animal health monitoring).
  */
 
-export const ROLE_KEYS = ["admin", "doctor", "technician"];
+export const ROLE_KEYS = ["admin", "technician"];
 
 /**
  * Roles an administrator creates — mirrors `User::STAFF_ROLES` on the server.
  *
- * Every account in the system is one of these three; there is no
+ * Every account in the system is one of these two; there is no
  * self-registration path, and the admin "create account" form offers exactly
  * this list.
  */
-export const STAFF_ROLE_KEYS = ["admin", "doctor", "technician"];
+export const STAFF_ROLE_KEYS = ["admin", "technician"];
 
 /**
  * Roles allowed into *every* dashboard, not just their own.
  *
- * The CVO administrator oversees all three workspaces, so it is the "all
- * access" account — a single login can review the vet and field views without
- * signing in and out. This is what makes admin@example.com an all access
- * account after seeding.
+ * The CVO administrator oversees both workspaces, so it is the "all
+ * access" account — a single login can review the clinical and field views
+ * without signing in and out. This is what makes admin@example.com an all
+ * access account after seeding.
  *
  * NOTE: this only guards routing in the SPA. The same rules are enforced
  * server-side per endpoint (the role_permissions matrix + Policies) — a
@@ -85,54 +88,26 @@ export const roles = {
       },
     ],
   },
-  doctor: {
-    key: "doctor",
-    label: "Veterinarian",
-    shortLabel: "Doctor",
-    dashboardLabel: "Doctor Dashboard",
-    path: "/dashboard/doctor",
-    blurb: "Handles animal health records, vaccination and case notes.",
-    icon: "medical-cross",
-    nav: [
-      { group: null, items: [{ label: "Overview", icon: "grid", to: "/dashboard/doctor" }] },
-      {
-        group: "Monitoring",
-        items: [
-          { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/doctor/monitoring" },
-          { label: "Health Records", icon: "medical-cross", to: "/dashboard/doctor/health-records" },
-          { label: "Vaccination Schedule", icon: "calendar", to: "/dashboard/doctor/vaccination-schedule" },
-          { label: "Case Notes", icon: "file-text", to: "/dashboard/doctor/case-notes" },
-          { label: "Animal Health Monitoring", icon: "activity", to: "/dashboard/doctor/animal-health" },
-        ],
-      },
-      {
-        group: "Program",
-        items: [
-          { label: "Dispersal Map", icon: "map", to: "/dashboard/doctor/map" },
-          { label: "Barangay Dispersal", icon: "chart", to: "/dashboard/doctor/reports/barangay-dispersal" },
-        ],
-      },
-      {
-        group: null,
-        items: [
-          { label: "Notifications", icon: "bell", to: "/dashboard/doctor/notifications", badge: "notifications" },
-        ],
-      },
-    ],
-  },
   technician: {
     key: "technician",
     label: "Field Technician",
     shortLabel: "Technician",
     dashboardLabel: "Technician Dashboard",
     path: "/dashboard/technician",
-    blurb: "Tags animals in the field and records dispersal movements.",
+    blurb:
+      "Tags animals in the field, records dispersal movements, and keeps the health records, vaccination schedule and case notes.",
     icon: "map-pin",
     nav: [
       { group: null, items: [{ label: "Overview", icon: "grid", to: "/dashboard/technician" }] },
       {
         group: "Monitoring",
-        items: [{ label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/technician/monitoring" }],
+        items: [
+          { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/technician/monitoring" },
+          { label: "Health Records", icon: "medical-cross", to: "/dashboard/technician/health-records" },
+          { label: "Vaccination Schedule", icon: "calendar", to: "/dashboard/technician/vaccination-schedule" },
+          { label: "Case Notes", icon: "file-text", to: "/dashboard/technician/case-notes" },
+          { label: "Animal Health Monitoring", icon: "activity", to: "/dashboard/technician/animal-health" },
+        ],
       },
       {
         group: "Program",

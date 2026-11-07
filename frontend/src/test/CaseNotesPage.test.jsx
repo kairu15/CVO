@@ -26,7 +26,7 @@ vi.mock("../api/symptomRulesApi", () => ({
   symptomRulesApi: { active: vi.fn(), list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
 }));
 
-const auth = { user: { id: 10, name: "Dr. Maria Santos", role: "doctor" } };
+const auth = { user: { id: 10, name: "Dr. Maria Santos", role: "technician" } };
 vi.mock("../context/AuthContext", () => ({
   useAuth: () => auth,
 }));
@@ -48,7 +48,7 @@ const NOTES = [
     id: 2,
     beneficiary_id: 12,
     doctor_id: 99,
-    doctor: { id: 99, name: "Dr. Other Vet" },
+    doctor: { id: 99, name: "Marites Cruz" },
     name_of_farmer: "Doyle Walter",
     address: "Dawis",
     animal_type: "Goat",
@@ -65,7 +65,7 @@ function renderPage() {
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <ToastProvider>
-          <CaseNotesPage roleKey="doctor" />
+          <CaseNotesPage roleKey="technician" />
         </ToastProvider>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -75,7 +75,7 @@ function renderPage() {
 describe("CaseNotesPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    auth.user = { id: 10, name: "Dr. Maria Santos", role: "doctor" };
+    auth.user = { id: 10, name: "Dr. Maria Santos", role: "technician" };
     caseNotesApi.list.mockResolvedValue({ data: NOTES, meta: null });
     symptomRulesApi.active.mockResolvedValue([]);
     beneficiariesApi.list.mockResolvedValue([
@@ -94,16 +94,16 @@ describe("CaseNotesPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the animal and the authoring vet on each note", async () => {
+  it("shows the animal and the attending vet on each note", async () => {
     renderPage();
     await screen.findByText("Aling Nena");
 
     expect(screen.getByText("Doyle Walter")).toBeInTheDocument();
     expect(screen.getByText(/Dr\. Maria Santos/)).toBeInTheDocument();
-    expect(screen.getByText(/Dr\. Other Vet/)).toBeInTheDocument();
+    expect(screen.getByText(/Marites Cruz/)).toBeInTheDocument();
   });
 
-  it("offers edit and delete only on notes the vet wrote", async () => {
+  it("offers edit and delete only on notes the technician wrote", async () => {
     renderPage();
     await screen.findByText("Aling Nena");
 

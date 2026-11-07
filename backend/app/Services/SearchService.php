@@ -20,12 +20,13 @@ use Illuminate\Support\Facades\DB;
  * the truth to keep warm.
  *
  * Every query is scoped through the same services the list pages use, so a
- * technician can never search their way to another technician's household.
+ * user can never search their way to rows outside their role's reach.
  * Search adds no new visibility; it only shortcuts to rows the user could
  * already list.
  *
- * Accounts appear for admin/doctor only: technicians have no screen a user row
- * could link to, and a broader account search would itself be a disclosure.
+ * Accounts appear for staff only, never the actor's own row: their own name
+ * is already on screen in the header, and a broader account search would
+ * itself be a disclosure.
  */
 class SearchService
 {
@@ -153,7 +154,7 @@ class SearchService
      */
     private function accountGroup(User $user, string $term): ?array
     {
-        if (! in_array($user->role, ['admin', 'doctor'], true)) {
+        if (! in_array($user->role, ['admin', 'technician'], true)) {
             return null;
         }
 

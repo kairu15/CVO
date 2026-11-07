@@ -102,7 +102,7 @@ class MonitoringRecordController extends Controller
     }
 
     /**
-     * Technician (own entries) / doctor / admin.
+     * Technician / admin — both staff roles have oversight.
      */
     public function update(UpdateMonitoringRecordRequest $request, int $id): MonitoringRecordResource
     {
@@ -144,7 +144,7 @@ class MonitoringRecordController extends Controller
      * Set the MOA status for the dispersal behind a monitoring record.
      *
      * Admin-oversight only (the `monitoring.set-moa` capability, seeded
-     * admin-only) — technicians and doctors keep the existing view/edit
+     * admin-only) — technicians keep the existing view/edit
      * rights on the row but cannot sign off on the program agreement. The
      * write lands on the BENEFICIARY (MOA is per dispersal), so every visit
      * row for that household reflects the new value.

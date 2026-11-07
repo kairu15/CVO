@@ -106,23 +106,23 @@ class DispersalEventTest extends TestCase
             ->assertJsonValidationErrors(['parent_beneficiary_id']);
     }
 
-    public function test_technician_cannot_record_dispersal_for_unassigned_beneficiary(): void
+    public function test_technician_can_record_dispersal_for_any_beneficiary(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
-        $unassigned = Beneficiary::factory()->create(); // no technician
+        $other = Beneficiary::factory()->create(); // no technician assigned
 
         $response = $this->actingAs($technician)->postJson('/api/v1/dispersal-events', [
-            'beneficiary_id' => $unassigned->id,
+            'beneficiary_id' => $other->id,
             'dispersal_type' => 'initial',
         ]);
 
-        // The policy blocks create for beneficiaries outside the
-        // technician's scope — surfaced as a validation failure on the
-        // beneficiary id (the FormRequest scopes the exists rule).
-        $this->assertTrue(in_array($response->status(), [403, 422]));
+        // The technician absorbed the old doctor role's program-wide write
+        // scope, so recording against another household's beneficiary is no
+        // longer a scope violation.
+        $response->assertCreated();
     }
 
-    public function test_a_technician_sees_only_events_touching_their_assignments(): void
+    public function test_a_technician_sees_every_dispersal_event(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
         $mine = Beneficiary::factory()->assignedTo($technician)->create();
@@ -132,7 +132,7 @@ class DispersalEventTest extends TestCase
         $this->actingAs($technician)
             ->getJson('/api/v1/dispersal-events')
             ->assertOk()
-            ->assertJsonCount(1, 'data');
+            ->assertJsonCount(2, 'data');
     }
 
     public function test_lineage_returns_the_pass_on_chain(): void
@@ -243,7 +243,7 @@ class DispersalEventTest extends TestCase
         $this->assertSame('re-dispersal', $chain[2]['dispersal_type']);
     }
 
-    public function test_a_technician_cannot_read_the_lineage_of_an_unassigned_household(): void
+    public function test_a_technician_can_read_the_lineage_of_any_household(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
         $beneficiary = Beneficiary::factory()->create(); // nobody's assignment
@@ -251,7 +251,7 @@ class DispersalEventTest extends TestCase
 
         $this->actingAs($technician)
             ->getJson("/api/v1/beneficiaries/{$beneficiary->id}/lineage")
-            ->assertNotFound();
+            ->assertOk();
     }
 
     public function test_beneficiary_store_accepts_coordinates(): void

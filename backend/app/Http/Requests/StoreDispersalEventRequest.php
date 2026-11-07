@@ -117,13 +117,13 @@ class StoreDispersalEventRequest extends FormRequest
 
     /**
      * The same role scoping BeneficiaryService applies to every list query,
-     * reused here as an exists-rule constraint.
+     * reused here as an exists-rule constraint. Both staff roles are
+     * city-wide (the technician absorbed the old doctor role's oversight).
      */
     private function applyRoleScope($query, User $user): void
     {
         match ($user->role) {
-            'admin', 'doctor' => null,
-            'technician' => $query->where('technician_id', $user->id),
+            'admin', 'technician' => null,
             // No other role exists; scope to nothing rather than everything.
             default => $query->whereRaw('0 = 1'),
         };

@@ -37,13 +37,15 @@ class ProfileService
         ];
 
         if ($user->role === 'technician') {
+            // The technician role carries the field work AND the clinical
+            // record-keeping, so its profile shows both footprints.
             $data['technician'] = [
                 'assigned_farmers' => $user->assignedBeneficiaries()->count(),
             ];
-        } elseif ($user->role === 'doctor') {
+
             // No credential/license field exists in the data model — show the
             // clinical footprint the system does track instead.
-            $data['doctor'] = [
+            $data['clinical'] = [
                 'health_records_count' => $user->authoredHealthRecords()->count(),
                 'case_notes_count' => $user->authoredCaseNotes()->count(),
             ];

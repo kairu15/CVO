@@ -80,8 +80,7 @@ class UpdateDispersalEventRequest extends FormRequest
     private function applyRoleScope($query, User $user): void
     {
         match ($user->role) {
-            'admin', 'doctor' => null,
-            'technician' => $query->where('technician_id', $user->id),
+            'admin', 'technician' => null,
             // No other role exists; scope to nothing rather than everything.
             default => $query->whereRaw('0 = 1'),
         };

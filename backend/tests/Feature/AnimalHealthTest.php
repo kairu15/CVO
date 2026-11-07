@@ -14,7 +14,7 @@ class AnimalHealthTest extends TestCase
 {
     use RefreshDatabase;
 
-    private User $doctor;
+    private User $technician;
 
     private int $interval;
 
@@ -22,7 +22,7 @@ class AnimalHealthTest extends TestCase
     {
         parent::setUp();
 
-        $this->doctor = User::factory()->create(['role' => 'doctor']);
+        $this->technician = User::factory()->create(['role' => 'technician']);
         $this->interval = (int) config('cvo.vaccination_interval_days');
     }
 
@@ -40,17 +40,17 @@ class AnimalHealthTest extends TestCase
             'vaccination_date' => now()->subDays(10)->toDateString(),
         ]);
 
-        HealthRecord::factory()->by($this->doctor)->forBeneficiary($animal)->create([
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($animal)->create([
             'date_recorded' => now()->subDays(6)->toDateString(),
             'diagnosis' => 'Mastitis',
             'outcome' => 'recovered',
         ]);
 
-        CaseNote::factory()->count(2)->by($this->doctor)->forBeneficiary($animal)->create([
+        CaseNote::factory()->count(2)->by($this->technician)->forBeneficiary($animal)->create([
             'date_noted' => now()->subDays(4)->toDateString(),
         ]);
 
-        $response = $this->actingAs($this->doctor)->getJson('/api/v1/animal-health');
+        $response = $this->actingAs($this->technician)->getJson('/api/v1/animal-health');
 
         $response->assertOk()
             ->assertJsonPath('data.0.id', $animal->id)
@@ -67,7 +67,7 @@ class AnimalHealthTest extends TestCase
     {
         $animal = $this->animal();
 
-        $response = $this->actingAs($this->doctor)->getJson('/api/v1/animal-health');
+        $response = $this->actingAs($this->technician)->getJson('/api/v1/animal-health');
 
         $response->assertOk()
             ->assertJsonPath('data.0.id', $animal->id)
@@ -82,18 +82,18 @@ class AnimalHealthTest extends TestCase
     {
         $animal = $this->animal();
 
-        HealthRecord::factory()->by($this->doctor)->forBeneficiary($animal)->create([
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($animal)->create([
             'date_recorded' => now()->subMonths(3)->toDateString(),
             'diagnosis' => 'Old diagnosis',
             'outcome' => 'recovered',
         ]);
-        HealthRecord::factory()->by($this->doctor)->forBeneficiary($animal)->create([
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($animal)->create([
             'date_recorded' => now()->subDays(2)->toDateString(),
             'diagnosis' => 'Current diagnosis',
             'outcome' => 'ongoing',
         ]);
 
-        $this->actingAs($this->doctor)
+        $this->actingAs($this->technician)
             ->getJson('/api/v1/animal-health')
             ->assertOk()
             ->assertJsonPath('data.0.latest_diagnosis', 'Current diagnosis')
@@ -110,23 +110,23 @@ class AnimalHealthTest extends TestCase
         $animal = $this->animal();
 
         foreach (['ongoing', 'improving'] as $outcome) {
-            HealthRecord::factory()->by($this->doctor)->forBeneficiary($animal)->create([
+            HealthRecord::factory()->by($this->technician)->forBeneficiary($animal)->create([
                 'outcome' => $outcome,
             ]);
         }
 
         // No outcome yet also counts as open — the case has not been closed out.
-        HealthRecord::factory()->by($this->doctor)->forBeneficiary($animal)->create([
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($animal)->create([
             'outcome' => null,
         ]);
 
         foreach (['recovered', 'referred', 'deceased'] as $closed) {
-            HealthRecord::factory()->by($this->doctor)->forBeneficiary($animal)->create([
+            HealthRecord::factory()->by($this->technician)->forBeneficiary($animal)->create([
                 'outcome' => $closed,
             ]);
         }
 
-        $this->actingAs($this->doctor)
+        $this->actingAs($this->technician)
             ->getJson('/api/v1/animal-health')
             ->assertOk()
             ->assertJsonPath('data.0.open_cases', 3);
@@ -136,7 +136,7 @@ class AnimalHealthTest extends TestCase
     {
         $animal = $this->animal();
 
-        HealthRecord::factory()->by($this->doctor)->forBeneficiary($animal)->create([
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($animal)->create([
             'outcome' => 'ongoing',
         ]);
 
@@ -145,7 +145,7 @@ class AnimalHealthTest extends TestCase
             'vaccination_date' => now()->subDays(5)->toDateString(),
         ]);
 
-        $response = $this->actingAs($this->doctor)->getJson('/api/v1/animal-health');
+        $response = $this->actingAs($this->technician)->getJson('/api/v1/animal-health');
 
         $response->assertOk()
             ->assertJsonPath('data.0.needs_attention', true)
@@ -160,7 +160,7 @@ class AnimalHealthTest extends TestCase
             'vaccination_date' => now()->subDays($this->interval + 5)->toDateString(),
         ]);
 
-        $this->actingAs($this->doctor)
+        $this->actingAs($this->technician)
             ->getJson('/api/v1/animal-health')
             ->assertOk()
             ->assertJsonPath('data.0.needs_attention', true)
@@ -175,11 +175,11 @@ class AnimalHealthTest extends TestCase
         MonitoringRecord::factory()->for($animal, 'beneficiary')->create([
             'vaccination_date' => now()->subDays(5)->toDateString(),
         ]);
-        HealthRecord::factory()->by($this->doctor)->forBeneficiary($animal)->create([
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($animal)->create([
             'outcome' => 'recovered',
         ]);
 
-        $this->actingAs($this->doctor)
+        $this->actingAs($this->technician)
             ->getJson('/api/v1/animal-health')
             ->assertOk()
             ->assertJsonPath('data.0.needs_attention', false)
@@ -193,7 +193,7 @@ class AnimalHealthTest extends TestCase
     public function test_the_attention_filter_matches_the_derived_flag(): void
     {
         $needsAttention = $this->animal();          // never vaccinated
-        HealthRecord::factory()->by($this->doctor)->forBeneficiary($needsAttention)->create([
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($needsAttention)->create([
             'outcome' => 'ongoing',
         ]);
 
@@ -202,7 +202,7 @@ class AnimalHealthTest extends TestCase
             'vaccination_date' => now()->subDays(5)->toDateString(),
         ]);
 
-        $response = $this->actingAs($this->doctor)
+        $response = $this->actingAs($this->technician)
             ->getJson('/api/v1/animal-health?filter=attention');
 
         $response->assertOk()->assertJsonCount(1, 'data');
@@ -211,7 +211,7 @@ class AnimalHealthTest extends TestCase
 
         // And every row the unfiltered list marks as needing attention is
         // exactly the set the filter returns.
-        $all = $this->actingAs($this->doctor)->getJson('/api/v1/animal-health');
+        $all = $this->actingAs($this->technician)->getJson('/api/v1/animal-health');
         $flagged = collect($all->json('data'))
             ->where('needs_attention', true)
             ->pluck('id')
@@ -223,23 +223,27 @@ class AnimalHealthTest extends TestCase
 
     public function test_an_unknown_filter_is_rejected(): void
     {
-        $this->actingAs($this->doctor)
+        $this->actingAs($this->technician)
             ->getJson('/api/v1/animal-health?filter=maybe')
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['filter']);
     }
 
-    public function test_a_technician_sees_only_assigned_animals(): void
+    public function test_a_technician_sees_the_city_wide_rollup(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
         $assigned = Beneficiary::factory()->assignedTo($technician)->create();
-        $this->animal();
+        // A household assigned to nobody is no longer filtered out: the
+        // technician absorbed the old doctor role's city-wide oversight.
+        $unassigned = $this->animal();
 
-        $this->actingAs($technician)
+        $response = $this->actingAs($technician)
             ->getJson('/api/v1/animal-health')
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $assigned->id);
+            ->assertJsonCount(2, 'data');
+
+        $returned = collect($response->json('data'))->pluck('id')->sort()->values()->all();
+        $this->assertSame([$assigned->id, $unassigned->id], $returned);
     }
 
     public function test_guests_are_rejected(): void

@@ -222,10 +222,14 @@ class FieldVisitController extends Controller
         $this->verification->refresh($visit);
 
         // Evidence was just submitted — tell the supervisors who review this
-        // household: admins for oversight, doctors because the photo carries
-        // the animal's condition they triage on. The technician's own visit
-        // needs no self-alert.
-        $supervisors = User::query()->whereIn('role', ['admin', 'doctor'])->get();
+        // household: admins for oversight, technicians because the photo
+        // carries the animal's condition they triage on (the technician role
+        // absorbed the old doctor role's health oversight). The submitting
+        // technician's own visit needs no self-alert.
+        $supervisors = User::query()
+            ->whereIn('role', ['admin', 'technician'])
+            ->where('id', '!=', $request->user()->id)
+            ->get();
 
         foreach ($supervisors as $admin) {
             $this->notifications->create($admin, [
@@ -234,7 +238,9 @@ class FieldVisitController extends Controller
                 'beneficiary_id' => $visit->beneficiary_id,
                 'title' => 'Field visit photo submitted',
                 'message' => "{$request->user()->name} submitted a geotagged photo for {$visit->beneficiary->name_of_farmer} in {$visit->beneficiary->address}.",
-                'link' => '/dashboard/admin/monitoring',
+                // Role-shaped link: every staff role has its own monitoring
+                // dashboard now that technicians are photo reviewers too.
+                'link' => "/dashboard/{$admin->role}/monitoring",
             ]);
         }
 

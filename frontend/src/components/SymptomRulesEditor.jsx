@@ -10,10 +10,10 @@ import { Icon } from "./Icons";
  *
  * The editable half of the Rule-Based Health Concern Hints. A rule maps a
  * keyword list to a plain-language "consider checking…" prompt; the case-note
- * and health-record forms show matching hints as the doctor types.
+ * and health-record forms show matching hints as the technician types.
  *
  * Editable here on purpose: a hardcoded rule table would need a code change
- * every time the CVO's veterinarian wanted to add or correct a hint, which is
+ * every time the CVO's clinical staff wanted to add or correct a hint, which is
  * what would make it a one-off demo instead of a tool. Nothing in this module
  * is AI/ML, and the copy says so.
  */
@@ -167,7 +167,7 @@ export function SymptomRulesEditor() {
       </div>
 
       <p className="mt-1.5 max-w-2xl text-xs text-slate-500">
-        Rule-based hints shown while a doctor types a case note or health record.
+        Rule-based hints shown while a technician types a case note or health record.
         Matching is a fixed keyword lookup — <strong>not</strong> a model, and
         not a diagnosis. Each entry is one keyword or phrase; separate synonyms
         with commas.
@@ -235,7 +235,7 @@ export function SymptomRulesEditor() {
               />
             </RuleField>
 
-            <RuleField label="Hint shown to the doctor" error={fieldErrors.hint} full>
+            <RuleField label="Hint shown to the technician" error={fieldErrors.hint} full>
               <textarea
                 rows={2}
                 value={form.hint}

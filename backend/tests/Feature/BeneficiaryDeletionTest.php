@@ -67,7 +67,7 @@ class BeneficiaryDeletionTest extends TestCase
         [$beneficiary, $record] = $this->enrollHousehold();
 
         $technician = User::factory()->create(['role' => 'technician', 'name' => 'Tech '.uniqid()]);
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        $clinician = User::factory()->create(['role' => 'technician']);
 
         // Assign the technician: appends to technician_assignments + notifies.
         $this->actingAs($this->admin)
@@ -94,8 +94,8 @@ class BeneficiaryDeletionTest extends TestCase
             'capture_second' => now()->second,
         ]);
 
-        $health = HealthRecord::factory()->forBeneficiary($beneficiary)->by($doctor)->create();
-        $note = CaseNote::factory()->forBeneficiary($beneficiary)->by($doctor)->create();
+        $health = HealthRecord::factory()->forBeneficiary($beneficiary)->by($clinician)->create();
+        $note = CaseNote::factory()->forBeneficiary($beneficiary)->by($clinician)->create();
 
         $dispersal = DispersalEvent::factory()->initial($beneficiary)->create();
 

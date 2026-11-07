@@ -14,8 +14,8 @@ use Tests\TestCase;
  * MOA is an agreement PER DISPERSAL, stored on the beneficiary (animal +
  * household) row rather than per visit. Flipping it is an admin-oversight
  * action gated on the `monitoring.set-moa` capability (seeded admin-only) —
- * doctors and technicians keep their existing edit rights on the row but
- * cannot sign off on the program agreement.
+ * technicians keep their existing edit rights on the row but cannot sign off
+ * on the program agreement.
  */
 class MonitoringMoaTest extends TestCase
 {
@@ -95,15 +95,10 @@ class MonitoringMoaTest extends TestCase
         }
     }
 
-    public function test_doctor_and_technician_cannot_set_moa(): void
+    public function test_technician_cannot_set_moa(): void
     {
-        $doctor = User::factory()->create(['role' => 'doctor']);
-
-        $this->actingAs($doctor)
-            ->patchJson("/api/v1/monitoring-records/{$this->record->id}/moa", ['moa_signed' => true])
-            ->assertForbidden();
-
-        // Even the technician who logged the visit cannot flip the agreement.
+        // Even the technician who logged the visit cannot flip the agreement:
+        // editing the row is oversight work, signing off on the MOA is not.
         $this->actingAs($this->technician)
             ->patchJson("/api/v1/monitoring-records/{$this->record->id}/moa", ['moa_signed' => true])
             ->assertForbidden();
@@ -151,8 +146,10 @@ class MonitoringMoaTest extends TestCase
 
     public function test_technician_scoping_is_unchanged_by_the_new_fields(): void
     {
-        // A technician must not see another technician's household merely
-        // because the registry fields were added.
+        // The registry fields do not create a second visibility rule: the
+        // technician reads the same city-wide slice it always has since the
+        // doctor role's oversight merged in — another technician's household
+        // included — with each row still pointing at its own household.
         $otherTechnician = User::factory()->create(['role' => 'technician']);
         $otherBeneficiary = Beneficiary::factory()
             ->assignedTo($otherTechnician)
@@ -173,9 +170,11 @@ class MonitoringMoaTest extends TestCase
             ->assertOk()
             ->json('data');
 
-        $this->assertCount(2, $rows); // only the two rows of their own household
-        foreach ($rows as $row) {
-            $this->assertSame($this->beneficiary->id, $row['beneficiary_id']);
-        }
+        // Both households' rows are visible; the setUp row makes the third.
+        $this->assertCount(3, $rows);
+
+        $rowFor = collect($rows)->firstWhere('beneficiary_id', $otherBeneficiary->id);
+        $this->assertNotNull($rowFor);
+        $this->assertSame('99-99-99-999-999999', $rowFor['rsbsa_number']);
     }
 }

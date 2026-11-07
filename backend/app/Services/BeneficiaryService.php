@@ -15,7 +15,6 @@ use App\Models\UserNotification;
 use App\Support\Barangays;
 use App\Support\Pagination;
 use Database\Factories\BeneficiaryFactory;
-use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -36,8 +35,8 @@ class BeneficiaryService
     /**
      * Role-scoped beneficiary list.
      *
-     * admin/doctor: everything. technician: only assigned beneficiaries.
-     * The scoping is applied at the query level so
+     * admin and technician: everything (the technician absorbed the old
+     * doctor role's oversight). The scoping is applied at the query level so
      * the API can never leak rows the client merely failed to filter.
      *
      * `$perPage` is caller-controlled and clamped to
@@ -76,18 +75,17 @@ class BeneficiaryService
      * The same role scoping as a reusable query — MonitoringRecordService
      * applies it through the beneficiary relationship.
      *
-     * A technician's visibility is their ACTIVE assignments (the
-     * beneficiaries.technician_id column, one active technician per
-     * beneficiary). History lives in the technician_assignments audit
-     * table and never grants access.
+     * Every staff role sees the city-wide record: the technician carries the
+     * field work AND the clinical oversight the old doctor role held, so
+     * there is no assigned-only read slice any more. (Write actions are
+     * still gated by the capability matrix and Policies.)
      */
     public function scopeQueryFor(User $user): Builder
     {
         $query = Beneficiary::query();
 
         return match ($user->role) {
-            'admin', 'doctor' => $query,
-            'technician' => $query->where('technician_id', $user->id),
+            'admin', 'technician' => $query,
             // No other role exists. An unknown role sees nothing rather than
             // falling through to "everything" — fail closed.
             default => $query->whereRaw('0 = 1'),
@@ -97,30 +95,16 @@ class BeneficiaryService
     /**
      * Fetch ONE beneficiary with role-appropriate failure modes.
      *
-     * admin/doctor: a record outside their scope is simply not found
-     * for them — 404, exactly as before. A TECHNICIAN pointing at a
-     * beneficiary they are not assigned to is a permissions boundary, not a
-     * missing row, so it answers 403 — a silent 404 there would read as a
-     * bug rather than an access rule.
+     * Every staff role reads the city-wide record (the technician absorbed
+     * the old doctor role's oversight), so a record outside anyone's scope
+     * is simply not found — 404, exactly as before. There is no
+     * assigned-only read slice left, so no 403 boundary arises here.
      *
      * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
-     * @throws AuthorizationException
      */
     public function findFor(User $user, int $beneficiaryId): Beneficiary
     {
-        $beneficiary = $this->scopeQueryFor($user)->find($beneficiaryId);
-
-        if ($beneficiary) {
-            return $beneficiary;
-        }
-
-        if ($user->role === 'technician'
-            && Beneficiary::query()->whereKey($beneficiaryId)->exists()) {
-            throw new AuthorizationException('This farmer is not assigned to you.');
-        }
-
-        // Genuinely missing (or out of scope for a non-technician role).
-        abort(404);
+        return $this->scopeQueryFor($user)->findOrFail($beneficiaryId);
     }
 
     /**

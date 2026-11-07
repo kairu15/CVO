@@ -17,11 +17,7 @@ class MonitoringRecordPolicy
             return false;
         }
 
-        if (in_array($user->role, ['admin', 'doctor'], true)) {
-            return true;
-        }
-
-        return $user->role === 'technician' && $record->beneficiary->technician_id === $user->id;
+        return in_array($user->role, ['admin', 'technician'], true);
     }
 
     /**
@@ -33,7 +29,8 @@ class MonitoringRecordPolicy
     }
 
     /**
-     * Technicians edit their own entries; doctor and admin have oversight.
+     * Technician and admin have oversight — every staff role may correct a
+     * monitoring row.
      */
     public function update(User $user, MonitoringRecord $record): bool
     {
@@ -41,11 +38,7 @@ class MonitoringRecordPolicy
             return false;
         }
 
-        if (in_array($user->role, ['admin', 'doctor'], true)) {
-            return true;
-        }
-
-        return $user->role === 'technician' && $record->technician_id === $user->id;
+        return in_array($user->role, ['admin', 'technician'], true);
     }
 
     public function delete(User $user, MonitoringRecord $record): bool
@@ -61,8 +54,8 @@ class MonitoringRecordPolicy
     /**
      * Setting the dispersal's MOA status is an admin-oversight action, gated
      * on its own capability (seeded admin-only) rather than `monitoring.update`
-     * — doctors and technicians may edit monitoring records, but signing off
-     * on the program agreement is not their call. Expressing it as a
+     * — technicians may edit monitoring records, but signing off on the
+     * program agreement is not their call. Expressing it as a
      * capability keeps the boundary visible and adjustable on the Roles &
      * Permissions screen.
      */

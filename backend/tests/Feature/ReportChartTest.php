@@ -43,11 +43,9 @@ class ReportChartTest extends TestCase
     {
         $this->getJson('/api/v1/admin/report/charts/dispersal-trend')->assertUnauthorized();
 
-        foreach (['doctor', 'technician'] as $role) {
-            $this->actingAs(User::factory()->create(['role' => $role]))
-                ->getJson('/api/v1/admin/report/charts/dispersal-trend')
-                ->assertForbidden();
-        }
+        $this->actingAs(User::factory()->create(['role' => 'technician']))
+            ->getJson('/api/v1/admin/report/charts/dispersal-trend')
+            ->assertForbidden();
     }
 
     public function test_dispersal_trend_buckets_months_and_zero_fills(): void

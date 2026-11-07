@@ -85,7 +85,7 @@ describe("HealthConcernHints", () => {
     expect(screen.getByText(/Matched from keywords by a fixed rule table/)).toBeInTheDocument();
   });
 
-  it("lets the doctor dismiss an individual hint", async () => {
+  it("lets the technician dismiss an individual hint", async () => {
     const user = userEvent.setup();
     renderHints({ text: "diarrhea and limping", animalType: null });
 

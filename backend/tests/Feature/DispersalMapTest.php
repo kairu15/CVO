@@ -18,8 +18,9 @@ use Tests\TestCase;
  * against EXACT answers — dates newest first with voided ones gone, the two
  * date modes (on / as-of) agreeing with the ownership chain, Asia/Manila day
  * boundaries, future dates refused, zero-activity barangays present with 0,
- * polygon counts equal to pin counts, the technician's scoped + masked view,
- * and the coordinate hygiene rules (no invented positions).
+ * polygon counts equal to pin counts, the city-wide unmasked view every staff
+ * role shares (the technician absorbed the old doctor row scope), and the
+ * coordinate hygiene rules (no invented positions).
  */
 class DispersalMapTest extends TestCase
 {
@@ -504,7 +505,7 @@ class DispersalMapTest extends TestCase
      |  Scoping & masking                                                  |
      * ------------------------------------------------------------------ */
 
-    public function test_a_technician_sees_only_events_touching_their_households(): void
+    public function test_a_technician_sees_every_event_in_the_snapshot(): void
     {
         $admin = $this->admin();
         $tech = $this->technician();
@@ -512,47 +513,52 @@ class DispersalMapTest extends TestCase
         $other = $this->beneficiaryIn($this->barangay(1), ['latitude' => 9.55, 'longitude' => 122.85]);
 
         $mineAnimal = $this->disperse($admin, $mine, '2026-10-20', 'T1');
-        $this->disperse($admin, $other, '2026-10-20', 'T2');
+        $otherAnimal = $this->disperse($admin, $other, '2026-10-20', 'T2');
 
         $data = $this->snapshot($tech, '2026-10-20', 'on');
 
-        $this->assertSame([$mineAnimal->id], $this->pinAnimalIds($data));
-        $this->assertTrue($data['scoped']);
+        // Nobody is row-scoped any more: the technician's snapshot is the
+        // city-wide one, assignments notwithstanding.
+        $this->assertSame(
+            collect([$mineAnimal->id, $otherAnimal->id])->sort()->values()->all(),
+            $this->pinAnimalIds($data),
+        );
+        $this->assertFalse($data['scoped']);
     }
 
-    public function test_a_technician_sees_a_moved_animals_event_but_the_new_owner_masked(): void
+    public function test_a_technician_sees_a_moved_animal_at_its_new_owner_unmasked(): void
     {
         $admin = $this->admin();
         $tech = $this->technician();
         $newHouse = $this->barangay(1);
         $mine = $this->beneficiaryIn($this->barangay(0), ['technician_id' => $tech->id, 'latitude' => 9.5, 'longitude' => 122.8]);
-        $unassigned = $this->beneficiaryIn($newHouse, ['latitude' => 9.55, 'longitude' => 122.85]);
+        $recipient = $this->beneficiaryIn($newHouse, ['latitude' => 9.55, 'longitude' => 122.85]);
 
         $animal = $this->disperse($admin, $mine, '2026-10-20', 'T1');
-        $this->redisperse($admin, $animal->id, $unassigned, '2026-10-25');
+        $this->redisperse($admin, $animal->id, $recipient, '2026-10-25');
 
         $data = $this->snapshot($tech, '2026-10-25', 'as_of');
 
-        // The handover touched THEIR household (it was the source), so the
-        // event is in scope — but the new owner's name and pin are not.
+        // The owner's name AND pin travel with the pin for every staff role.
         $this->assertCount(1, $data['pins']);
-        $this->assertTrue($data['pins'][0]['owner']['masked']);
-        $this->assertSame("Beneficiary in {$newHouse->name}", $data['pins'][0]['owner']['label']);
-        $this->assertNull($data['pins'][0]['owner']['id']);
-        $this->assertStringNotContainsString($unassigned->name_of_farmer, $data['pins'][0]['owner']['label']);
-        $this->assertTrue($data['pins'][0]['approximate']);
-        $this->assertSame('barangay_centroid', $data['pins'][0]['location_source']);
+        $this->assertFalse($data['pins'][0]['owner']['masked']);
+        $this->assertSame($recipient->name_of_farmer, $data['pins'][0]['owner']['label']);
+        $this->assertSame($recipient->id, $data['pins'][0]['owner']['id']);
+        $this->assertSame(9.55, $data['pins'][0]['latitude']);
+        $this->assertSame(122.85, $data['pins'][0]['longitude']);
+        $this->assertFalse($data['pins'][0]['approximate']);
+        $this->assertFalse($data['scoped']);
     }
 
-    public function test_admin_and_doctor_see_everything_unmasked(): void
+    public function test_admin_and_technician_see_everything_unmasked(): void
     {
         $admin = $this->admin();
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        $technician = User::factory()->create(['role' => 'technician']);
         $owner = $this->beneficiaryIn($this->barangay(0), ['latitude' => 9.5, 'longitude' => 122.8]);
 
         $this->disperse($admin, $owner, '2026-10-20', 'T1');
 
-        foreach ([$admin, $doctor] as $viewer) {
+        foreach ([$admin, $technician] as $viewer) {
             $data = $this->snapshot($viewer, '2026-10-20', 'on');
             $this->assertCount(1, $data['pins']);
             $this->assertFalse($data['pins'][0]['owner']['masked']);

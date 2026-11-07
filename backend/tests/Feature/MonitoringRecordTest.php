@@ -78,19 +78,21 @@ class MonitoringRecordTest extends TestCase
             ->assertJsonPath('data.address', $this->beneficiary->address);
     }
 
-    public function test_doctors_cannot_create_records_but_can_edit_them(): void
+    public function test_admin_has_oversight_and_can_edit_records_but_cannot_create_them(): void
     {
-        $doctor = User::factory()->create(['role' => 'doctor']);
         $record = MonitoringRecord::factory()->by($this->technician)->for($this->beneficiary, 'beneficiary')->create();
 
-        $this->actingAs($doctor)
+        // Logging visits stays technician work — `monitoring.create` is not
+        // granted to admins.
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
             ->postJson('/api/v1/monitoring-records', [
                 'beneficiary_id' => $this->beneficiary->id,
                 'date_monitored' => now()->toDateString(),
             ])
             ->assertForbidden();
 
-        $this->actingAs($doctor)
+        // Oversight: the admin may correct any monitoring row.
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
             ->patchJson("/api/v1/monitoring-records/{$record->id}", [
                 'remarks' => 'Flagged for checkup',
             ])
@@ -98,17 +100,39 @@ class MonitoringRecordTest extends TestCase
             ->assertJsonPath('data.remarks', 'Flagged for checkup');
     }
 
-    public function test_technician_sees_only_records_of_assigned_beneficiaries(): void
+    public function test_a_technician_can_edit_a_record_logged_by_a_colleague(): void
     {
+        // The old doctor role's health oversight was merged into the
+        // technician role, so a technician now corrects any monitoring row —
+        // not only ones they logged themselves.
+        $colleague = User::factory()->create(['role' => 'technician']);
+        $record = MonitoringRecord::factory()->by($colleague)->for($this->beneficiary, 'beneficiary')->create();
+
+        $this->actingAs($this->technician)
+            ->patchJson("/api/v1/monitoring-records/{$record->id}", [
+                'remarks' => 'Corrected by oversight',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.remarks', 'Corrected by oversight');
+    }
+
+    public function test_technician_sees_records_across_the_city(): void
+    {
+        // The technician absorbed the old doctor role's oversight, so the
+        // list reaches every household — including one assigned to another
+        // technician.
         $record = MonitoringRecord::factory()->by($this->technician)->for($this->beneficiary, 'beneficiary')->create();
 
         $otherTechnician = User::factory()->create(['role' => 'technician']);
         $otherBeneficiary = Beneficiary::factory()->assignedTo($otherTechnician)->create();
-        MonitoringRecord::factory()->by($otherTechnician)->for($otherBeneficiary, 'beneficiary')->create();
+        $otherRecord = MonitoringRecord::factory()->by($otherTechnician)->for($otherBeneficiary, 'beneficiary')->create();
 
         $response = $this->actingAs($this->technician)->getJson('/api/v1/monitoring-records');
 
-        $response->assertOk()->assertJsonCount(1, 'data');
+        $response->assertOk()->assertJsonCount(2, 'data');
+
+        $ids = collect($response->json('data'))->pluck('id')->all();
+        $this->assertEqualsCanonicalizing([$record->id, $otherRecord->id], $ids);
     }
 
     public function test_create_validates_bcs_range(): void

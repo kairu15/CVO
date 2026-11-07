@@ -73,18 +73,20 @@ class User extends Authenticatable
      * There is no `farmer` role: beneficiaries are program records the admin
      * manages, not login accounts. Every account is a staff account, created
      * by an administrator — new rows always carry an explicit role, so there
-     * is deliberately no default.
+     * is deliberately no default. There is no separate `doctor` role either:
+     * the technician covers the field work AND the clinical record-keeping
+     * (health records, case notes, vaccination oversight).
      *
      * @var list<string>
      */
-    public const ROLES = ['admin', 'doctor', 'technician'];
+    public const ROLES = ['admin', 'technician'];
 
     /**
      * Roles an administrator may assign from the User Management screen.
      *
      * @var list<string>
      */
-    public const STAFF_ROLES = ['admin', 'doctor', 'technician'];
+    public const STAFF_ROLES = ['admin', 'technician'];
 
     /**
      * Get the attributes that should be cast.
@@ -182,7 +184,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Clinical health records this account authored (doctor role).
+     * Clinical health records this account authored (technician role).
      */
     public function authoredHealthRecords(): HasMany
     {
@@ -190,7 +192,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Case notes this account wrote (doctor role).
+     * Case notes this account wrote (technician role).
      */
     public function authoredCaseNotes(): HasMany
     {

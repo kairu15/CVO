@@ -97,7 +97,7 @@ class MonitoringSearchTest extends TestCase
             ->assertJsonPath('data.0.name_of_farmer', 'Aling Nena');
     }
 
-    public function test_search_is_scoped_to_the_caller(): void
+    public function test_search_is_city_wide_for_every_staff_role(): void
     {
         $other = User::factory()->create(['role' => 'technician']);
         $otherBeneficiary = Beneficiary::factory()->assignedTo($other)->create([
@@ -106,13 +106,13 @@ class MonitoringSearchTest extends TestCase
         MonitoringRecord::factory()->by($other)->for($otherBeneficiary, 'beneficiary')
             ->create(['date_monitored' => '2026-09-21']);
 
-        // A technician never finds another technician's farmers — the search
-        // cannot widen the existing scope.
+        // The technician absorbed the old doctor role's oversight, so search
+        // reaches every staff role's records.
         $this->actingAs($this->technician)
             ->getJson('/api/v1/monitoring-records?search=Nena')
             ->assertOk()
-            ->assertJsonCount(0, 'data')
-            ->assertJsonPath('meta.total', 0);
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.total', 1);
     }
 
     public function test_search_rejects_an_overlong_term(): void

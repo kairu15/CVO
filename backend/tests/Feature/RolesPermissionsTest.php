@@ -22,14 +22,14 @@ class RolesPermissionsTest extends TestCase
 
     private User $admin;
 
-    private User $doctor;
+    private User $technician;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->admin = User::factory()->create(['role' => 'admin']);
-        $this->doctor = User::factory()->create(['role' => 'doctor']);
+        $this->technician = User::factory()->create(['role' => 'technician']);
     }
 
     // ── Reading the matrix ──────────────────────────────────────────────────
@@ -41,7 +41,7 @@ class RolesPermissionsTest extends TestCase
 
     public function test_only_manage_roles_holders_can_read_the_matrix(): void
     {
-        $this->actingAs($this->doctor)
+        $this->actingAs($this->technician)
             ->getJson('/api/v1/admin/roles/permissions')
             ->assertForbidden();
     }
@@ -53,22 +53,27 @@ class RolesPermissionsTest extends TestCase
             ->assertOk()
             ->json('data');
 
+        // Two roles only: the doctor role was retired into the technician.
         $roles = collect($data['roles'])->pluck('key')->all();
-        $this->assertSame(['admin', 'doctor', 'technician'], $roles);
+        $this->assertSame(['admin', 'technician'], $roles);
 
         $grants = collect($data['groups'])
             ->flatMap(fn (array $group) => $group['permissions'])
             ->mapWithKeys(fn (array $permission) => [$permission['key'] => $permission['granted']]);
 
-        // Spot-check the seed against the old hardcoded checks.
+        // Spot-check the seed against the Policies' hardcoded checks.
         $this->assertTrue($grants['manage_roles']['admin']);
         $this->assertTrue($grants['view_reports']['admin']);
-        $this->assertFalse($grants['view_reports']['doctor']);
-        $this->assertTrue($grants['health_records.create']['doctor']);
+        $this->assertFalse($grants['view_reports']['technician']);
+        // The clinical authoring grants moved onto the technician with the
+        // retired doctor role; the administrator still cannot author.
+        $this->assertTrue($grants['health_records.create']['technician']);
+        $this->assertTrue($grants['case_notes.create']['technician']);
+        $this->assertTrue($grants['health_records.update']['technician']);
         $this->assertFalse($grants['health_records.create']['admin']);
         $this->assertTrue($grants['monitoring.create']['technician']);
         $this->assertTrue($grants['beneficiaries.view']['technician']);
-        $this->assertFalse($grants['beneficiaries.delete']['doctor']);
+        $this->assertFalse($grants['beneficiaries.delete']['technician']);
         $this->assertTrue($grants['dispersals.create']['technician']);
 
         // Lockout inputs ride along for the SPA's warning.
@@ -79,13 +84,13 @@ class RolesPermissionsTest extends TestCase
 
     public function test_a_guest_and_non_holder_cannot_flip_a_cell(): void
     {
-        $this->patchJson('/api/v1/admin/roles/doctor/permissions', [
+        $this->patchJson('/api/v1/admin/roles/technician/permissions', [
             'permission' => 'view_reports',
             'granted' => true,
         ])->assertUnauthorized();
 
-        $this->actingAs($this->doctor)
-            ->patchJson('/api/v1/admin/roles/doctor/permissions', [
+        $this->actingAs($this->technician)
+            ->patchJson('/api/v1/admin/roles/technician/permissions', [
                 'permission' => 'view_reports',
                 'granted' => true,
             ])
@@ -96,8 +101,8 @@ class RolesPermissionsTest extends TestCase
     {
         $beneficiary = Beneficiary::factory()->create();
 
-        // Doctor can author today (seeded grant)...
-        $this->actingAs($this->doctor)->postJson('/api/v1/health-records', [
+        // The technician can author today (seeded grant)...
+        $this->actingAs($this->technician)->postJson('/api/v1/health-records', [
             'beneficiary_id' => $beneficiary->id,
             'date_recorded' => now()->toDateString(),
             'diagnosis' => 'Healthy',
@@ -105,7 +110,7 @@ class RolesPermissionsTest extends TestCase
 
         // ...revoke through the matrix...
         $this->actingAs($this->admin)
-            ->patchJson("/api/v1/admin/roles/doctor/permissions", [
+            ->patchJson("/api/v1/admin/roles/technician/permissions", [
                 'permission' => 'health_records.create',
                 'granted' => false,
             ])
@@ -113,7 +118,7 @@ class RolesPermissionsTest extends TestCase
 
         // ...and the SAME session is refused on the very next request — no
         // re-login, no cache staleness.
-        $this->actingAs($this->doctor)->postJson('/api/v1/health-records', [
+        $this->actingAs($this->technician)->postJson('/api/v1/health-records', [
             'beneficiary_id' => $beneficiary->id,
             'date_recorded' => now()->toDateString(),
             'diagnosis' => 'Also healthy',
@@ -125,19 +130,20 @@ class RolesPermissionsTest extends TestCase
     public function test_granting_a_capability_opens_the_module_for_that_role(): void
     {
         // Reports are admin-only in the seed.
-        $this->actingAs($this->doctor)
+        $this->actingAs($this->technician)
             ->getJson('/api/v1/admin/report')
             ->assertForbidden();
 
         $this->actingAs($this->admin)
-            ->patchJson('/api/v1/admin/roles/doctor/permissions', [
+            ->patchJson('/api/v1/admin/roles/technician/permissions', [
                 'permission' => 'view_reports',
                 'granted' => true,
             ])
             ->assertOk();
 
-        // The doctor's row-scope never changes — but the module now opens.
-        $this->actingAs($this->doctor)
+        // The technician's reads are city-wide (it absorbed the old doctor
+        // role's oversight) — and the module now opens for it too.
+        $this->actingAs($this->technician)
             ->getJson('/api/v1/admin/report')
             ->assertOk();
     }
@@ -145,7 +151,7 @@ class RolesPermissionsTest extends TestCase
     public function test_an_unknown_permission_or_role_is_rejected(): void
     {
         $this->actingAs($this->admin)
-            ->patchJson('/api/v1/admin/roles/doctor/permissions', [
+            ->patchJson('/api/v1/admin/roles/technician/permissions', [
                 'permission' => 'not_a_permission',
                 'granted' => true,
             ])
@@ -154,6 +160,16 @@ class RolesPermissionsTest extends TestCase
 
         $this->actingAs($this->admin)
             ->patchJson('/api/v1/admin/roles/superadmin/permissions', [
+                'permission' => 'view_reports',
+                'granted' => true,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['role']);
+
+        // The doctor role was retired into technician — there is no matrix
+        // column left to flip for it.
+        $this->actingAs($this->admin)
+            ->patchJson('/api/v1/admin/roles/doctor/permissions', [
                 'permission' => 'view_reports',
                 'granted' => true,
             ])
@@ -198,15 +214,15 @@ class RolesPermissionsTest extends TestCase
 
     public function test_manage_roles_can_move_off_admin_once_another_role_holds_it(): void
     {
-        // Grant manage_roles to doctor (an active doctor account exists)...
+        // Grant manage_roles to technician (an active technician account exists)...
         $this->actingAs($this->admin)
-            ->patchJson('/api/v1/admin/roles/doctor/permissions', [
+            ->patchJson('/api/v1/admin/roles/technician/permissions', [
                 'permission' => 'manage_roles',
                 'granted' => true,
             ])
             ->assertOk();
 
-        // ...now admin can let it go: doctor can hold the pen.
+        // ...now admin can let it go: technician can hold the pen.
         $this->actingAs($this->admin)
             ->patchJson('/api/v1/admin/roles/admin/permissions', [
                 'permission' => 'manage_roles',
@@ -214,7 +230,7 @@ class RolesPermissionsTest extends TestCase
             ])
             ->assertOk();
 
-        $this->actingAs($this->doctor)
+        $this->actingAs($this->technician)
             ->getJson('/api/v1/admin/roles/permissions')
             ->assertOk();
     }

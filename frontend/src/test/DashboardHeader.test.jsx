@@ -42,7 +42,7 @@ const SEARCH_GROUPS = [
         id: 7,
         title: "Aling Nena",
         subtitle: "Carabao (F) — Banay Banay",
-        link: "/dashboard/doctor/beneficiaries/7/lineage",
+        link: "/dashboard/technician/beneficiaries/7/lineage",
       },
     ],
   },
@@ -57,11 +57,11 @@ const ALERTS = [
     message: "Carabao (F) in Banay Banay passed its vaccination due date.",
     date: "2026-08-20",
     days_until_due: -34,
-    link: "/dashboard/doctor/monitoring",
+    link: "/dashboard/technician/monitoring",
   },
 ];
 
-const USER = { id: 1, name: "Dr. Maria Santos", role: "doctor" };
+const USER = { id: 1, name: "Dr. Maria Santos", role: "technician" };
 
 function renderHeader() {
   // Fresh client per render: polling state must not leak between tests.
@@ -73,7 +73,7 @@ function renderHeader() {
     <QueryClientProvider client={client}>
       <ThemeProvider>
         <MemoryRouter>
-          <DashboardHeader title="Doctor Dashboard" onOpenSidebar={vi.fn()} />
+          <DashboardHeader title="Technician Dashboard" onOpenSidebar={vi.fn()} />
         </MemoryRouter>
       </ThemeProvider>
     </QueryClientProvider>,
@@ -101,7 +101,7 @@ function renderHeaderAt(entries, index) {
               path="*"
               element={
                 <>
-                  <DashboardHeader title="Doctor Dashboard" onOpenSidebar={vi.fn()} />
+                  <DashboardHeader title="Technician Dashboard" onOpenSidebar={vi.fn()} />
                   <LocationProbe />
                 </>
               }
@@ -139,7 +139,7 @@ describe("DashboardHeader", () => {
     expect(screen.getByText("Aling Nena")).toBeInTheDocument();
 
     const link = screen.getByRole("link", { name: /Aling Nena/ });
-    expect(link).toHaveAttribute("href", "/dashboard/doctor/beneficiaries/7/lineage");
+    expect(link).toHaveAttribute("href", "/dashboard/technician/beneficiaries/7/lineage");
 
     const calls = searchApi.search.mock.calls.map(([q]) => q);
     expect(calls[calls.length - 1]).toBe("nena");
@@ -182,7 +182,7 @@ describe("DashboardHeader", () => {
     expect(screen.getByText(/34 days overdue/)).toBeInTheDocument();
     // Every role has a full notifications page; the link targets this role's.
     const viewAll = screen.getByRole("link", { name: /View all/ });
-    expect(viewAll).toHaveAttribute("href", "/dashboard/doctor/notifications");
+    expect(viewAll).toHaveAttribute("href", "/dashboard/technician/notifications");
   });
 
   it("hides the badge while the panel is open and shows it again after closing", async () => {
@@ -214,28 +214,28 @@ describe("DashboardHeader", () => {
 
   it("returns to the page you came from with the in-app back button", async () => {
     const user = userEvent.setup();
-    renderHeaderAt(["/dashboard/doctor", "/dashboard/doctor/monitoring"], 1);
+    renderHeaderAt(["/dashboard/technician", "/dashboard/technician/monitoring"], 1);
 
     await screen.findByRole("button", { name: "Notifications" });
-    expect(screen.getByTestId("path").textContent).toBe("/dashboard/doctor/monitoring");
+    expect(screen.getByTestId("path").textContent).toBe("/dashboard/technician/monitoring");
 
     await user.click(screen.getByRole("button", { name: "Go back" }));
 
     await vi.waitFor(() =>
-      expect(screen.getByTestId("path").textContent).toBe("/dashboard/doctor"),
+      expect(screen.getByTestId("path").textContent).toBe("/dashboard/technician"),
     );
   });
 
   it("falls back to the role dashboard on a deep link with no history", async () => {
     const user = userEvent.setup();
     // A single entry is the session's first — there is no in-app page behind it.
-    renderHeaderAt(["/dashboard/doctor/monitoring"], 0);
+    renderHeaderAt(["/dashboard/technician/monitoring"], 0);
 
     await screen.findByRole("button", { name: "Notifications" });
     await user.click(screen.getByRole("button", { name: "Go back" }));
 
     await vi.waitFor(() =>
-      expect(screen.getByTestId("path").textContent).toBe("/dashboard/doctor"),
+      expect(screen.getByTestId("path").textContent).toBe("/dashboard/technician"),
     );
   });
 
@@ -251,7 +251,7 @@ describe("DashboardHeader", () => {
           message: "Opened this one.",
           date: "2026-09-26T08:00:00+08:00",
           read: false,
-          link: "/dashboard/doctor/monitoring",
+          link: "/dashboard/technician/monitoring",
         },
         ALERTS[0],
       ],

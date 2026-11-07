@@ -81,8 +81,8 @@ class SyncConflictTest extends TestCase
 
     /**
      * Every queued kind that can conflict is accepted. Health records and
-     * monitoring records joined the vocabulary with the offline forms for the
-     * doctor and technician roles.
+     * monitoring records joined the vocabulary with the offline forms the
+     * staff roles submit.
      */
     public function test_the_offline_editable_entity_vocabulary_is_accepted(): void
     {
@@ -131,11 +131,9 @@ class SyncConflictTest extends TestCase
             'resolution' => 'overwrite',
         ]);
 
-        foreach (['doctor', 'technician'] as $role) {
-            $this->actingAs(User::factory()->create(['role' => $role]))
-                ->getJson('/api/v1/admin/sync-conflicts')
-                ->assertForbidden();
-        }
+        $this->actingAs(User::factory()->create(['role' => 'technician']))
+            ->getJson('/api/v1/admin/sync-conflicts')
+            ->assertForbidden();
 
         $this->actingAs($admin)
             ->getJson('/api/v1/admin/sync-conflicts')

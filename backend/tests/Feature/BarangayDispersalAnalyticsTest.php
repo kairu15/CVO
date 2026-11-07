@@ -19,7 +19,8 @@ use Tests\TestCase;
  * on — zeros for silent barangays, voided events excluded, same-barangay
  * handovers counted but never flowed, distinct-animal rates, barangay
  * snapshots surviving beneficiary edits, Asia/Manila day boundaries, ties,
- * the small-denominator rate floor, and technician row scoping.
+ * the small-denominator rate floor, and the city-wide read every staff role
+ * now shares (the technician absorbed the old doctor row scope).
  */
 class BarangayDispersalAnalyticsTest extends TestCase
 {
@@ -125,13 +126,15 @@ class BarangayDispersalAnalyticsTest extends TestCase
     {
         $this->getJson('/api/v1/analytics/barangay-dispersal')->assertUnauthorized();
 
-        $farmer = User::factory()->create(['role' => 'farmer']);
-        $this->actingAs($farmer)
+        // A role outside the staff matrix (the system only has admin and
+        // technician) fails closed.
+        $unknown = User::factory()->create(['role' => 'farmer']);
+        $this->actingAs($unknown)
             ->getJson('/api/v1/analytics/barangay-dispersal')
             ->assertForbidden();
 
-        // Doctor and admin see everything.
-        $this->actingAs(User::factory()->create(['role' => 'doctor']))
+        // Technician and admin see everything.
+        $this->actingAs(User::factory()->create(['role' => 'technician']))
             ->getJson('/api/v1/analytics/barangay-dispersal')
             ->assertOk();
 
@@ -213,10 +216,11 @@ class BarangayDispersalAnalyticsTest extends TestCase
     }
 
     /**
-     * A technician's card shows their own household's name and masks every
-     * other one — the same row scope the numbers already honour.
+     * Nobody is row-scoped any more (the technician absorbed the old doctor
+     * role's oversight): a technician's card names every household — sender
+     * and receiver alike — exactly like the admin's.
      */
-    public function test_a_technician_sees_only_their_household_unmasked_on_the_card(): void
+    public function test_a_technician_sees_every_household_unmasked_on_the_card(): void
     {
         $admin = $this->admin();
         $technician = User::factory()->create(['role' => 'technician']);
@@ -229,19 +233,19 @@ class BarangayDispersalAnalyticsTest extends TestCase
         $animal = $this->disperse($admin, $mine, now()->subDays(3), 'TAG-MASK-1');
         $this->redisperse($admin, $animal->id, $theirs, now()->subDays(1))->assertCreated();
 
-        // The handover touches the technician's household as the SENDER, so
-        // the scoped query still surfaces it on B's card.
         $detail = $this->detail($technician, $b->id);
 
-        $this->assertTrue($detail['scoped']);
+        $this->assertFalse($detail['scoped']);
         $this->assertSame(1, $detail['received']['total']);
 
         $item = $detail['received']['items'][0];
         $this->assertSame($mine->name_of_farmer, $item['from']['name']);
         $this->assertFalse($item['from']['masked']);
-        $this->assertTrue($item['to']['masked']);
-        $this->assertSame("Beneficiary in {$b->name}", $item['to']['name']);
-        $this->assertStringNotContainsString($theirs->name_of_farmer, json_encode($detail));
+        $this->assertSame($theirs->name_of_farmer, $item['to']['name']);
+        $this->assertFalse($item['to']['masked']);
+
+        // The card is byte-for-byte what the admin sees for the same filters.
+        $this->assertSame($this->detail($admin, $b->id), $detail);
     }
 
     /**
@@ -591,7 +595,7 @@ class BarangayDispersalAnalyticsTest extends TestCase
      |  Scoping, filters, per-1,000, flows                                 |
      * ------------------------------------------------------------------ */
 
-    public function test_a_technician_sees_only_their_scoped_numbers(): void
+    public function test_a_technician_sees_the_city_wide_numbers(): void
     {
         $admin = $this->admin();
         $technician = User::factory()->create(['role' => 'technician']);
@@ -599,7 +603,7 @@ class BarangayDispersalAnalyticsTest extends TestCase
         $mine = $this->barangay(0);
         $theirs = $this->barangay(1);
 
-        // The technician is assigned only to the household in $mine.
+        // The technician's assignment is irrelevant to the analytics read.
         $assigned = $this->beneficiaryIn($mine, $technician);
         $unassigned = $this->beneficiaryIn($theirs);
 
@@ -608,16 +612,17 @@ class BarangayDispersalAnalyticsTest extends TestCase
 
         $data = $this->analytics($technician);
 
-        $this->assertTrue($data['scoped']);
+        $this->assertFalse($data['scoped']);
         $this->assertSame(1, $this->rowFor($data, $mine->id)['dispersed']);
-        $this->assertSame(0, $this->rowFor($data, $theirs->id)['dispersed']);
-        $this->assertSame(1, $data['summary']['dispersed']['total']);
+        $this->assertSame(1, $this->rowFor($data, $theirs->id)['dispersed']);
+        $this->assertSame(2, $data['summary']['dispersed']['total']);
 
-        // The admin's own view of the same period is city-wide.
+        // The admin's view of the same period — identical, both city-wide.
         $adminData = $this->analytics($admin);
         $this->assertFalse($adminData['scoped']);
         $this->assertSame(1, $this->rowFor($adminData, $theirs->id)['dispersed']);
         $this->assertSame(2, $adminData['summary']['dispersed']['total']);
+        $this->assertSame($adminData['summary']['dispersed']['total'], $data['summary']['dispersed']['total']);
     }
 
     public function test_filters_narrow_the_answer(): void

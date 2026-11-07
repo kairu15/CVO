@@ -56,8 +56,8 @@ const BANDS = [
 /** Per-role intro copy — the feed is the same endpoint, the framing differs. */
 const ROLE_COPY = {
   admin: "New beneficiary additions, technician assignments, field-visit photos and every dispersal or vaccination alert across the city, most needing action first.",
-  doctor: "Field-visit photo submissions and every vaccination or dispersal alert for the animals under veterinary care.",
-  technician: "Your assignments, plus dispersal and vaccination alerts for the households you monitor.",
+  technician:
+    "Field-visit photo submissions and every vaccination or dispersal alert for the animals under your care, city-wide.",
 };
 
 function formatDate(value) {
@@ -92,10 +92,8 @@ export default function NotificationsPage({ roleKey = "admin" }) {
   const navTimer = useRef(null);
   useEffect(() => () => clearTimeout(navTimer.current), []);
 
-  // Smart Alerts are written for admins and technicians only (plus the
-  // assigned technician for household-level flags), so the tab is hidden
-  // where it could never have anything in it.
-  const canSeeSmart = roleKey === "admin" || roleKey === "technician";
+  // Smart Alerts are written for the staff roles (admin plus the technician,
+  // who also carries the clinical oversight) — every dashboard shows the tab.
   const [tab, setTab] = useState("all");
   const [page, setPage] = useState(1);
 
@@ -156,8 +154,7 @@ export default function NotificationsPage({ roleKey = "admin" }) {
               {ROLE_COPY[roleKey] ?? ROLE_COPY.admin}
             </p>
 
-        {canSeeSmart && (
-          <div className="mt-5 inline-flex rounded-pill border border-slate-200 bg-slate-50 p-1 dark:border-slate-200/70 dark:bg-slate-100/60">
+        <div className="mt-5 inline-flex rounded-pill border border-slate-200 bg-slate-50 p-1 dark:border-slate-200/70 dark:bg-slate-100/60">
             <button
               type="button"
               onClick={() => {
@@ -193,8 +190,7 @@ export default function NotificationsPage({ roleKey = "admin" }) {
                 </span>
               )}
             </button>
-          </div>
-        )}
+        </div>
 
         {!loading && total > 0 && (
           <div className="mt-5 flex flex-wrap items-center gap-3">

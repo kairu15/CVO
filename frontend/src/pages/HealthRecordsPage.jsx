@@ -18,10 +18,11 @@ import { useAuth } from "../context/AuthContext";
 import { getRole } from "../config/roles";
 
 /**
- * Doctor "Health Records" screen.
+ * Technician "Health Records" screen.
  *
- * Clinical diagnoses authored by a veterinarian, kept separate from the
- * monthly monitoring workbook. Which rows a user receives is decided
+ * Clinical diagnoses authored by the technician (the attending-veterinarian
+ * role of the old doctor account, now merged into technician), kept separate
+ * from the monthly monitoring workbook. Which rows a user receives is decided
  * server-side (HealthRecordService); the controls below mirror
  * HealthRecordPolicy so the UI does not offer an action the API will refuse —
  * a mirror, not a substitute for the server check.
@@ -42,7 +43,7 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
 }
 
-export default function HealthRecordsPage({ roleKey = "doctor" }) {
+export default function HealthRecordsPage({ roleKey = "technician" }) {
   const { user } = useAuth();
   const config = getRole(roleKey);
 
@@ -65,13 +66,13 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
   // Row selection for the bulk (select-all) delete.
   const { selected, toggle, toggleAll, clear } = useRowSelection();
 
-  // Mirrors HealthRecordPolicy::create — only a veterinarian authors records.
-  const canAuthor = user?.role === "doctor";
+  // Mirrors HealthRecordPolicy::create — the technician authors records.
+  const canAuthor = user?.role === "technician";
 
   // Mirrors HealthRecordPolicy::update — the author, or an administrator.
   const canModify = (record) =>
     user?.role === "admin" ||
-    (user?.role === "doctor" && record.doctor_id === user?.id);
+    (user?.role === "technician" && record.doctor_id === user?.id);
 
   // Only rows this user may actually delete are selectable, so select-all can
   // never offer a batch the server would reject.
@@ -171,7 +172,7 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
       <section className="card p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="eyebrow">{config?.label ?? "Veterinarian"}</p>
+            <p className="eyebrow">{config?.label ?? "Technician"}</p>
             <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl">
               Health Records
             </h2>
@@ -210,7 +211,7 @@ export default function HealthRecordsPage({ roleKey = "doctor" }) {
             description={
               canAuthor
                 ? "Records you author appear here, and are visible to admins and the assigned technician."
-                : "Health records appear here once a veterinarian has examined an animal."
+                : "Health records appear here once a technician has examined an animal."
             }
           />
         ) : (

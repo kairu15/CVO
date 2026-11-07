@@ -95,10 +95,8 @@ class ReportTemplateExportTest extends TestCase
 
     public function test_the_export_uses_the_same_report_permission_as_the_reports_screen(): void
     {
-        foreach (['doctor', 'technician'] as $role) {
-            $this->export(User::factory()->create(['role' => $role]))
-                ->assertForbidden();
-        }
+        $this->export(User::factory()->create(['role' => 'technician']))
+            ->assertForbidden();
     }
 
     public function test_the_admin_receives_an_xlsx_download_named_after_the_report_name(): void

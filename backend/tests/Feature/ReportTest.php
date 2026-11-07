@@ -36,11 +36,9 @@ class ReportTest extends TestCase
 
     public function test_only_admins_can_read_the_report(): void
     {
-        foreach (['doctor', 'technician'] as $role) {
-            $this->actingAs(User::factory()->create(['role' => $role]))
-                ->getJson('/api/v1/admin/report')
-                ->assertForbidden();
-        }
+        $this->actingAs(User::factory()->create(['role' => 'technician']))
+            ->getJson('/api/v1/admin/report')
+            ->assertForbidden();
     }
 
     public function test_the_report_counts_the_program(): void

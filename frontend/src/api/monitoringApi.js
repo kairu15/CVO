@@ -54,7 +54,7 @@ export const monitoringApi = {
     return unwrap(await api.post("/api/v1/monitoring-records", payload));
   },
 
-  /** Technician (own entries) / doctor / admin. */
+  /** Technician / admin — both staff roles have oversight. */
   update: async (id, payload) => {
     await ensureCsrfCookie();
     return unwrap(await api.patch(`/api/v1/monitoring-records/${id}`, payload));

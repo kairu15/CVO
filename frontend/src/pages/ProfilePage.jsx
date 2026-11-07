@@ -17,8 +17,8 @@ import { PasswordToggle, TextField } from "../components/TextField";
  *
  * Common account section (name, email, avatar, username, member-since,
  * password) plus a role-specific section fed by GET /api/v1/profile:
- * technicians their assigned-household count with a link to monitoring,
- * doctors their clinical footprint. There is no license/credential field in
+ * technicians their assigned-household count with a link to monitoring, plus
+ * their clinical footprint. There is no license/credential field in
  * the data model, so none is shown.
  */
 export function ProfilePage() {
@@ -338,7 +338,7 @@ function AccountForm({ account, onSaved }) {
 /** Role-specific section — fed entirely by the profile payload. */
 function RoleSection({ profile }) {
   if (profile.technician) return <TechnicianSection technician={profile.technician} />;
-  if (profile.doctor) return <DoctorSection doctor={profile.doctor} />;
+  if (profile.clinical) return <ClinicalSection clinical={profile.clinical} />;
   return null; // admin: nothing beyond the common sections
 }
 
@@ -368,21 +368,21 @@ function TechnicianSection({ technician }) {
   );
 }
 
-/** Doctor: the clinical footprint the system tracks (no license field exists). */
-function DoctorSection({ doctor }) {
+/** Clinical footprint the system tracks (no license field exists). */
+function ClinicalSection({ clinical }) {
   return (
     <section className="card p-6">
       <h3 className="font-display text-base font-bold text-slate-900">Clinical activity</h3>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
           <p className="font-display text-2xl font-bold text-slate-900">
-            {doctor.health_records_count}
+            {clinical.health_records_count}
           </p>
           <p className="text-xs text-slate-500">Health records authored</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
           <p className="font-display text-2xl font-bold text-slate-900">
-            {doctor.case_notes_count}
+            {clinical.case_notes_count}
           </p>
           <p className="text-xs text-slate-500">Case notes written</p>
         </div>

@@ -28,15 +28,12 @@ class HealthRecordPolicy
             return false;
         }
 
-        if (in_array($user->role, ['admin', 'doctor'], true)) {
-            return true;
-        }
-
-        return $user->role === 'technician' && $record->beneficiary->technician_id === $user->id;
+        return in_array($user->role, ['admin', 'technician'], true);
     }
 
     /**
-     * Only a veterinarian writes a clinical diagnosis.
+     * Only the technician — the system's clinical author — writes a clinical
+     * diagnosis.
      */
     public function create(User $user): bool
     {
@@ -44,11 +41,11 @@ class HealthRecordPolicy
     }
 
     /**
-     * The authoring veterinarian keeps control of their own diagnosis; the
-     * administrator can step in (records must stay correctable after a vet
-     * leaves). Other vets cannot rewrite a colleague's clinical judgement —
-     * this is intentionally stricter than MonitoringRecordPolicy, where any
-     * doctor may correct a visit log.
+     * The authoring technician keeps control of their own diagnosis; the
+     * administrator can step in (records must stay correctable after a
+     * technician leaves). Other technicians cannot rewrite a colleague's
+     * clinical judgement — this is intentionally stricter than
+     * MonitoringRecordPolicy, where any technician may correct a visit log.
      */
     public function update(User $user, HealthRecord $record): bool
     {
@@ -57,7 +54,7 @@ class HealthRecordPolicy
         }
 
         return $user->role === 'admin'
-            || ($user->role === 'doctor' && $record->doctor_id === $user->id);
+            || ($user->role === 'technician' && $record->doctor_id === $user->id);
     }
 
     public function delete(User $user, HealthRecord $record): bool

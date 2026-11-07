@@ -42,7 +42,7 @@ npm run ios        # iOS simulator (macOS only)
 The **GeoTag** screen is the technician's field tool: it captures a GPS fix
 via `expo-location` at the farm and registers the dispersed animal + household
 through the same `/api/v1/beneficiaries` endpoint the web app uses, so the
-record appears on the admin/doctor dispersal map immediately.
+record appears on the dispersal map immediately.
 
 Location permissions are declared in `app.json` (iOS `infoPlist`, Android
 `permissions`, and the `expo-location` config plugin).

@@ -54,17 +54,18 @@ class HealthRecordService
     }
 
     /**
-     * Author a health record. The veterinarian is recorded as its author;
-     * eligibility is enforced by StoreHealthRecordRequest.
+     * Author a health record. The technician is recorded as its author
+     * (`doctor_id` — the attending veterinarian, a schema name); eligibility
+     * is enforced by StoreHealthRecordRequest.
      */
-    public function create(User $doctor, array $data): HealthRecord
+    public function create(User $author, array $data): HealthRecord
     {
         $record = HealthRecord::create([
             ...$data,
-            'doctor_id' => $doctor->id,
+            'doctor_id' => $author->id,
         ]);
 
-        $this->audit->log($doctor, 'health_record_created', $record);
+        $this->audit->log($author, 'health_record_created', $record);
 
         return $record;
     }

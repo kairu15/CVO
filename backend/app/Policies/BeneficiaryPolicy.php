@@ -15,8 +15,8 @@ class BeneficiaryPolicy
 
     /**
      * admin: all beneficiaries (program oversight).
-     * doctor: all beneficiaries (health oversight).
-     * technician: only beneficiaries assigned to them.
+     * technician: all beneficiaries (field work plus the clinical
+     * record-keeping the old doctor role carried).
      */
     public function viewAny(User $user): bool
     {
@@ -29,11 +29,7 @@ class BeneficiaryPolicy
             return false;
         }
 
-        if (in_array($user->role, ['admin', 'doctor'], true)) {
-            return true;
-        }
-
-        return $user->role === 'technician' && $beneficiary->technician_id === $user->id;
+        return in_array($user->role, ['admin', 'technician'], true);
     }
 
     /**

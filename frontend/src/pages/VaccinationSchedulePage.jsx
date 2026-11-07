@@ -10,7 +10,7 @@ import { Icon } from "../components/Icons";
 import { getRole } from "../config/roles";
 
 /**
- * Doctor "Vaccination Schedule" screen.
+ * Technician "Vaccination Schedule" screen.
  *
  * Read-only and derived: next-due is computed server-side from the last
  * vaccination recorded on the animal's monitoring records, so there is no
@@ -65,7 +65,7 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
 }
 
-export default function VaccinationSchedulePage({ roleKey = "doctor" }) {
+export default function VaccinationSchedulePage({ roleKey = "technician" }) {
   const config = getRole(roleKey);
 
   const [rows, setRows] = useState([]);
@@ -105,7 +105,7 @@ export default function VaccinationSchedulePage({ roleKey = "doctor" }) {
   return (
     <div className="space-y-6">
       <section className="card p-6">
-        <p className="eyebrow">{config?.label ?? "Veterinarian"}</p>
+        <p className="eyebrow">{config?.label ?? "Technician"}</p>
         <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl">
           Vaccination Schedule
         </h2>

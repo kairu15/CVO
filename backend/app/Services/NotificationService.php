@@ -422,11 +422,8 @@ class NotificationService
     }
 
     /**
-     * Dispersal movements touching the animals this user can see.
-     *
-     * Scoping is `DispersalEventService`'s, so a technician sees only
-     * movements of their assigned beneficiaries, while admin and doctor see
-     * every movement city-wide.
+     * Dispersal movements city-wide — every staff role sees every movement
+     * (the technician absorbed the old doctor role's oversight).
      *
      * @return list<array<string, mixed>>
      */

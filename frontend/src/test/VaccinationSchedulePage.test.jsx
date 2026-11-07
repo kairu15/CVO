@@ -51,7 +51,7 @@ const ROWS = [
 function renderPage() {
   return render(
     <MemoryRouter>
-      <VaccinationSchedulePage roleKey="doctor" />
+      <VaccinationSchedulePage roleKey="technician" />
     </MemoryRouter>,
   );
 }

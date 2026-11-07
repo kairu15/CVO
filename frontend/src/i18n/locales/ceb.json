@@ -7,7 +7,7 @@
     "passwordResetPolicy": "Ang pag-reset sa password ginahimo sa CVO administrator alang sa seguridad. Kontaka ang opisina sa {{email}} o {{phone}} aron mangayo og bag-ong password."
   },
   "authPage": {
-    "demoNote": "Mga demo account: admin@example.com, doctor@example.com, technician@example.com — password: password"
+    "demoNote": "Mga demo account: admin@example.com, technician@example.com — password: password"
   },
   "login": {
     "heading": "Sign in",

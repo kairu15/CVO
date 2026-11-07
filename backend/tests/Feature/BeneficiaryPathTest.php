@@ -139,7 +139,7 @@ class BeneficiaryPathTest extends TestCase
         $this->assertSame('origin', $points[0]['kind']);
     }
 
-    public function test_an_assigned_technician_reads_the_path_and_an_unassigned_one_is_refused(): void
+    public function test_a_technician_reads_the_path_of_any_household(): void
     {
         $assigned = User::factory()->create(['role' => 'technician']);
         $other = User::factory()->create(['role' => 'technician']);
@@ -148,24 +148,24 @@ class BeneficiaryPathTest extends TestCase
             'date_dispersed' => '2026-03-03',
         ]);
 
+        // The path shares the beneficiary read scope, which is city-wide for
+        // every staff role: assigned or not, an existing row answers 200.
         $this->actingAs($assigned)
             ->getJson("/api/v1/beneficiaries/{$beneficiary->id}/path")
             ->assertOk();
 
-        // A permissions boundary, not a missing row: a silent 404 would read
-        // as a bug rather than an access rule (same rule as show()).
         $this->actingAs($other)
             ->getJson("/api/v1/beneficiaries/{$beneficiary->id}/path")
-            ->assertForbidden();
+            ->assertOk();
     }
 
-    public function test_a_doctor_reads_city_wide_paths(): void
+    public function test_a_technician_reads_city_wide_paths(): void
     {
-        $doctor = User::factory()->create(['role' => 'doctor']);
         $technician = User::factory()->create(['role' => 'technician']);
-        $beneficiary = Beneficiary::factory()->assignedTo($technician)->create();
+        $colleague = User::factory()->create(['role' => 'technician']);
+        $beneficiary = Beneficiary::factory()->assignedTo($colleague)->create();
 
-        $this->actingAs($doctor)
+        $this->actingAs($technician)
             ->getJson("/api/v1/beneficiaries/{$beneficiary->id}/path")
             ->assertOk();
     }

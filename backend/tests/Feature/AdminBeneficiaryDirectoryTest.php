@@ -61,9 +61,9 @@ class AdminBeneficiaryDirectoryTest extends TestCase
 
     public function test_the_directory_rejects_a_non_admin(): void
     {
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        $technician = User::factory()->create(['role' => 'technician']);
 
-        $this->actingAs($doctor)
+        $this->actingAs($technician)
             ->getJson('/api/v1/admin/beneficiaries')
             ->assertForbidden();
     }

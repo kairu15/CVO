@@ -53,17 +53,18 @@ class CaseNoteService
     }
 
     /**
-     * Write a note. The veterinarian is recorded as its author; eligibility is
-     * enforced by StoreCaseNoteRequest.
+     * Write a note. The technician is recorded as its author (`doctor_id` —
+     * the attending veterinarian, a schema name); eligibility is enforced by
+     * StoreCaseNoteRequest.
      */
-    public function create(User $doctor, array $data): CaseNote
+    public function create(User $author, array $data): CaseNote
     {
         $note = CaseNote::create([
             ...$data,
-            'doctor_id' => $doctor->id,
+            'doctor_id' => $author->id,
         ]);
 
-        $this->audit->log($doctor, 'case_note_created', $note);
+        $this->audit->log($author, 'case_note_created', $note);
 
         return $note;
     }

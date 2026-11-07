@@ -122,7 +122,7 @@ class MonitoringMonthFilterTest extends TestCase
         );
     }
 
-    public function test_months_endpoint_is_scoped_to_the_caller(): void
+    public function test_months_endpoint_is_city_wide_for_every_staff_role(): void
     {
         $this->seedSparseMonths();
 
@@ -131,11 +131,12 @@ class MonitoringMonthFilterTest extends TestCase
         MonitoringRecord::factory()->by($other)->for($otherBeneficiary, 'beneficiary')
             ->create(['date_monitored' => '2020-03-01']);
 
-        // A technician never sees another technician's months.
+        // The technician absorbed the old doctor role's oversight, so the
+        // month list covers every staff role's records, not just its own.
         $this->actingAs($this->technician)
             ->getJson('/api/v1/monitoring-records/months')
             ->assertOk()
-            ->assertJsonPath('data', ['2024-06', '2025-01', '2026-09']);
+            ->assertJsonPath('data', ['2020-03', '2024-06', '2025-01', '2026-09']);
     }
 
     public function test_month_filter_rejects_an_invalid_bucket(): void

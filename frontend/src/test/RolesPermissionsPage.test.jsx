@@ -21,14 +21,13 @@ vi.mock("../api/adminApi", () => ({
 
 function granted(...rolesWithGrant) {
   return Object.fromEntries(
-    ["admin", "doctor", "technician"].map((role) => [role, rolesWithGrant.includes(role)]),
+    ["admin", "technician"].map((role) => [role, rolesWithGrant.includes(role)]),
   );
 }
 
 const MATRIX = {
   roles: [
     { key: "admin", label: "Admin" },
-    { key: "doctor", label: "Doctor" },
     { key: "technician", label: "Technician" },
   ],
   groups: [
@@ -43,8 +42,8 @@ const MATRIX = {
     {
       group: "Health records",
       permissions: [
-        { key: "health_records.view", label: "View health records", granted: granted("admin", "doctor", "technician") },
-        { key: "health_records.create", label: "Write health records", granted: granted("doctor") },
+        { key: "health_records.view", label: "View health records", granted: granted("admin", "technician") },
+        { key: "health_records.create", label: "Write health records", granted: granted("technician") },
       ],
     },
   ],
@@ -79,11 +78,11 @@ describe("RolesPermissionsPage", () => {
     expect(
       await screen.findByRole("checkbox", { name: "Manage user accounts for Admin" }),
     ).toBeChecked();
-    expect(cell("Doctor", "Manage user accounts")).not.toBeChecked();
+    expect(cell("Technician", "Manage user accounts")).not.toBeChecked();
 
-    // Seeded de facto grants, spot-checked: only a doctor authors records;
+    // Seeded de facto grants, spot-checked: the technician authors records;
     // everyone reads them.
-    expect(cell("Doctor", "Write health records")).toBeChecked();
+    expect(cell("Technician", "Write health records")).toBeChecked();
     expect(cell("Admin", "Write health records")).not.toBeChecked();
     expect(cell("Technician", "View health records")).toBeChecked();
 
@@ -103,7 +102,7 @@ describe("RolesPermissionsPage", () => {
           group: "Health records",
           permissions: [
             MATRIX.groups[1].permissions[0],
-            { key: "health_records.create", label: "Write health records", granted: granted("doctor", "admin") },
+            { key: "health_records.create", label: "Write health records", granted: granted("technician", "admin") },
           ],
         },
       ],
@@ -168,10 +167,9 @@ describe("RolesPermissionsPage", () => {
         .find((row) => within(row).queryByText("Beneficiaries")),
     ).getAllByRole("cell");
     expect(beneficiaries[1]).toHaveTextContent("All"); // admin
-    expect(beneficiaries[2]).toHaveTextContent("All"); // doctor
-    expect(beneficiaries[3]).toHaveTextContent("Assigned"); // technician
+    expect(beneficiaries[2]).toHaveTextContent("All"); // technician
     // There is no farmer column: beneficiaries are records, not accounts.
-    expect(beneficiaries).toHaveLength(4);
+    expect(beneficiaries).toHaveLength(3);
   });
 
   it("states where each rule is enforced", async () => {

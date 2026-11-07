@@ -331,10 +331,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     // Barangay dispersal analytics — the Reports "Barangay dispersal" tab
     // and the dashboard widget. Aggregated read-only answers (one row per
     // barangay, one row per flow); the database computes them, the SPA
-    // renders them. Gated per capability by the role_permissions matrix;
-    // row scoping (a technician sees only their assigned households' events)
-    // is enforced in BarangayDispersalAnalyticsService's query layer.
-    // Deliberately NOT under /admin: doctors and technicians hold the
+    // renders them. Gated per capability by the role_permissions matrix.
+    // Deliberately NOT under /admin: technicians hold the
     // analytics capability without the rest of the admin module.
     Route::get('analytics/barangay-dispersal', [AnalyticsController::class, 'barangayDispersal'])
         ->middleware('permission:view_analytics')->name('api.analytics.barangay-dispersal');
@@ -369,9 +367,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     // matrix (EnsurePermission) instead of one role check. With the shipped
     // seed only `admin` holds these capabilities, so day-one behaviour is
     // unchanged — but a grant made on the Roles & Permissions screen now
-    // actually opens the door (e.g. view_reports for a doctor), and a revoked
-    // grant closes it, per endpoint. Each FormRequest re-checks the same
-    // capability as the second gate.
+    // actually opens the door (e.g. view_reports for a technician), and a
+    // revoked grant closes it, per endpoint. Each FormRequest re-checks the
+    // same capability as the second gate.
     Route::prefix('admin')->group(function (): void {
         Route::get('/users', [AdminController::class, 'users'])
             ->middleware('permission:manage_users')->name('api.admin.users');

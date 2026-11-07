@@ -6,7 +6,8 @@ import { Icon } from "./Icons";
 /**
  * Rule-Based Health Concern Hints.
  *
- * A small, admin-editable lookup table mapped against what a doctor has typed:
+ * A small, admin-editable lookup table mapped against what a technician has
+ * typed:
  * when the note contains any of a rule's keywords, the rule's plain-language
  * hint appears inline. This is explicit decision support — NOT a diagnosis and
  * NOT AI/ML — and the component says so in its own labelling rather than

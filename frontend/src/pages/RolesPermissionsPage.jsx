@@ -40,22 +40,22 @@ import { ROLE_KEYS, getRole, roles, roleLabel } from "../config/roles";
 const RULES = [
   {
     title: "Workspace access",
-    body: "Admin is an all-access role: it can open every dashboard. The other two roles see only their own workspace — even by typing another dashboard's URL.",
+    body: "Admin is an all-access role: it can open every dashboard. The technician sees only their own workspace — even by typing another dashboard's URL.",
     enforced: "RoleRoute guard in the SPA (canAccessDashboard), re-checked per endpoint server-side.",
   },
   {
     title: "Beneficiaries & monitoring",
-    body: "Admin and doctors see every household. Technicians see only households assigned to them.",
+    body: "Admin and technicians see every household — the technician carries the field work and the program-wide oversight.",
     enforced: "BeneficiaryService::scopeQueryFor — applied at the query on every list and search, not after the fact.",
   },
   {
     title: "Clinical records",
-    body: "Doctors author health records and case notes. Admin may correct them after a vet leaves; another vet cannot rewrite a colleague's clinical judgement. Every role can read the records for animals it can already see.",
-    enforced: "HealthRecordPolicy / CaseNotePolicy (create is doctor-only; update is the author or an admin).",
+    body: "The technician authors health records and case notes. Admin may correct them after a technician leaves; another technician cannot rewrite a colleague's clinical judgement. Every role can read the records.",
+    enforced: "HealthRecordPolicy / CaseNotePolicy (create is technician-only; update is the author or an admin).",
   },
   {
     title: "Field visits",
-    body: "Technicians log their own trips. Admin and doctors review all visits. Scoping is by the visiting technician, not by assigned household — a visit is the technician's own activity record.",
+    body: "Technicians log their own trips, and every staff role reviews all visits. Editing a visit stays with the technician who went, or an admin.",
     enforced: "FieldVisitPolicy + the technician check at validation time.",
   },
   {
@@ -75,13 +75,13 @@ const RULES = [
  * view() methods. Values are the shorthand the legend below defines.
  */
 const READ_SCOPE = [
-  { label: "Beneficiaries", admin: "all", doctor: "all", technician: "assigned" },
-  { label: "Monitoring records", admin: "all", doctor: "all", technician: "assigned" },
-  { label: "Health records", admin: "all", doctor: "all", technician: "assigned" },
-  { label: "Case notes", admin: "all", doctor: "all", technician: "assigned" },
-  { label: "Field visits", admin: "all", doctor: "all", technician: "own" },
-  { label: "Dispersal events", admin: "all", doctor: "all", technician: "assigned" },
-  { label: "Accounts, settings & reports", admin: "all" },
+  { label: "Beneficiaries", admin: "all", technician: "all" },
+  { label: "Monitoring records", admin: "all", technician: "all" },
+  { label: "Health records", admin: "all", technician: "all" },
+  { label: "Case notes", admin: "all", technician: "all" },
+  { label: "Field visits", admin: "all", technician: "all" },
+  { label: "Dispersal events", admin: "all", technician: "all" },
+  { label: "Settings, reports & accounts", admin: "all" },
 ];
 
 /** Read-scope shorthand → the word shown in the table. */

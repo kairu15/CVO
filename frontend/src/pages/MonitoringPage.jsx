@@ -34,9 +34,8 @@ import { useRowSelection } from "../hooks/useRowSelection";
 /**
  * Livestock Monthly Monitoring — one shared page for every dashboard.
  *
- * The API scopes every response server-side (admin: all, doctor: all,
- * technician: assigned beneficiaries); this page only adapts which actions
- * are offered.
+ * The API scopes every response server-side (every staff role reads the
+ * city-wide record); this page only adapts which actions are offered.
  *
  * Data arrives through the polled React Query hooks: the table refreshes
  * itself every 20s and on tab focus, so beneficiaries added by the admin and
@@ -92,10 +91,10 @@ export default function MonitoringPage({ roleKey }) {
   const toast = useToast();
 
   const isTechnician = viewerRole === "technician";
-  const canEdit = ["admin", "doctor", "technician"].includes(viewerRole);
+  const canEdit = ["admin", "technician"].includes(viewerRole);
   const isAdmin = viewerRole === "admin";
   // Only the roles that may actually record a handover get the row action
-  // (manage_dispersal / manage_redispersal); a doctor's access is read-only.
+  // (manage_dispersal / manage_redispersal).
   const canDisperse = viewerRole === "admin" || viewerRole === "technician";
 
   // Polled + refetched-on-focus. `loading` maps to the FIRST fetch only, so
@@ -262,8 +261,8 @@ export default function MonitoringPage({ roleKey }) {
               Monitoring records
             </h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              {viewerRole === "doctor"
-                ? "All monitoring records across barangays for health oversight. Add clinical remarks or flag concerns on any entry."
+              {viewerRole === "technician"
+                ? "All monitoring records across barangays — your visits and the health oversight view. Add clinical remarks or flag concerns on any entry."
                 : "Visit history grouped per barangay, mirroring the CVO monitoring sheets. Beneficiary identity details flow from the enrolled record — they are never retyped."}
             </p>
           </div>
@@ -428,7 +427,7 @@ export default function MonitoringPage({ roleKey }) {
           selected={selected}
           onToggleRow={canEdit ? (record) => toggle(record.id) : undefined}
           // MOA is a program-oversight field: only an admin gets the inline
-          // switch. Doctors and technicians see the badge read-only.
+          // switch. Technicians see the badge read-only.
           onToggleMoa={isAdmin ? (record) => toggleMoa(record) : undefined}
           onDispersal={
             canDisperse

@@ -24,9 +24,9 @@ class VaccinationScheduleTest extends TestCase
         $this->window = (int) config('cvo.vaccination_due_soon_days');
     }
 
-    private function doctor(): User
+    private function technician(): User
     {
-        return User::factory()->create(['role' => 'doctor']);
+        return User::factory()->create(['role' => 'technician']);
     }
 
     /** A beneficiary whose most recent vaccination was $daysAgo days ago. */
@@ -45,7 +45,7 @@ class VaccinationScheduleTest extends TestCase
     {
         $beneficiary = $this->vaccinatedDaysAgo(10);
 
-        $response = $this->actingAs($this->doctor())->getJson('/api/v1/vaccination-schedule');
+        $response = $this->actingAs($this->technician())->getJson('/api/v1/vaccination-schedule');
 
         $response->assertOk()
             ->assertJsonPath('data.0.id', $beneficiary->id)
@@ -69,7 +69,7 @@ class VaccinationScheduleTest extends TestCase
         // overdue under the new 30-day cycle.
         $beneficiary = $this->vaccinatedDaysAgo(40);
 
-        $this->actingAs($this->doctor())
+        $this->actingAs($this->technician())
             ->getJson('/api/v1/vaccination-schedule')
             ->assertOk()
             ->assertJsonPath('data.0.id', $beneficiary->id)
@@ -81,7 +81,7 @@ class VaccinationScheduleTest extends TestCase
     {
         Beneficiary::factory()->create();
 
-        $this->actingAs($this->doctor())
+        $this->actingAs($this->technician())
             ->getJson('/api/v1/vaccination-schedule')
             ->assertOk()
             ->assertJsonPath('data.0.status', 'never')
@@ -100,7 +100,7 @@ class VaccinationScheduleTest extends TestCase
             'deworming_date' => now()->subDays(5)->toDateString(),
         ]);
 
-        $this->actingAs($this->doctor())
+        $this->actingAs($this->technician())
             ->getJson('/api/v1/vaccination-schedule')
             ->assertOk()
             ->assertJsonPath('data.0.status', 'never');
@@ -116,7 +116,7 @@ class VaccinationScheduleTest extends TestCase
             ]);
         }
 
-        $this->actingAs($this->doctor())
+        $this->actingAs($this->technician())
             ->getJson('/api/v1/vaccination-schedule')
             ->assertOk()
             ->assertJsonCount(1, 'data')
@@ -127,7 +127,7 @@ class VaccinationScheduleTest extends TestCase
     {
         $this->vaccinatedDaysAgo($this->interval + 1);
 
-        $this->actingAs($this->doctor())
+        $this->actingAs($this->technician())
             ->getJson('/api/v1/vaccination-schedule')
             ->assertOk()
             ->assertJsonPath('data.0.status', 'overdue')
@@ -138,7 +138,7 @@ class VaccinationScheduleTest extends TestCase
     {
         $this->vaccinatedDaysAgo($this->interval - $this->window);
 
-        $this->actingAs($this->doctor())
+        $this->actingAs($this->technician())
             ->getJson('/api/v1/vaccination-schedule')
             ->assertOk()
             ->assertJsonPath('data.0.status', 'due-soon')
@@ -167,10 +167,10 @@ class VaccinationScheduleTest extends TestCase
             'never' => [$never->id],
         ];
 
-        $doctor = $this->doctor();
+        $technician = $this->technician();
 
         foreach ($expected as $status => $ids) {
-            $response = $this->actingAs($doctor)
+            $response = $this->actingAs($technician)
                 ->getJson("/api/v1/vaccination-schedule?status={$status}");
 
             $response->assertOk();
@@ -194,7 +194,7 @@ class VaccinationScheduleTest extends TestCase
         $overdue = $this->vaccinatedDaysAgo($this->interval + 30);
 
         $ids = collect(
-            $this->actingAs($this->doctor())
+            $this->actingAs($this->technician())
                 ->getJson('/api/v1/vaccination-schedule')
                 ->json('data'),
         )->pluck('id')->all();
@@ -205,13 +205,13 @@ class VaccinationScheduleTest extends TestCase
 
     public function test_an_unknown_status_is_rejected(): void
     {
-        $this->actingAs($this->doctor())
+        $this->actingAs($this->technician())
             ->getJson('/api/v1/vaccination-schedule?status=whenever')
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['status']);
     }
 
-    public function test_a_technician_sees_only_assigned_animals(): void
+    public function test_a_technician_sees_the_city_wide_schedule(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
         $assigned = Beneficiary::factory()->assignedTo($technician)->create();
@@ -220,13 +220,17 @@ class VaccinationScheduleTest extends TestCase
             'vaccination_date' => now()->subDays(5)->toDateString(),
         ]);
 
-        $this->vaccinatedDaysAgo(5);
+        // A household assigned to nobody is no longer filtered out: the
+        // technician absorbed the old doctor role's city-wide oversight.
+        $unassigned = $this->vaccinatedDaysAgo(5);
 
-        $this->actingAs($technician)
+        $response = $this->actingAs($technician)
             ->getJson('/api/v1/vaccination-schedule')
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $assigned->id);
+            ->assertJsonCount(2, 'data');
+
+        $returned = collect($response->json('data'))->pluck('id')->sort()->values()->all();
+        $this->assertSame([$assigned->id, $unassigned->id], $returned);
     }
 
     public function test_guests_are_rejected(): void

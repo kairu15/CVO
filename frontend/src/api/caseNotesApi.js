@@ -20,13 +20,13 @@ export const caseNotesApi = {
 
   get: async (id) => unwrap(await api.get(`/api/v1/case-notes/${id}`)),
 
-  /** Veterinarian only. */
+  /** Technician only. */
   create: async (payload) => {
     await ensureCsrfCookie();
     return unwrap(await api.post("/api/v1/case-notes", payload));
   },
 
-  /** Authoring veterinarian or administrator. */
+  /** Authoring technician or administrator. */
   update: async (id, payload) => {
     await ensureCsrfCookie();
     return unwrap(await api.patch(`/api/v1/case-notes/${id}`, payload));

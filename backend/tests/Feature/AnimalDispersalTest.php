@@ -409,12 +409,13 @@ class AnimalDispersalTest extends TestCase
      |  Technician visibility + recording scope                            |
      * ------------------------------------------------------------------ */
 
-    public function test_a_technician_sees_assigned_owners_in_full_and_others_masked(): void
+    public function test_a_technician_sees_every_owner_in_full_unmasked(): void
     {
         $admin = $this->admin();
         $technician = $this->technician();
 
-        // The technician is assigned only to B.
+        // Ownership chains are city-wide for every staff role (the technician
+        // absorbed the old doctor role's oversight) — nobody is masked.
         $a = $this->beneficiary(null, Barangays::all()[0]);
         $b = $this->beneficiary($technician, Barangays::all()[1]);
         $c = $this->beneficiary(null, Barangays::all()[2]);
@@ -427,14 +428,14 @@ class AnimalDispersalTest extends TestCase
             ->getJson("/api/v1/animals/{$animal->id}/flight-path")
             ->assertOk();
 
-        // A (not assigned) masked and barangay-level; B (assigned) full.
-        $path->assertJsonPath('data.nodes.1.masked', true)
-            ->assertJsonPath('data.nodes.1.owner_id', null)
+        // A, B and C all render in full, with real owner ids and no masking.
+        $path->assertJsonPath('data.nodes.1.masked', false)
+            ->assertJsonPath('data.nodes.1.owner_id', $a->id)
             ->assertJsonPath('data.nodes.2.masked', false)
             ->assertJsonPath('data.nodes.2.owner_id', $b->id)
-            ->assertJsonPath('data.nodes.3.masked', true);
+            ->assertJsonPath('data.nodes.3.masked', false);
 
-        $this->assertStringStartsWith('Beneficiary in ', $path->json('data.nodes.1.label'));
+        $this->assertSame($a->name_of_farmer, $path->json('data.nodes.1.label'));
     }
 
     public function test_it_lists_the_animals_a_household_currently_holds(): void
@@ -462,20 +463,21 @@ class AnimalDispersalTest extends TestCase
             ->assertJsonPath('data', []);
     }
 
-    public function test_a_technician_cannot_look_up_an_unassigned_households_animals(): void
+    public function test_a_technician_can_look_up_any_households_animals(): void
     {
         $admin = $this->admin();
         $technician = $this->technician();
         $owner = $this->beneficiary(); // not the technician's
 
-        $this->disperse($admin, $owner);
+        $animal = $this->disperse($admin, $owner);
 
         $this->actingAs($technician)
             ->getJson("/api/v1/beneficiaries/{$owner->id}/animals")
-            ->assertForbidden();
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $animal->id);
     }
 
-    public function test_a_technician_cannot_view_an_animal_outside_their_assignment(): void
+    public function test_a_technician_can_view_any_animal_in_the_program(): void
     {
         $admin = $this->admin();
         $technician = $this->technician();
@@ -485,7 +487,9 @@ class AnimalDispersalTest extends TestCase
 
         $this->actingAs($technician)
             ->getJson("/api/v1/animals/{$animal->id}/flight-path")
-            ->assertForbidden();
+            ->assertOk()
+            ->assertJsonPath('data.nodes.0.kind', 'origin')
+            ->assertJsonPath('data.nodes.0.label', 'CVO');
     }
 
     public function test_a_technician_may_re_disperse_from_an_assigned_owner(): void

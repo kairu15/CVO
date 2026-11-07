@@ -65,7 +65,7 @@ export const findNearestPurok = async (barangayId, latitude, longitude) => {
  */
 
 export const beneficiariesApi = {
-  /** Role-scoped: admin/doctor see all, technician sees assigned only. */
+  /** Every staff role reads the city-wide record (see BeneficiaryService). */
   list: async (params = {}) => unwrap.list(await api.get("/api/v1/beneficiaries", { params })),
 
   get: async (id) => unwrap(await api.get(`/api/v1/beneficiaries/${id}`)),

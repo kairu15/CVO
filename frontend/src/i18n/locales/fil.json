@@ -7,7 +7,7 @@
     "passwordResetPolicy": "Ang pag-reset ng password ay ginagawa ng CVO administrator para sa seguridad. Makipag-ugnayan sa opisina sa {{email}} o {{phone}} para humiling ng bagong password."
   },
   "authPage": {
-    "demoNote": "Mga demo account: admin@example.com, doctor@example.com, technician@example.com — password: password"
+    "demoNote": "Mga demo account: admin@example.com, technician@example.com — password: password"
   },
   "login": {
     "heading": "Mag-sign in",

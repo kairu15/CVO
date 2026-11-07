@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Barangay;
 use App\Models\Beneficiary;
+use App\Models\CaseNote;
+use App\Models\HealthRecord;
 use App\Models\Purok;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -35,8 +37,10 @@ class ProfileTest extends TestCase
     public function test_the_profile_carries_no_farmer_section(): void
     {
         // Beneficiaries are records, not profiles: the endpoint answers with
-        // the staff account's own data and (per role) a staff-only section.
+        // the staff account's own data and (per role) staff-only sections.
         // There is no `farmer` section because there is no farmer account.
+        // The technician absorbed the old doctor role's clinical work, so it
+        // carries BOTH its field section and the clinical footprint.
         $technician = User::factory()->create(['role' => 'technician']);
 
         $this->actingAs($technician)->getJson('/api/v1/profile')
@@ -46,12 +50,13 @@ class ProfileTest extends TestCase
                 'data' => [
                     'user' => ['id', 'name', 'username', 'email', 'role', 'avatar_url', 'created_at'],
                     'technician' => ['assigned_farmers'],
+                    'clinical' => ['health_records_count', 'case_notes_count'],
                 ],
             ])
             ->assertJsonMissingPath('data.farmer');
     }
 
-    public function test_technician_and_doctor_sections_report_existing_counts(): void
+    public function test_the_technician_and_clinical_sections_report_existing_counts(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
         $technician->assignedBeneficiaries()->create([
@@ -60,17 +65,23 @@ class ProfileTest extends TestCase
             'barangay_id' => $this->barangay->id,
             'animal_type' => 'Cow',
         ]);
+        HealthRecord::factory()->by($technician)->create();
+        CaseNote::factory()->count(2)->by($technician)->create();
 
         $this->actingAs($technician)->getJson('/api/v1/profile')
             ->assertOk()
-            ->assertJsonPath('data.technician.assigned_farmers', 1);
+            ->assertJsonPath('data.technician.assigned_farmers', 1)
+            ->assertJsonPath('data.clinical.health_records_count', 1)
+            ->assertJsonPath('data.clinical.case_notes_count', 2);
 
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        // The administrator holds neither the field assignment nor the
+        // clinical authorship, so neither section appears at all.
+        $admin = User::factory()->create(['role' => 'admin']);
 
-        $this->actingAs($doctor)->getJson('/api/v1/profile')
+        $this->actingAs($admin)->getJson('/api/v1/profile')
             ->assertOk()
-            ->assertJsonPath('data.doctor.health_records_count', 0)
-            ->assertJsonPath('data.doctor.case_notes_count', 0);
+            ->assertJsonMissingPath('data.technician')
+            ->assertJsonMissingPath('data.clinical');
     }
 
     public function test_user_can_update_own_name_and_email_only(): void

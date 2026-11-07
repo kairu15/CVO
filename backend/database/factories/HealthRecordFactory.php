@@ -16,7 +16,9 @@ class HealthRecordFactory extends Factory
     {
         return [
             'beneficiary_id' => Beneficiary::factory(),
-            'doctor_id' => User::factory()->create(['role' => 'doctor'])->id,
+            // doctor_id is the attending veterinarian / author of the record
+            // (a schema name, not a role) — authored by a technician account.
+            'doctor_id' => User::factory()->create(['role' => 'technician'])->id,
             'date_recorded' => fake()->dateTimeBetween('-6 months', 'now'),
             'diagnosis' => fake()->randomElement([
                 'Foot and mouth disease (suspected)',

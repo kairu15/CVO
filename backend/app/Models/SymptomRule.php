@@ -9,11 +9,12 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * One admin-editable rule behind the Rule-Based Health Concern Hints.
  *
- * A rule is a keyword list and a plain-language hint. When a doctor types a
+ * A rule is a keyword list and a plain-language hint. When a technician types a
  * case note or health record, the entry form matches the note against this
  * table (client-side, using the list served by the API) and shows the matching
  * hints inline. This is decision support, not a diagnosis, and nothing here
- * is a model or a learned value — it is a lookup the CVO's veterinarian owns.
+ * is a model or a learned value — it is a lookup the CVO's veterinary
+ * technician owns.
  *
  * @property int $id
  * @property string $label

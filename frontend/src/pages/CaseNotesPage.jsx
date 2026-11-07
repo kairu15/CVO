@@ -18,7 +18,7 @@ import { useAuth } from "../context/AuthContext";
 import { getRole } from "../config/roles";
 
 /**
- * Doctor "Case Notes" screen.
+ * Technician "Case Notes" screen.
  *
  * A chronological notebook rather than a table: the content of a case note is
  * freeform prose, so a row-per-field table would just truncate it. Which notes
@@ -44,7 +44,7 @@ function initialsOf(name) {
     .join("");
 }
 
-export default function CaseNotesPage({ roleKey = "doctor" }) {
+export default function CaseNotesPage({ roleKey = "technician" }) {
   const { user } = useAuth();
   const config = getRole(roleKey);
 
@@ -66,12 +66,12 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
   // Row selection for the bulk (select-all) delete.
   const { selected, toggle, toggleAll, clear } = useRowSelection();
 
-  // Mirrors CaseNotePolicy::create — only a veterinarian writes notes.
-  const canAuthor = user?.role === "doctor";
+  // Mirrors CaseNotePolicy::create — the technician writes the notes.
+  const canAuthor = user?.role === "technician";
 
   // Mirrors CaseNotePolicy::update — the author, or an administrator.
   const canModify = (note) =>
-    user?.role === "admin" || (user?.role === "doctor" && note.doctor_id === user?.id);
+    user?.role === "admin" || (user?.role === "technician" && note.doctor_id === user?.id);
 
   // Only notes this user may delete are selectable.
   const deletableIds = notes.filter(canModify).map((note) => note.id);
@@ -155,7 +155,7 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
       <section className="card p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="eyebrow">{config?.label ?? "Veterinarian"}</p>
+            <p className="eyebrow">{config?.label ?? "Technician"}</p>
             <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl">
               Case Notes
             </h2>
@@ -198,7 +198,7 @@ export default function CaseNotesPage({ roleKey = "doctor" }) {
             description={
               canAuthor
                 ? "Notes you write appear here, and are visible to admins and the assigned technician."
-                : "Notes appear here once a veterinarian has written one up."
+                : "Notes appear here once a technician has written one up."
             }
           />
         </section>

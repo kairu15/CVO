@@ -26,8 +26,7 @@ const USERNAME = `e2e${stamp}`;
 /** Seeded accounts — see backend/database/seeders/DatabaseSeeder.php */
 const DEMO = [
   { role: "admin", email: "admin@example.com", title: "Admin Dashboard", module: "User Management" },
-  { role: "doctor", email: "doctor@example.com", title: "Doctor Dashboard", module: "Vaccination Schedule" },
-  { role: "technician", email: "technician@example.com", title: "Technician Dashboard", module: "Geo-Tagging Map" },
+  { role: "technician", email: "technician@example.com", title: "Technician Dashboard", module: "Health Records" },
 ];
 
 const shots = "screenshots";
@@ -155,7 +154,7 @@ try {
   let text = await page.evaluate(() => document.body.innerText);
   ok("landing page renders the system title", /Geo-Tagging of Livestock and Poultry/.test(text));
   ok("landing page has the program overview", /About the program/i.test(text));
-  ok("landing page lists the three roles", /Three roles, one shared record/i.test(text));
+  ok("landing page lists the two roles", /Two roles, one shared record/i.test(text));
   // No self-registration promise anywhere on the public surface.
   ok("landing page offers no self-registration", !/register yourself|self-registration/i.test(text));
   await shot(page, "01-landing");
@@ -216,7 +215,7 @@ try {
 
     if (demo.role === "admin") {
       // The administrator is the all-access account: every dashboard opens.
-      for (const target of ["doctor", "technician"]) {
+      for (const target of ["technician"]) {
         await goto(page, `/dashboard/${target}`);
         await sleep(400);
         ok(
@@ -225,14 +224,16 @@ try {
           new URL(page.url()).pathname,
         );
       }
-      // The farmer dashboard is gone entirely — that URL must not resolve.
-      await goto(page, "/dashboard/farmer");
-      await sleep(400);
-      ok(
-        "the farmer dashboard no longer exists",
-        new URL(page.url()).pathname !== "/dashboard/farmer",
-        new URL(page.url()).pathname,
-      );
+      // The retired dashboards are gone entirely — those URLs must not resolve.
+      for (const gone of ["farmer", "doctor"]) {
+        await goto(page, `/dashboard/${gone}`);
+        await sleep(400);
+        ok(
+          `the /dashboard/${gone} route no longer exists`,
+          new URL(page.url()).pathname !== `/dashboard/${gone}`,
+          new URL(page.url()).pathname,
+        );
+      }
       // …and the miss lands on the public landing page (catch-all), which
       // has no session controls — come back to a dashboard before signing
       // out below.

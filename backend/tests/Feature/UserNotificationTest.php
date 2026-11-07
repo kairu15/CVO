@@ -116,7 +116,7 @@ class UserNotificationTest extends TestCase
         $this->assertSame('Farmer reassigned away from you', $outEvents[0]['title']);
     }
 
-    public function test_a_field_visit_photo_notifies_admins_and_doctors(): void
+    public function test_a_field_visit_photo_notifies_admins_and_other_technicians(): void
     {
         Storage::fake('public');
 
@@ -124,7 +124,9 @@ class UserNotificationTest extends TestCase
         $beneficiary = Beneficiary::factory()->assignedTo($technician)->create();
         $visit = FieldVisit::factory()->forBeneficiary($beneficiary)->by($technician)->create();
         $admin = $this->admin();
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        // The technician role absorbed the old doctor role's health oversight,
+        // so a second technician now reviews photos too.
+        $colleague = User::factory()->create(['role' => 'technician']);
 
         $this->actingAs($technician)
             ->postJson("/api/v1/field-visits/{$visit->id}/photo", [
@@ -141,23 +143,33 @@ class UserNotificationTest extends TestCase
                 'location_source' => 'none',
             ])->assertCreated();
 
-        foreach ([$admin, $doctor] as $supervisor) {
+        foreach ([$admin, $colleague] as $supervisor) {
             $events = $this->events($supervisor->fresh());
+            $this->assertCount(1, $events);
             $this->assertSame('field-visit-photo', $events[0]['type']);
             $this->assertStringContainsString($technician->name, $events[0]['message']);
             $this->assertStringContainsString($beneficiary->name_of_farmer, $events[0]['message']);
         }
+
+        // Each recipient's link is shaped by THEIR role's monitoring screen.
+        $this->assertSame('/dashboard/admin/monitoring', $this->events($admin->fresh())[0]['link']);
+        $this->assertSame('/dashboard/technician/monitoring', $this->events($colleague->fresh())[0]['link']);
+
+        // The submitting technician does not hear about their own photo.
+        $this->assertCount(0, $this->events($technician->fresh()));
     }
 
-    public function test_doctors_receive_only_the_health_relevant_events(): void
+    public function test_roles_outside_the_recipient_sets_receive_no_events(): void
     {
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        // An unknown/retired role (the `doctor` slot is gone; `auditor` never
+        // existed as a staff role) holds no recipient rights at all: neither
+        // the admin-workflow events nor the health-relevant ones reach it.
+        $stranger = User::factory()->create(['role' => 'auditor']);
 
-        // Adding a beneficiary is an admin-workflow event, not a veterinary
-        // one — doctors never hear about it.
+        // Adding a beneficiary is an admin-workflow event — other admins only.
         $this->addBeneficiary($this->admin(), 'Nena Farmer');
 
-        $this->actingAs($doctor)->getJson('/api/v1/notifications/unread-count')
+        $this->actingAs($stranger)->getJson('/api/v1/notifications/unread-count')
             ->assertOk()
             ->assertJsonPath('data.unread', 0);
     }
@@ -231,7 +243,7 @@ class UserNotificationTest extends TestCase
     {
         $actor = $this->admin(); // enrolls
         $receiver = $this->admin(); // exists before the events, so it receives them
-        $stranger = User::factory()->create(['role' => 'doctor']); // a role the event never reaches
+        $stranger = User::factory()->create(['role' => 'technician']); // beneficiary-added reaches admins only
 
         foreach (range(1, 2) as $ignored) {
             $this->addBeneficiary($actor, 'Farmer '.$ignored);

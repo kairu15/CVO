@@ -8,8 +8,9 @@ use App\Models\User;
 class DispersalEventPolicy
 {
     /**
-     * Mirrors the beneficiary scoping: admin/doctor have program-wide
-     * oversight, technicians see the chains they are assigned to.
+     * Mirrors the beneficiary scoping: admin and technicians have program-wide
+     * oversight (the technician absorbed the old doctor role's health/chain
+     * oversight).
      */
     public function viewAny(User $user): bool
     {
@@ -22,11 +23,7 @@ class DispersalEventPolicy
             return false;
         }
 
-        if (in_array($user->role, ['admin', 'doctor'], true)) {
-            return true;
-        }
-
-        return $user->role === 'technician' && $this->touchesTechnician($event, $user->id);
+        return in_array($user->role, ['admin', 'technician'], true);
     }
 
     /**
@@ -64,16 +61,4 @@ class DispersalEventPolicy
             || ($user->role === 'technician'
                 && $event->beneficiary->technician_id === $user->id);
     }
-
-    /**
-     * True when the technician is assigned to any beneficiary the event
-     * touches (source, parent or new recipient).
-     */
-    private function touchesTechnician(DispersalEvent $event, int $technicianId): bool
-    {
-        return $event->beneficiary->technician_id === $technicianId
-            || $event->parentBeneficiary?->technician_id === $technicianId
-            || $event->newBeneficiary?->technician_id === $technicianId;
-    }
-
 }

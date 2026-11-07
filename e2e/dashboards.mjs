@@ -21,7 +21,6 @@ const ok = (label, cond, extra = "") => {
 
 const NAMES = {
   admin: "CVO Administrator",
-  doctor: "Dr. Maria Santos",
   technician: "Jun Technician",
 };
 
@@ -32,7 +31,7 @@ let currentRole = "admin";
 const ACCOUNTS = [
   { id: 1, name: "CVO Administrator", username: "admin", email: "admin@example.com", role: "admin" },
   { id: 2, name: "Jun Technician", username: "technician", email: "technician@example.com", role: "technician" },
-  { id: 3, name: "Dr. Maria Santos", username: "doctor", email: "doctor@example.com", role: "doctor" },
+  { id: 3, name: "Maria Santos", username: "maria", email: "maria@example.com", role: "technician" },
 ];
 
 /** Served by the stubbed /health-records/options endpoint, so the modal's
@@ -40,13 +39,13 @@ const ACCOUNTS = [
 const OUTCOMES = ["recovered", "improving", "ongoing", "referred", "deceased"];
 
 /** Clinical rows reported by the stubbed /health-records endpoint. Row 1 is
- *  authored by the signed-in vet; row 2 is a colleague's. */
+ *  authored by the signed-in technician; row 2 is a colleague's. */
 const HEALTH_RECORDS = [
   {
     id: 1,
     beneficiary_id: 1,
     doctor_id: 1,
-    doctor: { id: 1, name: "Dr. Maria Santos" },
+    doctor: { id: 1, name: "Jun Technician" },
     name_of_farmer: "Aling Nena",
     address: "Banay Banay",
     animal_type: "Carabao",
@@ -60,7 +59,7 @@ const HEALTH_RECORDS = [
     id: 2,
     beneficiary_id: 2,
     doctor_id: 99,
-    doctor: { id: 99, name: "Dr. Other Vet" },
+    doctor: { id: 99, name: "Marites Cruz" },
     name_of_farmer: "Doyle Walter",
     address: "Dawis",
     animal_type: "Goat",
@@ -383,13 +382,13 @@ const ANIMAL_HEALTH = [
   },
 ];
 
-/** Freeform case notes. Row 1 is the signed-in vet's; row 2 is a colleague's. */
+/** Freeform case notes. Row 1 is the signed-in technician's; row 2 is a colleague's. */
 const CASE_NOTES = [
   {
     id: 1,
     beneficiary_id: 1,
     doctor_id: 1,
-    doctor: { id: 1, name: "Dr. Maria Santos" },
+    doctor: { id: 1, name: "Jun Technician" },
     name_of_farmer: "Aling Nena",
     address: "Banay Banay",
     animal_type: "Carabao",
@@ -401,7 +400,7 @@ const CASE_NOTES = [
     id: 2,
     beneficiary_id: 2,
     doctor_id: 99,
-    doctor: { id: 99, name: "Dr. Other Vet" },
+    doctor: { id: 99, name: "Marites Cruz" },
     name_of_farmer: "Doyle Walter",
     address: "Dawis",
     animal_type: "Goat",
@@ -535,7 +534,7 @@ try {
       if (url.includes("/api/v1/field-visits/options")) {
         return json({ data: { purposes: PURPOSES } });
       }
-      // Deliberately empty for every role: admin/doctor open the dashboard's
+      // Deliberately empty for every role: the dashboards open the
       // live MapLibre map, and handing it markers makes it fetch basemap
       // tiles over the internet, which stalls `waitUntil: "networkidle2"`
       // into a 30s navigation timeout. (BENEFICIARIES remains as the scoped
@@ -616,8 +615,8 @@ try {
         placeholders: roles[key].nav.filter((item) => !item.to).map((item) => item.label),
         links: roles[key].nav.filter((item) => item.to).length,
         // RoleDashboard opens the live dispersal map instead of the "No data
-        // yet" empty state for the two roles with city-wide oversight.
-        showsMap: key === "admin" || key === "doctor",
+        // yet" empty state for the roles with city-wide oversight.
+        showsMap: key === "admin" || key === "technician",
       },
     ]),
   );
@@ -668,27 +667,18 @@ try {
     await page.goto(`${BASE}/dashboard/${target}`, { waitUntil: "networkidle2" });
     await new Promise((r) => setTimeout(r, 400));
     ok(
-      `rbac: technician cannot open /dashboard/${target}`,
+      `rbac: technician cannot open /dashboard/${target} (retired or off-limits)`,
       new URL(page.url()).pathname === "/dashboard/technician",
       new URL(page.url()).pathname,
     );
   }
-
-  currentRole = "doctor";
-  await page.goto(`${BASE}/dashboard/admin`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 400));
-  ok(
-    "rbac: doctor redirected to their own dashboard",
-    new URL(page.url()).pathname === "/dashboard/doctor",
-    new URL(page.url()).pathname,
-  );
 
   // ---------- Guest guard on the auth route ----------
   await page.goto(`${BASE}/login`, { waitUntil: "networkidle2" });
   await new Promise((r) => setTimeout(r, 400));
   ok(
     "rbac: signed-in user is pushed off /login",
-    new URL(page.url()).pathname === "/dashboard/doctor",
+    new URL(page.url()).pathname === "/dashboard/technician",
     new URL(page.url()).pathname,
   );
 
@@ -750,12 +740,12 @@ try {
   );
   // innerText returns rendered text, and the label is uppercased via CSS.
   ok(
-    "all access: switcher lists all three dashboards",
-    /all access/i.test(switcherText) && /3 dashboards/i.test(switcherText),
+    "all access: switcher lists all dashboards",
+    /all access/i.test(switcherText) && /2 dashboards/i.test(switcherText),
   );
   ok(
     "all access: switcher lists each workspace",
-    ["Admin", "Doctor", "Technician"].every((s) => switcherText.includes(s)),
+    ["Admin", "Technician"].every((s) => switcherText.includes(s)),
   );
 
   // ---------- User Management (admin) ----------
@@ -926,9 +916,9 @@ try {
   );
   await page.screenshot({ path: `${shots}/admin-roles.png`, fullPage: true });
 
-  // ---------- Health Records (doctor) ----------
-  currentRole = "doctor";
-  await page.goto(`${BASE}/dashboard/doctor/health-records`, { waitUntil: "networkidle2" });
+  // ---------- Health Records (technician) ----------
+  currentRole = "technician";
+  await page.goto(`${BASE}/dashboard/technician/health-records`, { waitUntil: "networkidle2" });
   await new Promise((r) => setTimeout(r, 500));
 
   const hr = await page.evaluate(() => ({
@@ -938,16 +928,16 @@ try {
     body: document.querySelector("main")?.innerText ?? "",
   }));
 
-  ok("health records: doctor can open the page", hr.path === "/dashboard/doctor/health-records", hr.path);
+  ok("health records: technician can open the page", hr.path === "/dashboard/technician/health-records", hr.path);
   ok('health records: page heading reads "Health Records"', hr.heading === "Health Records", hr.heading);
   ok("health records: records are listed", hr.rows === HEALTH_RECORDS.length, String(hr.rows));
   ok("health records: an open outcome renders as Open", /Open/.test(hr.body));
-  ok("health records: the authoring vet is shown", /Dr\. Maria Santos/.test(hr.body));
+  ok("health records: the attending vet is shown", /Jun Technician/.test(hr.body));
 
-  // The vet authors records, so the create control is offered.
-  ok("health records: doctor is offered the create control", /New record/.test(hr.body));
+  // The technician authors records, so the create control is offered.
+  ok("health records: technician is offered the create control", /New record/.test(hr.body));
 
-  // Edit is scoped to the vet's own records: one Edit button, not two.
+  // Edit is scoped to the author's own records: one Edit button, not two.
   const editButtons = await page.evaluate(
     () => [...document.querySelectorAll("main table button")].filter((b) => b.textContent.trim() === "Edit").length,
   );
@@ -965,16 +955,16 @@ try {
     JSON.stringify(hrDialog) === JSON.stringify(["", ...OUTCOMES]),
     JSON.stringify(hrDialog),
   );
-  await page.screenshot({ path: `${shots}/doctor-health-records.png`, fullPage: true });
+  await page.screenshot({ path: `${shots}/technician-health-records.png`, fullPage: true });
 
   // Close the dialog again (Escape) so the next check starts clean.
   await page.keyboard.press("Escape");
   await new Promise((r) => setTimeout(r, 250));
 
-  // ---------- Vaccination Schedule (doctor) ----------
-  currentRole = "doctor";
+  // ---------- Vaccination Schedule (technician) ----------
+  currentRole = "technician";
   apiCalls.length = 0;
-  await page.goto(`${BASE}/dashboard/doctor/vaccination-schedule`, { waitUntil: "networkidle2" });
+  await page.goto(`${BASE}/dashboard/technician/vaccination-schedule`, { waitUntil: "networkidle2" });
   await new Promise((r) => setTimeout(r, 500));
 
   const vs = await page.evaluate(() => ({
@@ -984,7 +974,7 @@ try {
     body: document.querySelector("main")?.innerText ?? "",
   }));
 
-  ok("vaccination: doctor can open the page", vs.path === "/dashboard/doctor/vaccination-schedule", vs.path);
+  ok("vaccination: technician can open the page", vs.path === "/dashboard/technician/vaccination-schedule", vs.path);
   ok('vaccination: page heading reads "Vaccination Schedule"', vs.heading === "Vaccination Schedule", vs.heading);
   ok("vaccination: every animal is listed", vs.rows === SCHEDULE.length, String(vs.rows));
   ok("vaccination: never-vaccinated animals are explained, not blank", /No vaccination on record/.test(vs.body));
@@ -994,7 +984,7 @@ try {
   // Read-only: there is no authoring control on this page.
   ok("vaccination: no create control is offered", !/New record|Log a Visit/.test(vs.body));
 
-  await page.screenshot({ path: `${shots}/doctor-vaccination-schedule.png`, fullPage: true });
+  await page.screenshot({ path: `${shots}/technician-vaccination-schedule.png`, fullPage: true });
 
   // The filter is a server parameter, so it must actually reach the API and
   // change the rows — not just re-render the same list.
@@ -1022,9 +1012,9 @@ try {
   ok("vaccination: filtering changes the rows", filtered.rows === 1, String(filtered.rows));
   ok("vaccination: the filtered row is the overdue one", /Doyle Walter/.test(filtered.body));
 
-  // ---------- Case Notes (doctor) ----------
-  currentRole = "doctor";
-  await page.goto(`${BASE}/dashboard/doctor/case-notes`, { waitUntil: "networkidle2" });
+  // ---------- Case Notes (technician) ----------
+  currentRole = "technician";
+  await page.goto(`${BASE}/dashboard/technician/case-notes`, { waitUntil: "networkidle2" });
   await new Promise((r) => setTimeout(r, 500));
 
   const cn = await page.evaluate(() => ({
@@ -1034,7 +1024,7 @@ try {
     body: document.querySelector("main")?.innerText ?? "",
   }));
 
-  ok("case notes: doctor can open the page", cn.path === "/dashboard/doctor/case-notes", cn.path);
+  ok("case notes: technician can open the page", cn.path === "/dashboard/technician/case-notes", cn.path);
   ok('case notes: page heading reads "Case Notes"', cn.heading === "Case Notes", cn.heading);
   ok("case notes: every note is listed", cn.notes === CASE_NOTES.length, String(cn.notes));
   // The point of a note over a table cell: the full prose is shown.
@@ -1042,10 +1032,10 @@ try {
     "case notes: the note body renders in full",
     cn.body.includes(CASE_NOTES[0].body),
   );
-  ok("case notes: the authoring vet is shown", /Dr\. Maria Santos/.test(cn.body));
-  ok("case notes: doctor is offered the create control", /New note/.test(cn.body));
+  ok("case notes: the attending vet is shown", /Jun Technician/.test(cn.body));
+  ok("case notes: technician is offered the create control", /New note/.test(cn.body));
 
-  // Authoring is scoped to the vet's own notes, so exactly one Edit button.
+  // Authoring is scoped to the author's own notes, so exactly one Edit button.
   const noteEditButtons = await page.evaluate(
     () => [...document.querySelectorAll("main button")].filter((b) => b.textContent.trim() === "Edit").length,
   );
@@ -1072,15 +1062,15 @@ try {
     noteForm !== null && !noteForm.labels.includes("Diagnosis"),
     JSON.stringify(noteForm?.labels),
   );
-  await page.screenshot({ path: `${shots}/doctor-case-notes.png`, fullPage: true });
+  await page.screenshot({ path: `${shots}/technician-case-notes.png`, fullPage: true });
 
   await page.keyboard.press("Escape");
   await new Promise((r) => setTimeout(r, 250));
 
-  // ---------- Animal Health Monitoring (doctor) ----------
-  currentRole = "doctor";
+  // ---------- Animal Health Monitoring (technician) ----------
+  currentRole = "technician";
   apiCalls.length = 0;
-  await page.goto(`${BASE}/dashboard/doctor/animal-health`, { waitUntil: "networkidle2" });
+  await page.goto(`${BASE}/dashboard/technician/animal-health`, { waitUntil: "networkidle2" });
   await new Promise((r) => setTimeout(r, 500));
 
   const ah = await page.evaluate(() => ({
@@ -1091,7 +1081,7 @@ try {
     links: [...document.querySelectorAll("main table a")].map((a) => a.getAttribute("href")),
   }));
 
-  ok("animal health: doctor can open the page", ah.path === "/dashboard/doctor/animal-health", ah.path);
+  ok("animal health: technician can open the page", ah.path === "/dashboard/technician/animal-health", ah.path);
   ok('animal health: page heading reads "Animal Health Monitoring"', ah.heading === "Animal Health Monitoring", ah.heading);
   ok("animal health: every animal is listed", ah.rows === ANIMAL_HEALTH.length, String(ah.rows));
   ok("animal health: the latest diagnosis is rolled in", /Internal parasites/.test(ah.body));
@@ -1109,11 +1099,11 @@ try {
   // It points at the module that owns the records instead.
   ok(
     "animal health: links to where the records are edited",
-    ah.links.includes("/dashboard/doctor/health-records"),
+    ah.links.includes("/dashboard/technician/health-records"),
     JSON.stringify(ah.links.slice(0, 3)),
   );
 
-  await page.screenshot({ path: `${shots}/doctor-animal-health.png`, fullPage: true });
+  await page.screenshot({ path: `${shots}/technician-animal-health.png`, fullPage: true });
 
   // The attention filter must reach the API and narrow the rows.
   await page.evaluate(() => {
@@ -1341,14 +1331,14 @@ try {
   await page.goto(`${BASE}/dashboard/doctor/health-records`, { waitUntil: "networkidle2" });
   await new Promise((r) => setTimeout(r, 400));
   ok(
-    "health records: technician cannot open the doctor records page",
+    "health records: the retired /dashboard/doctor route does not resolve",
     new URL(page.url()).pathname === "/dashboard/technician",
     new URL(page.url()).pathname,
   );
 
   // A scoped role must not get the switcher.
-  currentRole = "doctor";
-  await page.goto(`${BASE}/dashboard/doctor`, { waitUntil: "networkidle2" });
+  currentRole = "technician";
+  await page.goto(`${BASE}/dashboard/technician`, { waitUntil: "networkidle2" });
   await new Promise((r) => setTimeout(r, 400));
   const scopedAside = await page.evaluate(
     () => document.querySelector("aside")?.innerText ?? "",
@@ -1357,7 +1347,7 @@ try {
 
   // ---------- Mobile: sidebar drawer ----------
   await page.setViewport({ width: 390, height: 844 });
-  await page.goto(`${BASE}/dashboard/doctor`, { waitUntil: "networkidle2" });
+  await page.goto(`${BASE}/dashboard/technician`, { waitUntil: "networkidle2" });
   await new Promise((r) => setTimeout(r, 400));
 
   // The desktop <aside> stays in the DOM but is display:none below lg, so
@@ -1379,8 +1369,8 @@ try {
   // Only nav entries with a `to` render as links; the rest are inert rows.
   ok(
     "sidebar: only built routes are links",
-    drawer?.links === EXPECTED.doctor.links,
-    `${drawer?.links} (expected ${EXPECTED.doctor.links})`,
+    drawer?.links === EXPECTED.technician.links,
+    `${drawer?.links} (expected ${EXPECTED.technician.links})`,
   );
   await page.screenshot({ path: `${shots}/dash-mobile-drawer.png`, fullPage: true });
 
@@ -1393,7 +1383,7 @@ try {
   ok("mobile dashboard: no horizontal overflow", o.doc <= o.win + 1, JSON.stringify(o));
 
   await page.setViewport({ width: 1440, height: 900 });
-  await page.goto(`${BASE}/dashboard/doctor`, { waitUntil: "networkidle2" });
+  await page.goto(`${BASE}/dashboard/technician`, { waitUntil: "networkidle2" });
   const o2 = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: window.innerWidth }));
   ok("desktop dashboard: no horizontal overflow", o2.doc <= o2.win + 1, JSON.stringify(o2));
 

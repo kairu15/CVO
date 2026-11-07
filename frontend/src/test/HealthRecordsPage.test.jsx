@@ -29,7 +29,7 @@ vi.mock("../api/symptomRulesApi", () => ({
 }));
 
 // Signed-in account; each test can override the role before rendering.
-const auth = { user: { id: 10, name: "Dr. Maria Santos", role: "doctor" } };
+const auth = { user: { id: 10, name: "Dr. Maria Santos", role: "technician" } };
 vi.mock("../context/AuthContext", () => ({
   useAuth: () => auth,
 }));
@@ -55,7 +55,7 @@ const RECORDS = [
     id: 2,
     beneficiary_id: 12,
     doctor_id: 99,
-    doctor: { id: 99, name: "Dr. Other Vet" },
+    doctor: { id: 99, name: "Marites Cruz" },
     name_of_farmer: "Doyle Walter",
     address: "Dawis",
     animal_type: "Goat",
@@ -74,7 +74,7 @@ function renderPage() {
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <ToastProvider>
-          <HealthRecordsPage roleKey="doctor" />
+          <HealthRecordsPage roleKey="technician" />
         </ToastProvider>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -84,7 +84,7 @@ function renderPage() {
 describe("HealthRecordsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    auth.user = { id: 10, name: "Dr. Maria Santos", role: "doctor" };
+    auth.user = { id: 10, name: "Dr. Maria Santos", role: "technician" };
     healthRecordsApi.list.mockResolvedValue({ data: RECORDS, meta: null });
     healthRecordsApi.options.mockResolvedValue({ outcomes: OUTCOMES });
     symptomRulesApi.active.mockResolvedValue([]);
@@ -99,7 +99,7 @@ describe("HealthRecordsPage", () => {
     expect(await screen.findByText("Aling Nena")).toBeInTheDocument();
     expect(screen.getByText("Foot and mouth disease (suspected)")).toBeInTheDocument();
     expect(screen.getByText("Dr. Maria Santos")).toBeInTheDocument();
-    expect(screen.getByText("Dr. Other Vet")).toBeInTheDocument();
+    expect(screen.getByText("Marites Cruz")).toBeInTheDocument();
   });
 
   it("renders an open outcome as Open rather than a blank badge", async () => {
@@ -242,11 +242,11 @@ describe("HealthRecordsPage", () => {
     expect(screen.getByText("Enter a diagnosis.")).toBeInTheDocument();
   });
 
-  it("offers edit and delete only on records the vet authored", async () => {
+  it("offers edit and delete only on records the technician authored", async () => {
     renderPage();
     await screen.findByText("Aling Nena");
 
-    // Two records, but only record 1 belongs to the signed-in vet.
+    // Two records, but only record 1 belongs to the signed-in technician.
     expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(1);
   });
@@ -257,7 +257,7 @@ describe("HealthRecordsPage", () => {
     renderPage();
     await screen.findByText("Aling Nena");
 
-    // Admin is not a doctor, so no authoring control, but both rows are editable.
+    // Admin is not a technician, so no authoring control, but both rows are editable.
     expect(screen.queryByRole("button", { name: "New record" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(2);
   });
@@ -272,13 +272,13 @@ describe("HealthRecordsPage", () => {
     expect(screen.queryByRole("button", { name: "New record" })).not.toBeInTheDocument();
   });
 
-  it("select-all bulk deletes only the rows this vet may delete", async () => {
+  it("select-all bulk deletes only the rows this technician may delete", async () => {
     healthRecordsApi.bulkRemove.mockResolvedValue({ deleted: 1, failed_ids: [] });
 
     renderPage();
     await screen.findByText("Aling Nena");
 
-    // Select-all ticks the one row this vet authored (record 1), not the
+    // Select-all ticks the one row this technician authored (record 1), not the
     // colleague's record (record 2).
     await act(async () => {
       await userEvent.click(

@@ -41,10 +41,9 @@ import { ROLE_KEYS, STAFF_ROLE_KEYS, roleLabel } from "../config/roles";
  * reversible and never destroys the rows that reference the account.
  */
 
-/** Badge tones per role, so the four roles are distinguishable at a glance. */
+/** Badge tones per role, so the roles are distinguishable at a glance. */
 const ROLE_TONES = {
   admin: "bg-brand-100 text-brand-900",
-  doctor: "bg-sky-50 text-sky-800",
   technician: "bg-amber-50 text-amber-800",
   farmer: "bg-slate-100 text-slate-600",
 };

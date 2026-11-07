@@ -433,7 +433,7 @@ function SearchPanel({ query, onNavigate }) {
 
   if (short) {
     // Accounts are a staff-only search group; the copy reflects that.
-    const canSeeAccounts = ["admin", "doctor"].includes(user?.role);
+    const canSeeAccounts = ["admin", "technician"].includes(user?.role);
 
     return (
       <div className="card absolute right-0 z-20 mt-2 w-80 p-4">

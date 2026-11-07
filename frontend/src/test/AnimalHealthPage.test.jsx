@@ -72,7 +72,7 @@ const ROWS = [
 function renderPage() {
   return render(
     <MemoryRouter>
-      <AnimalHealthPage roleKey="doctor" />
+      <AnimalHealthPage roleKey="technician" />
     </MemoryRouter>,
   );
 }
@@ -158,7 +158,7 @@ describe("AnimalHealthPage", () => {
     await screen.findByText("Doyle Walter");
 
     const links = table().getAllByRole("link", { name: "Records" });
-    expect(links[0]).toHaveAttribute("href", "/dashboard/doctor/health-records");
+    expect(links[0]).toHaveAttribute("href", "/dashboard/technician/health-records");
   });
 
   it("surfaces an API failure", async () => {

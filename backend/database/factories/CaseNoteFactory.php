@@ -16,7 +16,9 @@ class CaseNoteFactory extends Factory
     {
         return [
             'beneficiary_id' => Beneficiary::factory(),
-            'doctor_id' => User::factory()->create(['role' => 'doctor'])->id,
+            // doctor_id is the attending veterinarian / author of the note
+            // (a schema name, not a role) — authored by a technician account.
+            'doctor_id' => User::factory()->create(['role' => 'technician'])->id,
             'date_noted' => fake()->dateTimeBetween('-6 months', 'now'),
             'body' => fake()->randomElement([
                 'Owner phoned — the animal is still limping, advised to rest it for a week.',

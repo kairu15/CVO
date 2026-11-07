@@ -84,7 +84,7 @@ class AdminController extends Controller
     }
 
     /**
-     * Create a staff account (admin/doctor/technician). Staff is the ONLY
+     * Create a staff account (admin/technician). Staff is the ONLY
      * kind of account: beneficiaries are entered on the admin Beneficiaries
      * screen and never authenticate — see UserAccountService.
      */

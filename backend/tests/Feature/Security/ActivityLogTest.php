@@ -111,7 +111,7 @@ class ActivityLogTest extends TestCase
         $target = User::factory()->create(['role' => 'technician']);
 
         $this->actingAs($admin)
-            ->patchJson("/api/v1/admin/users/{$target->id}/role", ['role' => 'doctor'])
+            ->patchJson("/api/v1/admin/users/{$target->id}/role", ['role' => 'admin'])
             ->assertOk();
 
         $row = ActivityLog::query()
@@ -122,7 +122,7 @@ class ActivityLogTest extends TestCase
 
         $this->assertNotNull($row);
         $this->assertSame('technician', $row->context['previous_role']);
-        $this->assertSame('doctor', $row->context['new_role']);
+        $this->assertSame('admin', $row->context['new_role']);
     }
 
     public function test_rows_capture_the_request_context(): void
@@ -146,11 +146,11 @@ class ActivityLogTest extends TestCase
     {
         $admin = User::factory()->create(['role' => 'admin']);
 
-        foreach (['doctor', 'technician'] as $role) {
-            $this->actingAs(User::factory()->create(['role' => $role]))
-                ->getJson('/api/v1/admin/activity-logs')
-                ->assertForbidden();
-        }
+        // The technician is the only non-admin role left (doctor merged into
+        // it and farmer is retired).
+        $this->actingAs(User::factory()->create(['role' => 'technician']))
+            ->getJson('/api/v1/admin/activity-logs')
+            ->assertForbidden();
 
         $this->actingAs($admin)
             ->getJson('/api/v1/admin/activity-logs')

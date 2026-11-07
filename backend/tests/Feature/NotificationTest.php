@@ -232,7 +232,7 @@ class NotificationTest extends TestCase
         $this->assertSame([-40, -2], array_column($overdue, 'days_until_due'));
     }
 
-    public function test_the_feed_only_covers_the_callers_assigned_animals(): void
+    public function test_the_feed_covers_every_animal_for_every_staff_role(): void
     {
         $tech = $this->technician();
         $other = $this->technician();
@@ -242,17 +242,24 @@ class NotificationTest extends TestCase
 
         DispersalEvent::factory()->initial($mine)->create();
         DispersalEvent::factory()->initial($theirs)->create();
-        $this->vaccinatedDaysAgo($other, $this->interval + 10);
+        $vaccinated = $this->vaccinatedDaysAgo($other, $this->interval + 10);
 
+        // The technician absorbed the old doctor role's oversight, so the
+        // smart-alert feed covers every animal in the program: both dispersal
+        // events and the overdue vaccination.
         $alerts = $this->alerts($tech);
 
-        $this->assertSame([$mine->id], array_unique(array_column($alerts, 'beneficiary_id')));
+        $this->assertEqualsCanonicalizing(
+            [$mine->id, $theirs->id, $vaccinated->id],
+            array_unique(array_column($alerts, 'beneficiary_id')),
+        );
     }
 
     public function test_staff_see_the_feed_for_everything_they_can_see(): void
     {
         // A technician's feed follows the same scoping as their beneficiary
-        // list: only animals assigned to them.
+        // list — city-wide now that the role absorbed the old doctor role's
+        // oversight.
         $technician = User::factory()->create(['role' => 'technician']);
         $mine = Beneficiary::factory()->assignedTo($technician)->create();
         $unassigned = Beneficiary::factory()->create();
@@ -262,8 +269,11 @@ class NotificationTest extends TestCase
 
         $alerts = $this->alerts($technician);
 
-        $this->assertCount(1, $alerts);
-        $this->assertSame([$mine->id], array_unique(array_column($alerts, 'beneficiary_id')));
+        $this->assertCount(2, $alerts);
+        $this->assertEqualsCanonicalizing(
+            [$mine->id, $unassigned->id],
+            array_column($alerts, 'beneficiary_id'),
+        );
     }
 
     public function test_an_admin_sees_an_alert_for_every_animal(): void

@@ -8,8 +8,8 @@ import { SkeletonList } from "./Skeleton";
 
 /**
  * The dashboard home widget: the top 5 and bottom 5 barangays for one metric,
- * linking to the full Barangay dispersal tab. Admin and doctor only — the
- * full tab is where a technician's scoped view lives.
+ * linking to the full Barangay dispersal tab. Shown on every staff dashboard —
+ * the full tab carries the filters and the flow matrix.
  *
  * The ranking comes straight from the server's summary (ties included); the
  * widget only trims the displayed lists to five.

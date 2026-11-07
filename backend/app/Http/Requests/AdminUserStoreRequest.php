@@ -11,7 +11,7 @@ use Illuminate\Validation\Rules\Password;
  * POST /api/v1/admin/users — create a staff account.
  *
  * Admin-only via both route middleware and this request's authorize(), so a
- * technician or doctor calling the endpoint directly gets a 403 rather than
+ * technician calling the endpoint directly gets a 403 rather than
  * merely failing to see the button.
  */
 class AdminUserStoreRequest extends FormRequest

@@ -14,21 +14,20 @@ class AdminRoleTest extends TestCase
     {
         // `farmer` is deliberately not listed: the role no longer exists.
         // (A leftover row carrying it holds zero grants after the removal
-        // migration — it lands here with the other non-admins.)
-        foreach (['doctor', 'technician'] as $role) {
-            $user = User::factory()->create(['role' => $role]);
+        // migration — it lands here with the other non-admins.) The
+        // technician is the only non-admin role left since the doctor role
+        // was merged into it.
+        $user = User::factory()->create(['role' => 'technician']);
 
-            $this->actingAs($user)
-                ->getJson('/api/v1/admin/users?role=technician')
-                ->assertForbidden();
-        }
+        $this->actingAs($user)
+            ->getJson('/api/v1/admin/users?role=technician')
+            ->assertForbidden();
     }
 
     public function test_admin_can_list_technicians(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
         User::factory()->count(2)->create(['role' => 'technician']);
-        User::factory()->create(['role' => 'doctor']);
 
         $response = $this->actingAs($admin)->getJson('/api/v1/admin/users?role=technician');
 
@@ -38,7 +37,9 @@ class AdminRoleTest extends TestCase
     public function test_admin_can_change_a_users_role(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $user = User::factory()->create(['role' => 'doctor']);
+        // Demote a second admin — the admin<->technician pair is the whole
+        // role vocabulary now that doctor is gone.
+        $user = User::factory()->create(['role' => 'admin']);
 
         $response = $this->actingAs($admin)
             ->patchJson("/api/v1/admin/users/{$user->id}/role", ['role' => 'technician']);
@@ -51,10 +52,10 @@ class AdminRoleTest extends TestCase
     public function test_non_admins_cannot_change_roles(): void
     {
         $technician = User::factory()->create(['role' => 'technician']);
-        $doctor = User::factory()->create(['role' => 'doctor']);
+        $colleague = User::factory()->create(['role' => 'technician']);
 
         $this->actingAs($technician)
-            ->patchJson("/api/v1/admin/users/{$doctor->id}/role", ['role' => 'admin'])
+            ->patchJson("/api/v1/admin/users/{$colleague->id}/role", ['role' => 'admin'])
             ->assertForbidden();
     }
 
@@ -63,7 +64,7 @@ class AdminRoleTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
 
         $response = $this->actingAs($admin)
-            ->patchJson("/api/v1/admin/users/{$admin->id}/role", ['role' => 'doctor']);
+            ->patchJson("/api/v1/admin/users/{$admin->id}/role", ['role' => 'technician']);
 
         $response->assertUnprocessable()->assertJsonValidationErrors(['role']);
 
@@ -79,7 +80,7 @@ class AdminRoleTest extends TestCase
         User::factory()->create(['role' => 'admin']);
 
         $this->actingAs($admin)
-            ->patchJson("/api/v1/admin/users/{$admin->id}/role", ['role' => 'doctor'])
+            ->patchJson("/api/v1/admin/users/{$admin->id}/role", ['role' => 'technician'])
             ->assertUnprocessable();
 
         $this->assertDatabaseHas('users', ['id' => $admin->id, 'role' => 'admin']);
@@ -95,7 +96,7 @@ class AdminRoleTest extends TestCase
         $other = User::factory()->create(['role' => 'admin']);
 
         $this->actingAs($admin)
-            ->patchJson("/api/v1/admin/users/{$other->id}/role", ['role' => 'doctor'])
+            ->patchJson("/api/v1/admin/users/{$other->id}/role", ['role' => 'technician'])
             ->assertOk();
 
         $this->assertDatabaseHas('users', ['id' => $admin->id, 'role' => 'admin']);

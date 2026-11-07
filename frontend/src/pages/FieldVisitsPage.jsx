@@ -94,7 +94,7 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
 
   // Staff who may scan an animal to open its record. The lookup is still
   // scoped server-side, so this only decides whether to show the button.
-  const canScan = ["admin", "doctor", "technician"].includes(user?.role);
+  const canScan = ["admin", "technician"].includes(user?.role);
 
   // Mirrors FieldVisitPolicy::update — the technician who went, or an admin.
   const canModify = (visit) =>

@@ -46,9 +46,10 @@ use Illuminate\Support\Facades\DB;
  *   `return` events are never counted: handing an animal back to CVO is not
  *   a dispersal to a barangay (and has no destination barangay at all).
  *
- * SCOPING: admin and doctor see city-wide numbers; a technician sees the
- * same views restricted to events touching a household assigned to them —
- * enforced here in the query layer, never in the client.
+ * SCOPING: every staff role sees city-wide numbers — the technician absorbed
+ * the old doctor role's analytics oversight, so there is no row-scoped view
+ * any more. The `viewer` still rides in the cache key so a future scoped role
+ * cannot read another role's cached answer.
  *
  * SNAPSHOTS: every event carries from/to BARANGAY ids written at handover
  * time, so editing a beneficiary's barangay afterwards cannot rewrite
@@ -132,7 +133,7 @@ class BarangayDispersalAnalyticsService
             'summary' => $this->summary($barangays, $viewer, $filters, $minRateAnimals),
             'min_rate_animals' => $minRateAnimals,
             'filters' => $this->filterEcho($filters),
-            'scoped' => $this->isScoped($viewer),
+            'scoped' => false, // contract flag: nobody is row-scoped since the doctor role merged into technician
             'generated_at' => now()->toIso8601String(),
         ];
     }
@@ -162,7 +163,7 @@ class BarangayDispersalAnalyticsService
 
                 $flows = $reTypes === []
                     ? collect()
-                    : $this->baseQuery($viewer, $filters, $reTypes)
+                    : $this->baseQuery($filters, $reTypes)
                         ->whereNotNull('e.from_barangay_id')
                         ->whereNotNull('e.to_barangay_id')
                         ->groupBy('e.from_barangay_id', 'e.to_barangay_id')
@@ -175,7 +176,7 @@ class BarangayDispersalAnalyticsService
                     // the CVO is in every dispersal's history, so on by
                     // default the option would dwarf the barangay-to-barangay
                     // handovers the tab is about.
-                    $cvo = $this->baseQuery($viewer, $filters, [AnimalOwnershipEvent::TYPE_DISPERSAL])                        ->whereNotNull('e.to_barangay_id')
+                    $cvo = $this->baseQuery($filters, [AnimalOwnershipEvent::TYPE_DISPERSAL])                        ->whereNotNull('e.to_barangay_id')
                         ->groupBy('e.to_barangay_id')
                         ->selectRaw('null as origin_barangay_id, e.to_barangay_id as destination_barangay_id, count(*) as total')
                         ->get();
@@ -197,7 +198,7 @@ class BarangayDispersalAnalyticsService
                             && (int) $row->origin_barangay_id === (int) $row->destination_barangay_id,
                     ])->all(),
                     'filters' => $this->filterEcho($filters),
-                    'scoped' => $this->isScoped($viewer),
+                    'scoped' => false, // contract flag: nobody is row-scoped since the doctor role merged into technician
                     'generated_at' => now()->toIso8601String(),
                 ];
             },
@@ -283,7 +284,7 @@ class BarangayDispersalAnalyticsService
             return [];
         }
 
-        $rows = $this->baseQuery($viewer, $filters, $types)
+        $rows = $this->baseQuery($filters, $types)
             ->where('e.to_barangay_id', $barangayId)
             ->leftJoin('animals as ca', 'ca.id', '=', 'e.animal_id')
             ->leftJoin('animal_types as ct', 'ct.id', '=', 'ca.animal_type_id')
@@ -346,7 +347,7 @@ class BarangayDispersalAnalyticsService
             return ['total' => 0, 'items' => []];
         }
 
-        $query = $this->baseQuery($viewer, $filters, $types)
+        $query = $this->baseQuery($filters, $types)
             ->where("e.{$column}", $barangayId);
 
         $total = (clone $query)->count();
@@ -404,15 +405,11 @@ class BarangayDispersalAnalyticsService
                     $row->from_beneficiary_id,
                     $row->from_name,
                     $row->from_barangay,
-                    $row->from_technician_id,
-                    $viewer,
                 ),
                 'to' => $this->household(
                     $row->to_beneficiary_id,
                     $row->to_name,
                     $row->to_barangay,
-                    $row->to_technician_id,
-                    $viewer,
                 ),
             ])->all(),
         ];
@@ -421,17 +418,17 @@ class BarangayDispersalAnalyticsService
     /**
      * One side of a handover, as the card may show it.
      *
-     * PRIVACY: admin and doctor see every household name. A technician sees a
-     * name only for a household assigned to them; every other household is
-     * replaced with "Beneficiary in {barangay}" (or "Beneficiary (location
-     * hidden)" when even the barangay is unknown) and flagged `masked`. No
-     * RSBSA number, phone number or coordinate ever leaves this method.
+     * PRIVACY: every staff role sees every household name — the technician
+     * absorbed the old doctor role's oversight, so nobody is row-scoped any
+     * more. `masked` stays in the payload shape (contract) and is always
+     * false. No RSBSA number, phone number or coordinate ever leaves this
+     * method.
      *
      * A null beneficiary is the CVO office — the source of a first dispersal.
      *
      * @return array{name: string, barangay: ?string, masked: bool}
      */
-    private function household(mixed $beneficiaryId, mixed $name, mixed $barangayName, mixed $technicianId, User $viewer): array
+    private function household(mixed $beneficiaryId, mixed $name, mixed $barangayName): array
     {
         $barangay = $barangayName !== null && $barangayName !== '' ? (string) $barangayName : null;
 
@@ -439,22 +436,10 @@ class BarangayDispersalAnalyticsService
             return ['name' => 'CVO', 'barangay' => null, 'masked' => false];
         }
 
-        $visible = ! $this->isScoped($viewer) || (int) $technicianId === (int) $viewer->id;
-
-        if ($visible) {
-            return [
-                'name' => $name !== null && $name !== '' ? (string) $name : 'Unknown household',
-                'barangay' => $barangay,
-                'masked' => false,
-            ];
-        }
-
         return [
-            'name' => $barangay !== null
-                ? "Beneficiary in {$barangay}"
-                : 'Beneficiary (location hidden)',
+            'name' => $name !== null && $name !== '' ? (string) $name : 'Unknown household',
             'barangay' => $barangay,
-            'masked' => true,
+            'masked' => false,
         ];
     }
 
@@ -464,14 +449,15 @@ class BarangayDispersalAnalyticsService
 
     /**
      * The base event query every arm of the aggregate starts from: active
-     * rows only, within the date window and type set, the animal filters, and
-     * the technician's row scope. Voided events are excluded everywhere in
-     * this feature.
+     * rows only, within the date window and type set, and the animal filters.
+     * Voided events are excluded everywhere in this feature. Every staff role
+     * is city-wide (the technician absorbed the old doctor role's row scope),
+     * so there is no per-viewer filtering left.
      *
      * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>}  $filters
      * @param  list<string>  $types
      */
-    private function baseQuery(User $viewer, array $filters, array $types): Builder
+    private function baseQuery(array $filters, array $types): Builder
     {
         $query = DB::table('animal_ownership_events as e')
             ->where('e.status', AnimalOwnershipEvent::STATUS_ACTIVE)
@@ -491,20 +477,6 @@ class BarangayDispersalAnalyticsService
                     ->when($filters['animal_type_id'] !== null, fn (Builder $a) => $a->where('a.animal_type_id', $filters['animal_type_id']))
                     ->when($filters['classification_id'] !== null, fn (Builder $a) => $a->where('a.classification_id', $filters['classification_id'])),
             ));
-
-        // Row scope: a technician's numbers only count events that touch a
-        // household assigned to them. Admin and doctor are city-wide.
-        if ($this->isScoped($viewer)) {
-            $assigned = DB::table('beneficiaries')
-                ->where('technician_id', $viewer->id)
-                ->whereNull('deleted_at')
-                ->select('id');
-
-            $query->where(function (Builder $q) use ($assigned): void {
-                $q->whereIn('e.from_beneficiary_id', $assigned)
-                    ->orWhereIn('e.to_beneficiary_id', $assigned);
-            });
-        }
 
         return $query;
     }
@@ -528,7 +500,7 @@ class BarangayDispersalAnalyticsService
 
         if ($dispersalWanted) {
             $arms->push(
-                $this->baseQuery($viewer, $filters, [AnimalOwnershipEvent::TYPE_DISPERSAL])
+                $this->baseQuery($filters, [AnimalOwnershipEvent::TYPE_DISPERSAL])
                     ->whereNotNull('e.to_barangay_id')
                     ->selectRaw("e.to_barangay_id as barangay_id, 'dispersed' as kind, e.animal_id"),
             );
@@ -536,13 +508,13 @@ class BarangayDispersalAnalyticsService
 
         if ($reDispersalWanted) {
             $arms->push(
-                $this->baseQuery($viewer, $filters, self::RE_DISPERSAL_TYPES)
+                $this->baseQuery($filters, self::RE_DISPERSAL_TYPES)
                     ->whereNotNull('e.from_barangay_id')
                     ->selectRaw("e.from_barangay_id as barangay_id, 'out' as kind, e.animal_id"),
             );
 
             $arms->push(
-                $this->baseQuery($viewer, $filters, self::RE_DISPERSAL_TYPES)
+                $this->baseQuery($filters, self::RE_DISPERSAL_TYPES)
                     ->whereNotNull('e.to_barangay_id')
                     ->selectRaw("e.to_barangay_id as barangay_id, 'in' as kind, e.animal_id"),
             );
@@ -550,7 +522,7 @@ class BarangayDispersalAnalyticsService
             // Same-barangay handovers land in `in` and `out` above AND get
             // their own counter here, so the tab can show them separately.
             $arms->push(
-                $this->baseQuery($viewer, $filters, self::RE_DISPERSAL_TYPES)
+                $this->baseQuery($filters, self::RE_DISPERSAL_TYPES)
                     ->whereNotNull('e.from_barangay_id')
                     ->whereColumn('e.from_barangay_id', 'e.to_barangay_id')
                     ->selectRaw("e.from_barangay_id as barangay_id, 'within' as kind, e.animal_id"),
@@ -620,7 +592,7 @@ class BarangayDispersalAnalyticsService
 
         $column = $kind === 'dispersed' ? 'to_barangay_id' : 'from_barangay_id';
 
-        return $this->baseQuery($viewer, $filters, $types)
+        return $this->baseQuery($filters, $types)
             ->whereNotNull($column)
             ->groupBy($column)
             ->selectRaw("{$column} as barangay_id, count(distinct e.animal_id) as animals")
@@ -753,7 +725,7 @@ class BarangayDispersalAnalyticsService
      */
     private function cityRate(User $viewer, array $filters, int $minRateAnimals): ?float
     {
-        $denominator = $this->baseQuery($viewer, $filters, [AnimalOwnershipEvent::TYPE_DISPERSAL])
+        $denominator = $this->baseQuery($filters, [AnimalOwnershipEvent::TYPE_DISPERSAL])
             ->whereNotNull('e.to_barangay_id')
             ->distinct()
             ->count('e.animal_id');
@@ -762,7 +734,7 @@ class BarangayDispersalAnalyticsService
             return null;
         }
 
-        $numerator = $this->baseQuery($viewer, $filters, self::RE_DISPERSAL_TYPES)
+        $numerator = $this->baseQuery($filters, self::RE_DISPERSAL_TYPES)
             ->whereNotNull('e.from_barangay_id')
             ->distinct()
             ->count('e.animal_id');
@@ -869,11 +841,6 @@ class BarangayDispersalAnalyticsService
         return (string) (int) round($fraction * 100);
     }
 
-    private function isScoped(User $viewer): bool
-    {
-        return $viewer->role === 'technician';
-    }
-
     /**
      * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>, per_1000?: bool}  $filters
      * @return array<string, mixed>
@@ -894,10 +861,13 @@ class BarangayDispersalAnalyticsService
      */
     private function cacheKey(string $name, User $viewer, array $filters, int $minRateAnimals): string
     {
-        // The viewer rides in the key because a technician's scoped answer is
+        // The viewer rides in the key because a scoped role's answer would be
         // a different answer to the same filters — same convention as the
-        // city report cache. The v2 prefix keeps entries written by the
-        // earlier object-caching shape from ever being unserialized here.
+        // city report cache. (Nobody is scoped since the doctor role merged
+        // into technician, but the key shape is kept so cache semantics
+        // survive a future scoped role.) The v2 prefix keeps entries written
+        // by the earlier object-caching shape from ever being unserialized
+        // here.
         return 'analytics:barangay-dispersal:v2:'.$name.':'.md5((string) json_encode([
             'viewer' => $viewer->id,
             'role' => $viewer->role,

@@ -90,15 +90,15 @@ class AuditTrailTest extends TestCase
 
     public function test_the_audit_endpoints_reject_non_permitted_roles(): void
     {
-        foreach (['doctor', 'technician'] as $role) {
-            $this->actingAs(User::factory()->create(['role' => $role]))
-                ->getJson('/api/v1/admin/activity-logs')
-                ->assertForbidden();
+        // The technician is the only non-admin role left since the doctor
+        // role was merged into it (farmer is retired).
+        $this->actingAs(User::factory()->create(['role' => 'technician']))
+            ->getJson('/api/v1/admin/activity-logs')
+            ->assertForbidden();
 
-            $this->actingAs(User::factory()->create(['role' => $role]))
-                ->getJson('/api/v1/admin/activity-logs/actions')
-                ->assertForbidden();
-        }
+        $this->actingAs(User::factory()->create(['role' => 'technician']))
+            ->getJson('/api/v1/admin/activity-logs/actions')
+            ->assertForbidden();
 
         $this->actingAs($this->admin)
             ->getJson('/api/v1/admin/activity-logs')
@@ -114,15 +114,15 @@ class AuditTrailTest extends TestCase
     {
         $this->actingAs($this->admin)
             ->postJson('/api/v1/admin/users', [
-                'name' => 'Doc Reyes',
-                'email' => 'doc.reyes.audit@example.com',
-                'role' => 'doctor',
+                'name' => 'Tech Reyes',
+                'email' => 'tech.reyes.audit@example.com',
+                'role' => 'technician',
                 'password' => 'Str0ng!Pass',
                 'password_confirmation' => 'Str0ng!Pass',
             ])
             ->assertCreated();
 
-        $user = User::query()->where('email', 'doc.reyes.audit@example.com')->firstOrFail();
+        $user = User::query()->where('email', 'tech.reyes.audit@example.com')->firstOrFail();
 
         foreach (ActivityLog::query()->get() as $row) {
             $payload = json_encode([

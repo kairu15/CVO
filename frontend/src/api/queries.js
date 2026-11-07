@@ -142,7 +142,7 @@ export function useMonitoringAnimalTypes(enabled = true) {
 
 /**
  * The active health-concern hint rules — matched in the browser while a
- * doctor types, so this is NOT polled: the table is small reference data an
+ * technician types, so this is NOT polled: the table is small reference data an
  * admin edits rarely, and the form only needs it once per open.
  */
 export function useSymptomRules(enabled = true) {

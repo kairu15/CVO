@@ -97,7 +97,7 @@ class HealthRecordController extends Controller
     }
 
     /**
-     * The vocabulary the doctor's form offers. Served from SettingsService so
+     * The vocabulary the clinical form offers. Served from SettingsService so
      * the dropdown and the server-side validation can never drift apart, and
      * an outcome an admin adds is offered as soon as it is saved.
      */

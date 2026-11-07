@@ -163,7 +163,7 @@ describe("UserManagementPage", () => {
       id: 9,
       name: "Doc Reyes",
       email: "doc.reyes@example.com",
-      role: "doctor",
+      role: "technician",
       status: "active",
     });
 
@@ -184,7 +184,7 @@ describe("UserManagementPage", () => {
       await userEvent.type(screen.getByLabelText("Email"), "doc.reyes@example.com");
     });
     await act(async () => {
-      await userEvent.selectOptions(screen.getByLabelText("Role"), "doctor");
+      await userEvent.selectOptions(screen.getByLabelText("Role"), "technician");
     });
     await act(async () => {
       await userEvent.type(screen.getByLabelText("Password"), "Str0ng!Pass");
@@ -200,14 +200,14 @@ describe("UserManagementPage", () => {
       expect(adminApi.createUser).toHaveBeenCalledWith({
         name: "Doc Reyes",
         email: "doc.reyes@example.com",
-        role: "doctor",
+        role: "technician",
         password: "Str0ng!Pass",
         password_confirmation: "Str0ng!Pass",
       });
     });
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Doc Reyes can now sign in as Veterinarian.",
+      "Doc Reyes can now sign in as Field Technician.",
     );
   });
 
@@ -215,7 +215,7 @@ describe("UserManagementPage", () => {
     adminApi.createUser.mockResolvedValue({
       id: 10,
       name: "Doc Reyes",
-      role: "doctor",
+      role: "technician",
       setup_url: "http://localhost:5173/reset-password?token=abc123&email=doc.reyes%40example.com",
     });
 
@@ -232,7 +232,7 @@ describe("UserManagementPage", () => {
       await userEvent.type(screen.getByLabelText("Email"), "doc.reyes@example.com");
     });
     await act(async () => {
-      await userEvent.selectOptions(screen.getByLabelText("Role"), "doctor");
+      await userEvent.selectOptions(screen.getByLabelText("Role"), "technician");
     });
     await act(async () => {
       await userEvent.click(
@@ -244,7 +244,7 @@ describe("UserManagementPage", () => {
       expect(adminApi.createUser).toHaveBeenCalledWith({
         name: "Doc Reyes",
         email: "doc.reyes@example.com",
-        role: "doctor",
+        role: "technician",
       });
     });
 
@@ -303,7 +303,7 @@ describe("UserManagementPage", () => {
         {
           id: 11,
           action: "role_changed",
-          context: { previous_role: "technician", new_role: "doctor" },
+          context: { previous_role: "admin", new_role: "technician" },
           actor: { id: 1, name: "CVO Administrator" },
           created_at: "2026-10-04T10:00:00+00:00",
         },
@@ -328,7 +328,7 @@ describe("UserManagementPage", () => {
     expect(await screen.findByText(/Account activity — Jun Technician/)).toBeInTheDocument();
     expect(screen.getByText(/Last sign-in/i)).toBeInTheDocument();
     expect(screen.getByText("Role changed")).toBeInTheDocument();
-    expect(screen.getByText(/technician → doctor/)).toBeInTheDocument();
+    expect(screen.getByText(/admin → technician/)).toBeInTheDocument();
   });
 
   it("shows server validation errors against the field that failed", async () => {

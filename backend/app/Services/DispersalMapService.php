@@ -39,14 +39,12 @@ use Illuminate\Support\Facades\Log;
  * `skipped_no_location`, and the UI lists it under "Location not recorded".
  * Invalid coordinate values are dropped the same way (with a log line).
  *
- * MASKING (the existing role rule, from AnimalDispersalService): admin and
- * doctor see owner names and pins; a technician sees them only for
- * households assigned to them — everyone else renders as "Beneficiary in
- * {barangay}" pinned at the barangay centre, approximate.
+ * MASKING: every staff role sees owner names and pins — the technician
+ * absorbed the old doctor role's oversight, so nobody is masked any more
+ * (the `masked`/`approximate` payload flags stay for the map's contract).
  *
- * SCOPING: a technician's snapshot ranks only the events that touch a
- * household assigned to them (the same boundary BarangayDispersalAnalyticsService
- * draws), so their map answers from their own caseload.
+ * SCOPING: the snapshot is city-wide for every staff role (the same rule
+ * BarangayDispersalAnalyticsService applies).
  */
 class DispersalMapService
 {
@@ -79,19 +77,19 @@ class DispersalMapService
 
         // Grouped SQL (not PHP) so a long history costs one index scan per
         // query, not one query per date; aoe_status_date_idx serves both.
-        $counts = $this->scopedEvents($viewer)
+        $counts = $this->scopedEvents()
             ->when($window['from'] !== null, fn (Builder $q): Builder => $q->where('e.event_date', '>=', $window['from'].' 00:00:00'))
             ->when($window['to'] !== null, fn (Builder $q): Builder => $q->where('e.event_date', '<=', $window['to'].' 23:59:59'))
             ->groupBy('e.event_date')
             ->selectRaw('e.event_date as day, count(*) as event_count');
 
-        $fromSide = $this->scopedEvents($viewer)
+        $fromSide = $this->scopedEvents()
             ->when($window['from'] !== null, fn (Builder $q): Builder => $q->where('e.event_date', '>=', $window['from'].' 00:00:00'))
             ->when($window['to'] !== null, fn (Builder $q): Builder => $q->where('e.event_date', '<=', $window['to'].' 23:59:59'))
             ->whereNotNull('e.from_barangay_id')
             ->selectRaw('e.event_date as day, e.from_barangay_id as barangay_id');
 
-        $toSide = $this->scopedEvents($viewer)
+        $toSide = $this->scopedEvents()
             ->when($window['from'] !== null, fn (Builder $q): Builder => $q->where('e.event_date', '>=', $window['from'].' 00:00:00'))
             ->when($window['to'] !== null, fn (Builder $q): Builder => $q->where('e.event_date', '<=', $window['to'].' 23:59:59'))
             ->whereNotNull('e.to_barangay_id')
@@ -124,7 +122,7 @@ class DispersalMapService
             'total' => $total,
             'page' => $page,
             'per_page' => $perPage,
-            'scoped' => $this->isScoped($viewer),
+            'scoped' => false, // contract flag: nobody is row-scoped since the doctor role merged into technician
             'generated_at' => now()->toIso8601String(),
         ];
     }
@@ -182,7 +180,7 @@ class DispersalMapService
     {
         // The latest event per animal within the mode's window; the window
         // filter goes INSIDE the ranking so "latest" means latest within it.
-        $ranked = $this->scopedEvents($viewer)
+        $ranked = $this->scopedEvents()
             ->where('e.event_date', '<=', $date->toDateString().' 23:59:59')
             ->when($mode === self::MODE_ON, fn (Builder $q): Builder => $q->where(
                 'e.event_date',
@@ -229,7 +227,6 @@ class DispersalMapService
             ]))
             ->get();
 
-        $maskedOwners = $this->isScoped($viewer);
         $skipped = 0;
         $pins = [];
 
@@ -242,17 +239,15 @@ class DispersalMapService
                 ? $row->to_barangay_name
                 : $row->owner_barangay;
 
-            $masked = $maskedOwners && (int) $row->technician_id !== (int) $viewer->id;
-            $label = $masked
-                ? ($row->owner_barangay !== null ? "Beneficiary in {$row->owner_barangay}" : 'Beneficiary (location hidden)')
-                : $row->name_of_farmer;
+            // Every staff role sees owner names and pins (the technician
+            // absorbed the old doctor role's oversight); `masked` stays in
+            // the payload shape (contract) and is always false.
+            $label = $row->name_of_farmer;
 
             // Location: the household's own pin; the barangay centre when the
-            // household has none or must be masked; nothing when neither
-            // exists. Coordinates are validated before they are served.
-            [$latitude, $longitude, $source, $approximate] = $masked
-                ? $this->centerOf($row->owner_center_lat, $row->owner_center_lng)
-                : $this->ownerLocation($row);
+            // household has none. Coordinates are validated before they are
+            // served.
+            [$latitude, $longitude, $source, $approximate] = $this->ownerLocation($row);
 
             if ($latitude === null || $longitude === null) {
                 $skipped += 1;
@@ -269,9 +264,9 @@ class DispersalMapService
                 'ear_tag_number' => $row->ear_tag_number,
                 'animal_status' => $row->animal_status,
                 'owner' => [
-                    'id' => $masked ? null : (int) $row->to_beneficiary_id,
+                    'id' => (int) $row->to_beneficiary_id,
                     'label' => $label,
-                    'masked' => $masked,
+                    'masked' => false,
                 ],
                 'barangay_id' => $barangayId !== null ? (int) $barangayId : null,
                 'barangay' => $barangayName,
@@ -293,7 +288,7 @@ class DispersalMapService
             'skipped_no_location' => $skipped,
             'mode' => $mode,
             'date' => $date->toDateString(),
-            'scoped' => $maskedOwners,
+            'scoped' => false, // contract flag: nobody is row-scoped since the doctor role merged into technician
         ];
     }
 
@@ -380,38 +375,23 @@ class DispersalMapService
 
     /**
      * The active events the viewer may see, before any window filter — the
-     * one base query every arm of the snapshot starts from.
+     * one base query every arm of the snapshot starts from. Every staff role
+     * is city-wide (the technician absorbed the old doctor role's row scope),
+     * so there is no per-viewer filtering left.
      */
-    private function scopedEvents(User $viewer): Builder
+    private function scopedEvents(): Builder
     {
-        $query = DB::table('animal_ownership_events as e')
+        return DB::table('animal_ownership_events as e')
             ->where('e.status', AnimalOwnershipEvent::STATUS_ACTIVE);
-
-        if ($this->isScoped($viewer)) {
-            $assigned = DB::table('beneficiaries')
-                ->where('technician_id', $viewer->id)
-                ->whereNull('deleted_at')
-                ->select('id');
-
-            $query->where(function (Builder $q) use ($assigned): void {
-                $q->whereIn('e.from_beneficiary_id', $assigned)
-                    ->orWhereIn('e.to_beneficiary_id', $assigned);
-            });
-        }
-
-        return $query;
-    }
-
-    private function isScoped(User $viewer): bool
-    {
-        return $viewer->role === 'technician';
     }
 
     private function cacheKey(User $viewer, Carbon $date, string $mode, int $latestEventId): string
     {
-        // The viewer rides in the key because a technician's scoped answer is
+        // The viewer rides in the key because a scoped role's answer would be
         // a different answer to the same date (same convention as the
-        // analytics cache); the latest event id is the invalidator.
+        // analytics cache; nobody is scoped since the doctor role merged into
+        // technician, but the key shape is kept); the latest event id is the
+        // invalidator.
         return 'map:snapshot:v1:'.md5((string) json_encode([
             'viewer' => $viewer->id,
             'role' => $viewer->role,

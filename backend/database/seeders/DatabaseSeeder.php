@@ -10,7 +10,7 @@ class DatabaseSeeder extends Seeder
     /**
      * Seed the application's database.
      *
-     * Only the three staff demonstration accounts (one per role) and the
+     * Only the two staff demonstration accounts (one per role) and the
      * reference data the app needs to function — the official barangay
      * coverage and the starter health-concern hint rules. There is no farmer
      * account: beneficiaries are records the admin manages, not logins. No
@@ -25,7 +25,6 @@ class DatabaseSeeder extends Seeder
     {
         $accounts = [
             ['name' => 'CVO Administrator', 'username' => 'admin', 'email' => 'admin@example.com', 'role' => 'admin'],
-            ['name' => 'Dr. Maria Santos', 'username' => 'doctor', 'email' => 'doctor@example.com', 'role' => 'doctor'],
             ['name' => 'Jun Technician', 'username' => 'technician', 'email' => 'technician@example.com', 'role' => 'technician'],
         ];
 

@@ -4,6 +4,7 @@ import { notificationsApi } from "./notificationsApi";
 import { monitoringApi } from "./monitoringApi";
 import { beneficiariesApi } from "./beneficiariesApi";
 import { symptomRulesApi } from "./symptomRulesApi";
+import { dashboardApi } from "./dashboardApi";
 
 /**
  * Live data, the polling way.
@@ -162,7 +163,25 @@ export function useAssignedBeneficiaries(enabled = true) {
     refetchInterval: POLL_INTERVALS.beneficiaries,
     enabled,
   });
-}/** Imperative helpers for post-mutation refreshes (accept, mark-read…). */
+}
+
+/**
+ * The Admin Dashboard Overview — the whole command-center payload in one
+ * request. Polled at the server cache's own cadence (60s): faster polling
+ * would only re-read the same cached answer, slower would let the "Data as
+ * of" stamp drift from what a fresh visit sees.
+ */
+export function useDashboardOverview(enabled = true) {
+  return useQuery({
+    queryKey: ["dashboard", "overview"],
+    queryFn: ({ signal }) => dashboardApi.overview(signal),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    enabled,
+  });
+}
+
+/** Imperative helpers for post-mutation refreshes (accept, mark-read…). */
 export function useInvalidate() {
   const client = useQueryClient();
 

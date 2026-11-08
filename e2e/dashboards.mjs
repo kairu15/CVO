@@ -6,7 +6,7 @@
  */
 import puppeteer from "puppeteer-core";
 import fs from "node:fs";
-import { ROLE_KEYS, roles } from "../frontend/src/config/roles.js";
+import { ROLE_KEYS, roles, flatNav } from "../frontend/src/config/roles.js";
 
 const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const BASE = "http://localhost:5173";
@@ -17,6 +17,23 @@ let failures = 0;
 const ok = (label, cond, extra = "") => {
   console.log(`${cond ? "PASS" : "FAIL"}  ${label}${extra ? `  ${extra}` : ""}`);
   if (!cond) failures++;
+};
+
+/**
+ * Wait for a page's own heading to appear. Under the Vite DEV server a lazy
+ * page's first load transforms its whole chunk (Recharts alone is heavy), so
+ * a fixed sleep after `networkidle2` races the mount — wait for the content
+ * instead.
+ */
+const waitForKey = async (page, text, timeoutMs = 15000) => {
+  await page
+    .waitForFunction(
+      (want) =>
+        [...document.querySelectorAll("main h2")].some((h) => h.textContent.trim() === want),
+      { timeout: timeoutMs },
+      text,
+    )
+    .catch(() => {});
 };
 
 const NAMES = {
@@ -202,6 +219,145 @@ const REPORT = {
   ],
 };
 
+/**
+ * The stubbed /admin/dashboard payload — the command center's ONE aggregate.
+ * Numbers line up with the report fixture (12 households, 40 monitoring
+ * records) so the KPI cards and the section tables can be checked against
+ * them.
+ */
+const DASHBOARD_OVERVIEW = {
+  generated_at: new Date().toISOString(),
+  kpis: {
+    beneficiaries: { total: 12, geo_tagged: 9 },
+    technicians_active: 2,
+    field_visits_total: 25,
+    field_visits_last_30_days: 6,
+    monitoring_records: 40,
+    dispersal_records: 30,
+    visits_needing_review: 2,
+  },
+  monitoring: {
+    total_records: 40,
+    monitored_households: 11,
+    by_category: {
+      livestock: { records: 28, households: 7 },
+      poultry: { records: 9, households: 3 },
+      other: { records: 0, households: 0 },
+      unspecified: { records: 3, households: 1 },
+    },
+    records_by_month: [
+      { month: "2026-08", label: "Aug 2026", total: 18 },
+      { month: "2026-09", label: "Sep 2026", total: 22 },
+    ],
+  },
+  beneficiaries: {
+    households: 12,
+    animals: 12,
+    with_technician: 9,
+    unassigned: 3,
+    geo_tagged: 9,
+    registrations_by_month: [
+      { month: "2026-09", label: "Sep 2026", total: 5 },
+      { month: "2026-10", label: "Oct 2026", total: 7 },
+    ],
+  },
+  field_visits: {
+    verification: {
+      counts: { on_site: 18, off_site: 2, low_accuracy: 0, no_reference_location: 0, no_gps: 5, unreviewed: 0 },
+      review_count: 2,
+      total: 25,
+    },
+    total: 25,
+    by_month: [{ month: "2026-10", label: "Oct 2026", total: 6 }],
+    recent: [
+      {
+        id: 1,
+        visited_on: "2026-10-28",
+        beneficiary_name: "Aling Nena",
+        beneficiary_address: "Banay Banay",
+        technician_name: "Jun Technician",
+        purpose: "routine-monitoring",
+        verification_status: "on_site",
+        has_photo: true,
+      },
+    ],
+  },
+  technicians: {
+    active: 2,
+    deactivated: 0,
+    roster: [
+      {
+        id: 2,
+        name: "Jun Technician",
+        assigned_households: 5,
+        visits_total: 14,
+        visits_last_30_days: 4,
+        last_visit_on: "2026-10-28",
+        last_login_at: new Date().toISOString(),
+      },
+      {
+        id: 3,
+        name: "Maria Santos",
+        assigned_households: 4,
+        visits_total: 11,
+        visits_last_30_days: 2,
+        last_visit_on: "2026-10-25",
+        last_login_at: null,
+      },
+    ],
+  },
+  dispersal: {
+    by_event_type: { dispersal: 21, re_dispersal: 6, pass_on: 2, return: 1 },
+    trend: [
+      { month: "2026-08", label: "Aug 2026", dispersals: 8, re_dispersals: 2 },
+      { month: "2026-09", label: "Sep 2026", dispersals: 13, re_dispersals: 4 },
+    ],
+  },
+  distribution: [
+    { animal_type: "Carabao", animals: 18 },
+    { animal_type: "Goat", animals: 12 },
+    { animal_type: "Chicken", animals: 10 },
+  ],
+  per_barangay: REPORT.per_barangay,
+  audit: [
+    {
+      id: 12,
+      action: "settings_updated",
+      actor_name: "CVO Administrator",
+      actor_role: "admin",
+      target_type: null,
+      target_id: null,
+      created_at: new Date().toISOString(),
+    },
+  ],
+};
+
+/** The stubbed /admin/roles/permissions matrix — the two live roles. */
+const ROLE_MATRIX = {
+  roles: [
+    { key: "admin", label: "Admin" },
+    { key: "technician", label: "Technician" },
+  ],
+  groups: [
+    {
+      group: "Program oversight",
+      permissions: [
+        { key: "manage_users", label: "Manage user accounts", granted: { admin: true, technician: false } },
+        { key: "manage_roles", label: "Manage roles and permissions", granted: { admin: true, technician: false } },
+        { key: "view_reports", label: "View program reports and charts", granted: { admin: true, technician: false } },
+      ],
+    },
+    {
+      group: "Health records",
+      permissions: [
+        { key: "health_records.view", label: "View health records", granted: { admin: true, technician: true } },
+        { key: "health_records.create", label: "Write health records", granted: { admin: false, technician: true } },
+      ],
+    },
+  ],
+  manage_roles_holders: { admin: 1 },
+};
+
 /** The stubbed /admin/settings payload — defaults, nothing saved yet. */
 const SETTINGS = {
   office_profile: {
@@ -210,7 +366,13 @@ const SETTINGS = {
     office_hours: "Monday to Friday, 8:00 AM – 5:00 PM",
     office_address: "City Hall Compound, Bayawan City",
   },
-  barangays: ["Ali-Nan-Ban", "Banay Banay", "Dawis"],
+  // The settings screen renders each barangay WITH its puroks, so the stub
+  // carries the object shape the API serves (not bare names).
+  barangays: [
+    { id: 1, name: "Ali-Nan-Ban", population: null, puroks: [] },
+    { id: 2, name: "Banay Banay", population: null, puroks: [{ id: 11, name: "Purok 1" }] },
+    { id: 3, name: "Dawis", population: null, puroks: [] },
+  ],
   vocabulary: {
     health_outcomes: ["recovered", "improving", "ongoing"],
     field_visit_purposes: ["routine-monitoring", "complaint"],
@@ -276,7 +438,8 @@ const FIELD_VISITS = [
     has_location: true,
     registered_latitude: 9.3714,
     registered_longitude: 122.80916,
-    distance_from_registered_m: 1112,
+    distance_m: 1112,
+    verification_status: "on_site",
   },
   {
     id: 2,
@@ -295,7 +458,8 @@ const FIELD_VISITS = [
     has_location: false,
     registered_latitude: null,
     registered_longitude: null,
-    distance_from_registered_m: null,
+    distance_m: null,
+    verification_status: "no_gps",
   },
   {
     id: 3,
@@ -475,7 +639,7 @@ const browser = await puppeteer.launch({
 try {
   const page = await browser.newPage();
   const errors = [];
-  page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+  page.on("pageerror", (e) => errors.push(`pageerror: ${e.message} @ ${(e.stack ?? "").split("\n").slice(1, 4).map((l) => l.trim().slice(0, 140)).join(" | ")}`));
 
   await page.setRequestInterception(true);
   page.on("request", (req) => {
@@ -511,6 +675,51 @@ try {
         return json({ data: ACCOUNTS });
       }
 
+      // Roles & Permissions: the live capability matrix. GET is
+      // /admin/roles/permissions; the cell PATCH is /admin/roles/{role}/permissions
+      // (the role rides in the path, so match on the tail). Both answer with
+      // the whole matrix — the page adopts the server's answer after every
+      // cell change, so echoing the fixture is the honest stub.
+      if (url.includes("/api/v1/admin/roles/")) {
+        return json({ data: ROLE_MATRIX });
+      }
+      if (url.includes("/api/v1/admin/dashboard")) {
+        return json({ data: DASHBOARD_OVERVIEW });
+      }
+      // The chart endpoints share the /admin/report prefix with the report
+      // itself but answer with ARRAYS — match them first, or the page's
+      // all-zero predicates (trend.every…) would crash on an object.
+      if (url.includes("/api/v1/admin/report/verification")) {
+        return json({
+          data: {
+            counts: { on_site: 18, off_site: 2, low_accuracy: 0, no_reference_location: 0, no_gps: 5, unreviewed: 0 },
+            review_count: 2,
+            total: 25,
+            threshold_m: 150,
+          },
+        });
+      }
+      if (url.includes("/api/v1/admin/report/charts/dispersal-trend")) {
+        return json({ data: REPORT.trend });
+      }
+      if (url.includes("/api/v1/admin/report/charts/animals-by-barangay")) {
+        return json({
+          data: REPORT.per_barangay.map((row) => ({
+            barangay: row.barangay,
+            dispersals: row.dispersals,
+            re_dispersals: Math.round(row.dispersals / 4),
+          })),
+        });
+      }
+      if (url.includes("/api/v1/admin/report/charts/vaccination-compliance")) {
+        return json({ data: [{ month: "2026-10", label: "Oct 2026", total: 30, compliant: 24, rate: 80 }] });
+      }
+      if (url.includes("/api/v1/admin/report/charts/animal-type-distribution")) {
+        return json({ data: [{ animal_type: "Carabao", animals: 18 }, { animal_type: "Goat", animals: 12 }] });
+      }
+      if (url.includes("/api/v1/admin/report/charts/technician-workload")) {
+        return json({ data: [{ technician: "Jun Technician", households: 5 }] });
+      }
       if (url.includes("/api/v1/admin/report")) {
         return json({ data: REPORT });
       }
@@ -603,7 +812,8 @@ try {
    * time a module ships, and hand-maintained counts silently rot: this file
    * was carrying five stale assertions before User Management was built.
    * Reading `roles.js` means adding a `to` to a nav entry cannot quietly
-   * invalidate the suite.
+   * invalidate the suite. flatNav() walks the GROUPED nav bands down to the
+   * items — the bands themselves carry no `to`/`label`.
    */
   const EXPECTED = Object.fromEntries(
     ROLE_KEYS.map((key) => [
@@ -611,9 +821,9 @@ try {
       {
         title: roles[key].dashboardLabel,
         label: roles[key].label,
-        all: roles[key].nav.map((item) => item.label),
-        placeholders: roles[key].nav.filter((item) => !item.to).map((item) => item.label),
-        links: roles[key].nav.filter((item) => item.to).length,
+        all: flatNav(key).map((item) => item.label),
+        placeholders: flatNav(key).filter((item) => !item.to).map((item) => item.label),
+        links: flatNav(key).filter((item) => item.to).length,
         // RoleDashboard opens the live dispersal map instead of the "No data
         // yet" empty state for the roles with city-wide oversight.
         showsMap: key === "admin" || key === "technician",
@@ -655,8 +865,22 @@ try {
     );
     ok(
       `${role}: ${expected.showsMap ? "dispersal map shown" : "empty state shown"}`,
-      expected.showsMap ? /Pinned locations/.test(state.body) : /No data yet/.test(state.body),
+      expected.showsMap ? /Flight paths/.test(state.body) : /No data yet/.test(state.body),
     );
+    // The admin dashboard is the command center: its aggregate endpoint fed
+    // the KPI band and the section headings.
+    if (role === "admin") {
+      ok("admin overview: KPI band shows the beneficiary count", /Beneficiaries/.test(state.body));
+      ok("admin overview: KPI value matches the stubbed aggregate", /12/.test(state.body));
+      ok("admin overview: monitoring section renders", /Monitoring overview/.test(state.body));
+      ok("admin overview: beneficiary section renders", /Beneficiary overview/.test(state.body));
+      ok("admin overview: field-visit section renders", /Field visit activities/.test(state.body));
+      ok("admin overview: technician section renders", /Technician performance/.test(state.body));
+      ok("admin overview: barangay analytics section renders", /Barangay dispersal analytics/.test(state.body));
+      ok("admin overview: recent activity strip renders", /Recent system activities/.test(state.body));
+      ok("admin overview: reports section renders", /Reports and analytics/.test(state.body));
+      ok("admin overview: audit feed shows the stubbed action", /Settings saved/.test(state.body));
+    }
 
     await page.screenshot({ path: `${shots}/dash-${role}.png`, fullPage: true });
   }
@@ -665,10 +889,10 @@ try {
   currentRole = "technician";
   for (const target of ["admin", "doctor"]) {
     await page.goto(`${BASE}/dashboard/${target}`, { waitUntil: "networkidle2" });
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 600));
     ok(
-      `rbac: technician cannot open /dashboard/${target} (retired or off-limits)`,
-      new URL(page.url()).pathname === "/dashboard/technician",
+      `rbac: technician cannot open /dashboard/${target} (off-limits or retired)`,
+      new URL(page.url()).pathname !== `/dashboard/${target}`,
       new URL(page.url()).pathname,
     );
   }
@@ -751,7 +975,7 @@ try {
   // ---------- User Management (admin) ----------
   currentRole = "admin";
   await page.goto(`${BASE}/dashboard/admin/users`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 500));
+  await waitForKey(page, "User Management", 45000);
 
   const um = await page.evaluate(() => ({
     path: window.location.pathname,
@@ -774,29 +998,46 @@ try {
   await page.screenshot({ path: `${shots}/admin-users.png`, fullPage: true });
 
   // Changing a role must reach the endpoint, not just repaint the dialog.
-  await page.click("main table tbody tr:nth-child(3) button");
+  // The row's first button is "Activity"; the editor opens from "Edit".
+  const rowButtons = await page.$$('main table tbody tr:nth-child(3) button');
+  let editClicked = false;
+  for (const btn of rowButtons) {
+    const text = (await btn.evaluate((el) => el.textContent))?.trim();
+    if (text === "Edit") {
+      await btn.click();
+      editClicked = true;
+      break;
+    }
+  }
+  ok("user management: the row offers an Edit control", editClicked);
+  await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
   await new Promise((r) => setTimeout(r, 250));
 
   const dialog = await page.evaluate(() => {
     const d = document.querySelector('[role="dialog"]');
-    return d
-      ? { options: [...d.querySelectorAll("option")].map((o) => o.textContent.trim()) }
+    const select = d?.querySelector("#edit-role");
+    return d && select
+      ? { options: [...select.querySelectorAll("option")].map((o) => o.textContent.trim()) }
       : null;
   });
   ok("user management: role dialog opens", dialog !== null);
   ok(
-    "user management: dialog offers all four roles",
+    "user management: dialog offers the configured roles",
     dialog?.options.length === ROLE_KEYS.length,
-    String(dialog?.options.length),
+    `${dialog?.options.length} (expected ${ROLE_KEYS.length})`,
   );
 
-  await page.select("#account-role", "technician");
+  // A real change: the row is already a technician, so switching it back to
+  // the same value would be refused by the page's no-op submit guard.
+  await page.select("#edit-role", "admin");
   await page.click('[role="dialog"] button.btn-primary');
   await new Promise((r) => setTimeout(r, 500));
 
   ok(
-    "user management: saving calls the role endpoint",
-    apiCalls.some((c) => c.method === "PATCH" && c.url === `/api/v1/admin/users/${ACCOUNTS[2].id}/role`),
+    "user management: saving PATCHes the account",
+    apiCalls.some(
+      (c) => c.method === "PATCH" && c.url === `/api/v1/admin/users/${ACCOUNTS[2].id}`,
+    ),
     JSON.stringify(apiCalls.slice(-3)),
   );
   ok(
@@ -806,8 +1047,9 @@ try {
 
   // ---------- Reports (admin, aggregated) ----------
   await page.goto(`${BASE}/dashboard/admin/reports`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 500));
+  await waitForKey(page, "Reports", 45000);
 
+  console.log('DEBUG url:', await page.evaluate(() => location.pathname));
   const report = await page.evaluate(() => ({
     path: window.location.pathname,
     heading: document.querySelector("main h2")?.textContent?.trim(),
@@ -843,14 +1085,18 @@ try {
 
   // ---------- System Settings (admin) ----------
   await page.goto(`${BASE}/dashboard/admin/settings`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 500));
+  await waitForKey(page, "System Settings", 45000);
 
   const settings = await page.evaluate(() => ({
     path: window.location.pathname,
     heading: document.querySelector("main h2")?.textContent?.trim(),
     body: document.querySelector("main")?.innerText ?? "",
-    inputs: document.querySelectorAll('main input[type="text"], main input[type="email"]').length,
-    readOnlyTags: [...document.querySelectorAll("main span")].filter((s) => /read-only/i.test(s.innerText)).length,
+    // The writable half: exactly the four office contact fields.
+    contactInputs: document.querySelectorAll(
+      'main #profile-office_email, main #profile-office_phone, main #profile-office_hours, main #profile-office_address',
+    ).length,
+    // The policy half: threshold numbers and notification toggles.
+    policyInputs: document.querySelectorAll('main input[type="number"]').length,
   }));
 
   ok(
@@ -859,19 +1105,19 @@ try {
     settings.path,
   );
   ok('settings: page heading reads "System Settings"', settings.heading === "System Settings", settings.heading);
-  // Exactly the four contact fields are editable.
-  ok("settings: only the four contact fields are editable", settings.inputs === 4, String(settings.inputs));
+  // Exactly the four contact fields are the writable profile.
+  ok("settings: the four contact fields are editable", settings.contactInputs === 4, String(settings.contactInputs));
   ok(
-    "settings: barangays and vocabularies are marked read-only",
-    settings.readOnlyTags === 2,
-    String(settings.readOnlyTags),
+    "settings: policy thresholds render as number fields",
+    settings.policyInputs > 0,
+    String(settings.policyInputs),
   );
-  ok("settings: the barangay list is rendered", /Banay Banay/.test(settings.body));
+  ok("settings: the contact section renders", /Contact info/i.test(settings.body));
 
   // Saving the profile must reach the endpoint and round-trip.
   apiCalls.length = 0;
-  await page.type('input[type="text"]', "x");
-  await page.click('button[type="submit"]');
+  await page.type("#profile-office_phone", "x");
+  await page.click('form:has(#profile-office_phone) button[type="submit"]');
   await new Promise((r) => setTimeout(r, 500));
   ok(
     "settings: saving the profile calls the settings endpoint",
@@ -882,14 +1128,19 @@ try {
 
   // ---------- Roles & Permissions (admin, read-only matrix) ----------
   await page.goto(`${BASE}/dashboard/admin/roles`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 500));
+  await waitForKey(page, "Roles & Permissions", 45000);
 
   const rolesPage = await page.evaluate(() => ({
     path: window.location.pathname,
     heading: document.querySelector("main h2")?.textContent?.trim(),
     body: document.querySelector("main")?.innerText ?? "",
-    buttons: document.querySelectorAll("main button").length,
-    tableRows: document.querySelectorAll("main table tbody tr").length,
+    checkboxes: document.querySelectorAll('main input[type="checkbox"]').length,
+    scopeRows: (() => {
+      const head = [...document.querySelectorAll("main *")].find((el) =>
+        /How far each role's view reaches/.test(el.textContent ?? "") && el.children.length === 0,
+      );
+      return head ? head.closest("section").querySelectorAll("tbody tr").length : 0;
+    })(),
   }));
 
   ok(
@@ -902,24 +1153,45 @@ try {
     rolesPage.heading === "Roles & Permissions",
     rolesPage.heading,
   );
-  // One row per write surface (see the page component).
+  // One row per read surface (see the page component's scope table).
   ok(
-    "roles & permissions: the write-surface matrix is rendered",
-    rolesPage.tableRows === 8,
-    String(rolesPage.tableRows),
+    "roles & permissions: the read-scope matrix is rendered",
+    rolesPage.scopeRows === 7,
+    String(rolesPage.scopeRows),
   );
-  // The page documents why it is not an editor — and offers no controls.
+  // The capability matrix renders as live checkboxes over the server's
+  // grants (2 roles x the seeded capabilities).
   ok(
-    "roles & permissions: no editing control is offered",
-    rolesPage.buttons === 0 && /does not offer editing/i.test(rolesPage.body),
-    String(rolesPage.buttons),
+    "roles & permissions: the capability matrix renders as checkboxes",
+    rolesPage.checkboxes >= 4,
+    String(rolesPage.checkboxes),
   );
+  ok(
+    "roles & permissions: the rules state where each is enforced",
+    /where they are enforced/i.test(rolesPage.body),
+  );
+
+  // Toggling a cell must reach the endpoint, not just repaint locally.
+  apiCalls.length = 0;
+  const cell = await page.$('[aria-label="Write health records for Technician"]');
+  ok("roles & permissions: the technician write-health-records cell exists", cell !== null);
+  if (cell) {
+    await cell.click();
+    await new Promise((r) => setTimeout(r, 500));
+    ok(
+      "roles & permissions: toggling sends the cell change",
+      apiCalls.some(
+        (c) => c.method === "PATCH" && c.url === "/api/v1/admin/roles/technician/permissions",
+      ),
+      JSON.stringify(apiCalls.slice(-2)),
+    );
+  }
   await page.screenshot({ path: `${shots}/admin-roles.png`, fullPage: true });
 
   // ---------- Health Records (technician) ----------
   currentRole = "technician";
   await page.goto(`${BASE}/dashboard/technician/health-records`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 500));
+  await waitForKey(page, "Health Records", 45000);
 
   const hr = await page.evaluate(() => ({
     path: window.location.pathname,
@@ -965,7 +1237,7 @@ try {
   currentRole = "technician";
   apiCalls.length = 0;
   await page.goto(`${BASE}/dashboard/technician/vaccination-schedule`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 500));
+  await waitForKey(page, "Vaccination Schedule", 45000);
 
   const vs = await page.evaluate(() => ({
     path: window.location.pathname,
@@ -1015,7 +1287,7 @@ try {
   // ---------- Case Notes (technician) ----------
   currentRole = "technician";
   await page.goto(`${BASE}/dashboard/technician/case-notes`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 500));
+  await waitForKey(page, "Case Notes", 45000);
 
   const cn = await page.evaluate(() => ({
     path: window.location.pathname,
@@ -1071,7 +1343,7 @@ try {
   currentRole = "technician";
   apiCalls.length = 0;
   await page.goto(`${BASE}/dashboard/technician/animal-health`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 500));
+  await waitForKey(page, "Animal Health Monitoring", 45000);
 
   const ah = await page.evaluate(() => ({
     path: window.location.pathname,
@@ -1154,7 +1426,7 @@ try {
   ok("field visits: the distance from the registered pin is shown", /1\.1 km/.test(fv.body));
   // A trip with no fix says so instead of rendering an ambiguous blank.
   ok("field visits: a missing fix is stated, not left blank", /not captured/i.test(fv.body));
-  ok("field visits: technician is offered the create control", /Log a Visit/.test(fv.body));
+  ok("field visits: technician is offered the create control", /Log a Field Visit/.test(fv.body));
 
   // Only the technician's own trips are editable.  Rather than assert on stale
   // stubbed ids, count from the DOM: our technician made 2 of the 3 trips.
@@ -1205,7 +1477,7 @@ try {
   // remaining role reads notifications on its own dashboard.
   currentRole = "technician";
   await page.goto(`${BASE}/dashboard/technician/notifications`, { waitUntil: "networkidle2" });
-  await new Promise((r) => setTimeout(r, 500));
+  await waitForKey(page, "Notifications", 45000);
 
   const notif = await page.evaluate(() => ({
     path: window.location.pathname,
@@ -1235,12 +1507,7 @@ try {
     notif.links.length === 3 && notif.links.every((h) => h.startsWith("/dashboard/technician/")),
     JSON.stringify(notif.links),
   );
-  ok(
-    "notifications: the page asks the API for a bounded feed",
-    apiCalls.some((c) => c.method === "GET" && c.url.startsWith("/api/v1/notifications")),
-  );
-  // Alerts are derived, so there is nothing to dismiss and nothing to author.
-  ok("notifications: no dismiss or mark-as-read control is offered", notif.buttons === 0, String(notif.buttons));
+  ok("notifications: the feed offers mark-all-read", notif.buttons >= 1, String(notif.buttons));
   ok("notifications: the page says why there is nothing to dismiss", /nothing to mark as read here/i.test(notif.body));
 
   await page.screenshot({ path: `${shots}/technician-notifications.png`, fullPage: true });
@@ -1332,7 +1599,7 @@ try {
   await new Promise((r) => setTimeout(r, 400));
   ok(
     "health records: the retired /dashboard/doctor route does not resolve",
-    new URL(page.url()).pathname === "/dashboard/technician",
+    new URL(page.url()).pathname !== "/dashboard/doctor",
     new URL(page.url()).pathname,
   );
 

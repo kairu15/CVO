@@ -56,10 +56,12 @@ export default function LandingPage() {
     return () => observer.disconnect();
   }, []);
 
-  // The same stat vocabulary and numbers as the transparency page.
+  // The same stat vocabulary and numbers as the transparency page. The
+  // summary endpoint always ships `totals`, but a degraded or proxied answer
+  // must degrade to the illustrative figures — never white-screen the page.
   const stats = useMemo(
     () =>
-      data
+      data?.totals
         ? [
             { icon: "map-pin", label: "Animals dispersed", value: data.totals.animals_dispersed },
             { icon: "map", label: "Barangays covered", value: data.totals.barangays_covered },

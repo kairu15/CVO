@@ -19,6 +19,7 @@ import ResetPasswordPage from "../pages/ResetPasswordPage";
 // sidebar, header, Suspense fallback — lives in DashboardLayout, so a lazy
 // page suspends inside the layout instead of blanking it.
 const RoleDashboard = lazy(() => import("../pages/RoleDashboard"));
+const AdminOverviewPage = lazy(() => import("../pages/AdminOverviewPage"));
 const MonitoringPage = lazy(() => import("../pages/MonitoringPage"));
 const TechnicianAssignmentsPage = lazy(() => import("../pages/TechnicianAssignmentsPage"));
 const BeneficiariesPage = lazy(() => import("../pages/BeneficiariesPage"));
@@ -115,7 +116,7 @@ export default function AppRoutes() {
               path="/dashboard/admin"
               element={
                 <RoleRoute dashboard="admin">
-                  <RoleDashboard roleKey="admin" />
+                  <AdminOverviewPage />
                 </RoleRoute>
               }
             />

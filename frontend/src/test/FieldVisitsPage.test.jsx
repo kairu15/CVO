@@ -84,7 +84,8 @@ const VISITS = [
     has_location: true,
     registered_latitude: 9.3714,
     registered_longitude: 122.80916,
-    distance_from_registered_m: 1112,
+    distance_m: 1112,
+    verification_status: "on_site",
   },
   {
     id: 2,
@@ -103,7 +104,8 @@ const VISITS = [
     has_location: false,
     registered_latitude: null,
     registered_longitude: null,
-    distance_from_registered_m: null,
+    distance_m: null,
+    verification_status: "no_gps",
   },
   {
     id: 3,
@@ -122,7 +124,8 @@ const VISITS = [
     has_location: false,
     registered_latitude: null,
     registered_longitude: null,
-    distance_from_registered_m: null,
+    distance_m: null,
+    verification_status: "no_gps",
   },
 ];
 
@@ -158,7 +161,8 @@ describe("FieldVisitsPage", () => {
 
     expect(await screen.findByText("Aling Nena")).toBeInTheDocument();
     expect(table().getByText("Routine monitoring")).toBeInTheDocument();
-    expect(table().getByText("Captured")).toBeInTheDocument();
+    // The verdict badge carries the capture state now ("On site" / "No GPS").
+    expect(table().getByText("On site")).toBeInTheDocument();
   });
 
   it("expresses the distance from the registered pin in km once it is large", async () => {

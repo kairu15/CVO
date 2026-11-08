@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ReportChartRequest;
 use App\Http\Requests\ReportRequest;
 use App\Http\Requests\ReportTemplateExportRequest;
-use App\Models\FieldVisit;
 use App\Services\AuditLogger;
 use App\Services\FieldVisitVerificationService;
 use App\Services\ReportChartService;
@@ -249,37 +248,19 @@ class ReportController extends Controller
     /**
      * Off-site / needs-review counts for the Reports screen (Feature 1).
      *
-     * One grouped COUNT over the stored verdicts — no rows leave the server —
-     * plus the threshold the verdicts were judged against, so the number on
-     * the screen cannot drift from the rule that produced it. `review_count`
-     * is exactly the bucket the "Off-site / needs review" filter serves.
+     * The grouped COUNT lives in FieldVisitVerificationService::summaryCounts()
+     * — the admin dashboard overview reads the same numbers, so the two
+     * surfaces can never disagree. `threshold_m` is stated alongside so the
+     * reader knows what "off site" meant today.
      */
     public function verificationSummary(ReportChartRequest $request): JsonResponse
     {
-        $summary = $this->cached('verification-summary', [], function (): array {
-            $rows = FieldVisit::query()
-                ->selectRaw("coalesce(verification_status, 'unreviewed') as status")
-                ->selectRaw('count(*) as total')
-                ->groupBy('status')
-                ->pluck('total', 'status');
-
-            $counts = array_fill_keys([...FieldVisitVerificationService::STATUSES, 'unreviewed'], 0);
-
-            foreach ($rows as $status => $total) {
-                $counts[$status] = (int) $total;
-            }
-
-            $review = array_sum(array_intersect_key(
-                $counts,
-                array_flip([...FieldVisitVerificationService::REVIEW_STATUSES, 'unreviewed']),
-            ));
-
-            return [
-                'counts' => $counts,
-                'review_count' => $review,
-                'total' => array_sum($counts),
-            ];
-        }, self::REPORT_CACHE_SECONDS);
+        $summary = $this->cached(
+            'verification-summary',
+            [],
+            fn (): array => app(FieldVisitVerificationService::class)->summaryCounts(),
+            self::REPORT_CACHE_SECONDS,
+        );
 
         return response()->json([
             'data' => [

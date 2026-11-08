@@ -6,6 +6,7 @@ import { Icon } from "../components/Icons";
 import { InlineAlert } from "../components/InlineAlert";
 import { PaginationFooter } from "../components/PaginationFooter";
 import { SkeletonList } from "../components/Skeleton";
+import { labelForAction, labelForEntity } from "../lib/auditLabels";
 
 /**
  * Admin "Audit Trail" — READ-ONLY.
@@ -20,62 +21,6 @@ import { SkeletonList } from "../components/Skeleton";
  * secrets are `[hidden]` and identifiers are masked before they were ever
  * stored, so what is shown here is what was recorded.
  */
-
-/** Human copy for the action vocabulary — the same list the API validates. */
-const ACTION_LABELS = {
-  login: "Signed in",
-  logout: "Signed out",
-  logout_all: "Signed out everywhere",
-  failed_login: "Failed sign-in attempt",
-  account_locked: "Account locked out",
-  token_issued: "Signed in (mobile token)",
-  password_changed: "Password changed",
-  password_reset_requested: "Password reset requested",
-  password_reset_completed: "Password reset completed",
-  role_changed: "Role changed",
-  technician_assigned: "Technician assigned",
-  user_created: "Account created",
-  user_invited: "Account created — setup link sent",
-  user_updated: "Account details edited",
-  user_deactivated: "Account deactivated",
-  user_reactivated: "Account reactivated",
-  settings_updated: "Settings saved",
-  permissions_updated: "Permission changed",
-  reference_data_updated: "Reference data updated",
-  exported: "Data exported",
-  imported: "Data imported",
-  restored: "Record restored",
-};
-
-/** Entity type → what the row means to a reader. */
-const ENTITY_LABELS = {
-  Beneficiary: "Beneficiary",
-  MonitoringRecord: "Monitoring record",
-  DispersalEvent: "Dispersal event",
-  TechnicianAssignment: "Technician assignment",
-  User: "Account",
-  AnimalType: "Animal type",
-  AnimalClassification: "Animal classification",
-  Barangay: "Barangay",
-  Purok: "Purok",
-  Setting: "Setting",
-  Permission: "Permission",
-};
-
-function labelForAction(action) {
-  if (ACTION_LABELS[action]) return ACTION_LABELS[action];
-  // `beneficiary_updated` → "Beneficiary updated" — legible without a table
-  // entry for every model the vocabulary can grow to.
-  return action
-    .split("_")
-    .map((part, index) => (index === 0 ? part.charAt(0).toUpperCase() + part.slice(1) : part))
-    .join(" ");
-}
-
-function labelForEntity(type) {
-  if (!type) return "System";
-  return ENTITY_LABELS[type] ?? type;
-}
 
 function formatDateTime(value) {
   if (!value) return "—";

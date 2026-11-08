@@ -27,6 +27,10 @@ import { AnimalTypeDropdown } from "../components/AnimalTypeDropdown";
 import { ReportExportPanel } from "../components/ReportExportPanel";
 import { Icon } from "../components/Icons";
 import { getRole } from "../config/roles";
+import { CHART_COLORS, PIE_COLORS, AXIS_STYLE } from "../lib/charts";
+import { useChart } from "../hooks/useChart";
+import { ChartCard } from "../components/ChartCard";
+import { StatCard } from "../components/StatCard";
 
 /**
  * Admin "Reports" screen — the city-wide program overview, with charts.
@@ -46,101 +50,6 @@ import { getRole } from "../config/roles";
  * charting library's defaults — a chart is part of this page, not an app
  * embedded in it.
  */
-
-/** brand / earth tokens from index.css, as concrete values for SVG. */
-const CHART_COLORS = {
-  primary: "#558b2f", // brand-700
-  accent: "#8bc34a", // brand-400
-  deep: "#2d4d19", // brand-900
-  earth: "#a1784d", // earth-500
-  sand: "#d2b48c", // earth-300
-  clay: "#bb9469", // earth-400
-};
-
-/** The donut's slice palette: greens for the herd, earth tones for the rest. */
-const PIE_COLORS = [CHART_COLORS.primary, CHART_COLORS.accent, CHART_COLORS.earth, CHART_COLORS.sand, CHART_COLORS.deep, CHART_COLORS.clay];
-
-const AXIS_STYLE = { fontSize: 11, fill: "#64748b" };
-
-/** Small labelled figure used across the summary bands. */
-function Stat({ label, value, hint }) {
-  return (
-    <div className="rounded-xl border border-slate-200 px-4 py-3">
-      <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-        {label}
-      </p>
-      <p className="mt-1 font-display text-xl font-bold text-slate-900">
-        {value}
-      </p>
-      {hint && <p className="mt-0.5 text-[11px] text-slate-500">{hint}</p>}
-    </div>
-  );
-}
-
-/**
- * One chart's data lifecycle — independent fetch, independent skeleton, so a
- * slow chart never delays the page and a failed chart degrades to its own
- * empty frame instead of blanking the screen.
- */
-function useChart(loader) {
-  const [state, setState] = useState({ data: null, loading: true, error: null });
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-
-    loader()
-      .then((data) => {
-        if (active) setState({ data, loading: false, error: null });
-      })
-      .catch((err) => {
-        if (active) setState({ data: null, loading: false, error: getErrorMessage(err) });
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [loader, tick]);
-
-  return { ...state, refresh: useCallback(() => setTick((t) => t + 1), []) };
-}
-
-/** Card frame: title + loading/empty/error states around the chart body. */
-function ChartCard({ title, caption, state, isEmpty, emptyTitle, emptyDescription, children }) {
-  return (
-    <section className="card p-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
-          {title}
-        </h3>
-        {caption && <p className="text-xs text-slate-500">{caption}</p>}
-      </div>
-
-      {state.loading ? (
-        <div className="mt-4">
-          <SkeletonList rows={3} rowClassName="h-24" />
-        </div>
-      ) : state.error ? (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <InlineAlert message={state.error} />
-          {state.refresh && (
-            <button type="button" onClick={state.refresh} className="btn-secondary !px-3.5 !py-1.5 text-xs">
-              Try again
-            </button>
-          )}
-        </div>
-      ) : isEmpty ? (
-        <div className="mt-4">
-          <EmptyState title={emptyTitle} description={emptyDescription} />
-        </div>
-      ) : (
-        <div className="mt-4 h-72">{children}</div>
-      )}
-    </section>
-  );
-}
 
 /**
  * On-site verification counts (Feature 1) — how the field log's geotagged
@@ -201,11 +110,11 @@ function VerificationCard({ roleKey }) {
           </p>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            <Stat label="On site" value={counts.on_site ?? 0} />
-            <Stat label="Off site" value={counts.off_site ?? 0} />
-            <Stat label="Low accuracy" value={counts.low_accuracy ?? 0} />
-            <Stat label="No registered pin" value={counts.no_reference_location ?? 0} />
-            <Stat label="No GPS" value={counts.no_gps ?? 0} />
+            <StatCard label="On site" value={counts.on_site ?? 0} />
+            <StatCard label="Off site" value={counts.off_site ?? 0} />
+            <StatCard label="Low accuracy" value={counts.low_accuracy ?? 0} />
+            <StatCard label="No registered pin" value={counts.no_reference_location ?? 0} />
+            <StatCard label="No GPS" value={counts.no_gps ?? 0} />
           </div>
 
           <p className="mt-4 text-xs text-slate-500">
@@ -461,14 +370,14 @@ export default function ReportsPage({ roleKey = "admin" }) {
               Program
             </h3>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Stat label="Households" value={program.households ?? 0} />
-              <Stat label="Animals tagged" value={program.animals ?? 0} />
-              <Stat
+              <StatCard label="Households" value={program.households ?? 0} />
+              <StatCard label="Animals tagged" value={program.animals ?? 0} />
+              <StatCard
                 label="With technician"
                 value={program.with_technician ?? 0}
                 hint="Actively monitored"
               />
-              <Stat
+              <StatCard
                 label="Unassigned"
                 value={program.unassigned ?? 0}
                 hint="Awaiting a technician"
@@ -483,17 +392,17 @@ export default function ReportsPage({ roleKey = "admin" }) {
                 Field activity
               </h3>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <Stat label="Monitoring visits" value={activity.monitoring_visits ?? 0} />
-                <Stat label="Field visits" value={activity.field_visits ?? 0} />
-                <Stat
+                <StatCard label="Monitoring visits" value={activity.monitoring_visits ?? 0} />
+                <StatCard label="Field visits" value={activity.field_visits ?? 0} />
+                <StatCard
                   label="Visits with GPS fix"
                   value={activity.field_visits_with_location ?? 0}
                   hint="Of the field visits above"
                 />
-                <Stat label="Dispersals" value={activity.dispersals ?? 0} />
-                <Stat label="Re-dispersals" value={activity.re_dispersals ?? 0} />
+                <StatCard label="Dispersals" value={activity.dispersals ?? 0} />
+                <StatCard label="Re-dispersals" value={activity.re_dispersals ?? 0} />
                 {"dispersals_since" in activity && (
-                  <Stat label="Dispersals since filter date" value={activity.dispersals_since ?? 0} />
+                  <StatCard label="Dispersals since filter date" value={activity.dispersals_since ?? 0} />
                 )}
               </div>
             </div>
@@ -503,14 +412,14 @@ export default function ReportsPage({ roleKey = "admin" }) {
                 Clinical
               </h3>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <Stat label="Health records" value={clinical.health_records ?? 0} />
-                <Stat
+                <StatCard label="Health records" value={clinical.health_records ?? 0} />
+                <StatCard
                   label="Open cases"
                   value={clinical.open_cases ?? 0}
                   hint="No outcome, or still improving"
                 />
-                <Stat label="Case notes" value={clinical.case_notes ?? 0} />
-                <Stat label="Vaccinations logged" value={clinical.vaccinations ?? 0} />
+                <StatCard label="Case notes" value={clinical.case_notes ?? 0} />
+                <StatCard label="Vaccinations logged" value={clinical.vaccinations ?? 0} />
               </div>
 
               {Object.keys(clinical.by_outcome ?? {}).length > 0 && (

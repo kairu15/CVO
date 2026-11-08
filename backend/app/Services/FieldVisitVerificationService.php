@@ -193,4 +193,39 @@ class FieldVisitVerificationService
 
         return $visits->count();
     }
+
+    /**
+     * Verdict counts across every stored visit — one grouped COUNT, no rows
+     * leave the server. `review_count` is exactly the bucket the
+     * "Off-site / needs review" filter serves; `total` is every visit. The
+     * Reports screen and the admin dashboard overview both read this, so the
+     * two surfaces can never disagree about what "needs review" means.
+     *
+     * @return array{counts: array<string, int>, review_count: int, total: int}
+     */
+    public function summaryCounts(): array
+    {
+        $rows = FieldVisit::query()
+            ->selectRaw("coalesce(verification_status, 'unreviewed') as status")
+            ->selectRaw('count(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $counts = array_fill_keys([...self::STATUSES, 'unreviewed'], 0);
+
+        foreach ($rows as $status => $total) {
+            $counts[$status] = (int) $total;
+        }
+
+        $review = array_sum(array_intersect_key(
+            $counts,
+            array_flip([...self::REVIEW_STATUSES, 'unreviewed']),
+        ));
+
+        return [
+            'counts' => $counts,
+            'review_count' => $review,
+            'total' => array_sum($counts),
+        ];
+    }
 }

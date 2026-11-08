@@ -25,6 +25,7 @@ vi.mock("../api/reportsApi", () => ({
     vaccinationCompliance: vi.fn(),
     animalTypeDistribution: vi.fn(),
     technicianWorkload: vi.fn(),
+    verificationSummary: vi.fn(),
     exportTemplate: vi.fn(),
   },
 }));
@@ -94,6 +95,14 @@ describe("ReportsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     reportsApi.cityWide.mockResolvedValue(REPORT);
+    // The verification card rides the same screen; its counts are asserted
+    // indirectly through the band the card renders.
+    reportsApi.verificationSummary.mockResolvedValue({
+      counts: { on_site: 18, off_site: 2, low_accuracy: 0, no_reference_location: 0, no_gps: 5, unreviewed: 0 },
+      review_count: 2,
+      total: 25,
+      threshold_m: 150,
+    });
     reportsApi.dispersalTrend.mockResolvedValue(TREND);
     reportsApi.animalsByBarangay.mockResolvedValue([
       { barangay: "Banay Banay", dispersals: 19, re_dispersals: 3 },

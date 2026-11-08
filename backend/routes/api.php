@@ -10,6 +10,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BarangayController;
 use App\Http\Controllers\BeneficiaryController;
 use App\Http\Controllers\CaseNoteController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DispersalEventController;
 use App\Http\Controllers\DispersalMapController;
 use App\Http\Controllers\FieldVisitController;
@@ -420,6 +421,14 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
             ->middleware('permission:view_reports')->name('api.admin.report.charts.animal-type-distribution');
         Route::get('/report/charts/technician-workload', [ReportController::class, 'technicianWorkload'])
             ->middleware('permission:view_reports')->name('api.admin.report.charts.technician-workload');
+
+        // Dashboard Overview — the /dashboard/admin command center: KPIs,
+        // monitoring/beneficiary/visit/technician statistics, the dispersal
+        // trend and the newest audit rows in ONE cached aggregate
+        // (DashboardService), composed from the same services the module
+        // screens read. A program-report surface, gated like the report.
+        Route::get('/dashboard', [DashboardController::class, 'index'])
+            ->middleware('permission:view_reports')->name('api.admin.dashboard');
 
         // City-wide program report — aggregated, read-only.
         Route::get('/report', [ReportController::class, 'index'])

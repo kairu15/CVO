@@ -98,8 +98,52 @@ export const adminApi = {
    * The same directory, paginated: resolves to `{ data, meta }` so the table
    * can render its page footer (see `unwrap.page`).
    */
-  listBeneficiariesPage: async (params = {}) =>
-    unwrap.page(await api.get("/api/v1/admin/beneficiaries", { params })),
+  listBeneficiariesPage: async (params = {}) => {
+    const response = await api.get("/api/v1/admin/beneficiaries", { params });
+
+    // `group_totals` is a sibling of the paginator, not inside it: it reports
+    // the TRUE household count behind each barangay header.
+    return {
+      ...unwrap.page(response),
+      group_totals: response.data?.group_totals ?? null,
+    };
+  },
+
+  /**
+   * The directory's oversight figures for the KPI strip: households,
+   * unassigned, never monitored, overdue, missing RSBSA, without a pin and
+   * MOA-unsigned. One aggregate query server-side.
+   */
+  beneficiarySummary: async () =>
+    unwrap(await api.get("/api/v1/admin/beneficiaries/summary")),
+
+  /**
+   * Every id matching the active directory filters — the payload behind
+   * "select all N matching", so a whole barangay can be assigned in one call.
+   */
+  beneficiaryIds: async (params = {}) => {
+    const response = await api.get("/api/v1/admin/beneficiaries/ids", { params });
+
+    return Array.isArray(response.data?.data) ? response.data.data : [];
+  },
+
+  /**
+   * Download link for the filtered directory CSV (the sheet the office prints
+   * for field assignment). Same filter keys as the list.
+   */
+  exportBeneficiariesUrl: (params = {}) => {
+    const base = api.defaults.baseURL ?? "";
+    const query = new URLSearchParams();
+
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== null && value !== undefined && value !== "") {
+        query.set(key, String(value));
+      }
+    }
+
+    const qs = query.toString();
+    return `${base}/api/v1/admin/beneficiaries/export${qs ? `?${qs}` : ""}`;
+  },
 
   /** Attach / detach (technicianId = null) a technician on a beneficiary. */
   assignTechnician: async (beneficiaryId, technicianId) => {

@@ -46,6 +46,9 @@ vi.mock("../api/adminApi", () => ({
     listUsers: vi.fn(),
     bulkAssignTechnician: vi.fn(),
     assignTechnician: vi.fn(),
+    beneficiarySummary: vi.fn(),
+    beneficiaryIds: vi.fn(),
+    exportBeneficiariesUrl: vi.fn(() => "/api/v1/admin/beneficiaries/export"),
   },
 }));
 
@@ -54,6 +57,20 @@ vi.mock("../hooks/useDebouncedValue", async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, useDebouncedValue: (value) => value };
 });
+
+// The directory reads its technician options from a cached hook (one fetch per
+// five minutes instead of one per poll) and the animal master list.
+vi.mock("../hooks/useTechnicianOptions", () => ({
+  useTechnicianOptions: () => [
+    { id: 1, name: "Jun Technician" },
+    { id: 2, name: "Ana Technician" },
+  ],
+  resetTechnicianOptionsCache: vi.fn(),
+}));
+
+vi.mock("../hooks/useAnimalTypes", () => ({
+  useAnimalTypeGroups: () => ({ groups: [], loading: false, reload: vi.fn() }),
+}));
 
 const TECHNICIANS = [
   { id: 1, name: "Jun Technician" },
@@ -88,8 +105,23 @@ const BENEFICIARIES = [
 ];
 
 function mockList(beneficiaries = BENEFICIARIES) {
-  adminApi.listBeneficiariesPage.mockResolvedValue({ data: beneficiaries, meta: null });
+  adminApi.listBeneficiariesPage.mockResolvedValue({
+    data: beneficiaries,
+    meta: null,
+    group_totals: null,
+  });
   adminApi.listUsers.mockResolvedValue(TECHNICIANS);
+  adminApi.beneficiarySummary.mockResolvedValue({
+    households: beneficiaries.length,
+    unassigned: 2,
+    never_monitored: 1,
+    overdue: 1,
+    overdue_days: 60,
+    missing_rsbsa: 1,
+    without_location: 1,
+    moa_unsigned: 0,
+  });
+  adminApi.beneficiaryIds.mockResolvedValue(beneficiaries.map((row) => row.id));
   fetchBarangays.mockResolvedValue([
     { id: 1, name: "Dawis", latitude: 9.1, longitude: 122.8 },
     { id: 2, name: "Banay Banay", latitude: 9.2, longitude: 122.9 },
@@ -356,8 +388,13 @@ describe("BeneficiariesPage enrolment", () => {
     renderPage();
     await screen.findByText("Aling Nena");
 
+    // Row actions live in one menu now (three inline links were the busiest
+    // column on the page).
     await act(async () => {
-      await userEvent.click(screen.getByRole("button", { name: "Edit Aling Nena" }));
+      await userEvent.click(screen.getByRole("button", { name: "Actions for Aling Nena" }));
+    });
+    await act(async () => {
+      await userEvent.click(screen.getByRole("menuitem", { name: "Edit Aling Nena" }));
     });
 
     const dialog = screen.getByRole("dialog", { name: "Edit beneficiary" });

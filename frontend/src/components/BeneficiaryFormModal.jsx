@@ -76,6 +76,9 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
   const [autoResolvePin, setAutoResolvePin] = useState(!editing);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  // Households the server says already look like this one (same RSBSA, or the
+  // same farmer in the same barangay). Shown before the record is created.
+  const [duplicates, setDuplicates] = useState(null);
 
   // Seed once per open/record. Keyed on the record's ID, not the object: the
   // parent polls its list and hands us a fresh object with the same data, and
@@ -113,6 +116,7 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
     );
     setAutoResolvePin(!editing);
     setErrors({});
+    setDuplicates(null);
     setPuroks([]);
     // Only a different record or a fresh open re-seeds — see above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -194,15 +198,7 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
     };
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-
-    const invalid = validate();
-    if (Object.keys(invalid).length > 0) {
-      setErrors(invalid);
-      return;
-    }
-
+  async function save({ confirmDuplicate = false, addAnother = false } = {}) {
     setSaving(true);
     const data = payload();
 
@@ -233,8 +229,18 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
         }
 
         try {
-          await beneficiariesApi.create(data);
+          await beneficiariesApi.create(
+            confirmDuplicate ? { ...data, confirm_duplicate: true } : data,
+          );
         } catch (createError) {
+          // 409 carries the households that already look like this one. Show
+          // them instead of either refusing a legitimate second animal or
+          // silently creating a duplicate.
+          if (createError?.response?.status === 409) {
+            setDuplicates(createError.response?.data?.duplicates ?? []);
+            return;
+          }
+
           if (!isNetworkError(createError)) throw createError;
 
           await enqueue({
@@ -250,7 +256,25 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
           return;
         }
 
+        setDuplicates(null);
         toast.success("Beneficiary added — monitoring record created.");
+
+        // Batch enrolment: keep the barangay, purok, animal and pin so the
+        // next household in the same area is a few fields away.
+        if (addAnother) {
+          setForm((previous) => ({
+            ...previous,
+            name_of_farmer: "",
+            rsbsa_number: "",
+            ear_tag_number: "",
+            sex: "F",
+            moa_signed: "",
+          }));
+          setCoords(null);
+          setAutoResolvePin(true);
+          onSaved?.();
+          return;
+        }
       }
 
       onSaved?.();
@@ -262,6 +286,22 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+
+    const invalid = validate();
+    if (Object.keys(invalid).length > 0) {
+      setErrors(invalid);
+      return;
+    }
+
+    // The pressed submit button decides: one-off save, or keep the dialog open
+    // for the next household (see save's addAnother branch).
+    save({
+      addAnother: event.nativeEvent?.submitter?.value === "addAnother",
+    });
   }
 
   return (
@@ -441,10 +481,58 @@ export function BeneficiaryFormModal({ open, beneficiary = null, onClose, onSave
           </div>
         )}
 
-        <div className="mt-5 flex justify-end gap-2">
+        {duplicates && duplicates.length > 0 && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+            <p className="text-sm font-semibold text-amber-900">
+              A similar beneficiary may already exist
+            </p>
+            <p className="mt-1 text-xs text-amber-800">
+              Check these records before adding another household for the same
+              farmer or RSBSA number.
+            </p>
+            <ul className="mt-2 space-y-1 text-xs text-amber-900">
+              {duplicates.map((duplicate) => (
+                <li key={duplicate.id}>
+                  <strong>{duplicate.name_of_farmer}</strong> — {duplicate.address}
+                  {duplicate.rsbsa_number ? ` · ${duplicate.rsbsa_number}` : ""}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="btn-secondary !px-3.5 !py-1.5 text-xs"
+                onClick={() => setDuplicates(null)}
+              >
+                Go back
+              </button>
+              <button
+                type="button"
+                className="btn-primary !px-3.5 !py-1.5 text-xs"
+                disabled={saving}
+                onClick={() => save({ confirmDuplicate: true })}
+              >
+                Save anyway
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={onClose}>
             Cancel
           </button>
+          {!editing && (
+            <button
+              type="submit"
+              name="intent"
+              value="addAnother"
+              className="btn-secondary"
+              disabled={saving}
+            >
+              Save &amp; add another
+            </button>
+          )}
           <button type="submit" className="btn-primary" disabled={saving}>
             {saving ? (
               <>

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Modal } from "./Modal";
 import { Icon } from "./Icons";
@@ -19,13 +20,28 @@ import { Icon } from "./Icons";
  * @param {(beneficiary: object, mode: "disperse"|"re-disperse") => void}
  *   [props.onOpenDispersal] renders the dispositions that open the shared
  *   DispersalDialog for this household
+ * @param {Array<object>} [props.technicians] assignment options
+ * @param {(beneficiary: object, technicianId: number|null) => void}
+ *   [props.onAssignTechnician] renders the inline assignment control
+ * @param {boolean} [props.assigning] disables it while the request runs
  */
 export function BeneficiaryDetailModal({
   beneficiary,
   onClose,
   technicianName,
   onOpenDispersal,
+  technicians = [],
+  onAssignTechnician,
+  assigning = false,
 }) {
+  // Assignment is edited here rather than only through the bulk bar: after
+  // opening a household, attaching its technician is the most likely action.
+  const [assignId, setAssignId] = useState("");
+
+  useEffect(() => {
+    setAssignId(beneficiary?.technician_id != null ? String(beneficiary.technician_id) : "");
+  }, [beneficiary?.id, beneficiary?.technician_id]);
+
   if (!beneficiary) return null;
 
   const sourceLabels = {
@@ -50,6 +66,12 @@ export function BeneficiaryDetailModal({
         : "Unassigned",
     ],
     ["Monitoring records", String(beneficiary.monitoring_records_count ?? 0)],
+    [
+      "Last visit",
+      beneficiary.last_monitored_at
+        ? String(beneficiary.last_monitored_at).slice(0, 10)
+        : "Never visited",
+    ],
     ["Location captured by", sourceLabels[beneficiary.location_source] ?? null],
     [
       "Coordinates",
@@ -80,6 +102,48 @@ export function BeneficiaryDetailModal({
           </div>
         ))}
       </dl>
+
+      {onAssignTechnician && technicians.length > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-200 p-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-0 flex-1">
+              <label
+                htmlFor="detail-technician"
+                className="block text-xs font-medium text-slate-600"
+              >
+                Assign technician
+              </label>
+              <select
+                id="detail-technician"
+                className="field mt-1.5"
+                value={assignId}
+                onChange={(event) => setAssignId(event.target.value)}
+                disabled={assigning}
+              >
+                <option value="">Unassigned (clear assignment)</option>
+                {technicians.map((technician) => (
+                  <option key={technician.id} value={technician.id}>
+                    {technician.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              className="btn-primary !px-3.5 !py-1.5 text-xs"
+              disabled={assigning}
+              onClick={() =>
+                onAssignTechnician(
+                  beneficiary,
+                  assignId === "" ? null : Number(assignId),
+                )
+              }
+            >
+              {assigning ? "Saving…" : "Save assignment"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
         {beneficiary.id ? (

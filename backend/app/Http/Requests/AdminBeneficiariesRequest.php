@@ -29,6 +29,20 @@ class AdminBeneficiariesRequest extends FormRequest
         return [
             'search' => ['sometimes', 'nullable', 'string', 'max:255'],
 
+            // The directory's triage filters. Every one is a WHERE before
+            // pagination, so a selection shows the whole matching set and the
+            // KPI/worklist counts agree with the rows.
+            'barangay' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'animal_type' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'animal_type_id' => ['sometimes', 'nullable', 'integer', 'exists:animal_types,id'],
+            'classification_id' => ['sometimes', 'nullable', 'integer', 'exists:animal_classifications,id'],
+
+            // `unassigned` or a technician id. Numeric strings are allowed
+            // because the filter arrives from a URL.
+            'assignment' => ['sometimes', 'nullable', 'regex:/^(unassigned|[0-9]+)$/'],
+            'monitoring' => ['sometimes', 'nullable', 'in:never,overdue'],
+            'missing' => ['sometimes', 'nullable', 'in:rsbsa,ear_tag,location'],
+
             // The directory groups every household by barangay for bulk
             // assignment and pages through the result. Over-limit values are
             // clamped to 50 by the controller (see App\Support\Pagination),

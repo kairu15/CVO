@@ -19,6 +19,7 @@ use App\Models\ActivityLog;
 use App\Models\Beneficiary;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\BeneficiaryDirectoryService;
 use App\Services\BeneficiaryService;
 use App\Services\MonitoringExcelService;
 use App\Services\UserAccountService;
@@ -42,6 +43,7 @@ class AdminController extends Controller
         private readonly UserRoleService $roles,
         private readonly UserAccountService $accounts,
         private readonly BeneficiaryService $beneficiaries,
+        private readonly BeneficiaryDirectoryService $directory,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -279,30 +281,108 @@ class AdminController extends Controller
 
     /**
      * Beneficiaries grouped for bulk assignment: every beneficiary with its
-     * current technician, paginated. `per_page` is honoured (capped at 500 by
-     * the request) so the directory can show the whole set the monitoring
-     * table reports on rather than a fixed 15-row slice.
+     * current technician, paginated. Filters run server-side before
+     * pagination, and `group_totals` reports the TRUE household count behind
+     * each barangay header rather than the rows on this page.
      */
     public function beneficiaries(AdminBeneficiariesRequest $request): AnonymousResourceCollection
     {
-        $validated = $request->validated();
+        $filters = $this->directoryFilters($request);
 
-        $beneficiaries = Beneficiary::query()
-            ->with('technician')
-            ->withCount('monitoringRecords')
-            ->when($validated['search'] ?? null, function ($q, $search): void {
-                $pattern = Like::contains($search);
+        return BeneficiaryResource::collection(
+            $this->directory->listFor(
+                $request->user(),
+                $filters,
+                $request->validated('per_page'),
+            ),
+        )->additional(['group_totals' => $this->directory->groupTotalsFor($request->user(), $filters)]);
+    }
 
-                $q->where(function ($q) use ($pattern): void {
-                    $q->where('name_of_farmer', 'like', $pattern)
-                        ->orWhere('address', 'like', $pattern);
-                });
-            })
-            ->orderBy('address')
-            ->orderBy('name_of_farmer')
-            ->paginate(Pagination::perPage($validated['per_page'] ?? null));
+    /** The directory's KPI strip — one aggregate request, program-wide. */
+    public function beneficiarySummary(AdminBeneficiariesRequest $request): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->directory->summaryFor($request->user()),
+        ]);
+    }
 
-        return BeneficiaryResource::collection($beneficiaries);
+    /**
+     * Every id matching the active filters — the payload behind "select all N
+     * matching", so a whole barangay is one bulk request.
+     */
+    public function beneficiaryIds(AdminBeneficiariesRequest $request): JsonResponse
+    {
+        $ids = $this->directory->idsFor($request->user(), $this->directoryFilters($request));
+
+        return response()->json(['data' => $ids, 'total' => count($ids)]);
+    }
+
+    /**
+     * The filtered directory as a CSV for field assignment (UTF-8 BOM so
+     * Excel opens the barangay names correctly).
+     */
+    public function exportBeneficiaries(AdminBeneficiariesRequest $request): StreamedResponse
+    {
+        $filters = $this->directoryFilters($request);
+
+        $this->audit->log($request->user(), 'exported', null, [
+            'resource' => 'beneficiary_directory',
+            'filters' => $filters,
+        ]);
+
+        $filename = 'beneficiaries-'.now()->format('Ymd-His').'.csv';
+
+        return response()->streamDownload(function () use ($request, $filters): void {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+
+            fputcsv($out, [
+                'Name of Farmer', 'RSBSA #', 'Ear Tag #', 'Barangay', 'Animal Type',
+                'Classification', 'Sex', 'Technician', 'MOA', 'Enrolled', 'Last Visit', 'Visits',
+            ]);
+
+            foreach ($this->directory->rowsFor($request->user(), $filters) as $beneficiary) {
+                fputcsv($out, [
+                    $beneficiary->name_of_farmer,
+                    $beneficiary->rsbsa_number,
+                    $beneficiary->ear_tag_number,
+                    $beneficiary->address,
+                    $beneficiary->animalType?->name ?? $beneficiary->animal_type,
+                    $beneficiary->animalClassification?->name,
+                    $beneficiary->sex,
+                    $beneficiary->technician?->name,
+                    $beneficiary->moa_signed === null
+                        ? 'Not on file'
+                        : ($beneficiary->moa_signed ? 'Signed' : 'Not signed'),
+                    $beneficiary->created_at?->toDateString(),
+                    $beneficiary->monitoring_records_max_date_monitored
+                        ? \Illuminate\Support\Carbon::parse($beneficiary->monitoring_records_max_date_monitored)->toDateString()
+                        : '',
+                    (int) $beneficiary->monitoring_records_count,
+                ]);
+            }
+
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * The validated filter set in the shape the directory service expects.
+     *
+     * @return array<string, mixed>
+     */
+    private function directoryFilters(AdminBeneficiariesRequest $request): array
+    {
+        return array_filter([
+            'search' => $request->validated('search'),
+            'barangay' => $request->validated('barangay'),
+            'animal_type' => $request->validated('animal_type'),
+            'animal_type_id' => $request->validated('animal_type_id'),
+            'classification_id' => $request->validated('classification_id'),
+            'assignment' => $request->validated('assignment'),
+            'monitoring' => $request->validated('monitoring'),
+            'missing' => $request->validated('missing'),
+        ], fn ($value) => $value !== null && $value !== '');
     }
 
     /**

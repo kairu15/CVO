@@ -46,6 +46,11 @@ class BeneficiaryResource extends JsonResource
             'technician_id' => $this->technician_id,
             'technician' => new UserResource($this->whenLoaded('technician')),
             'monitoring_records_count' => $this->whenCounted('monitoringRecords'),
+            // Latest DATED visit, from the directory's withMax aggregate. Null
+            // for a household whose only row is the undated enrolment row.
+            'last_monitored_at' => $this->monitoring_records_max_date_monitored
+                ? \Illuminate\Support\Carbon::parse($this->monitoring_records_max_date_monitored)->toDateString()
+                : null,
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

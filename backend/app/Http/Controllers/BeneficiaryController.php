@@ -11,6 +11,7 @@ use App\Http\Requests\StoreBeneficiaryRequest;
 use App\Http\Requests\UpdateBeneficiaryRequest;
 use App\Http\Resources\BeneficiaryResource;
 use App\Models\FieldVisit;
+use App\Services\BeneficiaryDirectoryService;
 use App\Services\BeneficiaryService;
 use App\Services\FieldVisitVerificationService;
 use App\Support\Barangays;
@@ -52,6 +53,20 @@ class BeneficiaryController extends Controller
      */
     public function store(StoreBeneficiaryRequest $request): JsonResponse
     {
+        // A warning, not a hard constraint: RSBSA formats are messy and
+        // shared households are real. The client resubmits with
+        // `confirm_duplicate` after the administrator has seen the matches.
+        $duplicates = $request->boolean('confirm_duplicate')
+            ? collect()
+            : app(BeneficiaryDirectoryService::class)->duplicatesFor($request->validated());
+
+        if ($duplicates->isNotEmpty()) {
+            return response()->json([
+                'message' => 'A beneficiary with the same RSBSA number, or the same farmer in this barangay, already exists.',
+                'duplicates' => $duplicates,
+            ], Response::HTTP_CONFLICT);
+        }
+
         $beneficiary = $this->beneficiaries->create($request->user(), $request->validated());
 
         return (new BeneficiaryResource($beneficiary))

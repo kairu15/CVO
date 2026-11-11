@@ -427,6 +427,14 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
             ->middleware('permission:manage_users')->name('api.admin.users.bulk-deactivate');
         Route::get('/beneficiaries', [AdminController::class, 'beneficiaries'])
             ->middleware('permission:assign_technicians')->name('api.admin.beneficiaries');
+        // KPI strip, "select all matching" ids and the filtered CSV export.
+        // Distinct segment counts keep them clear of `{id}/assign-technician`.
+        Route::get('/beneficiaries/summary', [AdminController::class, 'beneficiarySummary'])
+            ->middleware('permission:assign_technicians')->name('api.admin.beneficiaries.summary');
+        Route::get('/beneficiaries/ids', [AdminController::class, 'beneficiaryIds'])
+            ->middleware('permission:assign_technicians')->name('api.admin.beneficiaries.ids');
+        Route::get('/beneficiaries/export', [AdminController::class, 'exportBeneficiaries'])
+            ->middleware('permission:assign_technicians')->name('api.admin.beneficiaries.export');
         Route::patch('/beneficiaries/{id}/assign-technician', [AdminController::class, 'assignTechnician'])
             ->middleware('permission:assign_technicians')->name('api.admin.beneficiaries.assign-technician');
         Route::patch('/beneficiaries/bulk-assign-technician', [AdminController::class, 'bulkAssignTechnician'])

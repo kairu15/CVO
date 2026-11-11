@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import {
   useInvalidate,
   useAssignedBeneficiaries,
   useMonitoringAnimalTypes,
   useMonitoringMonths,
   useMonitoringRecords,
+  useMonitoringSummary,
 } from "../api/queries";
 import { useAnimalTypeGroups } from "../hooks/useAnimalTypes";
-import { beneficiariesApi } from "../api/beneficiariesApi";
+import { useBarangays } from "../hooks/useBarangays";
 import { monitoringApi } from "../api/monitoringApi";
 import { getErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { MonitoringTable } from "../components/MonitoringTable";
+import { MONITORING_COLUMNS, MonitoringTable } from "../components/MonitoringTable";
+import { MonitoringColumnMenu } from "../components/MonitoringColumnMenu";
 import { MonitoringExcelToolbar } from "../components/MonitoringExcelToolbar";
 import { MonthYearDropdown } from "../components/MonthYearDropdown";
 import { AnimalTypeClassificationSelect } from "../components/AnimalTypeClassificationSelect";
@@ -31,15 +33,66 @@ import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useFlashHighlight } from "../hooks/useFlashHighlight";
 import { useRowSelection } from "../hooks/useRowSelection";
 
+/** Where each administrator's column choice is remembered (per browser). */
+const COLUMNS_STORAGE_KEY = "cvo.monitoring.columns.v1";
+
+/**
+ * The Compact preset: the columns an administrator scans a visit list with.
+ * Everything else stays in the row payload and the Excel export — this only
+ * hides it from the screen.
+ */
+const COMPACT_COLUMNS = [
+  "name_of_farmer",
+  "rsbsa_number",
+  "address",
+  "animal_type",
+  "date_monitored",
+  "last_visit",
+  "assigned_technician",
+];
+
+const DEFAULT_COLUMNS = MONITORING_COLUMNS.map((column) => column.key);
+
+/** Read the saved column set, tolerating a cleared or corrupt store. */
+function readStoredColumns() {
+  try {
+    const raw = window.localStorage.getItem(COLUMNS_STORAGE_KEY);
+    if (!raw) return DEFAULT_COLUMNS;
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_COLUMNS;
+
+    const known = new Set(DEFAULT_COLUMNS);
+    const filtered = parsed.filter((key) => known.has(key));
+
+    return filtered.length > 0 ? filtered : DEFAULT_COLUMNS;
+  } catch {
+    return DEFAULT_COLUMNS;
+  }
+}
+
+/** The "needs attention" worklist filter, per household. */
+const ATTENTION_OPTIONS = [
+  { value: "", label: "All households" },
+  { value: "never", label: "Never visited" },
+  { value: "30", label: "No visit in 30 days" },
+  { value: "60", label: "No visit in 60 days" },
+];
+
 /**
  * Livestock Monthly Monitoring — one shared page for every dashboard.
  *
  * The API scopes every response server-side (every staff role reads the
  * city-wide record); this page only adapts which actions are offered.
  *
+ * Filters live in the URL, so a view is shareable and survives a refresh:
+ * `month`, `search`, `animal_type`, `classification_id`, `barangay`,
+ * `attention`, `group`, `sort`, `direction`, `page`, `per_page`.
+ *
  * Data arrives through the polled React Query hooks: the table refreshes
- * itself every 20s and on tab focus, so beneficiaries added by the admin and
- * technician entries appear without a manual reload.
+ * itself every 20s and on tab focus, and the KPI strip every 60s, so
+ * beneficiaries added by the admin and technician entries appear without a
+ * manual reload.
  *
  * @param {string} roleKey dashboard this instance is rendered in (the signed-in
  *   admin sees the same page through the all-access switcher)
@@ -47,8 +100,11 @@ import { useRowSelection } from "../hooks/useRowSelection";
 export default function MonitoringPage({ roleKey }) {
   const { user } = useAuth();
   const location = useLocation();
+  const [params, setParams] = useSearchParams();
   const viewerRole = roleKey ?? user?.role;
   const invalidate = useInvalidate();
+  const toast = useToast();
+  const [barangays] = useBarangays();
 
   // A notification that points here seeds the farmer to flash via router
   // state; the id clears itself so the row's tint fades back out.
@@ -69,26 +125,72 @@ export default function MonitoringPage({ roleKey }) {
   const [bulkBusy, setBulkBusy] = useState(false);
   // The shared DispersalDialog, opened from a record's row action.
   const [dispersal, setDispersal] = useState(null);
+  // Remembered column visibility (Compact / custom).
+  const [visibleColumns, setVisibleColumns] = useState(readStoredColumns);
 
   // Row selection for the bulk (select-all) delete.
   const { selected, toggle, toggleAll, clear } = useRowSelection();
-  // The month/year dropdown selection — a "YYYY-MM" bucket of
-  // `date_monitored`, or null to see every record regardless of month.
-  const [selectedMonth, setSelectedMonth] = useState(null);
-  // Farmer-name search. Debounced (300ms) so typing does not fire a request
-  // per keystroke, and applied server-side like the month filter.
-  const [search, setSearch] = useState("");
+
+  // ── URL-backed filters ──────────────────────────────────────────────────
+  const selectedMonth = params.get("month") || null;
+  const searchParam = params.get("search") ?? "";
+  const animalType = params.get("animal_type") || null;
+  const classificationId = params.get("classification_id") || null;
+  const barangay = params.get("barangay") || null;
+  const attention = params.get("attention") || "";
+  const groupBy = params.get("group") === "address" ? "address" : "animal_type";
+  const sortParam = params.get("sort") || null;
+  const direction = params.get("direction") === "asc" ? "asc" : "desc";
+  const page = Math.max(1, Number(params.get("page") || 1) || 1);
+  const perPage = Number(params.get("per_page") || 50) || 50;
+  // Sorting is a SERVER-side ORDER BY. Without a header choice, grouping by
+  // animal type orders alphabetically by type and the barangay view keeps the
+  // pre-existing date order.
+  const sort = sortParam ?? (groupBy === "animal_type" ? "animal_type" : "date");
+
+  const updateParams = useCallback(
+    (updates, { resetPage = true } = {}) => {
+      // A filter change is a different selection; stale ids must not survive.
+      clear();
+      setParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+
+          for (const [key, value] of Object.entries(updates)) {
+            if (value === null || value === undefined || value === "") next.delete(key);
+            else next.set(key, String(value));
+          }
+
+          if (resetPage) next.delete("page");
+
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setParams, clear],
+  );
+
+  // Search as you type: the field updates immediately, the 300ms debounce
+  // decides when the URL (and therefore the request) changes.
+  const [search, setSearch] = useState(searchParam);
   const debouncedSearch = useDebouncedValue(search, 300);
-  const [page, setPage] = useState(1);
-  // Animal-type filter (null = all types), and which field the table groups
-  // under. Grouping by type is the default; admins can switch back to the
-  // barangay grouping they had before.
-  const [animalType, setAnimalType] = useState(null);
-  // Second level of the cascade. Only meaningful once a type is picked; a
-  // type change clears it (see the select's onChange).
-  const [classificationId, setClassificationId] = useState(null);
-  const [groupBy, setGroupBy] = useState("animal_type");
-  const toast = useToast();
+
+  useEffect(() => {
+    // Guard: writing the same term back on every param change would reset
+    // pagination to page 1 on unrelated filter clicks.
+    if ((params.get("search") ?? "") === debouncedSearch) return;
+
+    updateParams({ search: debouncedSearch || null });
+  }, [debouncedSearch, params, updateParams]);
+
+  useEffect(() => {
+    if (searchParam === search) return;
+    setSearch(searchParam);
+    // Only an external change (Clear filters, browser navigation) re-seeds the
+    // box; while typing, searchParam is the older value and must not overwrite.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParam]);
 
   const isTechnician = viewerRole === "technician";
   const canEdit = ["admin", "technician"].includes(viewerRole);
@@ -97,37 +199,31 @@ export default function MonitoringPage({ roleKey }) {
   // (manage_dispersal / manage_redispersal).
   const canDisperse = viewerRole === "admin" || viewerRole === "technician";
 
-  // Polled + refetched-on-focus. `loading` maps to the FIRST fetch only, so
-  // background refetches never blank the table into skeletons. The month,
-  // search and page ride in the query key: changing any of them fetches from
-  // the server (the filters live in the database query, before pagination),
-  // so a month shows ALL of its records and a search finds every match — not
-  // a slice of an unfiltered page.
-  // Sorting is a SERVER-side ORDER BY: by animal type (alphabetical, then the
-  // existing date order within a group) or the pre-existing date order.
-  const sort = groupBy === "animal_type" ? "animal_type" : "date";
-
-  const recordsQuery = useMonitoringRecords(
-    selectedMonth,
+  const recordsQuery = useMonitoringRecords({
+    month: selectedMonth,
     page,
-    debouncedSearch,
+    search: searchParam,
     animalType,
-    sort,
-    true,
     classificationId,
-  );
+    barangay,
+    attention,
+    sort,
+    direction,
+    groupBy,
+    perPage,
+  });
+  const summaryQuery = useMonitoringSummary();
   const monthsQuery = useMonitoringMonths();
   const animalTypesQuery = useMonitoringAnimalTypes();
-  // The master list supplies the category headers and the classification
-  // options; the data-derived list below still supplies values that are not
-  // in it (an older import), so no historical row becomes unfilterable.
   const { groups: animalTypeGroups } = useAnimalTypeGroups();
   const beneficiaryQuery = useAssignedBeneficiaries(isTechnician);
 
   const records = recordsQuery.data?.data ?? [];
   const meta = recordsQuery.data?.meta ?? null;
+  const groupTotals = recordsQuery.data?.group_totals ?? null;
   const months = monthsQuery.data ?? [];
   const animalTypes = animalTypesQuery.data ?? [];
+  const summary = summaryQuery.data ?? {};
   const loading = recordsQuery.isPending;
   const fetchError =
     recordsQuery.error ?? monthsQuery.error ?? animalTypesQuery.error ?? beneficiaryQuery.error;
@@ -143,37 +239,69 @@ export default function MonitoringPage({ roleKey }) {
     setBeneficiaries(beneficiaryList ?? []);
   }, [beneficiaryList]);
 
+  /** "Updated 12s ago" — the table polls, so say so instead of leaving doubt. */
+  const [clock, setClock] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setClock(Date.now()), 10_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const updatedAt = recordsQuery.dataUpdatedAt;
+  const secondsAgo = updatedAt ? Math.max(0, Math.floor((clock - updatedAt) / 1000)) : null;
+  const updatedLabel =
+    secondsAgo === null
+      ? "Not loaded yet"
+      : secondsAgo < 5
+        ? "Updated just now"
+        : secondsAgo < 60
+          ? `Updated ${secondsAgo}s ago`
+          : `Updated ${Math.floor(secondsAgo / 60)}m ago`;
+
   /** Manual refresh after a mutation, straight into the query cache. */
   const load = useCallback(async () => {
+    await recordsQuery.refetch();
     invalidate.monitoring();
     invalidate.notifications();
     // Deleting an import-created record can also remove its auto-created
     // beneficiary, so refresh the beneficiary-derived views immediately
     // rather than waiting for the next poll.
     invalidate.beneficiaries();
-  }, [invalidate]);
+  }, [recordsQuery, invalidate]);
 
   const canLogVisit = useMemo(
     () => isTechnician && beneficiaries.length > 0,
     [isTechnician, beneficiaries],
   );
 
+  function persistColumns(next) {
+    setVisibleColumns(next);
+    try {
+      window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // A blocked storage API must never break the table.
+    }
+  }
+
   /** Dropdown pick: swap the month bucket and reset to the first page. */
-  const selectMonth = useCallback((month) => {
-    setSelectedMonth(month);
-    setPage(1);
-  }, []);
+  const selectMonth = useCallback(
+    (month) => updateParams({ month: month || null }),
+    [updateParams],
+  );
 
   /**
    * Cascading filter pick: swap the type and/or classification and start back
    * at page 1. Changing the type always clears the classification, because a
    * classification only means something inside its own type.
    */
-  const selectAnimalType = useCallback((type, nextClassificationId = null) => {
-    setAnimalType(type);
-    setClassificationId(nextClassificationId);
-    setPage(1);
-  }, []);
+  const selectAnimalType = useCallback(
+    (type, nextClassificationId = null) =>
+      updateParams({
+        animal_type: type || null,
+        classification_id: nextClassificationId || null,
+      }),
+    [updateParams],
+  );
 
   function openCreate() {
     setEditingRecord(null);
@@ -251,6 +379,42 @@ export default function MonitoringPage({ roleKey }) {
     }
   }
 
+  const summaryTiles = [
+    {
+      key: "households",
+      label: "Households",
+      value: summary.households_monitored,
+      hint: "monitored this month",
+    },
+    {
+      key: "visits",
+      label: "Visits logged",
+      value: summary.visits,
+      hint: "this month",
+    },
+    {
+      key: "never",
+      label: "Never visited",
+      value: summary.never_visited,
+      hint: "assigned households",
+      attention: "never",
+      tone: "amber",
+    },
+    {
+      key: "photo",
+      label: "No field photo",
+      value: summary.without_photo,
+      hint: "this month",
+    },
+    {
+      key: "moa",
+      label: "MOA unsigned",
+      value: summary.moa_unsigned,
+      hint: "this month",
+      tone: "amber",
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <section className="card p-6">
@@ -278,82 +442,162 @@ export default function MonitoringPage({ roleKey }) {
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
 
-      {/* Filter row — the month dropdown with the admin Excel import/export
-          buttons beside it (admin only; the toolbar contributes nothing for
-          other roles). Months with records appear grouped by year, and the
-          filter runs server-side so a selection shows the WHOLE month. */}
+      {/* Oversight at a glance: one aggregate request, polled slower than the
+          rows. "Never visited" doubles as the worklist filter. */}
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+        {summaryTiles.map((tile) => {
+          const clickable = Boolean(tile.attention);
+          const active = clickable && attention === tile.attention;
+          const Wrapper = clickable ? "button" : "div";
+
+          return (
+            <Wrapper
+              key={tile.key}
+              {...(clickable
+                ? {
+                    type: "button",
+                    onClick: () =>
+                      updateParams({ attention: active ? null : tile.attention }),
+                    "aria-pressed": active,
+                  }
+                : {})}
+              className={`card px-4 py-3 text-left transition ${
+                clickable ? "hover:border-brand-400 hover:bg-brand-50/40" : ""
+              } ${active ? "border-brand-500 ring-1 ring-brand-500/30" : ""}`}
+            >
+              <p className="text-[11px] font-semibold tracking-[0.12em] text-slate-500 uppercase">
+                {tile.label}
+              </p>
+              <p className="mt-1 font-display text-2xl font-bold text-slate-900 tabular-nums">
+                {tile.value === undefined || tile.value === null ? "—" : tile.value}
+              </p>
+              {tile.hint && (
+                <p className="mt-0.5 text-[11px] text-slate-500">{tile.hint}</p>
+              )}
+              {tile.tone === "amber" && Number(tile.value) > 0 && (
+                <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+              )}
+            </Wrapper>
+          );
+        })}
+      </section>
+
+      {/* Filter row. Every filter runs server-side, before pagination, so a
+          selection shows the WHOLE matching set rather than a page slice. */}
       {(months.length > 0 || animalTypes.length > 0 || isAdmin) && !loading && (
         <section className="card px-4 py-3">
           <div className="flex flex-wrap items-end gap-3">
             {months.length > 0 && (
-              <>
-                {/* Every filter field carries a label above it, so the month
-                    and search controls read the same as the animal-type /
-                    classification cascade instead of relying on placeholders. */}
-                <div className="flex w-full flex-col gap-1.5 sm:w-72">
-                  <span className="block text-sm font-medium text-slate-700">
-                    Month
-                  </span>
-                  <MonthYearDropdown
-                    months={months}
-                    selected={selectedMonth}
-                    onSelect={selectMonth}
-                  />
-                </div>
-
-                <AnimalTypeClassificationSelect
-                  groups={animalTypeGroups}
-                  extraTypes={animalTypes}
-                  allowAll
-                  typeValue={animalType ?? ""}
-                  classificationValue={classificationId ?? ""}
-                  onChange={({ animalType: type, classificationId: id }) =>
-                    selectAnimalType(type || null, id ? Number(id) : null)
-                  }
-                  typeLabel="Animal type"
-                  typeAriaLabel="Filter by animal type"
-                  classificationLabel="Classification"
-                  classificationAriaLabel="Filter by classification"
-                  typeId="monitoring-animal-type"
-                  classificationId="monitoring-classification"
-                  className="w-full sm:w-80"
+              <div className="flex w-full flex-col gap-1.5 sm:w-56">
+                <span className="block text-sm font-medium text-slate-700">
+                  Month
+                </span>
+                <MonthYearDropdown
+                  months={months}
+                  selected={selectedMonth}
+                  onSelect={selectMonth}
                 />
-
-                {/* Search as you type: every keystroke updates the field,
-                    the 300ms debounce decides when the request fires, and
-                    the page resets so results always start on page 1. */}
-                <div className="w-full sm:w-72">
-                  <label
-                    htmlFor="monitoring-search"
-                    className="block text-sm font-medium text-slate-700"
-                  >
-                    Search
-                  </label>
-                  <div className="relative mt-1.5">
-                    <Icon
-                      name="search"
-                      className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400"
-                    />
-                    <input
-                      id="monitoring-search"
-                      type="search"
-                      value={search}
-                      onChange={(event) => {
-                        setSearch(event.target.value);
-                        setPage(1);
-                      }}
-                      placeholder="Search farmer name…"
-                      className="field pl-9"
-                      aria-label="Search monitoring records by farmer name"
-                    />
-                  </div>
-                </div>
-              </>
+              </div>
             )}
+
+            <AnimalTypeClassificationSelect
+              groups={animalTypeGroups}
+              extraTypes={animalTypes}
+              allowAll
+              typeValue={animalType ?? ""}
+              classificationValue={classificationId ?? ""}
+              onChange={({ animalType: type, classificationId: id }) =>
+                selectAnimalType(type || null, id ? Number(id) : null)
+              }
+              typeLabel="Animal type"
+              typeAriaLabel="Filter by animal type"
+              classificationLabel="Classification"
+              classificationAriaLabel="Filter by classification"
+              typeId="monitoring-animal-type"
+              classificationId="monitoring-classification"
+              className="w-full sm:w-80"
+            />
+
+            {/* Search as you type: the field updates immediately, the 300ms
+                debounce decides when the request fires, and the page resets so
+                results always start on page 1. */}
+            <div className="w-full sm:w-64">
+              <label
+                htmlFor="monitoring-search"
+                className="block text-sm font-medium text-slate-700"
+              >
+                Search
+              </label>
+              <div className="relative mt-1.5">
+                <Icon
+                  name="search"
+                  className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400"
+                />
+                <input
+                  id="monitoring-search"
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Name, RSBSA #, ear tag, technician…"
+                  className="field pl-9"
+                  aria-label="Search monitoring records by farmer name, RSBSA number, ear tag or technician"
+                />
+              </div>
+            </div>
+
+            <div className="w-full sm:w-44">
+              <label
+                htmlFor="monitoring-barangay"
+                className="block text-sm font-medium text-slate-700"
+              >
+                Barangay
+              </label>
+              <select
+                id="monitoring-barangay"
+                className="field mt-1.5"
+                value={barangay ?? ""}
+                onChange={(event) =>
+                  updateParams({ barangay: event.target.value || null })
+                }
+                aria-label="Filter monitoring records by barangay"
+              >
+                <option value="">All barangays</option>
+                {barangays.map((entry) => (
+                  <option key={entry.id ?? entry.name} value={entry.name}>
+                    {entry.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="w-full sm:w-48">
+              <label
+                htmlFor="monitoring-attention"
+                className="block text-sm font-medium text-slate-700"
+              >
+                Needs attention
+              </label>
+              <select
+                id="monitoring-attention"
+                className="field mt-1.5"
+                value={attention}
+                onChange={(event) =>
+                  updateParams({ attention: event.target.value || null })
+                }
+                aria-label="Filter monitoring records by attention"
+              >
+                {ATTENTION_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="flex items-center gap-1 rounded-pill border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-slate-300/40 dark:bg-transparent">
               <button
                 type="button"
-                onClick={() => setGroupBy("animal_type")}
+                onClick={() => updateParams({ group: null })}
                 aria-pressed={groupBy === "animal_type"}
                 className={`rounded-pill px-3 py-1 transition ${
                   groupBy === "animal_type"
@@ -365,7 +609,7 @@ export default function MonitoringPage({ roleKey }) {
               </button>
               <button
                 type="button"
-                onClick={() => setGroupBy("address")}
+                onClick={() => updateParams({ group: "address" })}
                 aria-pressed={groupBy === "address"}
                 className={`rounded-pill px-3 py-1 transition ${
                   groupBy === "address"
@@ -376,6 +620,13 @@ export default function MonitoringPage({ roleKey }) {
                 Group by barangay
               </button>
             </div>
+
+            <MonitoringColumnMenu
+              columns={MONITORING_COLUMNS}
+              visible={visibleColumns}
+              onChange={persistColumns}
+              compact={COMPACT_COLUMNS}
+            />
 
             {isAdmin && (
               <MonitoringExcelToolbar
@@ -399,82 +650,126 @@ export default function MonitoringPage({ roleKey }) {
         </section>
       ) : (
         <section className="card overflow-hidden">
-        {canEdit && records.length > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2.5">
-            <SelectAllCheckbox
-              ids={records.map((record) => record.id)}
-              selected={selected}
-              onToggleAll={toggleAll}
-              label="Select all monitoring records on this page"
-            />
-            <span className="text-xs font-semibold text-slate-600">Select all</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 text-xs text-slate-500 dark:border-slate-200/60 dark:text-slate-400">
+            <span aria-live="polite">{updatedLabel}</span>
+            <button
+              type="button"
+              onClick={load}
+              disabled={recordsQuery.isFetching}
+              className="rounded-pill px-3 py-1 font-semibold text-brand-700 transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Icon name="refresh" className="mr-1 inline h-3.5 w-3.5" />
+              {recordsQuery.isFetching ? "Refreshing…" : "Refresh"}
+            </button>
           </div>
-        )}
 
-        <BulkActionBar
-          count={selected.size}
-          noun="record"
-          onClear={clear}
-          onDelete={() => setBulkOpen(true)}
-          busy={bulkBusy}
-        />
+          {canEdit && records.length > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2.5">
+              <SelectAllCheckbox
+                ids={records.map((record) => record.id)}
+                selected={selected}
+                onToggleAll={toggleAll}
+                label="Select all monitoring records on this page"
+              />
+              <span className="text-xs font-semibold text-slate-600">Select all</span>
+            </div>
+          )}
 
-        <MonitoringTable
-          records={records}
-          loading={loading}
-          onEdit={canEdit ? openEdit : undefined}
-          onDelete={canEdit ? (record) => setDeleting(record) : undefined}
-          selected={selected}
-          onToggleRow={canEdit ? (record) => toggle(record.id) : undefined}
-          // MOA is a program-oversight field: only an admin gets the inline
-          // switch. Technicians see the badge read-only.
-          onToggleMoa={isAdmin ? (record) => toggleMoa(record) : undefined}
-          onDispersal={
-            canDisperse
-              ? (record) =>
-                  setDispersal({
-                    // The household already holds an animal, so the default
-                    // action is the handover; the dialog offers "disperse a
-                    // new animal" when it finds none.
-                    mode: "re-disperse",
-                    beneficiary: {
-                      id: record.beneficiary_id,
-                      name_of_farmer: record.name_of_farmer,
-                      address: record.address,
-                    },
-                  })
-              : undefined
-          }
-          moaBusyId={moaBusyId}
-          groupBy={groupBy}
-          highlightBeneficiaryId={highlightBeneficiaryId}
-          emptyState={
-            debouncedSearch
-              ? {
-                  title: "No matching farmers",
-                  description: `No monitoring records match “${debouncedSearch}”. Try a different name or clear the search.`,
-                }
-              : animalType
-                ? {
-                    title: `No ${animalType} records${selectedMonth ? " this month" : ""}`,
-                    description: `No monitoring records for ${animalType}${selectedMonth ? " in the selected month" : ""}. Pick another animal type or clear the filter.`,
-                  }
-              : selectedMonth
-                ? {
-                    title: "No records this month",
-                    description:
-                      "No monitoring visits are recorded for this month. Choose another month or view all months.",
-                  }
+          <BulkActionBar
+            count={selected.size}
+            noun="record"
+            onClear={clear}
+            onDelete={() => setBulkOpen(true)}
+            busy={bulkBusy}
+          />
+
+          <MonitoringTable
+            records={records}
+            loading={loading}
+            onEdit={canEdit ? openEdit : undefined}
+            onDelete={canEdit ? (record) => setDeleting(record) : undefined}
+            selected={selected}
+            onToggleRow={canEdit ? (record) => toggle(record.id) : undefined}
+            // MOA is a program-oversight field: only an admin gets the inline
+            // switch. Technicians see the badge read-only.
+            onToggleMoa={isAdmin ? (record) => toggleMoa(record) : undefined}
+            onDispersal={
+              canDisperse
+                ? (record) =>
+                    setDispersal({
+                      // The household already holds an animal, so the default
+                      // action is the handover; the dialog offers "disperse a
+                      // new animal" when it finds none.
+                      mode: "re-disperse",
+                      beneficiary: {
+                        id: record.beneficiary_id,
+                        name_of_farmer: record.name_of_farmer,
+                        address: record.address,
+                      },
+                    })
                 : undefined
-          }
-        />
+            }
+            moaBusyId={moaBusyId}
+            groupBy={groupBy}
+            groupTotals={groupTotals}
+            visibleColumns={visibleColumns}
+            sort={sort}
+            direction={direction}
+            onSort={(key) =>
+              updateParams({
+                sort: key,
+                direction: sortParam === key && direction === "asc" ? "desc" : "asc",
+              })
+            }
+            highlightBeneficiaryId={highlightBeneficiaryId}
+            emptyState={
+              debouncedSearch
+                ? {
+                    title: "No matching farmers",
+                    description: `No monitoring records match “${debouncedSearch}”. Try a different name, RSBSA number, ear tag or technician, or clear the search.`,
+                  }
+                : attention === "never"
+                  ? {
+                      title: "No unvisited households",
+                      description:
+                        "Every assigned household has at least one dated monitoring visit.",
+                    }
+                  : attention
+                    ? {
+                        title: "No overdue households",
+                        description: `No household is overdue by ${attention}+ days.`,
+                      }
+                    : animalType
+                      ? {
+                          title: `No ${animalType} records${selectedMonth ? " this month" : ""}`,
+                          description: `No monitoring records for ${animalType}${selectedMonth ? " in the selected month" : ""}. Pick another animal type or clear the filter.`,
+                        }
+                      : selectedMonth
+                        ? {
+                            title: "No records this month",
+                            description:
+                              "No monitoring visits are recorded for this month. Choose another month or view all months.",
+                          }
+                        : undefined
+            }
+          />
 
-        <PaginationFooter
-          meta={meta}
-          shown={records.length}
-          noun="record"
-          onPageChange={setPage}
-        />
+          <PaginationFooter
+            meta={meta}
+            shown={records.length}
+            noun="record"
+            pageSize={perPage}
+            pageSizeOptions={[25, 50]}
+            onPageSizeChange={(size) =>
+              updateParams({ per_page: size === 50 ? null : size })
+            }
+            onPageChange={(next) =>
+              updateParams(
+                { page: next <= 1 ? null : next },
+                { resetPage: false },
+              )
+            }
+          />
         </section>
       )}
 

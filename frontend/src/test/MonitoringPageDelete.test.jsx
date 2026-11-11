@@ -22,12 +22,15 @@ vi.mock("../api/monitoringApi", () => ({
     list: vi.fn(),
     months: vi.fn(),
     animalTypes: vi.fn(),
+    summary: vi.fn(),
     remove: vi.fn(),
   },
 }));
 
 vi.mock("../api/beneficiariesApi", () => ({
   beneficiariesApi: { list: vi.fn() },
+  // useBarangays imports this as a top-level export, not via the object.
+  fetchBarangays: vi.fn(async () => []),
 }));
 
 vi.mock("../api/authApi", () => ({
@@ -93,6 +96,14 @@ describe("MonitoringPage delete confirmation", () => {
     beneficiariesApi.list.mockResolvedValue([]);
     monitoringApi.months.mockResolvedValue([]);
     monitoringApi.animalTypes.mockResolvedValue([]);
+    monitoringApi.summary.mockResolvedValue({
+      households_monitored: 1,
+      visits: 1,
+      never_visited: 1,
+      without_photo: 1,
+      moa_unsigned: 1,
+      overdue_days: 60,
+    });
     monitoringApi.list.mockResolvedValue(envelope([ORDINARY_RECORD]));
   });
 

@@ -222,6 +222,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::get('monitoring-records/animal-types', [MonitoringRecordController::class, 'animalTypes'])
         ->name('api.monitoring-records.animal-types');
 
+    // The oversight figures behind the KPI strip, in one aggregate request.
+    // Declared before the apiResource for the same binding reason as above.
+    Route::get('monitoring-records/summary', [MonitoringRecordController::class, 'summary'])
+        ->name('api.monitoring-records.summary');
+
     Route::apiResource('monitoring-records', MonitoringRecordController::class);
     Route::post('monitoring-records/bulk-delete', [MonitoringRecordController::class, 'bulkDestroy'])
         ->name('api.monitoring-records.bulk-delete');

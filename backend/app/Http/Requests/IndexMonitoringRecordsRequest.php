@@ -45,10 +45,23 @@ class IndexMonitoringRecordsRequest extends FormRequest
             'animal_type_id' => ['sometimes', 'nullable', 'integer', 'exists:animal_types,id'],
             'classification_id' => ['sometimes', 'nullable', 'integer', 'exists:animal_classifications,id'],
 
-            // Row ordering: the default (by date) or grouped alphabetically by
-            // animal type. Sorting happens in the DATABASE ORDER BY, never in
-            // PHP/JS after the fetch.
-            'sort' => ['sometimes', 'nullable', 'in:date,animal_type'],
+            // Barangay narrowing — the first thing an administrator filters by,
+            // applied before pagination like every other filter.
+            'barangay' => ['sometimes', 'nullable', 'string', 'max:100'],
+
+            // The oversight worklist: households with no dated visit at all,
+            // or none in the last 30/60 days.
+            'attention' => ['sometimes', 'nullable', 'in:never,30,60'],
+
+            // Which section header the table groups under; when present the
+            // response also carries the TRUE per-group counts.
+            'group_by' => ['sometimes', 'nullable', 'in:address,animal_type'],
+
+            // Row ordering: the default (by date), grouped alphabetically by
+            // animal type, or one of the header sorts. Sorting happens in the
+            // DATABASE ORDER BY, never in PHP/JS after the fetch.
+            'sort' => ['sometimes', 'nullable', 'in:date,animal_type,name,address,technician,last_visit'],
+            'direction' => ['sometimes', 'nullable', 'in:asc,desc'],
 
             // Same policy as the other list endpoints (ActivityLogRequest):
             // an over-limit value is clamped to 50 by the controller

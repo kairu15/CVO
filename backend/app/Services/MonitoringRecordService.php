@@ -6,6 +6,7 @@ use App\Models\Beneficiary;
 use App\Models\FieldVisitPhoto;
 use App\Models\MonitoringRecord;
 use App\Models\User;
+use App\Support\Barangays;
 use App\Support\Like;
 use App\Support\Pagination;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -45,7 +46,11 @@ class MonitoringRecordService
         string $sort = 'date',
         ?int $animalTypeId = null,
         ?int $classificationId = null,
-    ): LengthAwarePaginator {
+        ?string $barangay = null,
+        ?string $attention = null,
+        string $direction = 'desc',
+        ?string $groupBy = null,
+    ): array {
         // A legacy name ("Carabao") resolves to the master type it clearly
         // means, so filtering by the catalogue's own name ("Carabao (Water
         // Buffalo)") still catches rows whose display string predates the
@@ -55,7 +60,7 @@ class MonitoringRecordService
             ? app(AnimalTypeCatalog::class)->resolveType($animalType)?->id
             : null;
 
-        $page = $this->scopeFor($user)
+        $query = $this->scopeFor($user)
             ->with([
                 'beneficiary',
                 'beneficiary.technician',
@@ -100,6 +105,30 @@ class MonitoringRecordService
                     fn (Builder $bq) => $bq->where('classification_id', $classificationId),
                 ),
             )
+            // Barangay lives on the beneficiary. Canonical spelling first (so
+            // "dawis" matches "Dawis"), with the raw value as a fallback for
+            // historical addresses that differ in punctuation.
+            ->when(
+                $barangay !== null && trim($barangay) !== '',
+                fn (Builder $q) => $q->whereHas(
+                    'beneficiary',
+                    function (Builder $bq) use ($barangay): void {
+                        $bq->where(function (Builder $w) use ($barangay): void {
+                            $w->where('address', Barangays::normalize($barangay))
+                                ->orWhere('address', trim($barangay));
+                        });
+                    },
+                ),
+            )
+            // The oversight worklist. Enrolment creates a monitoring row with
+            // no date; `never` is exactly that roster, while 30/60 shows
+            // households whose last dated visit is older than the threshold.
+            ->when($attention === 'never', fn (Builder $q) => $q->whereNull('date_monitored'))
+            ->when(
+                in_array($attention, ['30', '60'], true),
+                fn (Builder $q) => $q->whereNotNull('date_monitored')
+                    ->where('date_monitored', '<=', now()->subDays((int) $attention)->toDateString()),
+            )
             ->when(
                 $sort === 'animal_type',
                 function (Builder $q): void {
@@ -129,19 +158,142 @@ class MonitoringRecordService
                     // (tests) and MySQL alike.
                     $pattern = Like::contains($search);
 
+                    // Field staff identify households by RSBSA number and
+                    // animals by ear tag at least as often as by spelling a
+                    // name, and administrators search by technician when
+                    // chasing an assignment.
                     $q->whereHas(
                         'beneficiary',
-                        fn (Builder $bq) => $bq->whereRaw('LOWER(name_of_farmer) LIKE ?', [$pattern]),
+                        function (Builder $bq) use ($pattern): void {
+                            $bq->where(function (Builder $w) use ($pattern): void {
+                                $w->whereRaw('LOWER(name_of_farmer) LIKE ?', [$pattern])
+                                    ->orWhereRaw("LOWER(COALESCE(rsbsa_number, '')) LIKE ?", [$pattern])
+                                    ->orWhereRaw("LOWER(COALESCE(ear_tag_number, '')) LIKE ?", [$pattern])
+                                    ->orWhereHas(
+                                        'technician',
+                                        fn (Builder $tq) => $tq->whereRaw('LOWER(name) LIKE ?', [$pattern]),
+                                    );
+                            });
+                        },
                     );
                 },
             )
-            ->latest('date_monitored')
-            ->latest('id')
-            ->paginate($perPage);
+            ->when(
+                ! in_array($sort, ['date', 'animal_type'], true),
+                fn (Builder $q) => $this->applySort($q, $sort, $direction),
+            )
+            ->when(
+                $sort === 'animal_type',
+                fn (Builder $q) => $q->orderBy('id', 'desc'),
+            )
+            ->when(
+                $sort === 'date',
+                fn (Builder $q) => $q->orderBy('date_monitored', $direction === 'asc' ? 'asc' : 'desc')
+                    ->orderBy('id', 'desc'),
+            );
+
+        // The group totals are computed over the SAME filtered query, before
+        // pagination, so a barangay header reports the real count rather than
+        // however many of its rows landed on this page.
+        $groupTotals = $groupBy === null ? null : $this->groupTotalsFor($query, $groupBy);
+
+        $page = $query->paginate($perPage);
 
         $this->attachLatestPhotos($page->getCollection());
 
-        return $page;
+        return ['page' => $page, 'group_totals' => $groupTotals];
+    }
+
+    /**
+     * ORDER BY for the table's sortable headers. Each key maps to a
+     * deterministic SQL expression; values are a closed set validated by the
+     * FormRequest, so no caller input reaches the SQL string.
+     */
+    private function applySort(Builder $query, string $sort, string $direction): void
+    {
+        $direction = strtolower($direction) === 'asc' ? 'asc' : 'desc';
+
+        match ($sort) {
+            'name' => $query->orderByRaw(
+                '(select beneficiaries.name_of_farmer from beneficiaries where beneficiaries.id = monitoring_records.beneficiary_id) '.$direction,
+            ),
+            'address' => $query->orderByRaw(
+                '(select beneficiaries.address from beneficiaries where beneficiaries.id = monitoring_records.beneficiary_id) '.$direction,
+            ),
+            'technician' => $query->orderByRaw(
+                '(select users.name from users inner join beneficiaries as tech_owner on tech_owner.technician_id = users.id where tech_owner.id = monitoring_records.beneficiary_id) '.$direction,
+            ),
+            'last_visit' => $query->orderByRaw(
+                '(select max(recent.date_monitored) from monitoring_records as recent where recent.beneficiary_id = monitoring_records.beneficiary_id and recent.date_monitored is not null) '.$direction,
+            ),
+            default => null,
+        };
+
+        $query->orderBy('id', 'desc');
+    }
+
+    /**
+     * TRUE record count per section header over the filtered set.
+     *
+     * @return array<string, int>
+     */
+    private function groupTotalsFor(Builder $query, string $groupBy): array
+    {
+        $column = $groupBy === 'animal_type'
+            ? 'beneficiaries.animal_type'
+            : 'beneficiaries.address';
+
+        return (clone $query)
+            ->reorder()
+            ->join('beneficiaries', 'beneficiaries.id', '=', 'monitoring_records.beneficiary_id')
+            ->whereNull('beneficiaries.deleted_at')
+            ->toBase()
+            ->selectRaw($column.' as group_key, count(*) as aggregate')
+            ->groupBy($column)
+            ->pluck('aggregate', 'group_key')
+            ->map(fn ($count) => (int) $count)
+            ->all();
+    }
+
+    /**
+     * The oversight figures behind the KPI strip, in one request.
+     *
+     * The month figures count real dated visits; `never_visited` is the
+     * assigned-household roster with no dated record at all — the dead weight
+     * that otherwise sorts to the bottom of the unfiltered table.
+     *
+     * @return array<string, mixed>
+     */
+    public function summaryFor(User $user): array
+    {
+        $start = now()->startOfMonth()->toDateString();
+        $end = now()->endOfMonth()->toDateString();
+
+        $monthRecords = $this->scopeFor($user)->whereBetween('date_monitored', [$start, $end]);
+
+        $activeHouseholds = Beneficiary::query()->whereHas(
+            'monitoringRecords',
+            fn (Builder $q) => $q->whereBetween('date_monitored', [$start, $end]),
+        );
+
+        return [
+            'month' => now()->format('Y-m'),
+            'households_monitored' => (clone $monthRecords)->distinct()->count('beneficiary_id'),
+            'visits' => (clone $monthRecords)->count(),
+            'never_visited' => Beneficiary::query()
+                ->whereNotNull('technician_id')
+                ->whereDoesntHave(
+                    'monitoringRecords',
+                    fn (Builder $q) => $q->whereNotNull('date_monitored'),
+                )
+                ->count(),
+            'without_photo' => (clone $activeHouseholds)->whereDoesntHave('fieldVisitPhotos')->count(),
+            'moa_unsigned' => (clone $activeHouseholds)
+                ->where(fn (Builder $q) => $q->whereNull('moa_signed')->orWhere('moa_signed', false))
+                ->count(),
+            'overdue_days' => 60,
+            'as_of' => now()->toIso8601String(),
+        ];
     }
 
     /**

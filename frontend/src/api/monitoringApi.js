@@ -24,7 +24,20 @@ export const monitoringApi = {
     return {
       data: Array.isArray(body?.data) ? body.data : [],
       meta: body?.meta ?? null,
+      // TRUE per-group counts for the section headers, computed over the
+      // filtered set before pagination.
+      group_totals: body?.group_totals ?? null,
     };
+  },
+
+  /**
+   * The oversight figures behind the KPI strip (one aggregate request):
+   * households monitored this month, visits, never-visited assigned
+   * households, households without a field photo and unsigned MOAs.
+   */
+  summary: async () => {
+    const response = await api.get("/api/v1/monitoring-records/summary");
+    return response?.data?.data ?? null;
   },
 
   /**

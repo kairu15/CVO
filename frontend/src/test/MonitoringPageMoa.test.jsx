@@ -22,6 +22,7 @@ vi.mock("../api/monitoringApi", () => ({
     list: vi.fn(),
     months: vi.fn(),
     animalTypes: vi.fn(),
+    summary: vi.fn(),
     remove: vi.fn(),
     bulkRemove: vi.fn(),
     setMoa: vi.fn(),
@@ -30,6 +31,8 @@ vi.mock("../api/monitoringApi", () => ({
 
 vi.mock("../api/beneficiariesApi", () => ({
   beneficiariesApi: { list: vi.fn() },
+  // useBarangays imports this as a top-level export, not via the object.
+  fetchBarangays: vi.fn(async () => []),
 }));
 
 vi.mock("../api/adminApi", () => ({
@@ -101,6 +104,14 @@ describe("MonitoringPage MOA inline toggle", () => {
     beneficiariesApi.list.mockResolvedValue([ASSIGNED_BENEFICIARY]);
     monitoringApi.months.mockResolvedValue(["2026-09"]);
     monitoringApi.animalTypes.mockResolvedValue(["Cattle"]);
+    monitoringApi.summary.mockResolvedValue({
+      households_monitored: 1,
+      visits: 1,
+      never_visited: 1,
+      without_photo: 1,
+      moa_unsigned: 1,
+      overdue_days: 60,
+    });
     monitoringApi.list.mockResolvedValue(envelope([RECORD]));
     monitoringApi.setMoa.mockResolvedValue({ id: 1, moa_signed: true });
   });

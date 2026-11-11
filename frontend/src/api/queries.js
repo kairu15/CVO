@@ -84,28 +84,50 @@ export function useNotificationsFeed(limit = 20, filter = "all", page = 1) {
  * page). `month` is "YYYY-MM" or null (all records); `search` is the raw
  * farmer-name term or ""; `page` paginates within the current selection.
  */
-export function useMonitoringRecords(
+export function useMonitoringRecords({
   month = null,
   page = 1,
   search = "",
   animalType = null,
-  sort = "date",
-  enabled = true,
   classificationId = null,
-) {
+  barangay = null,
+  attention = "",
+  sort = "date",
+  direction = "desc",
+  groupBy = null,
+  perPage = 50,
+  enabled = true,
+} = {}) {
   return useQuery({
     queryKey: [
       "monitoring-records",
-      { month, page, search, animalType, sort, classificationId },
+      {
+        month,
+        page,
+        search,
+        animalType,
+        classificationId,
+        barangay,
+        attention,
+        sort,
+        direction,
+        groupBy,
+        perPage,
+      },
     ],
     queryFn: () =>
       monitoringApi.list({
-        per_page: 100,
+        // 50 is the server's cap; asking for more only wasted a round trip.
+        per_page: perPage,
         ...(month ? { month } : {}),
         ...(search ? { search } : {}),
         ...(animalType ? { animal_type: animalType } : {}),
         ...(classificationId ? { classification_id: classificationId } : {}),
+        ...(barangay ? { barangay } : {}),
+        ...(attention ? { attention } : {}),
+        ...(groupBy ? { group_by: groupBy } : {}),
         sort,
+        direction,
         page,
       }),
     refetchInterval: POLL_INTERVALS.monitoring,
@@ -113,6 +135,16 @@ export function useMonitoringRecords(
     // Switching months paginates through different row sets; without this
     // React Query would render the previous month's rows for one tick.
     placeholderData: (previous) => previous,
+  });
+}
+
+/** The KPI strip's aggregate, polled slower than the rows it summarizes. */
+export function useMonitoringSummary(enabled = true) {
+  return useQuery({
+    queryKey: ["monitoring-records", "summary"],
+    queryFn: () => monitoringApi.summary(),
+    refetchInterval: 60_000,
+    enabled,
   });
 }
 

@@ -24,6 +24,9 @@ const COLUMNS = [
   { key: "animal_classification", label: "Classification" },
   { key: "sex", label: "Sex" },
   { key: "date_monitored", label: "Date Monitored" },
+  // Calendar days since the household's most recent dated visit, so follow-up
+  // is visible without reading every date. Amber once it passes a month.
+  { key: "last_visit", label: "Last Visit" },
   { key: "date_vits_supp", label: "Date of Vits Supp." },
   { key: "deworming_date", label: "Deworming" },
   { key: "vaccination_date", label: "Vaccination" },
@@ -41,6 +44,28 @@ const COLUMNS = [
   { key: "assigned_technician", label: "Technician" },
   { key: "capture_timestamp", label: "Timestamp" },
 ];
+
+/** The table's public column list (the column menu and presets read this). */
+export const MONITORING_COLUMNS = COLUMNS;
+
+/** Header → server ORDER BY key. Only these columns offer a sort control. */
+const SORT_KEYS = {
+  name_of_farmer: "name",
+  address: "address",
+  date_monitored: "date",
+  assigned_technician: "technician",
+  last_visit: "last_visit",
+};
+
+/** Whole days since an ISO date, or null when there is no usable date. */
+function daysSince(value) {
+  if (!value) return null;
+
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return Math.max(0, Math.floor((Date.now() - date.getTime()) / 86_400_000));
+}
 
 /** Blank visit cells render as an em dash, never null/undefined/NaN. */
 function cellValue(record, key) {
@@ -183,12 +208,24 @@ export function MonitoringTable({
   highlightBeneficiaryId = null,
   onToggleMoa,
   moaBusyId = null,
+  visibleColumns = null,
+  groupTotals = null,
+  sort = null,
+  direction = "desc",
+  onSort,
 }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [photoRecord, setPhotoRecord] = useState(null);
 
   const hasSelection = Boolean(onToggleRow);
   const hasActions = Boolean(onEdit || onDelete || onDispersal);
+  const columns = useMemo(
+    () =>
+      visibleColumns === null
+        ? COLUMNS
+        : COLUMNS.filter((column) => visibleColumns.includes(column.key)),
+    [visibleColumns],
+  );
 
   const groups = useMemo(() => {
     const byBarangay = new Map();
@@ -260,8 +297,14 @@ export function MonitoringTable({
                 {barangay}
               </span>
               <span className="rounded-pill bg-white px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500 uppercase ring-1 ring-slate-200 dark:bg-white/70 dark:ring-slate-300/40">
-                {rows.length} {rows.length === 1 ? "record" : "records"}
+                {groupTotals?.[barangay] ?? rows.length}{" "}
+                {(groupTotals?.[barangay] ?? rows.length) === 1 ? "record" : "records"}
               </span>
+              {groupTotals?.[barangay] > rows.length && (
+                <span className="text-[10px] text-slate-500">
+                  showing {rows.length} on this page
+                </span>
+              )}
             </button>
 
             {!isCollapsed && (
@@ -271,7 +314,7 @@ export function MonitoringTable({
                  escapes the overflow clip and lands far to the right, widening
                  the document — a page-level horizontal scrollbar even though
                  the table scrolls inside this wrapper. */
-              <div className="relative overflow-x-auto">
+              <div className="relative max-h-[70vh] overflow-auto">
                 <table className="w-full min-w-[1240px] text-left text-xs">
                   {/* No fixed widths: columns auto-size to content so long
                      values widen the table (scrolling in the wrapper) rather
@@ -283,18 +326,46 @@ export function MonitoringTable({
                     ))}
                     {hasActions && <col />}
                   </colgroup>
-                  <thead>
+                  <thead className="sticky top-0 z-20 bg-white">
                     <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
                       {hasSelection && (
-                        <th scope="col" className="w-10 px-4 py-2.5">
+                        <th scope="col" className="w-10 bg-white px-4 py-2.5">
                           <span className="sr-only">Select</span>
                         </th>
                       )}
-                      {COLUMNS.map((col) => (
-                        <th key={col.key} scope="col" className="px-4 py-2.5 font-semibold whitespace-nowrap">
-                          {col.label}
-                        </th>
-                      ))}
+                      {columns.map((col) => {
+                        const sortKey = SORT_KEYS[col.key];
+                        const active = sortKey && sort === sortKey;
+
+                        return (
+                          <th
+                            key={col.key}
+                            scope="col"
+                            aria-sort={
+                              active ? (direction === "asc" ? "ascending" : "descending") : undefined
+                            }
+                            className={`bg-white px-4 py-2.5 font-semibold whitespace-nowrap ${
+                              col.key === "name_of_farmer" ? "sticky left-0 z-20" : ""
+                            }`}
+                          >
+                            {onSort && sortKey ? (
+                              <button
+                                type="button"
+                                onClick={() => onSort(sortKey)}
+                                aria-label={`Sort by ${col.label}`}
+                                className="inline-flex items-center gap-1 transition hover:text-brand-800"
+                              >
+                                {col.label}
+                                <span aria-hidden="true" className={active ? "" : "opacity-30"}>
+                                  {active && direction === "asc" ? "▲" : "▼"}
+                                </span>
+                              </button>
+                            ) : (
+                              col.label
+                            )}
+                          </th>
+                        );
+                      })}
                       {hasActions && (
                         <th scope="col" className="px-4 py-2.5 text-right font-semibold">
                           <span className="sr-only">Actions</span>
@@ -329,10 +400,13 @@ export function MonitoringTable({
                             />
                           </td>
                         )}
-                        {COLUMNS.map((col) => {
+                        {columns.map((col) => {
                           if (col.key === "name_of_farmer") {
                             return (
-                              <td key={col.key} className="px-4 py-2.5 whitespace-nowrap">
+                              <td
+                                key={col.key}
+                                className="sticky left-0 z-10 bg-white px-4 py-2.5 whitespace-nowrap"
+                              >
                                 <span className="font-medium text-slate-900">
                                   {cellValue(record, col.key)}
                                 </span>
@@ -374,6 +448,34 @@ export function MonitoringTable({
                             );
                           }
 
+                          if (col.key === "last_visit") {
+                            const days = daysSince(
+                              record.latest_field_visit_photo?.capture_date ??
+                                record.date_monitored,
+                            );
+
+                            return (
+                              <td
+                                key={col.key}
+                                className="px-4 py-2.5 whitespace-nowrap"
+                              >
+                                {days === null ? (
+                                  <span className="text-slate-400">—</span>
+                                ) : (
+                                  <span
+                                    className={`inline-flex rounded-pill px-2 py-0.5 text-[10px] font-semibold ${
+                                      days >= 30
+                                        ? "bg-amber-100 text-amber-800 ring-1 ring-amber-500/30"
+                                        : "bg-slate-100 text-slate-600"
+                                    }`}
+                                  >
+                                    {days === 0 ? "Today" : `${days}d ago`}
+                                  </span>
+                                )}
+                              </td>
+                            );
+                          }
+
                           if (col.key === "capture_timestamp") {
                             const photo = record.latest_field_visit_photo;
                             const timestamp = captureTimestamp(photo);
@@ -391,6 +493,8 @@ export function MonitoringTable({
                                     <img
                                       src={photo.image_url}
                                       alt="Visit photo thumbnail"
+                                      loading="lazy"
+                                      decoding="async"
                                       className="h-9 w-9 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-300/40"
                                     />
                                     <span className="text-slate-600">{timestamp ?? "View photo"}</span>

@@ -37,7 +37,7 @@ class MonitoringRecordController extends Controller
      */
     public function index(IndexMonitoringRecordsRequest $request): AnonymousResourceCollection
     {
-        $paginator = $this->records->listFor(
+        $result = $this->records->listFor(
             $request->user(),
             $request->validated('month'),
             $request->validated('search'),
@@ -46,9 +46,25 @@ class MonitoringRecordController extends Controller
             $request->validated('sort') ?? 'date',
             $request->validated('animal_type_id') !== null ? (int) $request->validated('animal_type_id') : null,
             $request->validated('classification_id') !== null ? (int) $request->validated('classification_id') : null,
+            $request->validated('barangay'),
+            $request->validated('attention'),
+            $request->validated('direction') ?? 'desc',
+            $request->validated('group_by'),
         );
 
-        return MonitoringRecordResource::collection($paginator);
+        return MonitoringRecordResource::collection($result['page'])
+            ->additional(['group_totals' => $result['group_totals']]);
+    }
+
+    /**
+     * The KPI strip: one aggregate request regardless of table size.
+     * Same role scoping as the list (every staff role reads city-wide).
+     */
+    public function summary(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->records->summaryFor($request->user()),
+        ]);
     }
 
     /**

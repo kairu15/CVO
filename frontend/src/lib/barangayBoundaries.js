@@ -12,6 +12,8 @@
  * join rules are unit-testable without a GL context.
  */
 
+import { parseFeatureRow } from "./mapText";
+
 /** Where the boundary asset is served from (public/, so honour the base URL). */
 export const BOUNDARY_URL = `${import.meta.env.BASE_URL}geojson/bayawan-city-barangays.geojson`;
 
@@ -50,15 +52,7 @@ export function normalizeBarangayName(name) {
  * the Dispersal Map and the Overview.
  */
 export function choroplethTooltipHtml(properties) {
-  const row = properties?.row;
-  let parsed = row;
-  if (typeof row === "string") {
-    try {
-      parsed = JSON.parse(row);
-    } catch {
-      parsed = null;
-    }
-  }
+  const parsed = parseFeatureRow(properties?.row);
 
   const name = parsed?.name ?? properties?.name ?? "";
   const count = parsed?.pins ?? 0;
@@ -214,10 +208,37 @@ export function boundaryBounds(collection) {
   return [west, south, east, north];
 }
 
+/**
+ * The barangay whose polygon contains a point, by its asset name — for
+ * placing a landmark (the CVO office pin) inside the city's boundaries.
+ * Point-in-ring tests on the static asset, so it is exact to the asset's
+ * simplification, and never needs the rendered map.
+ *
+ * @param {object|null} collection the boundary FeatureCollection
+ * @param {number} lng longitude
+ * @param {number} lat latitude
+ * @returns {string|null} the containing barangay's name, or null outside
+ */
+export function barangayAtPoint(collection, lng, lat) {
+  if (!collection || !Array.isArray(collection.features)) return null;
+  for (const feature of collection.features) {
+    const geometry = feature.geometry;
+    const polygons =
+      geometry?.type === "Polygon"
+        ? [geometry.coordinates]
+        : geometry?.type === "MultiPolygon"
+          ? geometry.coordinates
+          : [];
+    if (polygons.some((polygon) => polygonContains(polygon, lng, lat))) {
+      return feature.properties?.name ?? null;
+    }
+  }
+  return null;
+}
+
 /* ---------------------------------------------------------------------- */
 /*  Interior label points                                                 */
 /* ---------------------------------------------------------------------- */
-
 /**
  * The point inside a polygon furthest from every edge — the "visual centre"
  * a map label belongs on. A plain centroid of a concave coastal barangay can

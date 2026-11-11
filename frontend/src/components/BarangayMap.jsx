@@ -52,17 +52,23 @@ function clampBounds(bounds) {
 }
 
 /**
- * The shared barangay choropleth: one MapLibre map wearing the 28 Bayawan
- * City barangay polygons — green fills, white borders, a YELLOW hover
+ * The shared barangay map: one MapLibre map wearing the 28 Bayawan City
+ * barangay polygons — green fills, white borders, a YELLOW hover
  * highlight, and the +/− controls at the top-left, in the style of the LGU's
  * own barangay-profile maps. The yellow hover is the same on every page that
- * wears this choropleth. Pages pass `showLabels` to pin a permanent name
+ * wears this map. Pages pass `showLabels` to pin a permanent name
  * (and, with `labelShowCounts`, the barangay's dispersal count) inside each
  * polygon; pages that pass `tooltipHtml` also get their dark cursor-side
  * metric label back on hover.
  *
+ * This is the ONE map every map feature renders through (the Dispersal Map,
+ * the dashboards' overview, the barangay flow report, the landing hero, the
+ * contact office map and both coordinate pickers), so camera rules, the
+ * basemap, attribution, controls and the label typography can never drift
+ * between pages.
+ *
  * This component OWNS the map instance and the polygon layers; the pages
- * that use it (BarangayFlowMap, the Dispersal Map) add their own data on top
+ * that use it add their own data on top
  * through `onMapReady(map)` and never re-create the map. Layer ORDER is
  * deliberate: the boundary fill and outline always sit UNDER the parent's
  * layers (they insert before `beforeLayerId` when it exists, and a later
@@ -103,6 +109,10 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  *   feature id — painted yellow through feature-state `selected`, above hover
  * @param {(name: string|null) => void} [props.onBarangayClick]
  *   polygon click; the parent owns selection state (click again = clear)
+ * @param {() => void} [props.onReset] fired when the toolbar's "Reset view"
+ *   is used — pages that mirror selection state in the URL clear it here, so
+ *   "reset" returns the whole feature (camera AND selection) to the
+ *   city-wide view.
  * @param {string[]} [props.clickThroughLayers] parent layer ids that SWALLOW
  *   a click/hover — MapLibre layer events are not occlusion-aware, so
  *   without this gate a click on a pin or flow line would ALSO select the
@@ -143,7 +153,7 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  * @param {string} [props.markerLabel] wording for that toggle (default
  *   "Markers").
  */
-function BarangayChoroplethImpl({
+function BarangayMapImpl({
   boundaries,
   choropleth = null,
   onMapReady = null,
@@ -151,6 +161,7 @@ function BarangayChoroplethImpl({
   selectedName = null,
   selectedFeatureId = null,
   onBarangayClick = null,
+  onReset = null,
   clickThroughLayers = null,
   tooltipHtml = null,
   legend = null,
@@ -181,6 +192,7 @@ function BarangayChoroplethImpl({
   const clickRef = useRef(onBarangayClick);
   const clickThroughRef = useRef(clickThroughLayers);
   const internalSelectedRef = useRef(null);
+  const onResetRef = useRef(onReset);
   const [ready, setReady] = useState(false);
   const [labelsOn, setLabelsOn] = useState(Boolean(showLabels));
   const [boundariesOn, setBoundariesOn] = useState(true);
@@ -204,6 +216,9 @@ function BarangayChoroplethImpl({
   useEffect(() => {
     clickThroughRef.current = clickThroughLayers;
   }, [clickThroughLayers]);
+  useEffect(() => {
+    onResetRef.current = onReset;
+  }, [onReset]);
 
   const withBoundaries = boundaries?.status === "ready";
 
@@ -239,6 +254,7 @@ function BarangayChoroplethImpl({
   const resetView = useCallback(() => {
     setFocusName("");
     clearInternalSelection();
+    onResetRef.current?.();
     if (!withBoundaries) return;
     const bounds = boundaryBounds(boundaries.collection);
     if (bounds) {
@@ -1087,6 +1103,6 @@ function BarangayChoroplethImpl({
  * whole map subtree. Consumers that pass fresh closures every render defeat
  * this — keep callbacks and tooltips in useMemo/useCallback there.
  */
-export const BarangayChoropleth = memo(BarangayChoroplethImpl);
+export const BarangayMap = memo(BarangayMapImpl);
 
-export default BarangayChoropleth;
+export default BarangayMap;

@@ -5,6 +5,7 @@ import { Popup } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { flowArcFeatures } from "../lib/flowArcs";
 import { validCoordinate } from "../lib/flightPath";
+import { escapeHtml, parseFeatureRow } from "../lib/mapText";
 import {
   DIVERGING_STOPS,
   SEQUENTIAL_STOPS,
@@ -17,7 +18,7 @@ import {
   normalizeBarangayName,
 } from "../lib/barangayBoundaries";
 import { useBarangayBoundaries } from "../hooks/useBarangayBoundaries";
-import { BARANGAY_FILL_LAYER, BarangayChoropleth } from "./BarangayChoropleth";
+import { BARANGAY_FILL_LAYER, BarangayMap } from "./BarangayMap";
 import { BarangayDetailPopup } from "./BarangayDetailPopup";
 
 /**
@@ -63,16 +64,6 @@ const CARD_GAP = 16;
 const FLOW_ARROW_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">' +
   '<path d="M6 0 L11.5 11 L6 8.4 L0.5 11 Z" fill="#2d4d19" stroke="#ffffff" stroke-width="0.8"/></svg>';
-
-function escapeHtml(text) {
-  return String(text ?? "").replace(/[&<>"']/g, (ch) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[ch]);
-}
 
 function bubblePopupHtml(row, { metric, per1000, metricLabel, minRateAnimals }) {
   const rateText = formatMetricReadout(row, metric, per1000, minRateAnimals);
@@ -121,17 +112,7 @@ function flowPopupHtml(flow) {
 
 /** The row a click event's feature carries, whether it was stored as text. */
 function rowFromFeature(feature) {
-  let row = feature?.properties?.row;
-
-  if (typeof row === "string") {
-    try {
-      row = JSON.parse(row);
-    } catch {
-      row = null;
-    }
-  }
-
-  return row ?? null;
+  return parseFeatureRow(feature?.properties?.row);
 }
 
 /** True when two anchor style objects carry the same numbers. */
@@ -689,7 +670,7 @@ export function BarangayFlowMap({
 
   return (
     <div className="relative">
-      <BarangayChoropleth
+      <BarangayMap
         boundaries={boundaries}
         choropleth={choropleth}
         onMapReady={handleMapReady}

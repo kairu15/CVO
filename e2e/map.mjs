@@ -285,7 +285,7 @@ try {
     const stats = await mapStats();
     ok(
       `Landing ${viewport.width}px: map height`,
-      stats.height >= 360,
+      stats.height >= 420,
       `${stats.height}px`,
     );
     ok(
@@ -305,6 +305,197 @@ try {
     await scrollToMap();
     await page.screenshot({ path: `${SHOTS}/map-landing-${viewport.width}.png` });
   }
+
+  /* -------------------- Contact section office map ------------------- */
+  // The office pin now lives on the shared barangay map (its barangay
+  // highlighted) instead of a Google iframe. The landing page carries TWO
+  // barangay maps — the hero and the office card — so the office map is
+  // identified by its own marker element.
+  for (const viewport of [widths[0], widths[3]]) {
+    await page.setViewport({ width: viewport.width, height: viewport.height });
+    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await waitForMap();
+    await page.waitForSelector(".cvo-office-marker", { timeout: 90000 });
+    await page.$eval("#contact", (el) =>
+      el.scrollIntoView({ block: "start", behavior: "instant" }),
+    );
+    await sleep(700);
+
+    const office = await page.evaluate(() => {
+      const markers = document.querySelectorAll(".cvo-office-marker");
+      // The office map is the shell whose card owns an office marker. The
+      // toolbar (search/reset/fullscreen) renders in the map's FRAME, a
+      // sibling of the shell, so the frame is the assertion root.
+      const shell = [...document.querySelectorAll(".cvo-map-shell")]
+        .reverse()
+        .find((el) => el.__cvoMap && el.querySelector(".cvo-office-marker")) ??
+        [...document.querySelectorAll(".cvo-map-shell")]
+          .reverse()
+          .find((el) => el.__cvoMap && !el.closest(".cvo-map-frame"));
+      const frame = shell?.closest(".cvo-map-frame");
+      const rect = shell?.getBoundingClientRect();
+      const map = shell?.__cvoMap;
+      const labels = [...document.querySelectorAll(".cvo-barangay-label")].filter((el) => {
+        const style = getComputedStyle(el);
+        return style.visibility !== "hidden" && el.getBoundingClientRect().height > 0;
+      });
+      return {
+        markers: markers.length,
+        height: Math.round(rect?.height ?? 0),
+        hasMap: Boolean(map),
+        fillLayer: Boolean(map?.getLayer?.("barangay-boundaries-fill")),
+        attribution: Boolean(shell?.querySelector(".maplibregl-ctrl-attrib")),
+        search: Boolean(frame?.querySelector('select[aria-label="Find and zoom to a barangay"]')),
+        reset: Boolean(frame?.querySelector('button[aria-label="Reset map to the whole city"]')),
+        fullscreen: Boolean(frame?.querySelector('button[aria-label="View map full screen"]')),
+        labels: labels.length,
+        viewportWidth: window.innerWidth,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+    ok(`Office map ${viewport.width}px: renders with the office pin`, office.hasMap && office.fillLayer && office.markers > 0);
+    ok(`Office map ${viewport.width}px: hero height (60vh/420px floor)`, office.height >= 420, `${office.height}px`);
+    ok(`Office map ${viewport.width}px: barangay names visible`, office.labels > 0, `${office.labels} labels`);
+    ok(
+      `Office map ${viewport.width}px: shared toolbar (search/reset/fullscreen)`,
+      office.search && office.reset && office.fullscreen,
+    );
+    ok(`Office map ${viewport.width}px: OSM attribution present`, office.attribution);
+    ok(`Office map ${viewport.width}px: no horizontal overflow`, office.overflow <= 1, `overflow=${office.overflow}`);
+    await page.screenshot({ path: `${SHOTS}/map-office-${viewport.width}.png` });
+  }
+
+  /* --------------- Overview: the flight-paths layer toggle ----------- */
+  await page.setViewport({ width: 1440, height: 1000 });
+  await page.goto(`${BASE}/dashboard/admin`, { waitUntil: "domcontentloaded" });
+  await waitForMap();
+  await sleep(1500); // the all-trails overview fetches every household's trail
+  const TRAIL_LAYERS = [
+    "cvo-flight-casing",
+    "cvo-flight-line",
+    "cvo-flight-approximate",
+    "cvo-flight-arrows",
+    "cvo-flight-points",
+  ];
+  const trailVisibility = () =>
+    page.evaluate((ids) => {
+      const map = [...document.querySelectorAll(".cvo-map-shell")].find((el) => el.__cvoMap)?.__cvoMap;
+      if (!map) return null;
+      return ids
+        .filter((id) => map.getLayer?.(id))
+        .map((id) => map.getLayoutProperty(id, "visibility") ?? "visible");
+    }, TRAIL_LAYERS);
+  const trailButtons = await page.$$eval(
+    'button[aria-pressed]',
+    (buttons) => buttons.map((b) => b.textContent.trim()).filter((t) => t.includes("Flight paths")),
+  );
+  if (trailButtons.length > 0) {
+    await page.evaluate(() => {
+      const button = [...document.querySelectorAll("button[aria-pressed]")]
+        .find((b) => b.textContent.trim().includes("Flight paths"));
+      button?.click();
+    });
+    await sleep(400);
+    const hidden = await trailVisibility();
+    await page.evaluate(() => {
+      const button = [...document.querySelectorAll("button[aria-pressed]")]
+        .find((b) => b.textContent.trim().includes("Flight paths"));
+      button?.click();
+    });
+    await sleep(400);
+    const shown = await trailVisibility();
+    ok(
+      "Overview: flight-paths toggle hides and shows the trail layers",
+      hidden.length > 0 && hidden.every((v) => v === "none") && shown.every((v) => v === "visible"),
+      `${hidden.length} layers: ${hidden.join(",")} → ${shown.join(",")}`,
+    );
+  } else {
+    ok("Overview: flight-paths toggle present", false, "toggle button not found");
+  }
+
+  /* ---------------- URL-restored barangay selection ------------------ */
+  await page.setViewport({ width: 1440, height: 1000 });
+  await page.goto(`${BASE}/dashboard/admin/map?barangay=Dawis`, { waitUntil: "domcontentloaded" });
+  await waitForMap();
+  await page.waitForSelector('[data-testid="barangay-records-panel"]', { timeout: 60000 }).catch(() => {});
+  const urlSelection = await page.evaluate(() => {
+    const activeLabel = document.querySelector(".cvo-barangay-label--active");
+    const panel = document.querySelector('[data-testid="barangay-records-panel"]');
+    return {
+      labelActive: activeLabel?.textContent ?? null,
+      panelOpen: Boolean(panel),
+      panelLabel: panel?.getAttribute("aria-label") ?? null,
+    };
+  });
+  ok(
+    "Admin Map: a shared ?barangay= link highlights the polygon and opens its records",
+    (urlSelection.labelActive ?? "").includes("Dawis") && urlSelection.panelOpen,
+    `label=${urlSelection.labelActive ?? "none"}, panel=${urlSelection.panelLabel ?? "none"}`,
+  );
+
+  /* ----------------- Picker inside the beneficiary form --------------- */
+  await page.setViewport({ width: 1024, height: 900 });
+  await page.goto(`${BASE}/dashboard/admin/beneficiaries`, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Add beneficiary"),
+    { timeout: 120000 },
+  );
+  await page.evaluate(() => {
+    [...document.querySelectorAll("button")]
+      .find((b) => b.textContent.trim() === "Add beneficiary")
+      ?.click();
+  });
+  await page.waitForSelector('[role="dialog"][aria-label="Add beneficiary"]', { timeout: 120000 });
+  // The pin fine-tune mounts once a barangay is chosen (existing behaviour —
+  // the picker resolves the pin from the barangay name).
+  await page.select("#beneficiary-barangay", "Dawis");
+  await page.waitForSelector('[role="dialog"] .cvo-map-shell', { timeout: 120000 });
+  await sleep(1200); // labels mount after the map's load event
+  const picker = await page.evaluate(() => {
+    const dialog = document.querySelector('[role="dialog"][aria-label="Add beneficiary"]');
+    // DispersalMap wraps the composed BarangayMap in its own shell; the map
+    // handle lives on BarangayMap's INNER shell.
+    const shell = [...(dialog?.querySelectorAll(".cvo-map-shell") ?? [])].find(
+      (el) => el.__cvoMap,
+    );
+    const frame = shell?.closest(".cvo-map-frame");
+    const map = shell?.__cvoMap;
+    return {
+      hasMap: Boolean(map),
+      fillLayer: Boolean(map?.getLayer?.("barangay-boundaries-fill")),
+      labels: dialog.querySelectorAll(".cvo-barangay-label").length,
+      search: Boolean(frame?.querySelector('select[aria-label="Find and zoom to a barangay"]')),
+      reset: Boolean(frame?.querySelector('button[aria-label="Reset map to the whole city"]')),
+    };
+  });
+  ok(
+    "Beneficiary picker: the pin map wears the shared barangay map",
+    picker.hasMap && picker.fillLayer && picker.labels > 0 && picker.search && picker.reset,
+    `labels=${picker.labels}, search=${picker.search}, reset=${picker.reset}`,
+  );
+  // Click the picker canvas: the pick must report the coordinates.
+  await page.$eval('[role="dialog"] .cvo-map-shell canvas', (canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    const opts = {
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      button: 0,
+    };
+    canvas.dispatchEvent(new MouseEvent("mousedown", opts));
+    canvas.dispatchEvent(new MouseEvent("mouseup", opts));
+    canvas.dispatchEvent(new MouseEvent("click", opts));
+  });
+  await sleep(800);
+  const pickAfter = await page.evaluate(
+    () => document.querySelector('[role="dialog"][aria-label="Add beneficiary"]')?.textContent ?? "",
+  );
+  ok(
+    "Beneficiary picker: a click still reports coordinates",
+    pickAfter.includes("Pin set to the clicked map spot"),
+  );
+  await page.screenshot({ path: `${SHOTS}/map-picker-1024.png` });
 } finally {
   await browser.close();
 }

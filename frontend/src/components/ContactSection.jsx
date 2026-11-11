@@ -12,10 +12,18 @@ const DirectionsMap = lazy(() =>
   import("./DirectionsMap").then((m) => ({ default: m.DirectionsMap })),
 );
 
+// The office pin map — the shared barangay map (not the old Google iframe).
+// Lazy like DirectionsMap: maplibre stays out of the landing bundle until
+// the contact section renders it.
+const OfficeMap = lazy(() =>
+  import("./OfficeMap").then((m) => ({ default: m.OfficeMap })),
+);
+
 /**
  * The landing page's contact section (the nav's "Contact" target): the
- * embedded map pinned to the office's navigation address (config/site.js —
- * the plus code on the National Road), and the contact form.
+ * office pinned on the shared barangay map (OfficeMap — OSM basemap, the
+ * city's boundaries, the office's barangay highlighted), and the contact
+ * form.
  *
  * "Get directions" keeps the visitor IN the system: the browser's location
  * (with permission) is routed to the office through a keyless OSRM service,
@@ -31,11 +39,6 @@ const DirectionsMap = lazy(() =>
  */
 
 const EMPTY_FORM = { name: "", email: "", phone: "", subject: "", message: "" };
-
-/** Google's keyless embed, pointed at the office's full plus code. */
-function embedUrl(query) {
-  return `https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=16&output=embed`;
-}
 
 /** The office pin as an outbound Google Maps directions query (fallback). */
 function directionsUrl(query) {
@@ -251,17 +254,21 @@ export function ContactSection() {
         </div>
 
         <div className="mt-10 grid gap-6 lg:grid-cols-2">
-          {/* The map — pinned to the office's navigation address (the
-              National Road plus code from config/site.js). A lazy, keyless
-              Google embed: no JS library, no API key, nothing loads until it
-              scrolls into view; the browser resolves the address itself. */}
+          {/* The map — the office pinned inside the city's barangay
+              boundaries on the SAME shared map the dashboards wear (OSM
+              tiles, proper attribution, the shared toolbar). Lazy so the
+              heavy MapLibre chunk never rides the landing bundle. */}
           <div className="card overflow-hidden">
-            <iframe
-              title={`Map showing the City Veterinary Office location at ${officeMap.label}`}
-              src={embedUrl(officeMap.query)}
-              loading="lazy"
-              className="h-64 w-full border-0 sm:h-80"
-            />
+            <Suspense
+              fallback={
+                <div
+                  className="h-[60vh] min-h-[420px] w-full animate-pulse rounded-none bg-slate-100"
+                  aria-hidden="true"
+                />
+              }
+            >
+              <OfficeMap coords={officeMap.coords} label="City Veterinary Office" />
+            </Suspense>
             <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-5 py-3.5 dark:border-slate-800">
               <span className="flex min-w-0 items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                 <Icon name="map-pin" className="h-4 w-4 shrink-0 text-brand-600" />
@@ -271,7 +278,7 @@ export function ContactSection() {
                 type="button"
                 onClick={getDirections}
                 disabled={directions.status === "locating" || directions.status === "routing"}
-                className="shrink-0 text-sm font-medium text-brand-700 underline-offset-2 hover:underline disabled:opacity-60 dark:text-brand-300"
+                className="h-11 shrink-0 rounded-pill px-4 text-sm font-semibold text-brand-700 underline-offset-2 hover:bg-brand-50 hover:underline disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 dark:text-brand-300 dark:hover:bg-slate-800/60"
               >
                 Get directions
               </button>

@@ -320,7 +320,7 @@
  * shipped styling is bare text on a translucent scrim — barely legible over
  * a light basemap — so the message is wrapped in a dark pill and the fade
  * out stretched a little, keeping the hint readable long enough to act on.
- * Scoped to .cvo-map-shell (which only BarangayChoropleth renders) so a
+ * Scoped to .cvo-map-shell (which only BarangayMap renders) so a
  * future non-shell surface keeps MapLibre's stock look.
  */
 .cvo-map-shell .maplibregl-cooperative-gesture-screen {
@@ -340,6 +340,40 @@
   line-height: 1.2;
   text-align: center;
   box-shadow: 0 10px 24px rgb(0 0 0 / 0.3);
+}
+
+/*
+ * Touch targets: MapLibre's stock +/− buttons are 29px — under the 44px
+ * minimum a phone thumb needs. Every map in the app lives inside a
+ * .cvo-map-shell, so one scoped rule keeps them consistent.
+ */
+.cvo-map-shell .maplibregl-ctrl-group button {
+  width: 44px;
+  height: 44px;
+}
+
+/*
+ * The office pin on the contact section's shared barangay map: the same
+ * brand-green dot the route map uses for the destination, with a small
+ * always-visible name chip so the office reads at a glance without a
+ * click.
+ */
+.cvo-office-marker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cvo-office-marker-label {
+  background: rgb(15 23 42 / 0.88);
+  color: #fff;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 1px 5px rgb(15 23 42 / 0.35);
 }
 
 /*

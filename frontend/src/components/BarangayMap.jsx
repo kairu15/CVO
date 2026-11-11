@@ -10,6 +10,8 @@ import {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { OSM_STYLE } from "../config/mapStyle";
+import { Icon } from "./Icons";
+import { BarangaySearch } from "./BarangaySearch";
 import {
   barangayLabelPoint,
   barangayLabelSpanMeters,
@@ -926,7 +928,7 @@ function BarangayMapImpl({
   }, [ready, fitToBoundaries, withBoundaries, selectedName]);
 
   const controlClass =
-    "inline-flex h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700";
+    "inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700";
   const pressedClass =
     "border-brand-600 bg-brand-50 text-brand-800";
   const fullscreenActive = isFullscreen || cssFullscreen;
@@ -945,26 +947,12 @@ function BarangayMapImpl({
       {interactive && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {barangayNames.length > 0 && (
-            <label className="relative">
-              <span className="sr-only">Find and zoom to a barangay</span>
-              <select
-                aria-label="Find and zoom to a barangay"
-                value={focusName}
-                onChange={(event) => {
-                  const name = event.target.value;
-                  if (name) focusBarangay(name);
-                  else resetView();
-                }}
-                className="field h-11 min-w-[11rem] !py-0 text-xs"
-              >
-                <option value="">Find a barangay…</option>
-                {barangayNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <BarangaySearch
+              names={barangayNames}
+              value={focusName}
+              onSelect={focusBarangay}
+              onClear={resetView}
+            />
           )}
 
           <button
@@ -972,7 +960,9 @@ function BarangayMapImpl({
             onClick={resetView}
             className={controlClass}
             aria-label="Reset map to the whole city"
+            title="Fit the whole city in view"
           >
+            <Icon name="focus" className="h-3.5 w-3.5" />
             Reset view
           </button>
 
@@ -982,7 +972,12 @@ function BarangayMapImpl({
             className={controlClass}
             aria-pressed={fullscreenActive}
             aria-label={fullscreenActive ? "Exit map full screen" : "View map full screen"}
+            title={fullscreenActive ? "Exit full screen (Esc)" : "View map full screen"}
           >
+            <Icon
+              name={fullscreenActive ? "compress" : "expand"}
+              className="h-3.5 w-3.5"
+            />
             {fullscreenActive ? "Exit full screen" : "Full screen"}
           </button>
 
@@ -996,7 +991,9 @@ function BarangayMapImpl({
               onClick={() => setBoundariesOn((value) => !value)}
               className={`${controlClass} ${boundariesOn ? pressedClass : ""}`}
               aria-pressed={boundariesOn}
+              title="Show or hide the barangay boundary lines"
             >
+              <Icon name="layers" className="h-3.5 w-3.5" />
               Boundaries
             </button>
             {showLabels && (
@@ -1005,7 +1002,9 @@ function BarangayMapImpl({
                 onClick={() => setLabelsOn((value) => !value)}
                 className={`${controlClass} ${labelsOn ? pressedClass : ""}`}
                 aria-pressed={labelsOn}
+                title="Show or hide the barangay name labels"
               >
+                <Icon name="type" className="h-3.5 w-3.5" />
                 Labels
               </button>
             )}
@@ -1015,7 +1014,9 @@ function BarangayMapImpl({
                 onClick={() => setMarkersOn((value) => !value)}
                 className={`${controlClass} ${markersOn ? pressedClass : ""}`}
                 aria-pressed={markersOn}
+                title={`Show or hide the ${markerLabel.toLowerCase()} overlay`}
               >
+                <Icon name="map-pin" className="h-3.5 w-3.5" />
                 {markerLabel}
               </button>
             )}

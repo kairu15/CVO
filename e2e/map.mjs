@@ -146,7 +146,10 @@ try {
     const map = [...document.querySelectorAll(".cvo-map-shell")].find((el) => el.__cvoMap)?.__cvoMap;
     return map?.getZoom?.() ?? 0;
   });
-  await page.select('select[aria-label="Find and zoom to a barangay"]', "Dawis");
+  // The search is a type-ahead combobox: type, then Enter picks the match.
+  await page.click('input[aria-label="Find and zoom to a barangay"]');
+  await page.type('input[aria-label="Find and zoom to a barangay"]', "Dawis");
+  await page.keyboard.press("Enter");
   await sleep(1200);
   const afterSearch = await page.evaluate(() => {
     const map = [...document.querySelectorAll(".cvo-map-shell")].find((el) => el.__cvoMap)?.__cvoMap;
@@ -157,6 +160,25 @@ try {
     afterSearch > beforeSearch + 0.5,
     `${beforeSearch.toFixed(2)} → ${afterSearch.toFixed(2)}`,
   );
+
+  // The combobox keeps the focused barangay with a clear button; clearing
+  // hands off to the reset view.
+  const clearButton = await page.$('button[aria-label="Clear the barangay search and reset the view"]');
+  if (clearButton) {
+    await clearButton.click();
+    await sleep(1000);
+    const afterClear = await page.evaluate(() => {
+      const map = [...document.querySelectorAll(".cvo-map-shell")].find((el) => el.__cvoMap)?.__cvoMap;
+      return map?.getZoom?.() ?? 99;
+    });
+    ok(
+      "Admin Map: clearing the search resets to the city view",
+      afterClear < 12.2,
+      `zoom=${afterClear.toFixed(2)}`,
+    );
+  } else {
+    ok("Admin Map: the search shows a clear button while a barangay is focused", false);
+  }
 
   // Move the camera away, then reset to the whole-city frame.
   await page.evaluate(() => {
@@ -345,7 +367,7 @@ try {
         hasMap: Boolean(map),
         fillLayer: Boolean(map?.getLayer?.("barangay-boundaries-fill")),
         attribution: Boolean(shell?.querySelector(".maplibregl-ctrl-attrib")),
-        search: Boolean(frame?.querySelector('select[aria-label="Find and zoom to a barangay"]')),
+        search: Boolean(frame?.querySelector('input[aria-label="Find and zoom to a barangay"]')),
         reset: Boolean(frame?.querySelector('button[aria-label="Reset map to the whole city"]')),
         fullscreen: Boolean(frame?.querySelector('button[aria-label="View map full screen"]')),
         labels: labels.length,
@@ -464,7 +486,7 @@ try {
       hasMap: Boolean(map),
       fillLayer: Boolean(map?.getLayer?.("barangay-boundaries-fill")),
       labels: dialog.querySelectorAll(".cvo-barangay-label").length,
-      search: Boolean(frame?.querySelector('select[aria-label="Find and zoom to a barangay"]')),
+      search: Boolean(frame?.querySelector('input[aria-label="Find and zoom to a barangay"]')),
       reset: Boolean(frame?.querySelector('button[aria-label="Reset map to the whole city"]')),
     };
   });

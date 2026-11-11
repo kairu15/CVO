@@ -132,12 +132,12 @@ export function DashboardOverviewMap({ roleKey }) {
               loading={mapLoading}
               renderChoropleth={(onMapReady) => (
                 <Suspense
-                  fallback={<div className="h-[26rem] w-full rounded-xl bg-slate-100" />}
+                  fallback={<div className="h-[60vh] min-h-[460px] w-full rounded-xl bg-slate-100" />}
                 >
                   <DashboardChoropleth
                     boundaries={boundaries}
                     choropleth={choropleth}
-                    height="h-[26rem]"
+                    height="h-[60vh] min-h-[460px]"
                     // The pin layers are added by the map; the polygons
                     // insert beneath them so a pin is never buried.
                     beforeLayerId="cvo-date-pins-clusters"

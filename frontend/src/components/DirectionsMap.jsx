@@ -50,6 +50,31 @@ export function DirectionsMap({ route, origin, destination }) {
     };
   }, []);
 
+  // Keep the canvas matched to its card when the contact layout reflows.
+  useEffect(() => {
+    const map = mapRef.current;
+    const node = containerRef.current;
+    if (!ready || !map || !node) return undefined;
+    const resize = () => {
+      try {
+        map.resize();
+      } catch {
+        // Map already removed.
+      }
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    let observer = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(resize);
+      observer.observe(node);
+    }
+    return () => {
+      window.removeEventListener("resize", resize);
+      observer?.disconnect();
+    };
+  }, [ready]);
+
   // The route layer: added once the basemap is up, then only its data moves.
   useEffect(() => {
     const map = mapRef.current;
@@ -125,7 +150,7 @@ export function DirectionsMap({ route, origin, destination }) {
   return (
     <div
       ref={containerRef}
-      className="cvo-map-shell h-56 w-full rounded-xl border border-slate-200 sm:h-64 dark:border-slate-700"
+      className="cvo-map-shell h-[26rem] w-full rounded-xl border border-slate-200 sm:h-[30rem] dark:border-slate-700"
       role="application"
       aria-label="Driving route from your location to the City Veterinary Office"
     />

@@ -1968,27 +1968,31 @@ export function DispersalMap({
               : renderChoropleth
                 ? // The choropleth slot brings its own height (and legend).
                   "cvo-map-shell relative isolate w-full"
-                : "cvo-map-shell relative isolate h-[26rem] w-full"
+                : "cvo-map-shell relative isolate h-[60vh] min-h-[480px] w-full"
           }
         >
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className={`absolute z-[600] grid h-9 w-9 place-items-center rounded-md bg-white text-slate-600 shadow-md ring-1 ring-slate-900/10 transition hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 ${
-              // The shared choropleth puts the +/− controls top-left; the
-              // fullscreen toggle takes the other corner so they never stack.
-              renderChoropleth ? "right-3 top-3" : "left-3 top-3"
-            }`}
-            aria-pressed={isFullscreen}
-            aria-label={isFullscreen ? "Exit map full screen" : "View map full screen"}
-            title={isFullscreen ? "Exit full screen (Esc)" : "View map full screen"}
-          >
-            <Icon
-              name={isFullscreen ? "compress" : "expand"}
-              className="h-5 w-5"
-            />
-          </button>
-          {loading && (
+          {/* With the shared choropleth, its own toolbar owns fullscreen,
+              reset and layer controls. This button remains for the bare map
+              (picker/fallback) that has no shared chrome. */}
+          {!renderChoropleth && (
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="absolute left-3 top-3 z-[600] grid h-11 w-11 place-items-center rounded-md bg-white text-slate-600 shadow-md ring-1 ring-slate-900/10 transition hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+              aria-pressed={isFullscreen}
+              aria-label={isFullscreen ? "Exit map full screen" : "View map full screen"}
+              title={isFullscreen ? "Exit full screen (Esc)" : "View map full screen"}
+            >
+              <Icon
+                name={isFullscreen ? "compress" : "expand"}
+                className="h-5 w-5"
+              />
+            </button>
+          )}
+          {/* The shared choropleth owns its own loading state. This veil also
+              covers the choropleth's control bar, so it is only for the bare
+              map (picker/fallback). */}
+          {loading && !renderChoropleth && (
             <div className="absolute inset-0 z-[500] grid place-items-center bg-white/70">
               <span className="text-sm text-slate-500">Loading map…</span>
             </div>

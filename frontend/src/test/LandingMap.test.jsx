@@ -6,11 +6,11 @@ import { LandingMap } from "../components/LandingMap";
  * The landing page's map is the SAME BarangayChoropleth the Admin Map wears
  * (MapLibre needs WebGL; the maps are not what these tests cover — the
  * choropleth stub records its props for the wiring assertions below). What
- * this pins is the contract the visitor sees: a PINNED, label-free display
- * map — the camera fits Bayawan's barangays exactly and never zooms or pans,
- * a barangay identifies itself on hover — with the public counts joined onto
- * every barangay, and the illustrative fallback when the summary endpoint is
- * unreachable.
+ * this pins is the contract the visitor sees: a PINNED display map — the
+ * camera fits Bayawan's barangays exactly and never zooms or pans, labels
+ * declutter themselves, a barangay identifies itself on hover — with the
+ * public counts joined onto every barangay, and the illustrative fallback
+ * when the summary endpoint is unreachable.
  */
 
 const { choroplethProps } = vi.hoisted(() => ({ choroplethProps: {} }));
@@ -45,14 +45,14 @@ beforeEach(() => {
 });
 
 describe("LandingMap", () => {
-  it("is a pinned display map: no labels, no zoom or pan, hover identifies", async () => {
+  it("is a pinned display map: declared labels, no zoom or pan, hover identifies", async () => {
     renderMap({ barangays: BARANGAYS });
 
     await waitFor(() => expect(choroplethProps.interactive).toBe(false));
-    // No permanent name labels — they overlap at the city-wide frame; the
-    // hover tooltip identifies a barangay instead. The wheel guard is moot
-    // on a pinned map (nothing zooms), so it is not passed either.
-    expect(choroplethProps.showLabels).toBeUndefined();
+    // Permanent labels are declared; the choropleth's collision pass keeps
+    // the city-wide frame legible. The wheel guard is moot on a pinned map
+    // (nothing zooms), so it is not passed either.
+    expect(choroplethProps.showLabels).toBe(true);
     expect(choroplethProps.labelShowCounts).toBeUndefined();
     expect(choroplethProps.cooperativeGestures).toBeUndefined();
     expect(choroplethProps.legend).toMatchObject({

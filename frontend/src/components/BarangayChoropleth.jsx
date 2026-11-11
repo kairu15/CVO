@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // Named imports, exactly like DispersalMap — the maplibre-gl build this app
 // ships does not expose a default export.
 import {
@@ -23,11 +23,32 @@ import {
  * stack into an unreadable pile at the city-wide view. Zooming in reveals
  * them one by one, the way every proper map declutters.
  */
-const LABEL_MIN_PIXELS = 40;
+const LABEL_MIN_PIXELS = 18;
+
+/** Fallback label box before the browser has measured a marker. */
+const LABEL_FALLBACK_WIDTH = 70;
+const LABEL_FALLBACK_HEIGHT = 22;
+const LABEL_COLLISION_GAP = 3;
 
 /** Metres per screen pixel at a given zoom, for a given latitude. */
 function metresPerPixel(zoom, latitude) {
   return (156543.03392 * Math.cos((latitude * Math.PI) / 180)) / 2 ** zoom;
+}
+
+/**
+ * Keep the camera near Bayawan: pad the city bounds by ~a third of their
+ * size, so neighbouring municipalities peek in at the edge but a user cannot
+ * lose the city. MapLibre takes [[west, south], [east, north]].
+ */
+function clampBounds(bounds) {
+  // boundaryBounds() returns [west, south, east, north].
+  const [west, south, east, north] = bounds;
+  const padX = (east - west) * 0.35;
+  const padY = (north - south) * 0.35;
+  return [
+    [west - padX, south - padY],
+    [east + padX, north + padY],
+  ];
 }
 
 /**
@@ -58,6 +79,7 @@ function metresPerPixel(zoom, latitude) {
 
 const BOUNDARY_SOURCE = "cvo-barangay-boundaries";
 const FILL_LAYER = "barangay-boundaries-fill";
+const OUTLINE_CASING_LAYER = "barangay-boundaries-casing";
 const OUTLINE_LAYER = "barangay-boundaries-outline";
 
 /** The polygon fill layer — exported so a parent can tell a polygon click
@@ -116,6 +138,10 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  *   card always shows the same clean city-wide frame; layer hover still
  *   works (those are layer events, not navigation handlers). Opt-in for
  *   display maps; default true = unchanged everywhere else.
+ * @param {string[]} [props.markerLayerIds] parent overlay layers (pins,
+ *   flight trails) that the optional "Markers" layer toggle shows/hides.
+ * @param {string} [props.markerLabel] wording for that toggle (default
+ *   "Markers").
  */
 export function BarangayChoropleth({
   boundaries,
@@ -130,7 +156,7 @@ export function BarangayChoropleth({
   legend = null,
   legendNotes = null,
   showCredit = true,
-  height = "h-96",
+  height = "h-[70vh] min-h-[480px]",
   ariaLabel = "Map of Bayawan City's barangays",
   beforeLayerId = null,
   fitToBoundaries = true,
@@ -138,8 +164,11 @@ export function BarangayChoropleth({
   labelShowCounts = false,
   cooperativeGestures = false,
   interactive = true,
+  markerLayerIds = [],
+  markerLabel = "Markers",
 }) {
   const containerRef = useRef(null);
+  const shellRef = useRef(null);
   const mapRef = useRef(null);
   const popupRef = useRef(null);
   const labelMarkersRef = useRef([]);
@@ -151,7 +180,14 @@ export function BarangayChoropleth({
   const tooltipRef = useRef(tooltipHtml);
   const clickRef = useRef(onBarangayClick);
   const clickThroughRef = useRef(clickThroughLayers);
+  const internalSelectedRef = useRef(null);
   const [ready, setReady] = useState(false);
+  const [labelsOn, setLabelsOn] = useState(Boolean(showLabels));
+  const [boundariesOn, setBoundariesOn] = useState(true);
+  const [markersOn, setMarkersOn] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [cssFullscreen, setCssFullscreen] = useState(false);
+  const [focusName, setFocusName] = useState("");
 
   useEffect(() => {
     onMapReadyRef.current = onMapReady;
@@ -170,6 +206,128 @@ export function BarangayChoropleth({
   }, [clickThroughLayers]);
 
   const withBoundaries = boundaries?.status === "ready";
+
+  const barangayNames = useMemo(() => {
+    const features = boundaries?.collection?.features ?? [];
+    return [...new Set(features.map((feature) => feature.properties?.name).filter(Boolean))].sort(
+      (a, b) => a.localeCompare(b),
+    );
+  }, [boundaries]);
+
+  // The toolbar can switch labels, but pages still decide the default; reset
+  // it when a page changes that default (e.g. a pinned display map).
+  useEffect(() => {
+    setLabelsOn(Boolean(showLabels));
+  }, [showLabels]);
+
+  const clearInternalSelection = useCallback(() => {
+    const map = mapRef.current;
+    if (map && internalSelectedRef.current !== null) {
+      try {
+        map.setFeatureState(
+          { source: BOUNDARY_SOURCE, id: internalSelectedRef.current },
+          { selected: false },
+        );
+      } catch {
+        // Source already torn down with the map.
+      }
+    }
+    internalSelectedRef.current = null;
+  }, []);
+
+  /** Return to the whole-city frame and drop a search-selected barangay. */
+  const resetView = useCallback(() => {
+    setFocusName("");
+    clearInternalSelection();
+    if (!withBoundaries) return;
+    const bounds = boundaryBounds(boundaries.collection);
+    if (bounds) {
+      mapRef.current?.fitBounds(bounds, { padding: 24, maxZoom: 12, duration: 300 });
+    }
+  }, [withBoundaries, boundaries, clearInternalSelection]);
+
+  /** Zoom to one barangay and paint it selected (search / select control). */
+  const focusBarangay = useCallback(
+    (name) => {
+      setFocusName(name);
+      const map = mapRef.current;
+      const feature = choropleth?.collection?.features?.find(
+        (candidate) =>
+          normalizeBarangayName(candidate.properties?.name) === normalizeBarangayName(name),
+      );
+      if (!map || !feature) return;
+
+      clearInternalSelection();
+      map.fitBounds(boundaryBounds({ features: [feature] }), {
+        padding: 56,
+        maxZoom: 13,
+        duration: 400,
+      });
+
+      // Feature ids are generated when the source is added, so resolve the
+      // rendered id (rather than the GeoJSON array index) once the camera has
+      // settled. The highlight is in addition to any parent selection.
+      const highlight = () => {
+        try {
+          const rendered = map.querySourceFeatures?.(BOUNDARY_SOURCE) ?? [];
+          const match = rendered.find(
+            (candidate) =>
+              normalizeBarangayName(candidate.properties?.name) === normalizeBarangayName(name),
+          );
+          if (match?.id !== undefined && match?.id !== null) {
+            map.setFeatureState(
+              { source: BOUNDARY_SOURCE, id: match.id },
+              { selected: true },
+            );
+            internalSelectedRef.current = match.id;
+          }
+        } catch {
+          // Source not queryable yet; the camera move still helps.
+        }
+      };
+      if (typeof map.once === "function") map.once("idle", highlight);
+      else highlight();
+    },
+    [choropleth, clearInternalSelection],
+  );
+
+  const toggleFullscreen = useCallback(async () => {
+    const node = shellRef.current ?? containerRef.current;
+    if (!node) return;
+    if (document.fullscreenElement === node) {
+      await document.exitFullscreen?.();
+      return;
+    }
+    if (cssFullscreen) {
+      setCssFullscreen(false);
+      return;
+    }
+    try {
+      if (!node.requestFullscreen) {
+        setCssFullscreen(true);
+        return;
+      }
+      await node.requestFullscreen();
+      // Some headless/embedded browsers resolve the promise without actually
+      // entering fullscreen; use the fallback when that happens.
+      if (document.fullscreenElement !== node) setCssFullscreen(true);
+    } catch {
+      // Headless browsers, iframes and some phone browsers refuse the native
+      // API. Fall back to a fixed full-viewport card so the control still
+      // does what it says.
+      setCssFullscreen(true);
+    }
+  }, [cssFullscreen]);
+
+  // Escape closes the CSS fallback (native fullscreen handles its own Esc).
+  useEffect(() => {
+    if (!cssFullscreen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setCssFullscreen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [cssFullscreen]);
 
   // Map created once; the container owns it for its whole life.
   useEffect(() => {
@@ -219,6 +377,71 @@ export function BarangayChoropleth({
     // Created once per mount: the data effects below own every update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // MapLibre sizes its canvas from the container at creation time. A sidebar
+  // collapsing, a tab switching or the card growing must call resize() or the
+  // canvas keeps its old dimensions (stretched or letterboxed).
+  useEffect(() => {
+    const map = mapRef.current;
+    const node = containerRef.current;
+    if (!ready || !map || !node) return undefined;
+
+    const resize = () => {
+      try {
+        map.resize();
+      } catch {
+        // Map already torn down.
+      }
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    let observer = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(resize);
+      observer.observe(node);
+    }
+
+    return () => {
+      window.removeEventListener("resize", resize);
+      observer?.disconnect();
+    };
+  }, [ready]);
+
+  // Native fullscreen changes the container box without a window resize; the
+  // observer above usually catches it, this is the belt-and-braces path for
+  // browsers that paint fullscreen before layout settles.
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === shellRef.current);
+      if (!document.fullscreenElement) setCssFullscreen(false);
+      window.setTimeout(() => {
+        try {
+          mapRef.current?.resize();
+        } catch {
+          // Map already torn down.
+        }
+      }, 60);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  // Keep the camera around Bayawan. The city bounds are static, so this runs
+  // once per successful boundary load; maxBounds is padded so the surrounding
+  // municipalities remain visible at the edge.
+  useEffect(() => {
+    if (!ready || !withBoundaries) return;
+    const map = mapRef.current;
+    const bounds = boundaryBounds(boundaries.collection);
+    if (!map || !bounds) return;
+    try {
+      map.setMaxBounds?.(clampBounds(bounds));
+      map.setMinZoom?.(9);
+    } catch {
+      // A mid-teardown map can refuse camera options.
+    }
+  }, [ready, withBoundaries, boundaries]);
 
   // Click / hover behaviour for the polygons, bound once the map is up.
   // Re-bound on picker flips: picker mode takes the raw click instead.
@@ -389,6 +612,23 @@ export function BarangayChoropleth({
         },
         insertBefore,
       );
+      // A white casing under a brand-green line: the green reads as the
+      // barangay outline (weight ~2), while the casing keeps it legible over
+      // both the pale zero-count fill and the darkest green.
+      map.addLayer(
+        {
+          id: OUTLINE_CASING_LAYER,
+          type: "line",
+          source: BOUNDARY_SOURCE,
+          layout: { "line-join": "round" },
+          paint: {
+            "line-color": "#ffffff",
+            "line-width": ["interpolate", ["linear"], ["zoom"], 9, 2.6, 13, 4],
+            "line-opacity": 0.9,
+          },
+        },
+        insertBefore,
+      );
       map.addLayer(
         {
           id: OUTLINE_LAYER,
@@ -396,9 +636,9 @@ export function BarangayChoropleth({
           source: BOUNDARY_SOURCE,
           layout: { "line-join": "round" },
           paint: {
-            "line-color": "#ffffff",
-            "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1.2, 13, 2.2],
-            "line-opacity": 0.95,
+            "line-color": "#2d4d19",
+            "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1.4, 13, 2.4],
+            "line-opacity": 0.92,
           },
         },
         insertBefore,
@@ -408,6 +648,27 @@ export function BarangayChoropleth({
     }
   }, [ready, withBoundaries, choropleth, beforeLayerId]);
 
+  // Layer toggles: boundaries and labels are ours; marker layers belong to
+  // the parent but are hidden by id. Declared AFTER the layer effect so the
+  // first paint already carries the current toggle state.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const visibility = boundariesOn ? "visible" : "none";
+    for (const id of [FILL_LAYER, OUTLINE_CASING_LAYER, OUTLINE_LAYER]) {
+      if (map.getLayer?.(id)) map.setLayoutProperty?.(id, "visibility", visibility);
+    }
+  }, [ready, boundariesOn, choropleth]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || markerLayerIds.length === 0) return;
+    const visibility = markersOn ? "visible" : "none";
+    for (const id of markerLayerIds) {
+      if (map.getLayer?.(id)) map.setLayoutProperty?.(id, "visibility", visibility);
+    }
+  }, [ready, markersOn, markerLayerIds, choropleth]);
+
   // The selected polygon stays yellow while the card is open — and the flag
   // is re-applied whenever the choropleth's data is replaced, because a
   // setData() can drop the state a previous click set.
@@ -416,6 +677,19 @@ export function BarangayChoropleth({
     if (!map || !ready || !withBoundaries) return;
 
     try {
+      // A parent-owned selection wins over a search highlight.
+      if (
+        selectedFeatureId !== null &&
+        selectedFeatureId !== undefined &&
+        internalSelectedRef.current !== null
+      ) {
+        map.setFeatureState(
+          { source: BOUNDARY_SOURCE, id: internalSelectedRef.current },
+          { selected: false },
+        );
+        internalSelectedRef.current = null;
+        setFocusName("");
+      }
       if (selectedRef.current !== null) {
         map.setFeatureState(
           { source: BOUNDARY_SOURCE, id: selectedRef.current },
@@ -443,7 +717,7 @@ export function BarangayChoropleth({
   // (a fresh snapshot) only refresh the count line, in place.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready || !withBoundaries || !showLabels || !choropleth) return;
+    if (!map || !ready || !withBoundaries || !labelsOn || !choropleth) return;
 
     const collection = choropleth.collection;
     const features = Array.isArray(collection?.features) ? collection.features : [];
@@ -473,7 +747,7 @@ export function BarangayChoropleth({
             countLine,
             name: normalizeBarangayName(name),
             spanMeters: barangayLabelSpanMeters(feature),
-            latitude: point[1],
+            point,
           });
         } catch {
           // A map mid-teardown can refuse a marker — skip it rather than
@@ -482,15 +756,60 @@ export function BarangayChoropleth({
       }
       labelMarkersRef.current = created;
 
-      // Declutter: reveal each label as its barangay grows past
-      // LABEL_MIN_PIXELS on screen, and re-evaluate while the camera moves.
+      // Declutter in two passes: hide any barangay too small on screen, then
+      // hide a label that would collide with a larger one already shown. The
+      // largest shapes claim the space first, so names stay legible instead
+      // of stacking as the city fills more of the card.
       const applyVisibility = () => {
         const zoom = map.getZoom();
         const latitude = map.getCenter().lat;
         const metres = metresPerPixel(zoom, latitude);
+        const candidates = [];
+
         for (const entry of labelMarkersRef.current) {
-          entry.element.style.visibility =
-            entry.spanMeters / metres >= LABEL_MIN_PIXELS ? "visible" : "hidden";
+          const size = entry.spanMeters / metres;
+          if (size < LABEL_MIN_PIXELS) {
+            entry.element.style.visibility = "hidden";
+            continue;
+          }
+          let projected = null;
+          try {
+            projected = map.project(entry.point);
+          } catch {
+            // Projection is unavailable before the first paint; fall through
+            // and let the size test alone decide.
+          }
+          candidates.push({
+            entry,
+            size,
+            point: projected,
+            width: entry.element.offsetWidth || LABEL_FALLBACK_WIDTH,
+            height: entry.element.offsetHeight || LABEL_FALLBACK_HEIGHT,
+          });
+        }
+
+        candidates.sort((a, b) => b.size - a.size);
+        const shown = [];
+        for (const candidate of candidates) {
+          const box = candidate.point
+            ? {
+                left: candidate.point.x - candidate.width / 2 - LABEL_COLLISION_GAP,
+                right: candidate.point.x + candidate.width / 2 + LABEL_COLLISION_GAP,
+                top: candidate.point.y - candidate.height / 2 - LABEL_COLLISION_GAP,
+                bottom: candidate.point.y + candidate.height / 2 + LABEL_COLLISION_GAP,
+              }
+            : null;
+          const collides =
+            box &&
+            shown.some(
+              (other) =>
+                box.left < other.right &&
+                box.right > other.left &&
+                box.top < other.bottom &&
+                box.bottom > other.top,
+            );
+          candidate.entry.element.style.visibility = collides ? "hidden" : "visible";
+          if (!collides && box) shown.push(box);
         }
       };
       labelVisibilityRef.current = applyVisibility;
@@ -518,18 +837,18 @@ export function BarangayChoropleth({
         }
       }
     }
-  }, [ready, withBoundaries, showLabels, labelShowCounts, choropleth]);
+  }, [ready, withBoundaries, labelsOn, labelShowCounts, choropleth]);
 
   // Labels switched off (or the component unmounting): take the markers down
   // and unbind their visibility handler.
   useEffect(() => {
-    if (showLabels) return;
+    if (labelsOn) return;
     const map = mapRef.current;
     if (map && labelVisibilityRef.current) map.off("move", labelVisibilityRef.current);
     labelVisibilityRef.current = null;
     for (const entry of labelMarkersRef.current) entry.marker.remove();
     labelMarkersRef.current = [];
-  }, [showLabels]);
+  }, [labelsOn]);
 
   useEffect(
     () => () => {
@@ -571,14 +890,151 @@ export function BarangayChoropleth({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, fitToBoundaries, withBoundaries, selectedName]);
 
+  const controlClass =
+    "inline-flex h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700";
+  const pressedClass =
+    "border-brand-600 bg-brand-50 text-brand-800";
+  const fullscreenActive = isFullscreen || cssFullscreen;
+  // Native fullscreen and the CSS fallback share the same explicit frame: a
+  // full-viewport flex column, so the canvas takes the space left by the
+  // toolbar and legend instead of collapsing to its pre-fullscreen height.
+  const frameClass = fullscreenActive
+    ? "cvo-map-frame fixed inset-0 z-[70] flex h-screen w-screen flex-col gap-3 overflow-auto bg-slate-50 p-3"
+    : "cvo-map-frame";
+  const mapBoxClass = fullscreenActive
+    ? "cvo-map-shell min-h-0 w-full flex-1 rounded-none border-0"
+    : `cvo-map-shell ${height} rounded-xl border border-slate-200 dark:border-slate-700`;
+
   return (
-    <div>
+    <div ref={shellRef} className={frameClass}>
+      {interactive && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {barangayNames.length > 0 && (
+            <label className="relative">
+              <span className="sr-only">Find and zoom to a barangay</span>
+              <select
+                aria-label="Find and zoom to a barangay"
+                value={focusName}
+                onChange={(event) => {
+                  const name = event.target.value;
+                  if (name) focusBarangay(name);
+                  else resetView();
+                }}
+                className="field h-11 min-w-[11rem] !py-0 text-xs"
+              >
+                <option value="">Find a barangay…</option>
+                {barangayNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <button
+            type="button"
+            onClick={resetView}
+            className={controlClass}
+            aria-label="Reset map to the whole city"
+          >
+            Reset view
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className={controlClass}
+            aria-pressed={fullscreenActive}
+            aria-label={fullscreenActive ? "Exit map full screen" : "View map full screen"}
+          >
+            {fullscreenActive ? "Exit full screen" : "Full screen"}
+          </button>
+
+          <div
+            role="group"
+            aria-label="Map layers"
+            className="flex flex-wrap items-center gap-2"
+          >
+            <button
+              type="button"
+              onClick={() => setBoundariesOn((value) => !value)}
+              className={`${controlClass} ${boundariesOn ? pressedClass : ""}`}
+              aria-pressed={boundariesOn}
+            >
+              Boundaries
+            </button>
+            {showLabels && (
+              <button
+                type="button"
+                onClick={() => setLabelsOn((value) => !value)}
+                className={`${controlClass} ${labelsOn ? pressedClass : ""}`}
+                aria-pressed={labelsOn}
+              >
+                Labels
+              </button>
+            )}
+            {markerLayerIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setMarkersOn((value) => !value)}
+                className={`${controlClass} ${markersOn ? pressedClass : ""}`}
+                aria-pressed={markersOn}
+              >
+                {markerLabel}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div
-        ref={containerRef}
-        className={`cvo-map-shell ${height} rounded-xl border border-slate-200 dark:border-slate-700`}
-        role="application"
-        aria-label={ariaLabel}
-      />
+        className={`relative ${fullscreenActive ? "flex min-h-0 flex-1 flex-col" : ""}`}
+      >
+        <div
+          ref={containerRef}
+          className={mapBoxClass}
+          role="application"
+          aria-label={ariaLabel}
+        />
+
+        {boundaries?.status === "loading" && (
+          <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-xl bg-slate-50/70">
+            <span
+              role="status"
+              className="inline-flex items-center gap-2 rounded-pill bg-white px-4 py-2 text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200"
+            >
+              <span className="h-2 w-2 animate-pulse rounded-full bg-brand-600" aria-hidden="true" />
+              Loading barangay boundaries…
+            </span>
+          </div>
+        )}
+
+        {boundaries?.status === "unavailable" && (
+          <div className="absolute inset-0 z-10 grid place-items-center rounded-xl bg-slate-50/85 p-4 text-center">
+            <div
+              role="alert"
+              className="pointer-events-auto max-w-xs rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200"
+            >
+              <p className="text-sm font-semibold text-slate-900">
+                Barangay boundaries unavailable
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                The basemap is still usable, but the barangay names and fills could not be loaded.
+              </p>
+              {boundaries.reload && (
+                <button
+                  type="button"
+                  onClick={() => boundaries.reload()}
+                  className="mt-3 inline-flex h-11 items-center rounded-lg bg-brand-700 px-4 text-xs font-semibold text-white hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                >
+                  Try again
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {(legend || showCredit || legendNotes) && (
         <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-600">

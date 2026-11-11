@@ -471,7 +471,7 @@ export default function DispersalMapPage({ roleKey }) {
                     <BarangayChoropleth
                       boundaries={boundaries}
                       choropleth={choropleth}
-                      height="h-[28rem]"
+                      height="h-[72vh] min-h-[520px]"
                       beforeLayerId="cvo-date-pins-clusters"
                       // Pin clicks (and hovers) belong to the pins: without
                       // this gate the polygon underneath would also select.

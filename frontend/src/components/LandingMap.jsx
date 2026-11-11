@@ -13,11 +13,12 @@ import { BarangayChoropleth } from "./BarangayChoropleth";
  * dispersal count, white boundary outlines, a YELLOW hover following the
  * actual boundary with the barangay's name and count.
  *
- * DELIBERATELY a pinned display map: no barangay name labels (they overlap
- * at the city-wide frame) and NO zoom or pan — the camera fits the
+ * DELIBERATELY a pinned display map: NO zoom or pan — the camera fits the
  * barangay boundaries exactly and stays there, so the card always shows the
  * same clean, uncluttered view of Bayawan City with the neighbouring
- * municipalities cropped out. Hovering a barangay is the way to read it.
+ * municipalities cropped out. The permanent labels declutter themselves
+ * (small shapes stay hidden until they would be legible); hovering a
+ * barangay still reads its count.
  *
  * Data comes from the public map-summary endpoint: aggregate per-barangay
  * counts only. Aggregate-only by design — the landing page has no session,
@@ -82,16 +83,17 @@ export function LandingMap({
     <BarangayChoropleth
       boundaries={boundaries}
       choropleth={choropleth}
-      height="h-72 sm:h-96"
+      height="h-[52vh] min-h-[360px] sm:h-[60vh]"
       ariaLabel="Map of Bayawan City's barangays, shaded by how many animals were dispersed to each"
       legend={{
         stops: SEQUENTIAL_STOPS,
         minLabel: "fewer dispersals",
         maxLabel: "more",
       }}
-      // Pinned display map: the camera never moves, the labels never
-      // overlap — a barangay identifies itself on hover instead.
+      // Pinned display map: the camera never moves; the labels' collision
+      // pass keeps the city-wide frame readable.
       interactive={false}
+      showLabels
       tooltipHtml={(properties) => {
         const row = properties?.row;
         const parsed = typeof row === "string" ? JSON.parse(row) : row;

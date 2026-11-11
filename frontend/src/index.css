@@ -293,10 +293,25 @@
  * beat it for the first paint after requestFullscreen() — before React swaps
  * the classes on the fullscreenchange event — so force full height here.
  */
-.cvo-map-shell:fullscreen,
-.cvo-map-shell:-webkit-full-screen {
-  width: 100% !important;
-  height: 100% !important;
+/* The whole map card enters fullscreen (toolbar, canvas and legend), so the
+   controls stay reachable; the canvas takes the remaining height. */
+.cvo-map-frame:fullscreen,
+.cvo-map-frame:-webkit-full-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  height: 100%;
+  padding: 0.75rem;
+  overflow: auto;
+  background: #f8fafc;
+}
+
+.cvo-map-frame:fullscreen .cvo-map-shell,
+.cvo-map-frame:-webkit-full-screen .cvo-map-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto !important;
 }
 
 /*

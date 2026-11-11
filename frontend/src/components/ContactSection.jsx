@@ -315,7 +315,7 @@ export function ContactSection() {
                 {directions.status === "ready" && (
                   <div className="space-y-3">
                     <Suspense
-                      fallback={<div className="h-56 w-full rounded-xl bg-slate-100 sm:h-64" aria-hidden="true" />}
+                      fallback={<div className="h-[26rem] w-full rounded-xl bg-slate-100 sm:h-[30rem]" aria-hidden="true" />}
                     >
                       <DirectionsMap
                         route={directions.route}

@@ -597,6 +597,7 @@ export function BarangayFlowMap({
         // The same permanent name labels the Overview and Dispersal Map wear
         // (no counts here — the fill colour carries this page's metric).
         showLabels
+        height="h-[70vh] min-h-[520px]"
         legend={{
           stops: legend.stops,
           minLabel: legend.minLabel,

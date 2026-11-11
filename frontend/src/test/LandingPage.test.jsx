@@ -28,15 +28,16 @@ vi.mock("../api/publicContactApi", () => ({
 }));
 
 vi.mock("../components/LandingMap", () => ({
-  LandingMap: ({ barangays, center, error, loading }) =>
-    error ? null : (
-      <div
-        data-testid="landing-map"
-        data-barangays={barangays.length}
-        data-center={center ? `${center.lat},${center.lng}` : ""}
-        data-loading={loading ? "true" : "false"}
-      />
-    ),
+  LandingMap: ({ barangays }) => (
+    <div data-testid="landing-map" data-barangays={barangays.length} />
+  ),
+}));
+
+// The contact section's office pin map — jsdom has no WebGL for MapLibre,
+// and the office map's wiring is covered by its own concerns (the barangay
+// shell's props are pinned in the BarangayMap-level tests).
+vi.mock("../components/OfficeMap", () => ({
+  OfficeMap: () => <div data-testid="office-map" />,
 }));
 
 const SUMMARY = {
@@ -88,7 +89,6 @@ describe("LandingPage dispersal map", () => {
 
     const map = screen.getByTestId("landing-map");
     expect(map).toHaveAttribute("data-barangays", "2");
-    expect(map).toHaveAttribute("data-center", "9.4545,122.825");
 
     // The hero stats use the SAME vocabulary as the transparency page.
     expect(screen.getByText("Animals dispersed")).toBeInTheDocument();

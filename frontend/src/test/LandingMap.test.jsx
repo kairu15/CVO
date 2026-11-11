@@ -3,20 +3,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LandingMap } from "../components/LandingMap";
 
 /**
- * The landing page's map is the SAME BarangayChoropleth the Admin Map wears
+ * The landing page's map is the SAME BarangayMap the Admin Map wears
  * (MapLibre needs WebGL; the maps are not what these tests cover — the
  * choropleth stub records its props for the wiring assertions below). What
  * this pins is the contract the visitor sees: a PINNED display map — the
  * camera fits Bayawan's barangays exactly and never zooms or pans, labels
  * declutter themselves, a barangay identifies itself on hover — with the
- * public counts joined onto every barangay, and the illustrative fallback
- * when the summary endpoint is unreachable.
+ * public counts joined onto every barangay (the endpoint-failure fallback
+ * is the landing page's decision, not this component's).
  */
 
 const { choroplethProps } = vi.hoisted(() => ({ choroplethProps: {} }));
 
-vi.mock("../components/BarangayChoropleth", () => ({
-  BarangayChoropleth: (props) => {
+vi.mock("../components/BarangayMap", () => ({
+  BarangayMap: (props) => {
     Object.assign(choroplethProps, props);
     return <div data-testid="choropleth" aria-label={props.ariaLabel} />;
   },
@@ -78,14 +78,12 @@ describe("LandingMap", () => {
     expect(tabuan.properties.row.count).toBe(0);
   });
 
-  it("degrades to the illustrative fallback when the summary endpoint fails", () => {
-    renderMap({
-      barangays: [],
-      error: "backend down",
-      renderFallback: () => <div data-testid="illustrative" />,
-    });
+  it("always renders the live map — the page owns the illustrative fallback", () => {
+    // The endpoint-failure fallback decision lives in LandingPage (it swaps
+    // in the illustrative SVG before this component ever mounts); the map
+    // component itself stays a pure painter.
+    renderMap({ barangays: [] });
 
-    expect(screen.getByTestId("illustrative")).toBeInTheDocument();
-    expect(screen.queryByTestId("choropleth")).toBeNull();
+    expect(screen.getByTestId("choropleth")).toBeInTheDocument();
   });
 });

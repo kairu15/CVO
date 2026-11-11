@@ -8,7 +8,7 @@ import { mapApi } from "../api/mapApi";
 import { ToastProvider } from "../context/ToastContext";
 
 /**
- * The FULL page tree (real DispersalMap + real BarangayChoropleth on a fake
+ * The FULL page tree (real DispersalMap + real BarangayMap on a fake
  * MapLibre): the mount-time contract between the shared choropleth, the
  * adopted map and the pin layers — the wiring a component-stubbed test can
  * never see. This is where an adoption bug shows up as a crash.

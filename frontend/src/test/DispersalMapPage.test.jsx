@@ -12,8 +12,8 @@ import { ToastProvider } from "../context/ToastContext";
 // back the pin's "Re-disperse" action so the page's wiring can be asserted.
 const { choroplethProps } = vi.hoisted(() => ({ choroplethProps: {} }));
 
-vi.mock("../components/BarangayChoropleth", () => ({
-  BarangayChoropleth: ({ onMapReady, onBarangayClick, ariaLabel, ...rest }) => {
+vi.mock("../components/BarangayMap", () => ({
+  BarangayMap: ({ onMapReady, onBarangayClick, ariaLabel, ...rest }) => {
     // The latest render's props, for the page-wiring assertions below.
     Object.assign(choroplethProps, rest);
     return (
@@ -274,7 +274,7 @@ describe("DispersalMapPage", () => {
 
   it("opens the barangay records panel with the unplaced animal flagged", async () => {
     // The choropleth stub hands the page a barangay click.
-    const { BarangayChoropleth } = await import("../components/BarangayChoropleth");
+    const { BarangayMap } = await import("../components/BarangayMap");
     const onBarangayClick = vi.fn();
 
     renderPage();

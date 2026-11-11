@@ -79,6 +79,13 @@ const PATH_LAYERS = {
   points: "cvo-flight-points",
 };
 
+/**
+ * Every layer the flight trails draw into — exported so a composed
+ * BarangayMap can put them behind the shared "Markers" layer toggle (the
+ * overview dashboard does exactly that).
+ */
+export const FLIGHT_TRAIL_LAYER_IDS = Object.values(PATH_LAYERS);
+
 const PATH_ARROW_IMAGE = "cvo-flight-arrow";
 
 /** All-trails overview: cap arrowheads so a city-wide view stays legible. */
@@ -426,7 +433,7 @@ function pinPopupHtml(pin, { flightActive = false, showFlightPath = false, offer
  *   owner, barangay, latitude, longitude, approximate, animal_type, ear tag);
  *   rendered on a clustered source instead of household markers
  * @param {Function} [props.renderChoropleth] (onMapReady) => ReactNode — the
- *   shared BarangayChoropleth rendered INSIDE this component's shell; this
+ *   shared BarangayMap rendered INSIDE this component's shell; this
  *   component adopts its map (controls, camera and removal stay with the
  *   choropleth) instead of creating its own
  * @param {Function} [props.trailFetcher] (row) => trail payload; defaults to
@@ -671,11 +678,13 @@ export function DispersalMap({
     renderChoroplethRef.current = renderChoropleth;
   }, [renderChoropleth]);
 
-  // Create the map once — or ADOPT the shared choropleth's map when one is
-  // provided (the date view). Picker mode always creates its own map,
-  // exactly as before.
+  // Create the map once — or ADOPT the shared barangay map's instance when
+  // one is provided (the date view AND the pickers, which compose
+  // BarangayMap through renderChoropleth to inherit the city boundaries,
+  // labels, toolbar and camera rules). Only a truly bare mount — no
+  // renderChoropleth at all — creates its own map here.
   useEffect(() => {
-    if (sharedMap && !onPick) {
+    if (sharedMap) {
       if (!sharedReady || mapRef.current === sharedMap) return undefined;
 
       mapRef.current = sharedMap;
@@ -684,7 +693,7 @@ export function DispersalMap({
       setMapReady(true);
 
       return () => {
-        // The shared map is removed by its owner (BarangayChoropleth); stop
+        // The shared map is removed by its owner (BarangayMap); stop
         // our own in-flight work from touching a dying map and clear refs.
         allPathsTokenRef.current += 1;
         mapRef.current = null;
@@ -694,7 +703,7 @@ export function DispersalMap({
       };
     }
 
-    if (renderChoroplethRef.current && !onPick) return undefined;
+    if (renderChoroplethRef.current) return undefined;
 
     if (!containerRef.current || mapRef.current) return undefined;
 
@@ -1999,7 +2008,7 @@ export function DispersalMap({
             // the map-adoption effect (deps []) never churns, but reading it
             // here would draw the choropleth one commit behind the page's
             // data — a new snapshot's counts reached the polygons a render
-            // late. React reconciles the same <BarangayChoropleth> type, so
+            // late. React reconciles the same <BarangayMap> type, so
             // the map instance survives; only its props update.
             renderChoropleth(handleChoroplethMapReady)
           ) : (

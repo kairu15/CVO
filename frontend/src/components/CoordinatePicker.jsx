@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { geocodeAddress } from "../api/beneficiariesApi";
-import { DispersalMap } from "./DispersalMap";
+import { BarangayPickMap } from "./BarangayPickMap";
 import { Icon } from "./Icons";
 
 /**
@@ -24,6 +24,16 @@ export function CoordinatePicker({ value, onChange, address = "", autoResolve = 
   const [status, setStatus] = useState(null);
   const [locating, setLocating] = useState(false);
   const [finding, setFinding] = useState(false);
+
+  // Stable pick handler: BarangayMap binds its click listeners through it,
+  // so an inline closure would rebind on every keystroke of the form.
+  const handlePick = useCallback(
+    ([lat, lng]) => {
+      onChange([lat, lng]);
+      setStatus("Pin set to the clicked map spot.");
+    },
+    [onChange],
+  );
 
   // Resolve the barangay default pin whenever a barangay is chosen and no
   // manual fine-tune exists yet.
@@ -99,7 +109,7 @@ export function CoordinatePicker({ value, onChange, address = "", autoResolve = 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          className="btn-secondary !px-3.5 !py-1.5 text-xs"
+          className="btn-secondary !px-3.5 h-11 text-xs"
           onClick={useMyLocation}
           disabled={locating}
         >
@@ -111,13 +121,8 @@ export function CoordinatePicker({ value, onChange, address = "", autoResolve = 
       </div>
 
       <div className="mt-3">
-        <DispersalMap
-          beneficiaries={[]}
-          loading={false}
-          onPick={([lat, lng]) => {
-            onChange([lat, lng]);
-            setStatus("Pin set to the clicked map spot.");
-          }}
+        <BarangayPickMap
+          onPick={handlePick}
           center={value ?? undefined}
           selected={value}
         />

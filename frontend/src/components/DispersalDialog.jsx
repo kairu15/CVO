@@ -5,7 +5,7 @@ import { InlineAlert } from "./InlineAlert";
 import { TextField } from "./TextField";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { AnimalTypeClassificationSelect } from "./AnimalTypeClassificationSelect";
-import { DispersalMap } from "./DispersalMap";
+import { BarangayPickMap } from "./BarangayPickMap";
 import { Icon } from "./Icons";
 import { useAnimalTypeGroups } from "../hooks/useAnimalTypes";
 import { useBarangays } from "../hooks/useBarangays";
@@ -924,9 +924,7 @@ export function DispersalDialog({
                 )}
               </div>
 
-              <DispersalMap
-                beneficiaries={[]}
-                loading={false}
+              <BarangayPickMap
                 onPick={([lat, lng]) => {
                   setForm((prev) => ({ ...prev, latitude: lat, longitude: lng, source: "manual_pin" }));
                   setLocationTouched(true);

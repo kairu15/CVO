@@ -210,7 +210,11 @@ export function BarangayFlowMap({
   const handleMapReady = useCallback(
     (map) => {
       mapRef.current = map;
-      popupRef.current = new Popup({ closeButton: false, offset: 10 });
+      popupRef.current = new Popup({
+        closeButton: false,
+        offset: 10,
+        className: "cvo-map-popup",
+      });
 
     map.addSource(FLOW_SOURCE, { type: "geojson", data: flowData.arcs });
     map.addLayer({

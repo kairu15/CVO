@@ -435,6 +435,79 @@ try {
     ok("Overview: flight-paths toggle present", false, "toggle button not found");
   }
 
+  /* --------------- Overview: click-to-focus a barangay --------------- */
+  // Clicking a barangay highlights it and dims every other barangay's
+  // journeys (progressive disclosure); clicking again clears. The click is
+  // dispatched at a label position that no trail covers, mirroring a real
+  // user's pointer.
+  const focusClick = await page.evaluate(() => {
+    const map = [...document.querySelectorAll(".cvo-map-shell")].find((el) => el.__cvoMap)?.__cvoMap;
+    if (!map) return null;
+    const canvas = map.getCanvas();
+    const canvasRect = canvas.getBoundingClientRect();
+    const TRAIL_LAYERS = [
+      "cvo-flight-casing",
+      "cvo-flight-line",
+      "cvo-flight-approximate",
+    ];
+    const labels = [...document.querySelectorAll(".cvo-barangay-label")].filter((el) => {
+      const style = getComputedStyle(el);
+      return style.visibility !== "hidden" && el.getBoundingClientRect().height > 0;
+    });
+    for (const label of labels) {
+      const rect = label.getBoundingClientRect();
+      const x = rect.left + rect.width / 2 - canvasRect.left;
+      const y = rect.top + rect.height / 2 - canvasRect.top;
+      if (x < 0 || y < 0 || x > canvasRect.width || y > canvasRect.height) continue;
+      // Skip labels whose point sits under a trail — those clicks are
+      // click-through by design (the trail owns them).
+      const blocked = map.queryRenderedFeatures([[x, y], [x, y]], { layers: TRAIL_LAYERS });
+      if (blocked.length > 0) continue;
+      const polygon = map.queryRenderedFeatures([[x, y], [x, y]], {
+        layers: ["barangay-boundaries-fill"],
+      })[0];
+      if (!polygon) continue;
+      const clientX = rect.left + rect.width / 2;
+      const clientY = rect.top + rect.height / 2;
+      const opts = { bubbles: true, cancelable: true, clientX, clientY, button: 0 };
+      canvas.dispatchEvent(new MouseEvent("mousedown", opts));
+      canvas.dispatchEvent(new MouseEvent("mouseup", opts));
+      canvas.dispatchEvent(new MouseEvent("click", opts));
+      return { name: polygon.properties.name, id: polygon.id, x: clientX, y: clientY };
+    }
+    return null;
+  });
+  if (focusClick) {
+    await sleep(900); // the shared camera effect zooms to the chosen barangay
+    const focusState = await page.evaluate((id) => {
+      const map = [...document.querySelectorAll(".cvo-map-shell")].find((el) => el.__cvoMap)?.__cvoMap;
+      return map?.getFeatureState({ source: "cvo-barangay-boundaries", id });
+    }, focusClick.id);
+    ok(
+      "Overview: clicking a barangay highlights it and focuses its journeys",
+      focusState?.selected === true,
+      `${focusClick.name} selected=${Boolean(focusState?.selected)}`,
+    );
+    // Reset view clears the focus (the shared toolbar's reset hands off to
+    // onReset) and returns the camera to the whole-city frame.
+    await page.click('button[aria-label="Reset map to the whole city"]');
+    await sleep(1000);
+    const clearedState = await page.evaluate((id) => {
+      const map = [...document.querySelectorAll(".cvo-map-shell")].find((el) => el.__cvoMap)?.__cvoMap;
+      return {
+        state: map?.getFeatureState({ source: "cvo-barangay-boundaries", id }),
+        zoom: map?.getZoom?.(),
+      };
+    }, focusClick.id);
+    ok(
+      "Overview: reset view clears the focus and returns to the city frame",
+      clearedState.state?.selected === false && clearedState.zoom < 12.2,
+      `selected=${Boolean(clearedState.state?.selected)}, zoom=${clearedState.zoom?.toFixed(2)}`,
+    );
+  } else {
+    ok("Overview: a clear barangay label was available to click", false, "no unobstructed label found");
+  }
+
   /* ---------------- URL-restored barangay selection ------------------ */
   await page.setViewport({ width: 1440, height: 1000 });
   await page.goto(`${BASE}/dashboard/admin/map?barangay=Dawis`, { waitUntil: "domcontentloaded" });

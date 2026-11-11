@@ -32,11 +32,14 @@ function formatDay(iso) {
 }
 
 // Static choropleth props, hoisted so the memoised BarangayMap keeps
-// its identity across the overview's polls.
+// its identity across the overview's polls. The trail layers are click-
+// through: the trails ARE the content here, and clicking one should never
+// select the barangay polygon underneath it.
 const OVERVIEW_CLICK_THROUGH = [
   "cvo-date-pins-clusters",
   "cvo-date-pins-point",
   "cvo-date-pins-spider-point",
+  ...FLIGHT_TRAIL_LAYER_IDS,
 ];
 const OVERVIEW_LEGEND = {
   stops: SEQUENTIAL_STOPS,
@@ -44,7 +47,7 @@ const OVERVIEW_LEGEND = {
   maxLabel: "more",
 };
 const OVERVIEW_ARIA =
-  "Map of Bayawan City's barangays with the program's geo-tagged animals pinned.";
+  "Map of Bayawan City's barangays with the program's geo-tagged animals' journeys drawn. Click a barangay to focus its journeys.";
 
 /**
  * The dashboards' live "Flight paths" card — the overview's Geographical
@@ -112,6 +115,24 @@ export function DashboardOverviewMap({ roleKey }) {
     });
   }, [boundaries, snapshot]);
 
+  // Click-to-focus: selecting a barangay highlights it and dims every other
+  // barangay's journeys, so an administrator can read ONE barangay's trails
+  // out of the city-wide tangle. Click again (or Reset view) to clear.
+  const [focusedBarangay, setFocusedBarangay] = useState(null);
+  const [focusedFeatureId, setFocusedFeatureId] = useState(null);
+  const handleBarangayClick = useCallback(
+    (name, event) => {
+      const clear = focusedBarangay === name || name === null;
+      setFocusedBarangay(clear ? null : name);
+      setFocusedFeatureId(clear ? null : (event?.features?.[0]?.id ?? null));
+    },
+    [focusedBarangay],
+  );
+  const handleResetFocus = useCallback(() => {
+    setFocusedBarangay(null);
+    setFocusedFeatureId(null);
+  }, []);
+
   return (
     <section className="card p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -123,8 +144,9 @@ export function DashboardOverviewMap({ roleKey }) {
           <p className="mt-1 text-sm text-slate-600">
             Every dispersed animal's journey at once — origin, handovers
             and where each one stands today — drawn automatically from the
-            ownership records for the latest recorded day. Open the
-            Dispersal Map to work with a single animal.
+            ownership records for the latest recorded day. Click a barangay
+            to focus its journeys; open the Dispersal Map to work with a
+            single animal.
           </p>
         </div>
         <Link
@@ -146,6 +168,7 @@ export function DashboardOverviewMap({ roleKey }) {
               trailFetcher={fetchAnimalTrail}
               flightPathsOnly
               loading={mapLoading}
+              selectedBarangay={focusedBarangay}
               renderChoropleth={(onMapReady) => (
                 <Suspense
                   fallback={<div className="h-[60vh] min-h-[460px] w-full rounded-xl bg-slate-100" />}
@@ -170,6 +193,10 @@ export function DashboardOverviewMap({ roleKey }) {
                     // fills.
                     markerLayerIds={FLIGHT_TRAIL_LAYER_IDS}
                     markerLabel="Flight paths"
+                    selectedName={focusedBarangay}
+                    selectedFeatureId={focusedFeatureId}
+                    onBarangayClick={handleBarangayClick}
+                    onReset={handleResetFocus}
                     // Every barangay wears its name and its dispersal
                     // count on the map itself — no hover needed, and no
                     // cursor-side label to cover the controls.

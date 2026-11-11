@@ -520,6 +520,44 @@
 }
 
 /*
+ * One card language for every CLICK-anchored popup (animal pins, trail
+ * points, flow lines, bubble fallbacks): rounded corners, a soft shadow and
+ * the app's border instead of MapLibre's square default — the popups stop
+ * looking like library chrome and start matching the cards around them.
+ * The dark hover tooltip above keeps its own class.
+ */
+.cvo-map-popup .maplibregl-popup-content {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgb(15 23 42 / 0.08);
+  box-shadow: 0 10px 24px rgb(15 23 42 / 0.18);
+}
+
+.cvo-map-popup .maplibregl-popup-close-button {
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  font-size: 18px;
+  line-height: 1;
+  color: #64748b;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.cvo-map-popup .maplibregl-popup-close-button:hover {
+  background: #f1f5f9; /* slate-100 */
+  color: #0f172a;
+}
+
+.cvo-map-popup .maplibregl-popup-close-button:focus-visible {
+  outline: 2px solid var(--color-brand-700);
+  outline-offset: 2px;
+}
+
+/*
  * The label is pure hover UI: clicks pass THROUGH it to the map, so
  * selecting the barangay it describes never requires moving the pointer
  * off the label first (a tap on touch has no hover phase to move out of).

@@ -18,6 +18,7 @@ import { InlineAlert } from "./InlineAlert";
 import { OSM_STYLE } from "../config/mapStyle";
 import { fetchOwnershipTrail } from "../lib/ownershipPath";
 import { colorFor, pinFeatures, spiderPositions, validCoordinates } from "../lib/mapPins";
+import { normalizeBarangayName } from "../lib/barangayBoundaries";
 import { getErrorMessage } from "../api/client";
 import { useOptionalToast } from "../context/ToastContext";
 import {
@@ -1126,7 +1127,7 @@ export function DispersalMap({
     const onPointClick = (event) => {
       const feature = event.features?.[0];
       if (!feature) return;
-      new Popup({ offset: 12, closeButton: false })
+      new Popup({ offset: 12, closeButton: false, className: "cvo-map-popup" })
         .setLngLat(feature.geometry.coordinates)
         .setHTML(pathPointHtml(feature.properties))
         .addTo(map);
@@ -1143,13 +1144,14 @@ export function DispersalMap({
         closeButton: false,
         closeOnClick: false,
         offset: 12,
+        className: "cvo-map-popup",
       });
       hoverPopupRef.current
         .setLngLat(event.lngLat)
         .setHTML(
-          `<p style="margin:0;font-size:12px;font-weight:600;color:#0f172a;` +
-            `background:#fff;padding:2px 8px;border-radius:9999px;` +
-            `box-shadow:0 1px 4px rgb(15 23 42 / 0.25)">${escapeHtml(dateRangeLabel(from, to))}</p>`,
+          `<p style="margin:0;font-size:12px;font-weight:600;color:#0f172a">${escapeHtml(
+            dateRangeLabel(from, to),
+          )}</p>`,
         )
         .addTo(map);
       map.getCanvas().style.cursor = "pointer";
@@ -1268,21 +1270,49 @@ export function DispersalMap({
       }
     }
 
+    // Trails outside the focused barangay DIM (the overview's click-to-focus):
+    // each feature is tagged at draw time, so the paint expressions stay
+    // static and a selection change simply redraws with new tags. Names are
+    // normalised on both sides — the DB may spell "Suba (Poblacion)" where the
+    // boundary asset spells "Suba (Pob.)".
+    const focused = selectedBarangay
+      ? normalizeBarangayName(selectedBarangay)
+      : null;
+    // positionedGroups mirrors `groups` by index; the beneficiary rides the
+    // group, the aligned points ride positionedGroups.
+    const trailGroups = positionedGroups.map((points, index) => ({
+      points,
+      dimmed: Boolean(
+        focused &&
+          normalizeBarangayName(groups[index].beneficiary?.address ?? "") !==
+            focused,
+      ),
+    }));
+    const tagDimmed = (group, features) =>
+      features.map((feature) => ({
+        ...feature,
+        properties: { ...feature.properties, dimmed: group.dimmed },
+      }));
+
     const segments = {
       type: "FeatureCollection",
-      features: positionedGroups.flatMap((points) => buildSegments(points).features),
+      features: trailGroups.flatMap((group) =>
+        tagDimmed(group, buildSegments(group.points).features),
+      ),
     };
     const arrows = {
       type: "FeatureCollection",
-      features: positionedGroups
-        .flatMap((points) => buildArrows(points).features)
+      features: trailGroups
+        .flatMap((group) => tagDimmed(group, buildArrows(group.points).features))
         // Several trails at once would otherwise multiply MAX_ARROWS by the
         // number of households and flood the map with arrowheads.
         .slice(0, allPaths.active ? ALL_PATHS_ARROW_LIMIT : undefined),
     };
     const markers = {
       type: "FeatureCollection",
-      features: positionedGroups.flatMap((points) => buildPointMarkers(points).features),
+      features: trailGroups.flatMap((group) =>
+        tagDimmed(group, buildPointMarkers(group.points).features),
+      ),
     };
     (containerRef.current ?? map.getContainer())?.setAttribute(
       "data-flight-path-points",
@@ -1304,7 +1334,7 @@ export function DispersalMap({
       const originMarker = new Marker({ element: originEl, anchor: "bottom" })
         .setLngLat(toLngLat(origin))
         .setPopup(
-          new Popup({ offset: 12 }).setHTML(
+          new Popup({ offset: 12, className: "cvo-map-popup" }).setHTML(
             pathPointHtml({
               title: origin.title,
               subtitle: origin.subtitle,
@@ -1320,7 +1350,7 @@ export function DispersalMap({
       const endMarker = new Marker({ element: endEl })
         .setLngLat(toLngLat(end))
         .setPopup(
-          new Popup({ offset: 12 }).setHTML(
+          new Popup({ offset: 12, className: "cvo-map-popup" }).setHTML(
             pathPointHtml({
               title: end.title,
               subtitle: end.subtitle,
@@ -1345,7 +1375,7 @@ export function DispersalMap({
           new Marker({ element: badgeEl, offset: [0, 14] })
             .setLngLat(toLngLat(point))
             .setPopup(
-              new Popup({ offset: 12 }).setHTML(
+              new Popup({ offset: 12, className: "cvo-map-popup" }).setHTML(
                 pathPointHtml({
                   title: point.title,
                   subtitle: point.subtitle,
@@ -1408,7 +1438,7 @@ export function DispersalMap({
 
     return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `visible` only feeds the pin-alignment lookup; re-running on it would re-animate during unrelated refetches
-  }, [mapReady, onPick, pathPoints, pathKey, allPaths.active, allPaths.paths]);
+  }, [mapReady, onPick, pathPoints, pathKey, allPaths.active, allPaths.paths, selectedBarangay]);
 
   // A pin's popup offers its own trail; the label follows whichever trail is
   // currently on the map. Identity is stable (it reads both refs), so marker
@@ -1565,7 +1595,7 @@ export function DispersalMap({
     ensurePinLayers(map);
     let popupOpen = false;
 
-    const popup = new Popup({ offset: 12 }).addTo(map);
+    const popup = new Popup({ offset: 12, className: "cvo-map-popup" }).addTo(map);
 
     const openPinPopup = (feature, lngLat) => {
       // Through the ref, not the closure: the popup looks up the rows as
@@ -2129,7 +2159,11 @@ function ensurePathLayers(map) {
     type: "line",
     source: PATH_SOURCES.segments,
     layout: { "line-cap": "round", "line-join": "round" },
-    paint: { "line-color": "#ffffff", "line-opacity": 0.85, "line-width": 6 },
+    paint: {
+      "line-color": "#ffffff",
+      "line-opacity": ["case", ["get", "dimmed"], 0.08, 0.85],
+      "line-width": 6,
+    },
   });
 
   // A stop placed only from its barangay centre is approximate, and its span
@@ -2155,7 +2189,14 @@ function ensurePathLayers(map) {
         1,
         PATH_NEW_COLOR,
       ],
-      "line-opacity": ["interpolate", ["linear"], ["get", "age"], 0, 0.55, 1, 0.95],
+      // Trails outside the focused barangay fade to a whisper instead of
+      // disappearing — the map keeps its context while one barangay reads.
+      "line-opacity": [
+        "case",
+        ["get", "dimmed"],
+        0.12,
+        ["interpolate", ["linear"], ["get", "age"], 0, 0.55, 1, 0.95],
+      ],
     },
   });
 
@@ -2177,7 +2218,12 @@ function ensurePathLayers(map) {
         1,
         PATH_NEW_COLOR,
       ],
-      "line-opacity": ["interpolate", ["linear"], ["get", "age"], 0, 0.55, 1, 0.95],
+      "line-opacity": [
+        "case",
+        ["get", "dimmed"],
+        0.12,
+        ["interpolate", ["linear"], ["get", "age"], 0, 0.55, 1, 0.95],
+      ],
     },
   });
 
@@ -2194,7 +2240,14 @@ function ensurePathLayers(map) {
       "icon-rotation-alignment": "map",
       "icon-allow-overlap": true,
     },
-    paint: { "icon-opacity": ["interpolate", ["linear"], ["get", "age"], 0, 0.6, 1, 1] },
+    paint: {
+      "icon-opacity": [
+        "case",
+        ["get", "dimmed"],
+        0.08,
+        ["interpolate", ["linear"], ["get", "age"], 0, 0.6, 1, 1],
+      ],
+    },
   });
 
   map.addLayer({
@@ -2214,7 +2267,7 @@ function ensurePathLayers(map) {
       ],
       "circle-stroke-color": "#ffffff",
       "circle-stroke-width": 2,
-      "circle-opacity": 0.95,
+      "circle-opacity": ["case", ["get", "dimmed"], 0.12, 0.95],
     },
   });
 }
@@ -2250,7 +2303,7 @@ function makeMarker(map, position, color, html) {
 
   const marker = new Marker({ element: el })
     .setLngLat(position)
-    .setPopup(new Popup({ offset: 12 }).setHTML(html))
+    .setPopup(new Popup({ offset: 12, className: "cvo-map-popup" }).setHTML(html))
     .addTo(map);
   return marker;
 }

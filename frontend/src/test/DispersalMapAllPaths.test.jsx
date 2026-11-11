@@ -181,4 +181,45 @@ describe("DispersalMap all flight paths", () => {
       maps[0].sources.get("cvo-flight-segments").setData.mock.calls;
     expect(segmentCalls.at(-1)[0].features).toHaveLength(0);
   });
+
+  it("dims trails outside the selected barangay (click-to-focus)", async () => {
+    const user = userEvent.setup();
+    render(<DispersalMap beneficiaries={beneficiaries} selectedBarangay="Nangka" />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /show all flight paths/i }),
+    );
+    await screen.findByText(/2 flight paths shown/i);
+
+    await waitFor(() => {
+      const features =
+        maps[0].sources.get("cvo-flight-segments").setData.mock.calls.at(-1)[0]
+          .features;
+      expect(features).toHaveLength(2);
+      // Both households sit in Dawis; Nangka was clicked, so every trail dims.
+      for (const feature of features) {
+        expect(feature.properties.dimmed).toBe(true);
+      }
+    });
+  });
+
+  it("keeps the focused barangay's trails at full strength", async () => {
+    const user = userEvent.setup();
+    render(<DispersalMap beneficiaries={beneficiaries} selectedBarangay="Dawis" />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /show all flight paths/i }),
+    );
+    await screen.findByText(/2 flight paths shown/i);
+
+    await waitFor(() => {
+      const features =
+        maps[0].sources.get("cvo-flight-segments").setData.mock.calls.at(-1)[0]
+          .features;
+      expect(features).toHaveLength(2);
+      for (const feature of features) {
+        expect(feature.properties.dimmed).toBe(false);
+      }
+    });
+  });
 });

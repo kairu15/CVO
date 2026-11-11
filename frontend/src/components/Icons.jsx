@@ -176,6 +176,13 @@ const ICONS = {
       <circle cx="12" cy="10.2" r="2.6" />
     </>
   ),
+  // Pushpin — the "pinned announcement" badge.
+  pin: (
+    <>
+      <path d="M9.5 3.5h5l-.6 6 2.6 2.5H7.5l2.6-2.5-.6-6Z" />
+      <path d="M12 12v8.5" />
+    </>
+  ),
   map: (
     <>
       <path d="M9 4 3.5 6v13.5L9 17.5l6 2 5.5-2V4l-5.5 2Z" />

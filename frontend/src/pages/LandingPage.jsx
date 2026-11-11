@@ -1,8 +1,10 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { AnnouncementsSection } from "../components/AnnouncementsSection";
+import { ContactSection } from "../components/ContactSection";
 import { Icon } from "../components/Icons";
 import { PublicLayout, useScrollToHash } from "../components/PublicLayout";
-import { features, site } from "../config/site";
+import { faqs, features, officeAbout, publicServices, site } from "../config/site";
 import { flatNav, publicRoles } from "../config/roles";
 import { usePublicMapSummary } from "../hooks/usePublicMapSummary";
 
@@ -20,7 +22,7 @@ const ILLUSTRATIVE_STATS = [
 ];
 
 /** The landing sections the nav highlights while scrolling. */
-const OBSERVED_SECTIONS = ["home", "about", "services"];
+const OBSERVED_SECTIONS = ["home", "about", "services", "contact"];
 
 export default function LandingPage() {
   const { data, loading, error } = usePublicMapSummary();
@@ -87,8 +89,10 @@ export default function LandingPage() {
               {site.office} · {site.city}
             </span>
 
-            <h1 className="mt-5 font-display text-3xl leading-tight font-bold text-slate-900 sm:text-4xl lg:text-[2.75rem]">
-              Geo-Tagging of Livestock and Poultry Dispersal and Re-Dispersal
+            <h1 className="mt-5 font-display text-2xl leading-tight font-bold text-slate-900 sm:text-3xl lg:text-[2.1rem]">
+              Livestock and Poultry Dispersal and Redispersal Management
+              System with Geotagging for Veterinary Office of the Department
+              of Agriculture
             </h1>
 
             <p className="mt-5 max-w-xl text-base text-slate-600 sm:text-lg">
@@ -168,47 +172,84 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ---------------------------------------------- Announcements (DB) */}
+      {/* Real rows from the announcements table — renders only when the
+          office has published something. */}
+      <AnnouncementsSection />
+
       {/* ------------------------------------------------------------- About */}
       <section id="about" className="scroll-mt-20 border-y border-slate-200/70 bg-white">
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
           <div className="grid max-w-none gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
             <div>
-              <p className="eyebrow">About the program</p>
+              <p className="eyebrow">About the office</p>
               <h2 className="mt-3 font-display text-2xl font-bold text-slate-900 sm:text-3xl">
-                One record per animal, from dispersal to re-dispersal
+                The {site.office} of {site.city}
               </h2>
               <p className="mt-4 text-base text-slate-600">
-                The {site.office} disperses livestock and poultry to qualified
+                {officeAbout.mandate}
+              </p>
+              <p className="mt-4 text-base text-slate-600">
+                The office disperses livestock and poultry to qualified
                 farmer-beneficiaries across {site.city} as part of the city's
                 livelihood and food-security program.
               </p>
             </div>
 
-            {/* How it works: the four steps the system actually supports. */}
-            <ol className="grid gap-3 sm:grid-cols-2">
-              {[
-                { icon: "users", label: "Register the beneficiary" },
-                { icon: "map-pin", label: "Disperse and geo-tag the animal" },
-                { icon: "clipboard-check", label: "Monitor health and visits" },
-                { icon: "refresh", label: "Re-disperse the offspring" },
-              ].map((step, index) => (
-                <li
-                  key={step.label}
-                  className="flex items-start gap-3 rounded-xl border border-slate-100 p-4 dark:border-slate-800"
+            {/* Vision/mission card. The address, directions and operating hours
+                are NOT repeated here — they live once, in the footer's contact
+                section, so the two can never drift. */}
+            <div className="card h-fit p-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Vision
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                {officeAbout.vision}
+              </p>
+              <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Mission
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                {officeAbout.mission}
+              </p>
+              <p className="mt-5 border-t border-slate-100 pt-4 text-sm text-slate-600 dark:border-slate-800">
+                Visiting the office? The address, directions and operating
+                hours are in the{" "}
+                <Link
+                  to={{ pathname: "/", hash: "contact" }}
+                  className="font-medium text-brand-700 underline-offset-2 hover:underline dark:text-brand-300"
                 >
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
-                    <Icon name={step.icon} className="h-5 w-5" />
-                  </span>
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                    <span className="mr-1.5 font-display font-bold text-brand-700">
-                      {index + 1}.
-                    </span>
-                    {step.label}
-                  </span>
-                </li>
-              ))}
-            </ol>
+                  contact section
+                </Link>
+                .
+              </p>
+            </div>
           </div>
+
+          {/* How it works: the four steps the system actually supports. */}
+          <ol className="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { icon: "users", label: "Register the beneficiary" },
+              { icon: "map-pin", label: "Disperse and geo-tag the animal" },
+              { icon: "clipboard-check", label: "Monitor health and visits" },
+              { icon: "refresh", label: "Re-disperse the offspring" },
+            ].map((step, index) => (
+              <li
+                key={step.label}
+                className="flex items-start gap-3 rounded-xl border border-slate-100 p-4 dark:border-slate-800"
+              >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
+                  <Icon name={step.icon} className="h-5 w-5" />
+                </span>
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  <span className="mr-1.5 font-display font-bold text-brand-700">
+                    {index + 1}.
+                  </span>
+                  {step.label}
+                </span>
+              </li>
+            ))}
+          </ol>
 
           <p className="mt-10 max-w-3xl text-base text-slate-600">
             This system gives every dispersed animal a geo-tagged record: where
@@ -218,32 +259,180 @@ export default function LandingPage() {
             health data current, and the office gets a single, report-ready
             view of the whole program.
           </p>
+
+          {/* Goals and responsibilities — the office's own words, verbatim
+              from config/site.js. Two lists, one grid, no extra chrome. */}
+          <div className="mt-12 grid gap-6 lg:grid-cols-2">
+            <div className="card p-6">
+              <h3 className="font-display text-base font-semibold text-slate-900">
+                Goals &amp; objectives
+              </h3>
+              <ul className="mt-4 space-y-2.5">
+                {officeAbout.goals.map((goal) => (
+                  <li key={goal} className="flex items-start gap-2.5 text-sm leading-relaxed text-slate-600">
+                    <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
+                    {goal}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="card p-6">
+              <h3 className="font-display text-base font-semibold text-slate-900">
+                Office responsibilities
+              </h3>
+              <ul className="mt-4 space-y-2.5">
+                {officeAbout.responsibilities.map((responsibility) => (
+                  <li key={responsibility} className="flex items-start gap-2.5 text-sm leading-relaxed text-slate-600">
+                    <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
+                    {responsibility}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* Organizational structure — one compact row, no chart library. */}
+          <div className="mt-6">
+            <h3 className="font-display text-base font-semibold text-slate-900">
+              Organizational structure
+            </h3>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {officeAbout.structure.map((unit, index) => (
+                <div
+                  key={unit.unit}
+                  className="rounded-xl border border-slate-100 p-4 dark:border-slate-800"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+                    {index + 1}. {unit.unit}
+                  </p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                    {unit.detail}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
       {/* ---------------------------------------------------------- Services */}
       <section id="services" className="mx-auto scroll-mt-20 max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
         <div className="max-w-2xl">
-          <p className="eyebrow">What the system does</p>
+          <p className="eyebrow">Services for residents</p>
           <h2 className="mt-3 font-display text-2xl font-bold text-slate-900 sm:text-3xl">
-            Built around the work the field team already does
+            What the office offers the public
           </h2>
+          <p className="mt-4 text-base text-slate-600">
+            Walk-in and outreach veterinary services for {site.city} residents.
+            Schedules and fees can change — confirm with the office before
+            coming in.
+          </p>
         </div>
 
-        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {features.map((feature) => (
-            <article key={feature.title} className="card flex h-full flex-col p-6">
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {publicServices.map((service) => (
+            <article key={service.title} className="card flex h-full flex-col p-6">
               <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-700">
-                <Icon name={feature.icon} className="h-6 w-6" />
+                <Icon name={service.icon} className="h-6 w-6" />
               </span>
               <h3 className="mt-4 font-display text-base font-semibold text-slate-900">
-                {feature.title}
+                {service.title}
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                {feature.body}
+                {service.body}
               </p>
+
+              {/* Native <details>: requirements and procedure expand without a
+                  line of JS, keyboard and screen-reader accessible by default. */}
+              <details className="group mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+                <summary className="flex w-full cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold text-brand-700 hover:text-brand-800 [&::-webkit-details-marker]:hidden">
+                  Requirements &amp; procedure
+                  <Icon
+                    name="chevron-down"
+                    className="h-4 w-4 shrink-0 transition-transform duration-200 group-open:rotate-180"
+                  />
+                </summary>
+                <div className="mt-3 space-y-3 text-xs leading-relaxed text-slate-600">
+                  <ServiceList label="What you need" items={service.requirements} />
+                  <ServiceList label="How it works" items={service.steps} ordered />
+                  <p className="text-slate-700 dark:text-slate-300">
+                    <span className="font-semibold">Processing time: </span>
+                    {service.processing}
+                  </p>
+                  <p className="text-slate-700 dark:text-slate-300">
+                    <span className="font-semibold">Fee: </span>
+                    {service.fee}
+                  </p>
+                </div>
+              </details>
             </article>
           ))}
+        </div>
+
+        <p className="mt-8 text-sm text-slate-500">
+          To confirm a schedule or ask about a service, use the details in the{" "}
+          <Link
+            to={{ pathname: "/", hash: "contact" }}
+            className="font-medium text-brand-700 underline-offset-2 hover:underline dark:text-brand-300"
+          >
+            contact section
+          </Link>
+          .
+        </p>
+
+        {/* The system behind the services — the original capability cards,
+            kept but secondary to the resident-facing services above. */}
+        <div className="mt-14 border-t border-slate-200/70 pt-10 dark:border-slate-800">
+          <h3 className="font-display text-base font-semibold text-slate-900">
+            How the office runs the program
+          </h3>
+          <p className="mt-1 max-w-2xl text-sm text-slate-600">
+            Every dispersal is recorded in the office's geo-tagging system, so
+            support is trackable from first release to every re-dispersal.
+          </p>
+          <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {features.map((feature) => (
+              <article key={feature.title} className="card flex h-full flex-col p-5">
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-700">
+                  <Icon name={feature.icon} className="h-5 w-5" />
+                </span>
+                <h4 className="mt-3.5 font-display text-sm font-semibold text-slate-900">
+                  {feature.title}
+                </h4>
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
+                  {feature.body}
+                </p>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        {/* Frequently asked questions — native <details>, same as the
+            service cards above. */}
+        <div className="mt-14 border-t border-slate-200/70 pt-10 dark:border-slate-800">
+          <h3 className="font-display text-base font-semibold text-slate-900">
+            Frequently asked questions
+          </h3>
+          <div className="mt-6 grid gap-3 lg:grid-cols-2">
+            {faqs.map((faq) => (
+              <details
+                key={faq.question}
+                className="card group px-5 py-4 [&_summary::-webkit-details-marker]:hidden"
+              >
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  {faq.question}
+                  <Icon
+                    name="chevron-down"
+                    className="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-180"
+                  />
+                </summary>
+                <p className="mt-2.5 text-sm leading-relaxed text-slate-600">
+                  {faq.answer}
+                </p>
+              </details>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -301,6 +490,11 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ----------------------------------------------------------- Contact */}
+      {/* Map + contact form — the office's own details live once, in the
+          shared footer directly below. */}
+      <ContactSection />
+
       {/* ---------------------------------------------------------------- CTA */}
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
         <div className="relative overflow-hidden rounded-card bg-gradient-to-r from-brand-300 to-brand-600 px-6 py-12 text-center shadow-panel sm:px-12">
@@ -335,6 +529,36 @@ export default function LandingPage() {
         </div>
       </section>
     </PublicLayout>
+  );
+}
+
+/**
+ * One labelled list inside a service card's expandable details — bullets for
+ * requirements, numbers for procedure steps.
+ */
+function ServiceList({ label, items, ordered = false }) {
+  const Tag = ordered ? "ol" : "ul";
+
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <Tag className="mt-1.5 space-y-1 pl-4">
+        {items.map((item) => (
+          <li
+            key={item}
+            className={
+              ordered
+                ? "list-decimal marker:font-semibold marker:text-brand-600"
+                : "list-disc marker:text-brand-500"
+            }
+          >
+            {item}
+          </li>
+        ))}
+      </Tag>
+    </div>
   );
 }
 

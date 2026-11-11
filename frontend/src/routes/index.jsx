@@ -9,6 +9,7 @@ import { EmptyState } from "../components/EmptyState";
 import { dashboardPathFor } from "../config/roles";
 import AuthPage from "../pages/AuthPage";
 import LandingPage from "../pages/LandingPage";
+import PrivacyPage from "../pages/PrivacyPage";
 import TransparencyPage from "../pages/TransparencyPage";
 import ResetPasswordPage from "../pages/ResetPasswordPage";
 
@@ -20,6 +21,8 @@ import ResetPasswordPage from "../pages/ResetPasswordPage";
 // page suspends inside the layout instead of blanking it.
 const RoleDashboard = lazy(() => import("../pages/RoleDashboard"));
 const AdminOverviewPage = lazy(() => import("../pages/AdminOverviewPage"));
+const AnnouncementsPage = lazy(() => import("../pages/AnnouncementsPage"));
+const PublicDocumentsPage = lazy(() => import("../pages/PublicDocumentsPage"));
 const MonitoringPage = lazy(() => import("../pages/MonitoringPage"));
 const TechnicianAssignmentsPage = lazy(() => import("../pages/TechnicianAssignmentsPage"));
 const BeneficiariesPage = lazy(() => import("../pages/BeneficiariesPage"));
@@ -73,6 +76,7 @@ export default function AppRoutes() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/transparency" element={<TransparencyPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
 
           {/* Sign in. Accounts are issued by the CVO administrator — there is
               no public registration route (beneficiaries are records, not
@@ -219,6 +223,26 @@ export default function AppRoutes() {
               element={
                 <RoleRoute dashboard="admin">
                   <SystemSettingsPage roleKey="admin" />
+                </RoleRoute>
+              }
+            />
+
+            {/* Public site content — the announcements and transparency
+                documents the public pages read. Server-side both ride
+                permission:manage_settings. */}
+            <Route
+              path="/dashboard/admin/announcements"
+              element={
+                <RoleRoute dashboard="admin">
+                  <AnnouncementsPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/dashboard/admin/documents"
+              element={
+                <RoleRoute dashboard="admin">
+                  <PublicDocumentsPage />
                 </RoleRoute>
               }
             />

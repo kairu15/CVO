@@ -8,8 +8,17 @@ import axios from "axios";
  * - Axios automatically attaches the X-XSRF-TOKEN header from the
  *   XSRF-TOKEN cookie set by /sanctum/csrf-cookie
  */
+
+/**
+ * The API origin, exported for the rare caller that leaves the axios world —
+ * plain download links (the transparency documents' PDFs) point at it so the
+ * browser, not fetch, streams the file. Empty string under a same-origin
+ * proxy (VITE_API_URL="") keeps those links relative.
+ */
+export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8005";
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:8005",
+  baseURL: API_BASE,
   withCredentials: true,
   // axios >= 1.8 only auto-attaches the X-XSRF-TOKEN header for same-origin
   // requests unless this is explicitly enabled — required for our

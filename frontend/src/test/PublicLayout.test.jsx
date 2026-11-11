@@ -58,6 +58,9 @@ describe("PublicLayout (shared header + footer)", () => {
     // The footer is present with contact details.
     expect(screen.getByRole("contentinfo")).toBeInTheDocument();
     expect(screen.getByText("cvo@example.gov.ph")).toHaveAttribute("href", "mailto:cvo@example.gov.ph");
+
+    // The privacy notice is linked from the footer's bottom bar.
+    expect(screen.getByRole("link", { name: "Privacy notice" })).toHaveAttribute("href", "/privacy");
   });
 
   it("renders the transparency page header with aria-current on the route link", () => {

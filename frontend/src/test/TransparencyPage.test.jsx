@@ -9,9 +9,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * fresh cache, exactly what a fresh browser visit sees.
  */
 const summaryMock = vi.hoisted(() => vi.fn());
+const documentsMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/publicTransparencyApi", () => ({
   publicTransparencyApi: { summary: (...args) => summaryMock(...args) },
+}));
+
+vi.mock("../api/publicDocumentsApi", () => ({
+  publicDocumentsApi: {
+    list: (...args) => documentsMock(...args),
+    resolveDownload: (url) => `http://api.test${url}`,
+  },
 }));
 
 const SUMMARY = {
@@ -46,6 +54,9 @@ async function renderPage() {
 beforeEach(() => {
   vi.resetModules();
   summaryMock.mockReset();
+  // Default: nothing published — the documents section stays hidden for
+  // every test that does not opt into it.
+  documentsMock.mockReset().mockResolvedValue([]);
 });
 
 describe("TransparencyPage", () => {
@@ -164,5 +175,79 @@ describe("TransparencyPage", () => {
 
     await waitFor(() => expect(screen.getByTestId("as-of")).toBeInTheDocument());
     expect(screen.getByTestId("as-of").textContent).toContain("As of");
+  });
+
+  it("lists downloadable documents with search, category filter and a resolved download link", async () => {
+    summaryMock.mockResolvedValue(SUMMARY);
+    documentsMock.mockResolvedValue([
+      {
+        id: 7,
+        title: "2025 Annual Report",
+        description: "Full-year accomplishments of the office.",
+        category: "annual_report",
+        category_label: "Annual report",
+        original_name: "annual-2025.pdf",
+        mime: "application/pdf",
+        size_bytes: 184320,
+        published_at: "2026-02-01T00:00:00+08:00",
+        download_url: "/api/v1/public/documents/7/download",
+      },
+      {
+        id: 8,
+        title: "Q1 Procurement",
+        description: null,
+        category: "procurement",
+        category_label: "Procurement",
+        original_name: "q1.pdf",
+        mime: "application/pdf",
+        size_bytes: 512000,
+        published_at: "2026-04-01T00:00:00+08:00",
+        download_url: "/api/v1/public/documents/8/download",
+      },
+    ]);
+    renderPage();
+
+    const section = await screen.findByTestId("public-documents");
+    expect(within(section).getByText("2025 Annual Report")).toBeInTheDocument();
+    expect(within(section).getByText("Full-year accomplishments of the office.")).toBeInTheDocument();
+    expect(within(section).getAllByText(/Annual report/).length).toBeGreaterThan(0);
+    expect(within(section).getByText(/180 KB/)).toBeInTheDocument();
+
+    // The download is a plain link to the API origin — the browser's own PDF
+    // viewer is the mobile-friendly viewing story.
+    const link = within(section).getAllByRole("link", { name: /Download/ })[0];
+    expect(link).toHaveAttribute("href", "http://api.test/api/v1/public/documents/7/download");
+    expect(link).toHaveAttribute("target", "_blank");
+
+    // The category filter narrows the list.
+    fireEvent.change(within(section).getByLabelText(/Filter by category/i), {
+      target: { value: "procurement" },
+    });
+    expect(within(section).getByText("Q1 Procurement")).toBeInTheDocument();
+    expect(within(section).queryByText("2025 Annual Report")).toBeNull();
+
+    // Search matches titles.
+    fireEvent.change(within(section).getByLabelText(/Filter by category/i), {
+      target: { value: "all" },
+    });
+    fireEvent.change(within(section).getByPlaceholderText("Search documents…"), {
+      target: { value: "annual" },
+    });
+    expect(within(section).getByText("2025 Annual Report")).toBeInTheDocument();
+    expect(within(section).queryByText("Q1 Procurement")).toBeNull();
+
+    // ...and a non-matching search says so instead of going blank.
+    fireEvent.change(within(section).getByPlaceholderText("Search documents…"), {
+      target: { value: "no such document" },
+    });
+    expect(within(section).getByText("No documents match that search or filter.")).toBeInTheDocument();
+  });
+
+  it("hides the documents section entirely when nothing is published", async () => {
+    summaryMock.mockResolvedValue(SUMMARY);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByTestId("as-of")).toBeInTheDocument());
+    expect(screen.queryByTestId("public-documents")).toBeNull();
   });
 });

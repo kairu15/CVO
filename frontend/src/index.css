@@ -299,6 +299,57 @@
   height: 100% !important;
 }
 
+/*
+ * The cooperative-gestures hint (landing page map): MapLibre flashes "Use
+ * Ctrl + scroll to zoom the map" when a plain wheel scroll is blocked. The
+ * shipped styling is bare text on a translucent scrim — barely legible over
+ * a light basemap — so the message is wrapped in a dark pill and the fade
+ * out stretched a little, keeping the hint readable long enough to act on.
+ * Scoped to .cvo-map-shell (which only BarangayChoropleth renders) so a
+ * future non-shell surface keeps MapLibre's stock look.
+ */
+.cvo-map-shell .maplibregl-cooperative-gesture-screen {
+  transition: opacity 2.5s ease 1.5s;
+}
+
+.cvo-map-shell .maplibregl-cooperative-gesture-screen .maplibregl-desktop-message,
+.cvo-map-shell .maplibregl-cooperative-gesture-screen .maplibregl-mobile-message {
+  /* Visibility stays MapLibre's (media queries pick desktop vs mobile text);
+     only the pill styling is ours. */
+  background: rgb(15 23 42 / 0.88);
+  color: #fff;
+  padding: 0.55rem 1.1rem;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.3);
+}
+
+/*
+ * The directions markers on the Contact section's route map: a sky dot for
+ * the visitor's location and a brand-green pin for the office — small,
+ * haloed, and legible over the route line.
+ */
+.cvo-route-origin {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #0284c7;
+  border: 3px solid #fff;
+  box-shadow: 0 1px 5px rgb(15 23 42 / 0.5);
+}
+
+.cvo-route-destination {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: var(--color-brand-700);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 7px rgb(15 23 42 / 0.5);
+}
+
 .cvo-map-pin {
   position: relative;
   width: 18px;

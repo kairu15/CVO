@@ -52,9 +52,16 @@ export default function AuthPage() {
           </div>
         </main>
 
-        <p className="shrink-0 text-center text-xs text-slate-400">
-          {t("authPage.demoNote")}
-        </p>
+        {/* Demo credentials are a development aid only. The literal lives here
+            (not in the i18n bundles) behind import.meta.env.DEV: Vite replaces
+            the flag with false in production builds and the minifier drops the
+            dead branch, so the credentials cannot ship in the bundle. */}
+        {import.meta.env.DEV && (
+          <p className="shrink-0 text-center text-xs text-slate-400">
+            Demonstration accounts: admin@example.com, technician@example.com —
+            password: password
+          </p>
+        )}
       </div>
     </div>
   );

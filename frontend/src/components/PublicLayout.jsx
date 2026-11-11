@@ -192,13 +192,17 @@ function HashLink({ link, activeSection = null, onChoose = null, className = "" 
   );
 }
 
-/** The shared public footer — also the landing page's Contact section. */
+/**
+ * The shared public footer — every public page's canonical quick-contact
+ * block. The nav's "Contact" link targets the landing page's contact section
+ * (map + form), which sits directly above this footer there; the details
+ * below are the one copy the other pages can always reach.
+ */
 export function PublicFooter() {
   const { contact } = useSiteConfig();
 
   return (
     <footer
-      id="contact"
       className="border-t border-slate-200/70 bg-white dark:border-slate-700/70 dark:bg-slate-900"
       aria-label="Contact"
     >
@@ -327,7 +331,16 @@ export function PublicFooter() {
             © {new Date().getFullYear()} {site.office}, {site.city},{" "}
             {site.province}. All rights reserved.
           </p>
-          <p>Government of the Philippines · City Government of {site.city}</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Link
+              to="/privacy"
+              className="underline-offset-2 hover:text-brand-800 hover:underline dark:hover:text-brand-300"
+            >
+              Privacy notice
+            </Link>
+            <span aria-hidden="true">·</span>
+            <p>Government of the Philippines · City Government of {site.city}</p>
+          </div>
         </div>
       </div>
     </footer>

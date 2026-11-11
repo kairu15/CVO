@@ -9,9 +9,15 @@ import { BarangayChoropleth } from "./BarangayChoropleth";
 
 /**
  * The landing page's live dispersal map — the REAL Bayawan City barangay
- * boundaries on a pannable MapLibre map, the same choropleth the admin pages
- * wear: green fills by dispersal count, a YELLOW hover following the actual
- * boundary, and a dark cursor-side label naming the barangay and its count.
+ * boundaries on the same choropleth the admin pages wear: green fills by
+ * dispersal count, white boundary outlines, a YELLOW hover following the
+ * actual boundary with the barangay's name and count.
+ *
+ * DELIBERATELY a pinned display map: no barangay name labels (they overlap
+ * at the city-wide frame) and NO zoom or pan — the camera fits the
+ * barangay boundaries exactly and stays there, so the card always shows the
+ * same clean, uncluttered view of Bayawan City with the neighbouring
+ * municipalities cropped out. Hovering a barangay is the way to read it.
  *
  * Data comes from the public map-summary endpoint: aggregate per-barangay
  * counts only. Aggregate-only by design — the landing page has no session,
@@ -20,8 +26,7 @@ import { BarangayChoropleth } from "./BarangayChoropleth";
  *
  * Barangays the summary has not counted yet render in the lightest fill
  * (they are covered barangays of the program, not "no data"), so the whole
- * city reads as one shape. The camera fits the barangay boundaries, which
- * crops the surrounding municipalities to the edges.
+ * city reads as one shape.
  *
  * When the summary API is unreachable (offline demo, backend down) the card
  * falls back to the illustrative SVG via `renderFallback`, so the landing
@@ -48,7 +53,8 @@ export function LandingMap({
 
   // Join the public counts onto the boundary polygons by barangay name —
   // covered barangays the summary has not counted yet disperse zero, so the
-  // whole city paints in one shape instead of greying out.
+  // whole city paints in one shape instead of greying out. `count` drives
+  // the fill colour and the hover label.
   const rows = useMemo(() => {
     if (boundaries.status !== "ready") return [];
     const counts = new Map(
@@ -83,6 +89,9 @@ export function LandingMap({
         minLabel: "fewer dispersals",
         maxLabel: "more",
       }}
+      // Pinned display map: the camera never moves, the labels never
+      // overlap — a barangay identifies itself on hover instead.
+      interactive={false}
       tooltipHtml={(properties) => {
         const row = properties?.row;
         const parsed = typeof row === "string" ? JSON.parse(row) : row;

@@ -3,6 +3,8 @@ import { Icon } from "../components/Icons";
 import { PublicLayout } from "../components/PublicLayout";
 import { Skeleton } from "../components/Skeleton";
 import { site } from "../config/site";
+import { publicDocumentsApi } from "../api/publicDocumentsApi";
+import { usePublicDocuments } from "../hooks/usePublicDocuments";
 import { usePublicTransparency } from "../hooks/usePublicTransparency";
 
 /**
@@ -76,6 +78,7 @@ export default function TransparencyPage() {
             <ReachChart series={data?.reach_over_time ?? []} loading={loading} />
             <Vaccination vaccination={data?.vaccination} loading={loading} />
             <PerBarangay rows={data?.per_barangay ?? []} loading={loading} />
+            <PublicDocuments />
           </div>
         )}
 
@@ -284,6 +287,150 @@ function Vaccination({ vaccination, loading }) {
       )}
     </section>
   );
+}
+
+/**
+ * Downloadable public documents — real files uploaded by the administrator
+ * (annual/accomplishment reports, budget and procurement disclosures).
+ *
+ * Search by title, filter by the categories actually present in the data,
+ * and download through the browser's own PDF viewer — a plain link, no PDF
+ * viewer library. The section exists only when there is something to
+ * download: an office that has published nothing yet sees no empty box, and
+ * a failed load degrades to the same hidden section (the figures above are
+ * the page's substance; the files are supplementary).
+ */
+function PublicDocuments() {
+  const { data, loading, error } = usePublicDocuments();
+  const documents = data ?? NO_DOCUMENTS;
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("all");
+
+  const categories = useMemo(() => {
+    const seen = new Map();
+    for (const document of documents) {
+      if (!seen.has(document.category)) {
+        seen.set(document.category, document.category_label);
+      }
+    }
+    return [...seen.entries()].map(([key, label]) => ({ key, label }));
+  }, [documents]);
+
+  const visible = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return documents.filter((document) => {
+      if (category !== "all" && document.category !== category) return false;
+      return needle
+        ? document.title.toLowerCase().includes(needle) ||
+            (document.description ?? "").toLowerCase().includes(needle)
+        : true;
+    });
+  }, [documents, search, category]);
+
+  if (loading || error || documents.length === 0) return null;
+
+  return (
+    <section
+      className="card overflow-hidden"
+      aria-label="Downloadable public documents"
+      data-testid="public-documents"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
+        <div className="flex items-center gap-2">
+          <Icon name="file-text" className="h-5 w-5 text-brand-600" />
+          <h2 className="font-display text-base font-semibold text-slate-900">
+            Downloadable documents
+          </h2>
+          <span className="rounded-pill bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+            {documents.length}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-xs text-slate-500">
+            <span className="sr-only">Search documents</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search documents…"
+              className="field !w-auto !py-1.5 text-xs"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-slate-500">
+            <span className="sr-only">Filter by category</span>
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              className="field !w-auto !py-1.5 text-xs"
+            >
+              <option value="all">All categories</option>
+              {categories.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {visible.length === 0 ? (
+        <p className="px-6 py-6 text-sm text-slate-500">
+          No documents match that search or filter.
+        </p>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {visible.map((document) => (
+            <li
+              key={document.id}
+              className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-slate-800">{document.title}</p>
+                  <span className="rounded-pill bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-800">
+                    {document.category_label}
+                  </span>
+                </div>
+                {document.description && (
+                  <p className="mt-0.5 text-sm text-slate-600">{document.description}</p>
+                )}
+                <p className="mt-1 text-xs text-slate-400">
+                  {new Date(document.published_at).toLocaleDateString(undefined, {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}{" "}
+                  · {formatBytes(document.size_bytes)} · PDF
+                </p>
+              </div>
+
+              <a
+                href={publicDocumentsApi.resolveDownload(document.download_url)}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-secondary shrink-0 !px-3.5 !py-1.5 text-xs"
+              >
+                <Icon name="file-text" className="h-3.5 w-3.5" />
+                Download
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Stable empty-list identity for the documents section's memo deps. */
+const NO_DOCUMENTS = [];
+
+/** "184320" → "180 KB" — the size line under each document title. */
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**

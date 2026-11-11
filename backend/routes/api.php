@@ -6,6 +6,7 @@ use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\AnimalDispersalController;
 use App\Http\Controllers\AnimalHealthController;
 use App\Http\Controllers\AnimalTypeController;
+use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BarangayController;
 use App\Http\Controllers\BeneficiaryController;
@@ -20,6 +21,8 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\PublicContactController;
+use App\Http\Controllers\PublicDocumentController;
 use App\Http\Controllers\PublicMapController;
 use App\Http\Controllers\PublicTransparencyController;
 use App\Http\Controllers\ReportController;
@@ -138,6 +141,30 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/public/transparency', [PublicTransparencyController::class, 'index'])
         ->middleware('throttle:30,1,transparency')
         ->name('api.public.transparency');
+
+    // Public veterinary announcements — the landing page's announcements
+    // block. Published rows only; the admin CRUD lives under /admin below.
+    Route::get('/public/announcements', [AnnouncementController::class, 'publicIndex'])
+        ->middleware('throttle:30,1,announcements')
+        ->name('api.public.announcements');
+
+    // Public transparency documents — the metadata list and the download
+    // stream behind the Transparency page. Files stream through the API (the
+    // private disk is never exposed); published rows only.
+    Route::get('/public/documents', [PublicDocumentController::class, 'index'])
+        ->middleware('throttle:30,1,documents')
+        ->name('api.public.documents');
+    Route::get('/public/documents/{document}/download', [PublicDocumentController::class, 'download'])
+        ->middleware('throttle:30,1,documents')
+        ->name('api.public.documents.download');
+
+    // Public contact form — stored, then forwarded best-effort to the office
+    // inbox from System Settings. The strictest public budget on the file:
+    // an anonymous write endpoint is THE spam surface, and 5/min per IP is
+    // far beyond a patient human.
+    Route::post('/public/contact', [PublicContactController::class, 'store'])
+        ->middleware('throttle:5,1,contact')
+        ->name('api.public.contact');
 });
 
 // Authenticated routes
@@ -525,5 +552,26 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         // kind of "what happened" record).
         Route::get('/sync-conflicts', [SyncConflictController::class, 'index'])
             ->middleware('permission:view_activity_logs')->name('api.admin.sync-conflicts');
+
+        // Public site content — the announcements and transparency documents
+        // the public pages read. Lives under manage_settings, the same
+        // capability that edits the office contact profile: both are "what
+        // the public sees" copy. Changes ride the Auditable trait into the
+        // audit trail with the generic created/updated/deleted verbs.
+        Route::get('/announcements', [AnnouncementController::class, 'index'])
+            ->middleware('permission:manage_settings')->name('api.admin.announcements');
+        Route::post('/announcements', [AnnouncementController::class, 'store'])
+            ->middleware('permission:manage_settings')->name('api.admin.announcements.store');
+        Route::patch('/announcements/{announcement}', [AnnouncementController::class, 'update'])
+            ->middleware('permission:manage_settings')->name('api.admin.announcements.update');
+        Route::delete('/announcements/{announcement}', [AnnouncementController::class, 'destroy'])
+            ->middleware('permission:manage_settings')->name('api.admin.announcements.destroy');
+
+        Route::get('/documents', [PublicDocumentController::class, 'adminIndex'])
+            ->middleware('permission:manage_settings')->name('api.admin.documents');
+        Route::post('/documents', [PublicDocumentController::class, 'store'])
+            ->middleware('permission:manage_settings')->name('api.admin.documents.store');
+        Route::delete('/documents/{document}', [PublicDocumentController::class, 'destroy'])
+            ->middleware('permission:manage_settings')->name('api.admin.documents.destroy');
     });
 });

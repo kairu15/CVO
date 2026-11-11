@@ -10,6 +10,9 @@ import { officeContactFallback } from "../config/site";
  *   contact      { email, phone, hours, address } — ALWAYS populated, falling
  *                back to config/site.js until the request lands (and if it
  *                fails), so a page never renders a blank phone number.
+ *   location     { lat, lng } | null — the office pin the contact map
+ *                centres on. null until the request lands; the caller falls
+ *                back to config/site.js's approximate coordinate.
  *   idleMinutes  number | null — null until loaded, so callers can tell
  *                "not known yet" from "configured". IdleSessionGuard keeps its
  *                own default in that case.
@@ -52,6 +55,7 @@ export function useSiteConfig() {
 function toState(data) {
   const office = data?.office ?? {};
   const idle = data?.session?.idle_minutes;
+  const pin = data?.office_location;
 
   return {
     contact: {
@@ -60,6 +64,10 @@ function toState(data) {
       hours: office.office_hours ?? officeContactFallback.office_hours,
       address: office.office_address ?? officeContactFallback.office_address,
     },
+    location:
+      Number.isFinite(pin?.latitude) && Number.isFinite(pin?.longitude)
+        ? { lat: pin.latitude, lng: pin.longitude }
+        : null,
     idleMinutes: Number.isFinite(idle) && idle > 0 ? idle : null,
     loading: false,
     error: false,

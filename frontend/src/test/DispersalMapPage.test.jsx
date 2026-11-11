@@ -299,6 +299,9 @@ describe("DispersalMapPage", () => {
     // The dark cursor-side label is replaced by the permanent labels: two
     // sources for the same numbers would only drift apart.
     expect(choroplethProps.tooltipHtml).toBeUndefined();
+    // And the dashboard map owns its viewport: direct scroll-zoom, no
+    // cooperative-gestures guard (that is the landing page's opt-in).
+    expect(choroplethProps.cooperativeGestures).toBeUndefined();
   });
 });
 

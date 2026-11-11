@@ -6,9 +6,6 @@
     "signOut": "Sign out",
     "passwordResetPolicy": "Password resets are handled by the CVO administrator for security reasons. Contact the office at {{email}} or {{phone}} to request a new password."
   },
-  "authPage": {
-    "demoNote": "Demonstration accounts: admin@example.com, technician@example.com — password: password"
-  },
   "login": {
     "heading": "Sign in",
     "subtitle": "Use the account issued by the {{office}}.",

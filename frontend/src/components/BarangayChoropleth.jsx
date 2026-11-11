@@ -104,6 +104,18 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  * @param {boolean} [props.labelShowCounts] under each name, the barangay's
  *   dispersal count from the joined row (`row.pins` — the animals currently
  *   dispersed there). Pages without a joined row simply show names.
+ * @param {boolean} [props.cooperativeGestures] scroll-guard for maps embedded
+ *   in a scrolling PAGE: a plain wheel scroll no longer zooms the map — it
+ *   shows the "Use Ctrl + scroll to zoom the map" hint instead and lets the
+ *   page keep scrolling; touch needs two fingers. Opt-in: the dashboard maps
+ *   own their viewport, so they keep the direct scroll-zoom (default false =
+ *   today's behaviour everywhere else).
+ * @param {boolean} [props.interactive] pan/zoom/handlers at all. When false
+ *   the camera is PINNED — the map renders exactly the fitted boundaries
+ *   (fitToBoundaries) and ignores every zoom/pan gesture, so an embedded
+ *   card always shows the same clean city-wide frame; layer hover still
+ *   works (those are layer events, not navigation handlers). Opt-in for
+ *   display maps; default true = unchanged everywhere else.
  */
 export function BarangayChoropleth({
   boundaries,
@@ -124,6 +136,8 @@ export function BarangayChoropleth({
   fitToBoundaries = true,
   showLabels = false,
   labelShowCounts = false,
+  cooperativeGestures = false,
+  interactive = true,
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -165,6 +179,8 @@ export function BarangayChoropleth({
       center: [122.85, 9.65],
       zoom: 10,
       attributionControl: false,
+      interactive,
+      cooperativeGestures,
     });
     mapRef.current = map;
     // Debug/support handle, same convention as DispersalMap's: lets a
@@ -172,8 +188,11 @@ export function BarangayChoropleth({
     containerRef.current.__cvoMap = map;
 
     // The +/− controls sit top-left, matching the barangay-profile maps the
-    // LGU already publishes.
-    map.addControl(new NavigationControl({ showCompass: false }), "top-left");
+    // LGU already publishes — except on a pinned (non-interactive) map,
+    // where there is nothing for them to do.
+    if (interactive) {
+      map.addControl(new NavigationControl({ showCompass: false }), "top-left");
+    }
     map.addControl(new AttributionControl({ compact: true }), "bottom-right");
     popupRef.current = new Popup({
       closeButton: false,

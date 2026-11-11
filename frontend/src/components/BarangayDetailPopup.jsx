@@ -132,6 +132,7 @@ export function BarangayDetailPopup({
   style = {},
 }) {
   const titleId = useId();
+  const cardRef = useRef(null);
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState({ status: "loading", detail: null, error: null });
   const [tab, setTab] = useState("received");
@@ -170,6 +171,31 @@ export function BarangayDetailPopup({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  // Focus management, the light-touch dialog contract: the card takes focus
+  // when it opens (keyboard users land inside what they just clicked for)
+  // and returns it to the trigger on close.
+  useEffect(() => {
+    const previous = document.activeElement;
+    cardRef.current?.focus();
+    return () => {
+      if (previous instanceof HTMLElement) previous.focus();
+    };
+  }, []);
+
+  // ARIA tabs pattern: Left/Right (and Home/End) move selection between the
+  // two handover tabs, wrapping at the ends.
+  const onTablistKeyDown = (event) => {
+    const keys = { ArrowLeft: -1, ArrowRight: 1, Home: "first", End: "last" };
+    const delta = keys[event.key];
+    if (delta === undefined) return;
+    event.preventDefault();
+    const index = TABS.findIndex((option) => option.key === tab);
+    const next =
+      delta === "first" ? 0 : delta === "last" ? TABS.length - 1 : (index + delta + TABS.length) % TABS.length;
+    setTab(TABS[next].key);
+    document.getElementById(`${titleId}-${TABS[next].key}-tab`)?.focus();
+  };
+
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
 
   const detail = state.detail;
@@ -183,7 +209,9 @@ export function BarangayDetailPopup({
 
   return (
     <div
-      className="cvo-barangay-card absolute z-[600] flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+      ref={cardRef}
+      tabIndex={-1}
+      className="cvo-barangay-card absolute z-[600] flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl outline-none focus-visible:outline-2 focus-visible:outline-brand-700 dark:border-slate-700 dark:bg-slate-900"
       style={style}
       role="dialog"
       aria-labelledby={titleId}
@@ -205,9 +233,9 @@ export function BarangayDetailPopup({
           type="button"
           onClick={onClose}
           aria-label="Close barangay details"
-          className="-mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 dark:hover:bg-slate-800 dark:hover:text-slate-100"
         >
-          <span aria-hidden="true" className="text-lg leading-none">
+          <span aria-hidden="true" className="text-xl leading-none">
             ×
           </span>
         </button>
@@ -242,7 +270,7 @@ export function BarangayDetailPopup({
           >
             <p className="font-semibold">Couldn&apos;t load this barangay&apos;s details.</p>
             {state.error && <p className="mt-0.5">{state.error}</p>}
-            <button type="button" onClick={retry} className="btn-secondary mt-2 !px-2.5 !py-1 text-[11px]">
+            <button type="button" onClick={retry} className="btn-secondary mt-2 !px-2.5 h-11 text-[11px]">
               Retry
             </button>
           </div>
@@ -278,7 +306,12 @@ export function BarangayDetailPopup({
             )}
 
             <div className="mt-4">
-              <div role="tablist" aria-label="Handovers" className="flex gap-1 border-b border-slate-100 dark:border-slate-800">
+              <div
+                role="tablist"
+                aria-label="Handovers"
+                className="flex gap-1 border-b border-slate-100 dark:border-slate-800"
+                onKeyDown={onTablistKeyDown}
+              >
                 {TABS.map((option) => {
                   const count = option.key === "received" ? received.total : passedOn.total;
                   const selected = tab === option.key;

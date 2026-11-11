@@ -78,9 +78,14 @@ export function BarangayRecordsPanel({
   const [position, setPosition] = useState(null); // {left, top} once dragged
   const [dragging, setDragging] = useState(false);
   const panelRef = useRef(null);
-  const bodyRef = useRef(null);
   const closeTimerRef = useRef(null);
   const dragRef = useRef(null);
+  // Latest leaving flag, read by the Escape handler below — its empty
+  // dependency array must not capture the first render's `leaving` (which
+  // would let a second Escape during the leave animation schedule a second
+  // close timer).
+  const leavingRef = useRef(false);
+  leavingRef.current = leaving;
 
   // Mount → visible for the open transition; leaving fades before unmount.
   useEffect(() => {
@@ -149,11 +154,15 @@ export function BarangayRecordsPanel({
   // Escape closes the panel.
   useEffect(() => {
     const onKeyDown = (event) => {
-      if (event.key === "Escape") requestClose();
+      if (event.key !== "Escape") return;
+      if (leavingRef.current) return;
+      setLeaving(true);
+      setVisible(false);
+      closeTimerRef.current = setTimeout(() => onClose?.(), 200);
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- requestClose is stable in behaviour
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onClose is idempotent (it clears the URL param)
   }, []);
 
   const counts = useMemo(() => {
@@ -252,7 +261,7 @@ export function BarangayRecordsPanel({
       </div>
 
       {/* ---------------------------------------------------------- Cards */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-3" ref={bodyRef}>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {visibleAnimals.length === 0 ? (
           <p className="py-8 text-center text-sm text-slate-500">
             {animals.length === 0
@@ -364,7 +373,7 @@ export function BarangayRecordsPanel({
                           ? onHideFlightPath?.()
                           : onShowFlightPath?.(animal.animal_id)
                       }
-                      className="inline-flex min-h-[32px] flex-1 items-center justify-center gap-1 rounded-pill border border-brand-300 bg-brand-50 px-2 py-1 text-[11px] font-semibold text-brand-800 transition hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-700"
+                      className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1 rounded-pill border border-brand-300 bg-brand-50 px-3 py-1 text-[11px] font-semibold text-brand-800 transition hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-700"
                       aria-pressed={flightActive}
                     >
                       <Icon
@@ -377,7 +386,7 @@ export function BarangayRecordsPanel({
                       <button
                         type="button"
                         onClick={() => onRedisperse(animal)}
-                        className="inline-flex min-h-[32px] flex-1 items-center justify-center rounded-pill border border-brand-300 bg-white px-2 py-1 text-[11px] font-semibold text-brand-800 transition hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-700"
+                        className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-pill border border-brand-300 bg-white px-3 py-1 text-[11px] font-semibold text-brand-800 transition hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-700"
                       >
                         Re-disperse
                       </button>

@@ -4,14 +4,15 @@ import {
   normalizeBarangayName,
   SEQUENTIAL_STOPS,
 } from "../lib/barangayBoundaries";
+import { escapeHtml, parseFeatureRow } from "../lib/mapText";
 import { useBarangayBoundaries } from "../hooks/useBarangayBoundaries";
-import { BarangayChoropleth } from "./BarangayChoropleth";
+import { BarangayMap } from "./BarangayMap";
 
 /**
  * The landing page's live dispersal map — the REAL Bayawan City barangay
- * boundaries on the same choropleth the admin pages wear: green fills by
- * dispersal count, white boundary outlines, a YELLOW hover following the
- * actual boundary with the barangay's name and count.
+ * boundaries on the same map the admin pages wear: green fills by dispersal
+ * count, white boundary outlines, a YELLOW hover following the actual
+ * boundary with the barangay's name and count.
  *
  * DELIBERATELY a pinned display map: NO zoom or pan — the camera fits the
  * barangay boundaries exactly and stays there, so the card always shows the
@@ -29,27 +30,17 @@ import { BarangayChoropleth } from "./BarangayChoropleth";
  * (they are covered barangays of the program, not "no data"), so the whole
  * city reads as one shape.
  *
- * When the summary API is unreachable (offline demo, backend down) the card
- * falls back to the illustrative SVG via `renderFallback`, so the landing
- * page never shows an empty box.
+ * When the summary API is unreachable (offline demo, backend down) the
+ * landing page renders the illustrative SVG instead — the page owns that
+ * decision, this component just paints the live map.
  */
 
 /**
  * @param {object} props
- * @param {Array<{name: string, lat: number, lng: number, count: number}>} [props.barangays]
+ * @param {Array<{name: string, count: number}>} [props.barangays]
  *   per-barangay dispersal counts from the public summary (count>0 rows only)
- * @param {{lat: number, lng: number}} [props.center]
- * @param {boolean} [props.loading]
- * @param {string|null} [props.error]
- * @param {Function} [props.renderFallback] — rendered instead of the map when `error` is set
  */
-export function LandingMap({
-  barangays = [],
-  center,
-  loading = false,
-  error = null,
-  renderFallback,
-}) {
+export function LandingMap({ barangays = [] }) {
   const boundaries = useBarangayBoundaries();
 
   // Join the public counts onto the boundary polygons by barangay name —
@@ -79,23 +70,10 @@ export function LandingMap({
   // properties and may arrive serialized — a malformed string must not throw
   // inside a hover handler.
   const tooltipHtml = useCallback((properties) => {
-    let parsed = properties?.row;
-    if (typeof parsed === "string") {
-      try {
-        parsed = JSON.parse(parsed);
-      } catch {
-        parsed = null;
-      }
-    }
+    const parsed = parseFeatureRow(properties?.row);
     const name = parsed?.name ?? properties?.name ?? "";
     const count = parsed?.count ?? 0;
-    const safeName = String(name).replace(/[&<>"']/g, (ch) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    })[ch]);
+    const safeName = escapeHtml(name);
     return (
       `<div style="min-width:150px">` +
       `<p style="margin:0;font-weight:600;color:#f8fafc">${safeName}</p>` +
@@ -104,15 +82,13 @@ export function LandingMap({
     );
   }, []);
 
-  if (error && renderFallback) {
-    return renderFallback();
-  }
-
   return (
-    <BarangayChoropleth
+    <BarangayMap
       boundaries={boundaries}
       choropleth={choropleth}
-      height="h-[52vh] min-h-[360px] sm:h-[60vh]"
+      // The hero card's centrepiece: at least 60vh on phones too (the 52vh
+      // hero of the old design dropped the map below the mobile minimum).
+      height="h-[60vh] min-h-[420px]"
       ariaLabel="Map of Bayawan City's barangays, shaded by how many animals were dispersed to each"
       legend={{
         stops: SEQUENTIAL_STOPS,

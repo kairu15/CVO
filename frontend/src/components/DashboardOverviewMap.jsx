@@ -5,8 +5,9 @@ import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage } from "../api/client";
 import { Icon } from "./Icons";
 import { useBarangayBoundaries } from "../hooks/useBarangayBoundaries";
-import { buildChoropleth } from "../lib/barangayBoundaries";
+import { buildChoropleth, SEQUENTIAL_STOPS } from "../lib/barangayBoundaries";
 import { fetchAnimalTrail } from "../lib/ownershipPath";
+import { FLIGHT_TRAIL_LAYER_IDS } from "./DispersalMap";
 
 // MapLibre is heavy — keep it out of the main bundle and load it only when
 // a dashboard actually shows its map module.
@@ -16,7 +17,7 @@ const DashboardMap = lazy(() =>
 
 // The same barangay choropleth the Dispersal Map page wears. Loaded with the
 // map, never with the page, so the maplibre bundle stays out of the first paint.
-const DashboardChoropleth = lazy(() => import("./BarangayChoropleth"));
+const DashboardChoropleth = lazy(() => import("./BarangayMap"));
 
 /** The latest recorded day, spelled the way the Dispersal Map page spells it. */
 function formatDay(iso) {
@@ -30,7 +31,7 @@ function formatDay(iso) {
       });
 }
 
-// Static choropleth props, hoisted so the memoised BarangayChoropleth keeps
+// Static choropleth props, hoisted so the memoised BarangayMap keeps
 // its identity across the overview's polls.
 const OVERVIEW_CLICK_THROUGH = [
   "cvo-date-pins-clusters",
@@ -38,7 +39,7 @@ const OVERVIEW_CLICK_THROUGH = [
   "cvo-date-pins-spider-point",
 ];
 const OVERVIEW_LEGEND = {
-  stops: ["#eaf3dd", "#c7e2a6", "#8bc34a", "#558b2f", "#33691e"],
+  stops: SEQUENTIAL_STOPS,
   minLabel: "fewer animals",
   maxLabel: "more",
 };
@@ -163,6 +164,12 @@ export function DashboardOverviewMap({ roleKey }) {
                     onMapReady={onMapReady}
                     ariaLabel={OVERVIEW_ARIA}
                     legend={OVERVIEW_LEGEND}
+                    // The trails are the overlay here: the shared toolbar's
+                    // "Flight paths" toggle hides them (casing, line, arrows
+                    // and stop dots together) without touching the barangay
+                    // fills.
+                    markerLayerIds={FLIGHT_TRAIL_LAYER_IDS}
+                    markerLabel="Flight paths"
                     // Every barangay wears its name and its dispersal
                     // count on the map itself — no hover needed, and no
                     // cursor-side label to cover the controls.
@@ -177,7 +184,7 @@ export function DashboardOverviewMap({ roleKey }) {
         {!mapLoading && !mapError && (
           <p className="mt-2 text-xs text-slate-500">
             {snapshot?.date
-              ? `${pins.length} flight path${pins.length === 1 ? "" : "s"} drawn for ${formatDay(snapshot.date)} — the same snapshot the Dispersal Map opens on.`
+              ? `Latest recorded day ${formatDay(snapshot.date)} — ${pins.length} geo-tagged animal${pins.length === 1 ? "" : "s"}'s journey drawn. The same snapshot the Dispersal Map opens on.`
               : "No dispersal records yet — a recorded dispersal appears here and on the Dispersal Map."}
           </p>
         )}

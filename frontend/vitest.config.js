@@ -21,5 +21,12 @@ export default defineConfig({
     // vmThreads keeps per-file isolation (fresh VM context per file), it
     // just reuses the thread and its environment across files.
     pool: "vmThreads",
+
+    // The map-bearing pages now pull a heavier module graph into several
+    // test files (the shared barangay map + pickers), which nudged more
+    // tests near the 5s default under full-run worker contention — the
+    // failures moved between files run to run. A 15s ceiling keeps a
+    // genuinely hung test failing, while the contention flake stops.
+    testTimeout: 15000,
   },
 });

@@ -138,14 +138,8 @@ export default function LandingPage() {
               {error ? (
                 <IllustrativeMapSvg />
               ) : (
-                <Suspense fallback={<div className="h-[52vh] min-h-[360px] w-full sm:h-[60vh]" aria-hidden="true" />}>
-                  <LandingMap
-                    barangays={data?.barangays ?? []}
-                    center={data?.center}
-                    loading={loading}
-                    error={error}
-                    renderFallback={() => <IllustrativeMapSvg />}
-                  />
+                <Suspense fallback={<div className="h-[60vh] min-h-[420px] w-full" aria-hidden="true" />}>
+                  <LandingMap barangays={data?.barangays ?? []} />
                 </Suspense>
               )}
 

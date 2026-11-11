@@ -11,9 +11,14 @@ vi.mock("../api/fieldVisitsApi", () => ({
   fieldVisitsApi: {
     list: vi.fn(),
     options: vi.fn(),
+    summary: vi.fn(),
+    visitsDue: vi.fn(),
+    exportUrl: vi.fn(() => "/api/v1/field-visits/export"),
     create: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
+    bulkRemove: vi.fn(),
+    setVerificationNote: vi.fn(),
     uploadPhoto: vi.fn(),
     removePhoto: vi.fn(),
   },
@@ -55,9 +60,16 @@ const CAPTURE = {
   photo: { blob: new Blob(["x"], { type: "image/jpeg" }), dataUrl: "data:image/jpeg;base64,xyz", width: 800, height: 600 },
 };
 
-vi.mock("../api/beneficiariesApi", () => ({
-  beneficiariesApi: { list: vi.fn() },
-}));
+// Keep the real module (useBarangays pulls fetchBarangays from it) and mock
+// only the calls this page makes.
+vi.mock("../api/beneficiariesApi", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    fetchBarangays: vi.fn(() => Promise.resolve([])),
+    beneficiariesApi: { ...actual.beneficiariesApi, list: vi.fn() },
+  };
+});
 
 const auth = { user: { id: 7, name: "Jun Technician", role: "technician" } };
 vi.mock("../context/AuthContext", () => ({
@@ -149,6 +161,21 @@ describe("FieldVisitsPage", () => {
     auth.user = { id: 7, name: "Jun Technician", role: "technician" };
     fieldVisitsApi.list.mockResolvedValue({ data: VISITS, meta: null });
     fieldVisitsApi.options.mockResolvedValue({ purposes: PURPOSES });
+    fieldVisitsApi.summary.mockResolvedValue({
+      total: 3,
+      visits_30d: 3,
+      needs_review: 0,
+      no_gps: 2,
+      on_site: 1,
+      on_site_rate: 33,
+      window_days: 30,
+    });
+    fieldVisitsApi.visitsDue.mockResolvedValue({
+      total: 0,
+      households: [],
+      window_days: 60,
+      coverage: [],
+    });
     fieldVisitsApi.uploadPhoto.mockResolvedValue({ id: 1 });
     geotag.captureGeotag.mockResolvedValue(CAPTURE);
     beneficiariesApi.list.mockResolvedValue([
@@ -184,8 +211,49 @@ describe("FieldVisitsPage", () => {
     renderPage();
     await screen.findByText("Aling Nena");
 
-    expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(2);
+    // Actions live in one menu now, not four inline pills per row.
+    await act(async () => {
+      await userEvent.click(
+        screen.getByRole("button", { name: "Actions for visit to Aling Nena" }),
+      );
+    });
+    expect(
+      screen.getByRole("menuitem", { name: "Edit visit to Aling Nena" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Delete visit to Aling Nena" }),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      await userEvent.keyboard("{Escape}");
+    });
+
+    await act(async () => {
+      await userEvent.click(
+        screen.getByRole("button", { name: "Actions for visit to Ima Johnston" }),
+      );
+    });
+    expect(
+      screen.queryByRole("menuitem", { name: /Edit visit to/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /Delete visit to/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("turns the review tile into a server-side verification filter", async () => {
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: /Needs review/i }));
+    });
+
+    await waitFor(() => {
+      expect(fieldVisitsApi.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ verification: "review", page: 1 }),
+      );
+    });
   });
 
   it("logs a trip without any animal-condition fields, after the required photo", async () => {

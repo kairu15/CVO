@@ -23,6 +23,9 @@ class FieldVisit extends Model
 
     protected $fillable = [
         'beneficiary_id',
+        // The delivery this trip followed up on, when the purpose is a
+        // dispersal visit. Nullable: most trips are not dispersal visits.
+        'dispersal_event_id',
         'technician_id',
         'visited_on',
         'purpose',
@@ -54,6 +57,14 @@ class FieldVisit extends Model
     public function technician(): BelongsTo
     {
         return $this->belongsTo(User::class, 'technician_id');
+    }
+
+    /**
+     * The dispersal this visit followed up on, when one was recorded.
+     */
+    public function dispersalEvent(): BelongsTo
+    {
+        return $this->belongsTo(DispersalEvent::class);
     }
 
     /**

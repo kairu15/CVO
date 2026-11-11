@@ -18,6 +18,30 @@ export const fieldVisitsApi = {
   list: async (params = {}) =>
     unwrap.page(await api.get("/api/v1/field-visits", { params })),
 
+  /** The stat strip — one scoped aggregate request. */
+  summary: async () => unwrap(await api.get("/api/v1/field-visits/summary")),
+
+  /**
+   * Assigned households with no monitoring or visit inside the 60-day
+   * window, plus per-technician coverage.
+   */
+  visitsDue: async (params = {}) =>
+    unwrap(await api.get("/api/v1/field-visits/visits-due", { params })),
+
+  /** Download link for the filtered log CSV. */
+  exportUrl: (params = {}) => {
+    const query = new URLSearchParams();
+
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== null && value !== undefined && value !== "") {
+        query.set(key, String(value));
+      }
+    }
+
+    const qs = query.toString();
+    return `/api/v1/field-visits/export${qs ? `?${qs}` : ""}`;
+  },
+
   get: async (id) => unwrap(await api.get(`/api/v1/field-visits/${id}`)),
 
   /**

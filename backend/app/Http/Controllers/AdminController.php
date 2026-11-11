@@ -355,9 +355,12 @@ class AdminController extends Controller
                         ? 'Not on file'
                         : ($beneficiary->moa_signed ? 'Signed' : 'Not signed'),
                     $beneficiary->created_at?->toDateString(),
-                    $beneficiary->monitoring_records_max_date_monitored
-                        ? \Illuminate\Support\Carbon::parse($beneficiary->monitoring_records_max_date_monitored)->toDateString()
-                        : '',
+                    // Contact of either kind — a logged trip counts even
+                    // when it produced no animal observation.
+                    collect([
+                        $beneficiary->monitoring_records_max_date_monitored,
+                        $beneficiary->field_visits_max_visited_on,
+                    ])->filter()->max() ?? '',
                     (int) $beneficiary->monitoring_records_count,
                 ]);
             }

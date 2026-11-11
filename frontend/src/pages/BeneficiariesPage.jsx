@@ -493,6 +493,9 @@ export default function BeneficiariesPage() {
     ];
   }
 
+  // Either kind of dated contact: the Field Visits log counts a trip even
+  // when it produced no monitoring record, so this column and the overdue
+  // tile agree with that screen.
   const lastVisit = (value) =>
     value ? String(value).slice(0, 10) : "Never";
 
@@ -899,7 +902,7 @@ export default function BeneficiariesPage() {
                                 {beneficiary.monitoring_records_count ?? 0}
                               </td>
                               <td className="hidden px-4 py-2.5 whitespace-nowrap text-slate-600 lg:table-cell">
-                                {lastVisit(beneficiary.last_monitored_at)}
+                                {lastVisit(beneficiary.last_contact_at ?? beneficiary.last_monitored_at)}
                               </td>
                               <td className="hidden truncate px-4 py-2.5 text-slate-600 sm:table-cell">
                                 {beneficiary.technician_id ? (

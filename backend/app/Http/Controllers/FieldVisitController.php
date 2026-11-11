@@ -24,7 +24,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FieldVisitController extends Controller
 {
@@ -43,21 +45,123 @@ class FieldVisitController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $verificationFilter = $request->input('verification', 'all');
-
-        abort_unless(
-            in_array($verificationFilter, FieldVisitVerificationService::FILTERS, true),
-            Response::HTTP_UNPROCESSABLE_ENTITY,
-            'Unknown verification filter.',
-        );
+        $filters = $this->validatedFilters($request);
+        $verification = $filters['verification'] ?? 'all';
+        unset($filters['verification']);
 
         return FieldVisitResource::collection(
             $this->visits->listFor(
                 $request->user(),
                 Pagination::perPage($request->input('per_page')),
-                $verificationFilter,
+                $verification,
+                $filters,
             ),
         );
+    }
+
+    /** The stat strip — one scoped aggregate request, no rows. */
+    public function summary(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->visits->summaryFor($request->user()),
+        ]);
+    }
+
+    /**
+     * Assigned households with no monitoring or visit inside the 60-day
+     * window, plus per-technician coverage. Derived, never stored.
+     */
+    public function visitsDue(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'follow_up' => ['nullable', 'boolean'],
+        ]);
+
+        return response()->json([
+            'data' => $this->visits->visitsDueFor(
+                $request->user(),
+                (bool) ($validated['follow_up'] ?? false),
+            ),
+        ]);
+    }
+
+    /**
+     * The filtered log as a CSV for monthly CVO reporting (UTF-8 BOM so
+     * Excel opens barangay names correctly).
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $filters = $this->validatedFilters($request);
+        $verification = $filters['verification'] ?? 'all';
+        unset($filters['verification']);
+
+        $this->audit->log($request->user(), 'exported', null, [
+            'resource' => 'field_visit_log',
+            'filters' => $filters,
+        ]);
+
+        $filename = 'field-visits-'.now()->format('Ymd-His').'.csv';
+
+        return response()->streamDownload(function () use ($request, $verification, $filters): void {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+
+            fputcsv($out, [
+                'Date', 'Farmer', 'RSBSA #', 'Ear Tag #', 'Barangay', 'Animal',
+                'Purpose', 'Technician', 'Verification', 'Distance (m)',
+                'Dispersal Date', 'Dispersal Type', 'Notes',
+            ]);
+
+            foreach ($this->visits->rowsFor($request->user(), $verification, $filters) as $visit) {
+                fputcsv($out, [
+                    $visit->visited_on?->toDateString(),
+                    $visit->beneficiary?->name_of_farmer,
+                    $visit->beneficiary?->rsbsa_number,
+                    $visit->beneficiary?->ear_tag_number,
+                    $visit->beneficiary?->address,
+                    $visit->beneficiary?->animal_type,
+                    $visit->purpose ? str_replace('-', ' ', ucfirst($visit->purpose)) : '',
+                    $visit->technician?->name,
+                    $visit->verification_status,
+                    $visit->distance_m,
+                    $visit->dispersalEvent?->date_dispersed?->toDateString(),
+                    $visit->dispersalEvent?->dispersal_type,
+                    $visit->notes,
+                ]);
+            }
+
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * The validated filter set. `verification` is checked against the same
+     * vocabulary the verdict service uses, so an unknown bucket is a 422
+     * rather than a silently unfiltered list.
+     *
+     * @return array<string, mixed>
+     */
+    private function validatedFilters(Request $request): array
+    {
+        $validated = $request->validate([
+            'verification' => ['nullable', 'string', Rule::in(FieldVisitVerificationService::FILTERS)],
+            'search' => ['nullable', 'string', 'max:120'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+            'technician' => ['nullable', 'integer', 'min:1'],
+            'barangay' => ['nullable', 'string', 'max:120'],
+            'purpose' => ['nullable', 'string', Rule::in(app(SettingsService::class)->fieldVisitPurposes())],
+        ]);
+
+        return array_filter([
+            'verification' => $validated['verification'] ?? null,
+            'search' => $validated['search'] ?? null,
+            'from' => $validated['from'] ?? null,
+            'to' => $validated['to'] ?? null,
+            'technician' => $validated['technician'] ?? null,
+            'barangay' => $validated['barangay'] ?? null,
+            'purpose' => $validated['purpose'] ?? null,
+        ], fn ($value) => $value !== null && $value !== '');
     }
 
     /**
@@ -67,7 +171,7 @@ class FieldVisitController extends Controller
     {
         $visit = $this->visits->create($request->user(), $request->validated());
 
-        return (new FieldVisitResource($visit->load(['beneficiary', 'technician'])))
+        return (new FieldVisitResource($visit->load(['beneficiary', 'technician', 'dispersalEvent'])))
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
     }
@@ -94,7 +198,8 @@ class FieldVisitController extends Controller
         $this->authorize('update', $visit);
 
         return new FieldVisitResource(
-            $this->visits->update($request->user(), $visit, $request->validated())->load(['beneficiary', 'technician']),
+            $this->visits->update($request->user(), $visit, $request->validated())
+                ->load(['beneficiary', 'technician', 'dispersalEvent']),
         );
     }
 
@@ -247,6 +352,56 @@ class FieldVisitController extends Controller
         return (new FieldVisitPhotoResource($photo))
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
+    }
+
+    /**
+     * A 160px JPEG for table thumbnails, generated once and cached on the
+     * private disk. Authorization matches the visit itself, and the image is
+     * still served from behind the session — never the public webroot.
+     */
+    public function photoThumbnail(Request $request, int $id): Response
+    {
+        $visit = $this->visits->findScoped($request->user(), $id);
+
+        abort_unless($visit, Response::HTTP_NOT_FOUND);
+
+        $photo = $visit->photos()->latest('id')->first();
+
+        abort_unless($photo, Response::HTTP_NOT_FOUND);
+
+        $disk = Storage::disk('secure');
+        $source = $photo->image_path;
+        $thumbPath = preg_replace('/(\.[^.\/]+)$/', '-thumb.jpg', $source);
+
+        abort_unless($disk->exists($source), Response::HTTP_NOT_FOUND);
+
+        if (! $disk->exists($thumbPath)) {
+            $image = @imagecreatefromstring($disk->get($source));
+
+            abort_unless($image !== false, Response::HTTP_NOT_FOUND);
+
+            $width = imagesx($image);
+            $height = imagesy($image);
+            $thumbWidth = min(160, $width);
+            $thumbHeight = max(1, (int) round($height * ($thumbWidth / max(1, $width))));
+            $thumb = imagecreatetruecolor($thumbWidth, $thumbHeight);
+
+            imagecopyresampled($thumb, $image, 0, 0, 0, 0, $thumbWidth, $thumbHeight, $width, $height);
+
+            ob_start();
+            imagejpeg($thumb, null, 80);
+            $bytes = ob_get_clean();
+
+            imagedestroy($thumb);
+            imagedestroy($image);
+
+            $disk->put($thumbPath, $bytes);
+        }
+
+        return $disk->response($thumbPath, null, [
+            'Content-Type' => 'image/jpeg',
+            'Cache-Control' => 'private, max-age=300',
+        ]);
     }
 
     /**

@@ -265,6 +265,16 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     // "options" as a visit id.
     Route::get('field-visits/options', [FieldVisitController::class, 'options'])
         ->name('api.field-visits.options');
+
+    // Log aggregates and the filtered export. Declared before the
+    // apiResource so `{field_visit}` cannot swallow these path segments.
+    Route::get('field-visits/summary', [FieldVisitController::class, 'summary'])
+        ->name('api.field-visits.summary');
+    Route::get('field-visits/visits-due', [FieldVisitController::class, 'visitsDue'])
+        ->name('api.field-visits.visits-due');
+    Route::get('field-visits/export', [FieldVisitController::class, 'export'])
+        ->name('api.field-visits.export');
+
     Route::apiResource('field-visits', FieldVisitController::class);
     Route::post('field-visits/bulk-delete', [FieldVisitController::class, 'bulkDestroy'])
         ->name('api.field-visits.bulk-delete');
@@ -278,6 +288,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         ->name('api.field-visits.photos.store');
     Route::delete('field-visits/{id}/photo', [FieldVisitController::class, 'destroyPhoto'])
         ->name('api.field-visits.photos.destroy');
+
+    // 160px cached evidence thumbnail for the log table.
+    Route::get('field-visits/{id}/photo/thumbnail', [FieldVisitController::class, 'photoThumbnail'])
+        ->whereNumber('id')
+        ->name('api.field-visits.photos.thumbnail');
 
     // The technician's justification for an off-site verdict (Feature 1).
     // Declared after the apiResource so the explicit path wins over

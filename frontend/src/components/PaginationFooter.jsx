@@ -16,13 +16,29 @@ import { Icon } from "./Icons";
  * @param {string} [props.plural] plural override when appending "s" would be
  *   wrong ("beneficiaries", "notes" is fine, …)
  * @param {(page: number) => void} props.onPageChange
+ * @param {number} [props.pageSize] current rows per page (optional selector)
+ * @param {number[]} [props.pageSizeOptions] e.g. [25, 50]
+ * @param {(size: number) => void} [props.onPageSizeChange]
  */
-export function PaginationFooter({ meta, shown, noun = "record", plural, onPageChange }) {
-  if (!meta || !meta.last_page || meta.last_page <= 1) return null;
+export function PaginationFooter({
+  meta,
+  shown,
+  noun = "record",
+  plural,
+  onPageChange,
+  pageSize,
+  pageSizeOptions,
+  onPageSizeChange,
+}) {
+  if (!meta || !meta.total) return null;
+
+  // A single-page list normally carries no dead controls, but when the caller
+  // offers a page-size selector that control is still useful.
+  if ((!meta.last_page || meta.last_page <= 1) && !pageSizeOptions?.length) return null;
 
   const total = meta.total ?? shown;
   const page = meta.current_page ?? 1;
-  const lastPage = meta.last_page;
+  const lastPage = meta.last_page ?? 1;
   const label = total === 1 ? noun : (plural ?? `${noun}s`);
 
   return (
@@ -32,6 +48,23 @@ export function PaginationFooter({ meta, shown, noun = "record", plural, onPageC
       </span>
 
       <div className="flex items-center gap-3">
+        {pageSizeOptions?.length > 0 && onPageSizeChange && (
+          <label className="flex items-center gap-1.5">
+            <span className="sr-only">Rows per page</span>
+            <select
+              className="rounded-pill border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:border-slate-200/60 dark:bg-transparent dark:text-slate-300"
+              value={pageSize ?? pageSizeOptions[0]}
+              onChange={(event) => onPageSizeChange(Number(event.target.value))}
+              aria-label="Rows per page"
+            >
+              {pageSizeOptions.map((size) => (
+                <option key={size} value={size}>
+                  {size} / page
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button
           type="button"
           onClick={() => onPageChange(page - 1)}

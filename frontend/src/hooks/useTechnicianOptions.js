@@ -16,10 +16,14 @@ const TTL_MS = 5 * 60 * 1000;
 
 let cache = { items: [], at: 0 };
 
-export function useTechnicianOptions() {
+export function useTechnicianOptions(enabled = true) {
   const [items, setItems] = useState(cache.items);
 
   useEffect(() => {
+    // A technician's own view never shows the assignment dropdown, so it
+    // must not pay for the list either.
+    if (!enabled) return undefined;
+
     if (Date.now() - cache.at < TTL_MS) {
       setItems(cache.items);
       return undefined;
@@ -41,7 +45,7 @@ export function useTechnicianOptions() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [enabled]);
 
   return items;
 }

@@ -35,6 +35,11 @@ class FieldVisitPhotoResource extends JsonResource
                 now()->addMinutes((int) config('security.signed_url_minutes', 30)),
             ),
 
+            // A 160px JPEG served and cached by the API, so a table row shows
+            // triageable evidence without downloading the full composite
+            // image for every visit.
+            'thumbnail_url' => "/api/v1/field-visits/{$this->field_visit_id}/photo/thumbnail",
+
             // Wall-clock fields (device-local, as captured).
             'capture_date' => $this->capture_date?->toDateString(),
             'capture_time' => $this->capture_time,

@@ -117,6 +117,8 @@ class BeneficiaryDirectoryService
 
         // Never = no dated visit at all. Overdue = no dated visit inside the
         // window, which deliberately includes the never-visited households.
+        // A field visit counts as contact: the directory and the Field Visits
+        // log must not disagree about who has actually been seen.
         $cutoff = now()->subDays(self::OVERDUE_DAYS)->toDateString();
 
         $query->when(
@@ -124,7 +126,7 @@ class BeneficiaryDirectoryService
             fn (Builder $q) => $q->whereDoesntHave(
                 'monitoringRecords',
                 fn (Builder $m) => $m->whereNotNull('date_monitored'),
-            ),
+            )->whereDoesntHave('fieldVisits'),
         );
         $query->when(
             $monitoring === 'overdue',
@@ -132,6 +134,9 @@ class BeneficiaryDirectoryService
                 'monitoringRecords',
                 fn (Builder $m) => $m->whereNotNull('date_monitored')
                     ->where('date_monitored', '>=', $cutoff),
+            )->whereDoesntHave(
+                'fieldVisits',
+                fn (Builder $v) => $v->where('visited_on', '>=', $cutoff),
             ),
         );
 
@@ -164,8 +169,9 @@ class BeneficiaryDirectoryService
     {
         return $this->filtered($user, $filters)
             ->with(['technician', 'animalType', 'animalClassification'])
-            ->withCount('monitoringRecords')
+            ->withCount(['monitoringRecords', 'fieldVisits'])
             ->withMax('monitoringRecords as monitoring_records_max_date_monitored', 'date_monitored')
+            ->withMax('fieldVisits as field_visits_max_visited_on', 'visited_on')
             ->orderBy('address')
             ->orderBy('name_of_farmer')
             ->paginate(Pagination::perPage($perPage));
@@ -206,12 +212,17 @@ class BeneficiaryDirectoryService
                     'monitoringRecords',
                     fn (Builder $q) => $q->whereNotNull('date_monitored'),
                 )
+                ->whereDoesntHave('fieldVisits')
                 ->count(),
             'overdue' => Beneficiary::query()
                 ->whereDoesntHave(
                     'monitoringRecords',
                     fn (Builder $q) => $q->whereNotNull('date_monitored')
                         ->where('date_monitored', '>=', $cutoff),
+                )
+                ->whereDoesntHave(
+                    'fieldVisits',
+                    fn (Builder $q) => $q->where('visited_on', '>=', $cutoff),
                 )
                 ->count(),
             'overdue_days' => self::OVERDUE_DAYS,
@@ -256,8 +267,9 @@ class BeneficiaryDirectoryService
     {
         return $this->filtered($user, $filters)
             ->with(['technician', 'animalType', 'animalClassification'])
-            ->withCount('monitoringRecords')
+            ->withCount(['monitoringRecords', 'fieldVisits'])
             ->withMax('monitoringRecords as monitoring_records_max_date_monitored', 'date_monitored')
+            ->withMax('fieldVisits as field_visits_max_visited_on', 'visited_on')
             ->orderBy('address')
             ->orderBy('name_of_farmer')
             ->lazy(200);

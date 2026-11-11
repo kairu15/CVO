@@ -6,6 +6,7 @@ use App\Models\Beneficiary;
 use App\Models\FieldVisit;
 use App\Models\User;
 use App\Services\FieldVisitService;
+use App\Services\FieldVisitVerificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -67,7 +68,7 @@ class FieldVisitTest extends TestCase
         $response->assertCreated()
             ->assertJsonPath('data.has_location', false)
             ->assertJsonPath('data.latitude', null)
-            ->assertJsonPath('data.distance_from_registered_m', null);
+            ->assertJsonPath('data.distance_m', null);
     }
 
     public function test_a_half_captured_fix_is_rejected(): void
@@ -176,11 +177,15 @@ class FieldVisitTest extends TestCase
             ->forBeneficiary($this->beneficiary)
             ->create(['latitude' => 9.3814, 'longitude' => 122.80916]);
 
+        // The factory writes rows directly; the server recomputes and stores
+        // the distance on save, so derive it the same way a real save does.
+        app(FieldVisitVerificationService::class)->refresh($visit);
+
         $response = $this->actingAs($this->technician)->getJson("/api/v1/field-visits/{$visit->id}");
 
         $response->assertOk()->assertJsonPath('data.has_location', true);
 
-        $distance = $response->json('data.distance_from_registered_m');
+        $distance = $response->json('data.distance_m');
         $this->assertGreaterThan(1000, $distance);
         $this->assertLessThan(1200, $distance);
     }

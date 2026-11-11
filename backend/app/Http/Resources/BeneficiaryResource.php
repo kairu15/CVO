@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Carbon;
 
 class BeneficiaryResource extends JsonResource
 {
@@ -14,6 +15,17 @@ class BeneficiaryResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        // Contact is either kind of dated visit. The Field Visits log counts
+        // a trip even when it produced no animal observation, so "overdue"
+        // must not claim a household was never seen after a logged trip.
+        $lastMonitoring = $this->monitoring_records_max_date_monitored
+            ? Carbon::parse($this->monitoring_records_max_date_monitored)->toDateString()
+            : null;
+        $lastFieldVisit = $this->field_visits_max_visited_on
+            ? Carbon::parse($this->field_visits_max_visited_on)->toDateString()
+            : null;
+        $lastContact = collect([$lastMonitoring, $lastFieldVisit])->filter()->max();
+
         return [
             'id' => $this->id,
             'name_of_farmer' => $this->name_of_farmer,
@@ -46,11 +58,15 @@ class BeneficiaryResource extends JsonResource
             'technician_id' => $this->technician_id,
             'technician' => new UserResource($this->whenLoaded('technician')),
             'monitoring_records_count' => $this->whenCounted('monitoringRecords'),
-            // Latest DATED visit, from the directory's withMax aggregate. Null
-            // for a household whose only row is the undated enrolment row.
-            'last_monitored_at' => $this->monitoring_records_max_date_monitored
-                ? \Illuminate\Support\Carbon::parse($this->monitoring_records_max_date_monitored)->toDateString()
-                : null,
+            'field_visits_count' => $this->whenCounted('fieldVisits'),
+            // Latest DATED monitoring row, from the directory's withMax
+            // aggregate. Null for a household whose only row is the undated
+            // enrolment row.
+            'last_monitored_at' => $lastMonitoring,
+            'last_field_visit_on' => $lastFieldVisit,
+            // The most recent contact of EITHER kind — what the directory's
+            // "Last visit" column and the overdue rule read.
+            'last_contact_at' => $lastContact,
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

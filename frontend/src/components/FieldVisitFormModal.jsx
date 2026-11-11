@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fieldVisitsApi } from "../api/fieldVisitsApi";
+import { beneficiariesApi } from "../api/beneficiariesApi";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { useToast } from "../context/ToastContext";
 import { useNotifyOfflineSaved } from "../context/OfflineQueueContext";
@@ -39,7 +41,8 @@ const isOnline = () =>
  * @param {object} props
  * @param {boolean} props.open
  * @param {() => void} props.onClose called after a successful save or cancel
- * @param {Array<object>} props.beneficiaries assigned beneficiaries for the picker
+ * @param {object} [props.initialBeneficiary] household to pre-select (from a
+ *   "Log visit" action); the picker otherwise searches server-side on open
  * @param {Array<string>} props.purposes served vocabulary for the purpose select
  * @param {object} [props.visit] existing visit to edit
  * @param {() => void} props.onSaved
@@ -47,7 +50,7 @@ const isOnline = () =>
 export function FieldVisitFormModal({
   open,
   onClose,
-  beneficiaries = [],
+  initialBeneficiary = null,
   purposes = [],
   visit = null,
   onSaved,
@@ -60,6 +63,13 @@ export function FieldVisitFormModal({
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [beneficiaryId, setBeneficiaryId] = useState("");
+  // The picker is fetched only while the form is open, and searched on the
+  // server as the technician types — never a 200-row prefetch on page load.
+  const [options, setOptions] = useState([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
+  const debouncedPickerSearch = useDebouncedValue(pickerSearch, 300);
+  const initialId = initialBeneficiary?.id ?? null;
   const [coords, setCoords] = useState(null); // [lat, lng]
   const [locating, setLocating] = useState(false);
   const [locationNote, setLocationNote] = useState(null);
@@ -96,13 +106,49 @@ export function FieldVisitFormModal({
   // beneficiary chosen and the purpose/notes typed mid-entry.
   const seededRef = useRef(null);
 
+  // The pre-selected household rides along with the search results so a
+  // "Log visit" deep link never loses its selection to the first page.
+  const pickerOptions = useMemo(() => {
+    const map = new Map(options.map((row) => [String(row.id), row]));
+    if (initialBeneficiary) map.set(String(initialBeneficiary.id), initialBeneficiary);
+    return [...map.values()];
+  }, [options, initialBeneficiary]);
+
   const beneficiary = useMemo(
     () =>
-      beneficiaries.find((b) => String(b.id) === String(beneficiaryId)) ??
+      pickerOptions.find((b) => String(b.id) === String(beneficiaryId)) ??
       visit ??
       null,
-    [beneficiaries, beneficiaryId, visit],
+    [pickerOptions, beneficiaryId, visit],
   );
+
+  // Only fetch while the picker is actually visible.
+  useEffect(() => {
+    if (!open || editing) return undefined;
+
+    let active = true;
+    setOptionsLoading(true);
+
+    beneficiariesApi
+      .list({
+        per_page: 25,
+        ...(debouncedPickerSearch ? { search: debouncedPickerSearch } : {}),
+      })
+      .then((rows) => {
+        if (active) setOptions(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        // The form still works with the pre-selected household; a failed
+        // search should not block logging the visit.
+      })
+      .finally(() => {
+        if (active) setOptionsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [open, editing, debouncedPickerSearch]);
 
   useEffect(() => {
     if (!open) {
@@ -132,8 +178,9 @@ export function FieldVisitFormModal({
       );
     } else {
       setForm({ ...EMPTY_FORM, visited_on: new Date().toISOString().slice(0, 10) });
-      setBeneficiaryId(beneficiaries.length === 1 ? String(beneficiaries[0].id) : "");
+      setBeneficiaryId(initialId ? String(initialId) : "");
       setCoords(null);
+      setPickerSearch("");
     }
 
     setLocationNote(null);
@@ -143,7 +190,9 @@ export function FieldVisitFormModal({
     setCreatedVisit(null);
     setDirty(false);
     setConfirmDiscard(false);
-  }, [open, visit, beneficiaries]);
+    // Seeded once per open/record; `initialId` rather than the object keeps a
+    // poll handing back a new array from wiping live entry (see seededRef).
+  }, [open, visit, initialId]);
 
   /** Close — asking first when there is unsaved input to lose. */
   function requestClose() {
@@ -485,7 +534,19 @@ export function FieldVisitFormModal({
 
         {!editing && (
           <div className="mt-4">
-            <label htmlFor="visit-beneficiary" className="block text-sm font-medium text-slate-700">
+            <label htmlFor="visit-beneficiary-search" className="block text-sm font-medium text-slate-700">
+              Find beneficiary
+            </label>
+            <input
+              id="visit-beneficiary-search"
+              type="search"
+              className="field mt-1.5"
+              value={pickerSearch}
+              onChange={(event) => setPickerSearch(event.target.value)}
+              placeholder="Search by name, RSBSA or ear tag…"
+            />
+
+            <label htmlFor="visit-beneficiary" className="mt-3 block text-sm font-medium text-slate-700">
               Beneficiary visited
             </label>
             <select
@@ -498,10 +559,14 @@ export function FieldVisitFormModal({
                 markDirty();
               }}
             >
-              <option value="">Select a beneficiary…</option>
-              {beneficiaries.map((b) => (
+              <option value="">
+                {optionsLoading ? "Searching…" : "Select a beneficiary…"}
+              </option>
+              {pickerOptions.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.name_of_farmer} — {b.animal_type} ({b.sex}) · {b.address}
+                  {[b.name_of_farmer, b.animal_type, b.sex, b.address]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </option>
               ))}
             </select>

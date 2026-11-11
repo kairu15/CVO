@@ -134,6 +134,12 @@ export function formatMetricReadout(row, metric, per1000, minRateAnimals) {
  * max spans ALL rows so the two renderings (polygons, bubble fallback) share
  * one colour scale.
  *
+ * Each feature also gets a STABLE numeric id (its index in the static asset).
+ * The map's feature-state highlight keys on it, so a selection survives a
+ * fresh snapshot — ids from the asset's order never reshuffle — and a
+ * barangay picked in the "Find a barangay" control can be highlighted
+ * without querying rendered features.
+ *
  * @param {object|null} collection the boundary FeatureCollection
  * @param {Array<object>} rows analytics rows (name + metric fields)
  * @param {{metric: string, per1000?: boolean}} options
@@ -149,7 +155,7 @@ export function buildChoropleth(collection, rows, { metric, per1000 = false }) {
 
   const rowByName = new Map(rows.map((row) => [normalizeBarangayName(row.name), row]));
 
-  const features = collection.features.map((feature) => {
+  const features = collection.features.map((feature, index) => {
     const name = feature.properties?.name ?? "";
     const row = rowByName.get(normalizeBarangayName(name)) ?? null;
     const value = row ? metricValue(row, metric, per1000) : null;
@@ -157,6 +163,7 @@ export function buildChoropleth(collection, rows, { metric, per1000 = false }) {
 
     return {
       ...feature,
+      id: index,
       properties: {
         name: row?.name ?? name,
         psgc: feature.properties?.psgc ?? null,

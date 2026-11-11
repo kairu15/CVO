@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 // Named imports, exactly like DispersalMap — the maplibre-gl build this app
 // ships does not expose a default export.
 import {
@@ -143,7 +143,7 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  * @param {string} [props.markerLabel] wording for that toggle (default
  *   "Markers").
  */
-export function BarangayChoropleth({
+function BarangayChoroplethImpl({
   boundaries,
   choropleth = null,
   onMapReady = null,
@@ -264,29 +264,21 @@ export function BarangayChoropleth({
         duration: 400,
       });
 
-      // Feature ids are generated when the source is added, so resolve the
-      // rendered id (rather than the GeoJSON array index) once the camera has
-      // settled. The highlight is in addition to any parent selection.
-      const highlight = () => {
+      // The highlight rides the feature's STABLE id (its index in the static
+      // asset — buildChoropleth assigns it), so it needs no query of rendered
+      // features and survives fresh snapshots. In addition to any parent
+      // selection; a later parent selection clears it.
+      if (feature.id !== undefined && feature.id !== null) {
         try {
-          const rendered = map.querySourceFeatures?.(BOUNDARY_SOURCE) ?? [];
-          const match = rendered.find(
-            (candidate) =>
-              normalizeBarangayName(candidate.properties?.name) === normalizeBarangayName(name),
+          map.setFeatureState(
+            { source: BOUNDARY_SOURCE, id: feature.id },
+            { selected: true },
           );
-          if (match?.id !== undefined && match?.id !== null) {
-            map.setFeatureState(
-              { source: BOUNDARY_SOURCE, id: match.id },
-              { selected: true },
-            );
-            internalSelectedRef.current = match.id;
-          }
+          internalSelectedRef.current = feature.id;
         } catch {
-          // Source not queryable yet; the camera move still helps.
+          // Source not ready yet; the camera move still helps.
         }
-      };
-      if (typeof map.once === "function") map.once("idle", highlight);
-      else highlight();
+      }
     },
     [choropleth, clearInternalSelection],
   );
@@ -583,10 +575,12 @@ export function BarangayChoropleth({
     if (!map) return;
 
     if (!map.getSource(BOUNDARY_SOURCE)) {
+      // Feature ids come from buildChoropleth (stable per-asset indices), so
+      // a selection survives a fresh snapshot and a search pick can resolve
+      // its id without querying rendered features.
       map.addSource(BOUNDARY_SOURCE, {
         type: "geojson",
         data: choropleth.collection,
-        generateId: true,
       });
       const insertBefore = beforeLayerId && map.getLayer(beforeLayerId) ? beforeLayerId : undefined;
       map.addLayer(
@@ -637,7 +631,18 @@ export function BarangayChoropleth({
           layout: { "line-join": "round" },
           paint: {
             "line-color": "#2d4d19",
-            "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1.4, 13, 2.4],
+            // ONE zoom interpolate (MapLibre allows only one per expression);
+            // the selected barangay's stop values widen the line — a
+            // non-colour "which one is picked" cue alongside the yellow fill.
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              9,
+              ["case", ["boolean", ["feature-state", "selected"], false], 3, 1.4],
+              13,
+              ["case", ["boolean", ["feature-state", "selected"], false], 5, 2.4],
+            ],
             "line-opacity": 0.92,
           },
         },
@@ -849,6 +854,20 @@ export function BarangayChoropleth({
     for (const entry of labelMarkersRef.current) entry.marker.remove();
     labelMarkersRef.current = [];
   }, [labelsOn]);
+
+  // The selected barangay's label gets a non-colour cue to match the heavier
+  // polygon outline: bolder, darker type (see .cvo-barangay-label--active in
+  // index.css), so "which one is picked" survives greyscale and
+  // colour-blindness. A parent-owned selection wins over the search focus.
+  useEffect(() => {
+    const active = normalizeBarangayName(selectedName || focusName || "");
+    for (const entry of labelMarkersRef.current) {
+      entry.element.classList.toggle(
+        "cvo-barangay-label--active",
+        Boolean(active) && entry.name === active,
+      );
+    }
+  }, [selectedName, focusName, labelsOn, ready, withBoundaries]);
 
   useEffect(
     () => () => {
@@ -1062,5 +1081,12 @@ export function BarangayChoropleth({
     </div>
   );
 }
+
+/**
+ * Memoised: a parent's re-render (a poll, a hover anchor) must not walk the
+ * whole map subtree. Consumers that pass fresh closures every render defeat
+ * this — keep callbacks and tooltips in useMemo/useCallback there.
+ */
+export const BarangayChoropleth = memo(BarangayChoroplethImpl);
 
 export default BarangayChoropleth;

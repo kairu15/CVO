@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import {
   buildChoropleth,
   normalizeBarangayName,
@@ -75,6 +75,35 @@ export function LandingMap({
     return buildChoropleth(boundaries.collection, rows, { metric: "count" });
   }, [boundaries, rows]);
 
+  // Stable tooltip (the choropleth is memoised); the row rides the feature
+  // properties and may arrive serialized — a malformed string must not throw
+  // inside a hover handler.
+  const tooltipHtml = useCallback((properties) => {
+    let parsed = properties?.row;
+    if (typeof parsed === "string") {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        parsed = null;
+      }
+    }
+    const name = parsed?.name ?? properties?.name ?? "";
+    const count = parsed?.count ?? 0;
+    const safeName = String(name).replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    })[ch]);
+    return (
+      `<div style="min-width:150px">` +
+      `<p style="margin:0;font-weight:600;color:#f8fafc">${safeName}</p>` +
+      `<p style="margin:2px 0 0;font-size:12px;color:#cbd5e1">${count === 0 ? "No dispersals yet" : `<strong>${count}</strong> dispersed`}</p>` +
+      `</div>`
+    );
+  }, []);
+
   if (error && renderFallback) {
     return renderFallback();
   }
@@ -94,25 +123,7 @@ export function LandingMap({
       // pass keeps the city-wide frame readable.
       interactive={false}
       showLabels
-      tooltipHtml={(properties) => {
-        const row = properties?.row;
-        const parsed = typeof row === "string" ? JSON.parse(row) : row;
-        const name = parsed?.name ?? properties?.name ?? "";
-        const count = parsed?.count ?? 0;
-        const safeName = String(name).replace(/[&<>"']/g, (ch) => ({
-          "&": "&amp;",
-          "<": "&lt;",
-          ">": "&gt;",
-          '"': "&quot;",
-          "'": "&#39;",
-        })[ch]);
-        return (
-          `<div style="min-width:150px">` +
-          `<p style="margin:0;font-weight:600;color:#f8fafc">${safeName}</p>` +
-          `<p style="margin:2px 0 0;font-size:12px;color:#cbd5e1">${count === 0 ? "No dispersals yet" : `<strong>${count}</strong> dispersed`}</p>` +
-          `</div>`
-        );
-      }}
+      tooltipHtml={tooltipHtml}
     />
   );
 }

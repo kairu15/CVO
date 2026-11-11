@@ -30,6 +30,21 @@ function formatDay(iso) {
       });
 }
 
+// Static choropleth props, hoisted so the memoised BarangayChoropleth keeps
+// its identity across the overview's polls.
+const OVERVIEW_CLICK_THROUGH = [
+  "cvo-date-pins-clusters",
+  "cvo-date-pins-point",
+  "cvo-date-pins-spider-point",
+];
+const OVERVIEW_LEGEND = {
+  stops: ["#eaf3dd", "#c7e2a6", "#8bc34a", "#558b2f", "#33691e"],
+  minLabel: "fewer animals",
+  maxLabel: "more",
+};
+const OVERVIEW_ARIA =
+  "Map of Bayawan City's barangays with the program's geo-tagged animals pinned.";
+
 /**
  * The dashboards' live "Flight paths" card — the overview's Geographical
  * Overview section, shared by the admin command center and the technician
@@ -138,21 +153,16 @@ export function DashboardOverviewMap({ roleKey }) {
                     boundaries={boundaries}
                     choropleth={choropleth}
                     height="h-[60vh] min-h-[460px]"
+                    // The overview scrolls: the wheel guard keeps the page
+                    // scroll free (ctrl+scroll zooms, two fingers on touch).
+                    cooperativeGestures
                     // The pin layers are added by the map; the polygons
                     // insert beneath them so a pin is never buried.
                     beforeLayerId="cvo-date-pins-clusters"
-                    clickThroughLayers={[
-                      "cvo-date-pins-clusters",
-                      "cvo-date-pins-point",
-                      "cvo-date-pins-spider-point",
-                    ]}
+                    clickThroughLayers={OVERVIEW_CLICK_THROUGH}
                     onMapReady={onMapReady}
-                    ariaLabel="Map of Bayawan City's barangays with the program's geo-tagged animals pinned."
-                    legend={{
-                      stops: ["#eaf3dd", "#c7e2a6", "#8bc34a", "#558b2f", "#33691e"],
-                      minLabel: "fewer animals",
-                      maxLabel: "more",
-                    }}
+                    ariaLabel={OVERVIEW_ARIA}
+                    legend={OVERVIEW_LEGEND}
                     // Every barangay wears its name and its dispersal
                     // count on the map itself — no hover needed, and no
                     // cursor-side label to cover the controls.

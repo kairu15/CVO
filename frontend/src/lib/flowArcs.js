@@ -37,7 +37,6 @@ export function flowArcFeatures(flows, pointsById, topN = 10) {
     const from = pointsById.get(flow.origin_barangay_id);
     const to = pointsById.get(flow.destination_barangay_id);
     const coordinates = arcPoints(from, to, ARC_SEGMENTS);
-    const middle = coordinates[Math.floor(coordinates.length / 2)];
 
     return {
       type: "Feature",

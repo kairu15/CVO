@@ -184,7 +184,9 @@ describe("DispersalMapPage", () => {
     const call = mapApi.pins.mock.calls.at(-1)[0];
     expect(call.date).toBe("2026-10-28");
     expect(call.mode).toBe("as_of");
-    expect(screen.getByText(/As of this date/)).toBeInTheDocument();
+    // findBy (not the sync getBy): DateSelector is a lazy chunk — under a
+    // busy suite its label lands a tick after the map's first paint.
+    expect(await screen.findByText(/As of this date/)).toBeInTheDocument();
   });
 
   it("re-fetches the snapshot when the date changes", async () => {
@@ -299,9 +301,10 @@ describe("DispersalMapPage", () => {
     // The dark cursor-side label is replaced by the permanent labels: two
     // sources for the same numbers would only drift apart.
     expect(choroplethProps.tooltipHtml).toBeUndefined();
-    // And the dashboard map owns its viewport: direct scroll-zoom, no
-    // cooperative-gestures guard (that is the landing page's opt-in).
-    expect(choroplethProps.cooperativeGestures).toBeUndefined();
+    // The map sits in a scrolling dashboard: the wheel guard is on, so the
+    // map never traps the page scroll (ctrl+scroll zooms, two fingers on
+    // touch). The pinned landing map is the one map that does not need it.
+    expect(choroplethProps.cooperativeGestures).toBe(true);
   });
 });
 

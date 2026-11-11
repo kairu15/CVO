@@ -558,6 +558,26 @@
   display: none;
 }
 
+/*
+ * The selected barangay's label: a non-colour cue to match the heavier dark
+ * outline the polygon wears — bolder, darker type with a firmer halo, so
+ * "which barangay is picked" survives greyscale, prints and colour-blindness.
+ */
+.cvo-barangay-label--active .cvo-barangay-label-name {
+  color: #1a2e05; /* brand-950-ish, darker than the resting slate-900 */
+  text-shadow:
+    -1.5px -1.5px 0 #fff,
+    1.5px -1.5px 0 #fff,
+    -1.5px 1.5px 0 #fff,
+    1.5px 1.5px 0 #fff,
+    0 0 6px #fff;
+}
+
+.cvo-barangay-label--active .cvo-barangay-label-name::after {
+  content: " ▾";
+  color: #3f6b22; /* brand-800 */
+}
+
 .cvo-barangay-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
   border-left-color: rgb(15 23 42 / 0.92);
 }

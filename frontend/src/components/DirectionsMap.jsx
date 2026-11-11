@@ -38,6 +38,9 @@ export function DirectionsMap({ route, origin, destination }) {
       container: containerRef.current,
       style: OSM_STYLE,
       attributionControl: false,
+      // The contact section scrolls: wheel-zoom asks for ctrl (two fingers on
+      // touch) so the map never traps the page scroll.
+      cooperativeGestures: true,
     });
     mapRef.current = map;
     map.addControl(new NavigationControl({ showCompass: false }), "top-left");

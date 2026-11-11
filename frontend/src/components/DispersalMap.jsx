@@ -15,6 +15,7 @@ import {
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Icon } from "./Icons";
 import { InlineAlert } from "./InlineAlert";
+import { OSM_STYLE } from "../config/mapStyle";
 import { fetchOwnershipTrail } from "../lib/ownershipPath";
 import { colorFor, pinFeatures, spiderPositions, validCoordinates } from "../lib/mapPins";
 import { getErrorMessage } from "../api/client";
@@ -51,22 +52,6 @@ const DEFAULT_CENTER = [9.3638, 122.8022]; // [lat, lng] — same order as the p
 function fullscreenElement() {
   return document.fullscreenElement ?? document.webkitFullscreenElement ?? null;
 }
-
-/** Raster style with OSM tiles — no API key, same basemap as before. */
-const OSM_STYLE = {
-  version: 8,
-  sources: {
-    osm: {
-      type: "raster",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      maxzoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    },
-  },
-  layers: [{ id: "osm", type: "raster", source: "osm" }],
-};
 
 const RE_DISPERSAL_COLOR = "#2d4d19";
 
@@ -662,7 +647,10 @@ export function DispersalMap({
       },
     };
     onControlsReadyRef.current(api);
-  }, []);
+    // Re-deliver when the parent hands over a new callback (a parent that
+    // renders the map before wiring the callback would otherwise never
+    // receive the api).
+  }, [onControlsReady]);
 
   // The shared choropleth's map, adopted when renderChoropleth is used (the
   // date view): the owner keeps its lifecycle (controls, camera, removal);
@@ -716,6 +704,9 @@ export function DispersalMap({
       center: [centerTo[1], centerTo[0]],
       zoom: 12,
       attributionControl: false,
+      // Same scroll-trap protection as the shared choropleth: these bare maps
+      // sit inside modals (the picker) and scrolling dashboards.
+      cooperativeGestures: true,
     });
     mapRef.current = map;
     // Debug/support handle: lets a support session (or the browser check)
@@ -1568,7 +1559,12 @@ export function DispersalMap({
     const popup = new Popup({ offset: 12 }).addTo(map);
 
     const openPinPopup = (feature, lngLat) => {
-      const row = visible.find((candidate) => String(candidate.id) === String(feature.properties?.animal_id));
+      // Through the ref, not the closure: the popup looks up the rows as
+      // they are NOW, and the effect does not rebind (and so does not close
+      // an open popup) on a quiet refresh that brings the same animals.
+      const row = (visibleRef.current ?? []).find(
+        (candidate) => String(candidate.id) === String(feature.properties?.animal_id),
+      );
       if (!row) return;
       popup
         .setLngLat(lngLat)
@@ -1701,10 +1697,11 @@ export function DispersalMap({
       }
       popup.remove();
     };
-    // `visible` feeds the popup lookup; rebound with the flight state so the
-    // show/hide label follows the active trail.
+    // `visible` feeds the popup lookup through the ref; the effect keys on
+    // the animals' identity KEY, so a poll that answers with the same set
+    // rebinds nothing — and an open popup survives the refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, onPick, hasPins, visible, flightPathsOnly, showPins]);
+  }, [mapReady, onPick, hasPins, visibleKey, flightPathsOnly, showPins]);
 
   // Picker mode: keep exactly one marker on the selected spot.
   useEffect(() => {

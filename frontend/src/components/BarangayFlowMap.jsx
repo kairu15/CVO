@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Popup } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { flowArcFeatures } from "../lib/flowArcs";
+import { validCoordinate } from "../lib/flightPath";
 import {
   DIVERGING_STOPS,
   SEQUENTIAL_STOPS,
+  barangayLabelPoint,
   bubbleColor,
   bubbleRadius,
   buildChoropleth,
@@ -132,6 +134,16 @@ function rowFromFeature(feature) {
   return row ?? null;
 }
 
+/** True when two anchor style objects carry the same numbers. */
+function shallowEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every((key) => a[key] === b[key]);
+}
+
 export function BarangayFlowMap({
   rows = [],
   flows = [],
@@ -161,6 +173,9 @@ export function BarangayFlowMap({
   }, [boundaries, rows, metric, per1000]);
 
   // Bubble fallback data — only painted when the boundary asset is missing.
+  // Coordinates go through the shared validator: a row whose latitude arrived
+  // as undefined (a missing field, not a null) must not become a bubble at
+  // [undefined, undefined].
   const bubbleData = useMemo(() => {
     const key = metric;
     const values = rows.map((row) => metricValue(row, key, per1000));
@@ -171,8 +186,9 @@ export function BarangayFlowMap({
       collection: {
         type: "FeatureCollection",
         features: rows
-          .filter((row) => row.latitude !== null && row.longitude !== null)
-          .map((row) => {
+          .map((row) => ({ row, point: validCoordinate(row.latitude, row.longitude) }))
+          .filter(({ point }) => point !== null)
+          .map(({ row, point }) => {
             const value = metricValue(row, key, per1000);
 
             return {
@@ -183,7 +199,7 @@ export function BarangayFlowMap({
                 color: bubbleColor(value, max, key),
                 r: bubbleRadius(value, max),
               },
-              geometry: { type: "Point", coordinates: [row.longitude, row.latitude] },
+              geometry: { type: "Point", coordinates: [point.longitude, point.latitude] },
             };
           }),
       },
@@ -194,8 +210,9 @@ export function BarangayFlowMap({
     () =>
       new Map(
         rows
-          .filter((row) => row.latitude !== null && row.longitude !== null)
-          .map((row) => [row.barangay_id, { latitude: row.latitude, longitude: row.longitude }]),
+          .map((row) => ({ id: row.barangay_id, point: validCoordinate(row.latitude, row.longitude) }))
+          .filter(({ point }) => point !== null)
+          .map(({ id, point }) => [id, { latitude: point.latitude, longitude: point.longitude }]),
       ),
     [rows],
   );
@@ -207,10 +224,12 @@ export function BarangayFlowMap({
 
   // The shared choropleth owns the map; this page adds the FLOW layers on
   // it exactly once, at load — they must exist before the boundary layers
-  // insert themselves before "barangay-flow-casing".
-  function handleMapReady(map) {
-    mapRef.current = map;
-    popupRef.current = new Popup({ closeButton: false, offset: 10 });
+  // insert themselves before "barangay-flow-casing". Stable identity: the
+  // choropleth is memoised, and a fresh callback every render would defeat it.
+  const handleMapReady = useCallback(
+    (map) => {
+      mapRef.current = map;
+      popupRef.current = new Popup({ closeButton: false, offset: 10 });
 
     map.addSource(FLOW_SOURCE, { type: "geojson", data: flowData.arcs });
     map.addLayer({
@@ -250,8 +269,13 @@ export function BarangayFlowMap({
       },
     });
 
-    setMapReady(true);
-  }
+      setMapReady(true);
+    },
+    // The layers read flowData once at load; the live updates come from the
+    // setData effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   /** Dismiss the card (close button, Escape, or a click on empty map). */
   const clearSelection = useCallback(() => {
@@ -261,29 +285,44 @@ export function BarangayFlowMap({
 
   /**
    * A polygon click opens the card at the click point and selects the
-   * polygon. The feature id comes from the choropleth source's generateId,
-   * which is what the yellow fill's feature-state is keyed on.
+   * polygon. The feature id is the STABLE index buildChoropleth assigned, so
+   * the yellow feature-state survives fresh snapshots.
+   *
+   * A SEARCH pick arrives with a null event (no click point): the card then
+   * anchors to the barangay's label point — the visual centre inside the
+   * polygon — and the selection rides the same path.
    */
   const handleBarangayClick = useCallback(
     (name, event) => {
-      const feature = event?.features?.[0];
-      if (!feature || !event?.lngLat) return;
+      if (!name) return;
 
-      let row = rowFromFeature(feature);
+      let lngLat = event?.lngLat ? [event.lngLat.lng, event.lngLat.lat] : null;
+      let row = event?.features?.[0] ? rowFromFeature(event.features[0]) : null;
+
       row ??= rows.find(
         (candidate) =>
           normalizeBarangayName(candidate.name) === normalizeBarangayName(name),
       );
-      if (!row) return;
+
+      if (!lngLat) {
+        const feature = boundaries?.collection?.features?.find(
+          (candidate) =>
+            normalizeBarangayName(candidate.properties?.name) === normalizeBarangayName(name),
+        );
+        const point = feature ? barangayLabelPoint(feature) : null;
+        if (point) lngLat = point;
+      }
+
+      if (!row || !lngLat) return;
 
       setSelection({
         barangayId: row.barangay_id,
         name: row.name,
-        lngLat: [event.lngLat.lng, event.lngLat.lat],
-        featureId: feature.id ?? null,
+        lngLat,
+        featureId: event?.features?.[0]?.id ?? null,
       });
     },
-    [rows],
+    [rows, boundaries],
   );
 
   /**
@@ -310,14 +349,18 @@ export function BarangayFlowMap({
       const height = container.clientHeight ?? 0;
 
       if (width > 0 && width < SHEET_MAX_WIDTH) {
-        setAnchor({
-          mode: "sheet",
-          style: {
+        setAnchor((previous) => {
+          const style = {
             left: 8,
             right: 8,
             bottom: 8,
             height: Math.max(160, Math.round(height * 0.6)),
-          },
+          };
+          // Same values → same object: a move-frame during a pan must not
+          // re-render the whole choropleth subtree sixty times a second.
+          return shallowEqual(previous?.style, style) && previous?.mode === "sheet"
+            ? previous
+            : { mode: "sheet", style };
         });
         return;
       }
@@ -332,14 +375,16 @@ export function BarangayFlowMap({
         Math.max(CARD_GAP, height - 260),
       );
 
-      setAnchor({
-        mode: "card",
-        style: {
+      setAnchor((previous) => {
+        const style = {
           left,
           top,
           width: CARD_WIDTH,
           maxHeight: Math.max(180, height - top - CARD_GAP),
-        },
+        };
+        return shallowEqual(previous?.style, style) && previous?.mode === "card"
+          ? previous
+          : { mode: "card", style };
       });
     };
 
@@ -408,11 +453,22 @@ export function BarangayFlowMap({
   }, [mapReady]);
 
   // The bubble fallback: added UNDER the flow lines when the boundary asset
-  // is missing, with its own hover tooltip and click selection.
+  // is missing, with its own hover tooltip and click selection — and taken
+  // back DOWN if the boundaries arrive late (a slow fetch flipping
+  // withBoundaries), so the stale bubbles never linger under the fills.
   useEffect(() => {
-    if (!mapReady || withBoundaries) return;
     const map = mapRef.current;
-    if (!map) return;
+    if (!mapReady || !map) return;
+
+    if (withBoundaries) {
+      try {
+        if (map.getLayer(BUBBLE_LAYER)) map.removeLayer(BUBBLE_LAYER);
+        if (map.getSource(BUBBLE_SOURCE)) map.removeSource(BUBBLE_SOURCE);
+      } catch {
+        // Map already removed — nothing left to tear down.
+      }
+      return;
+    }
 
     if (!map.getSource(BUBBLE_SOURCE)) {
       const insertBefore = map.getLayer("barangay-flow-casing")
@@ -581,6 +637,56 @@ export function BarangayFlowMap({
     };
   }, [withBoundaries, choropleth, bubbleData, metric, per1000]);
 
+  // The cursor-side metric label. Stable identity (useCallback): the
+  // choropleth is memoised, and a fresh closure every render would defeat it.
+  // Parsing goes through rowFromFeature — a malformed row string must not
+  // throw inside a hover handler.
+  const tooltipHtml = useCallback(
+    (properties) =>
+      barangayTooltipHtml(
+        rowFromFeature({ properties }),
+        properties?.name,
+        { metric, per1000, metricLabel, minRateAnimals },
+      ),
+    [metric, per1000, metricLabel, minRateAnimals],
+  );
+
+  const legendNotesNode = useMemo(
+    () => (
+      <>
+        {!withBoundaries && (
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">Bubble size</span>
+            <span>dispersed volume (area)</span>
+            <span className="flex items-end gap-1" aria-hidden="true">
+              {legend.sizeSamples.map((sample) => (
+                <span
+                  key={sample.value}
+                  className="inline-block rounded-full bg-brand-700/80"
+                  style={{ width: sample.size, height: sample.size }}
+                  title={`${sample.value}`}
+                />
+              ))}
+            </span>
+          </div>
+        )}
+        {metric === "redispersal_rate" && (
+          <span className="text-slate-500">Greyed: not ranked (n &lt; {minRateAnimals})</span>
+        )}
+        {withBoundaries && metric !== "redispersal_rate" && choropleth?.max === 0 && (
+          <span className="text-slate-500">Greyed: no dispersals recorded in this period</span>
+        )}
+        {!withBoundaries && metric !== "redispersal_rate" && bubbleData.max === 0 && (
+          <span className="text-slate-500">Greyed: no population recorded</span>
+        )}
+        {includeCvo && (
+          <span className="text-slate-500">CVO → barangay lines included via the source toggle</span>
+        )}
+      </>
+    ),
+    [withBoundaries, metric, minRateAnimals, includeCvo, legend, choropleth, bubbleData],
+  );
+
   return (
     <div className="relative">
       <BarangayChoropleth
@@ -588,6 +694,7 @@ export function BarangayFlowMap({
         choropleth={choropleth}
         onMapReady={handleMapReady}
         onBarangayClick={handleBarangayClick}
+        selectedName={selection?.name ?? null}
         selectedFeatureId={selection?.featureId ?? null}
         beforeLayerId="barangay-flow-casing"
         // A flow-line click belongs to the line's tooltip, not the barangay
@@ -598,53 +705,16 @@ export function BarangayFlowMap({
         // (no counts here — the fill colour carries this page's metric).
         showLabels
         height="h-[70vh] min-h-[520px]"
+        // The report scrolls: the wheel guard keeps the page scroll free
+        // (ctrl+scroll zooms, two fingers on touch).
+        cooperativeGestures
         legend={{
           stops: legend.stops,
           minLabel: legend.minLabel,
           maxLabel: legend.maxLabel,
         }}
-        legendNotes={
-          <>
-            {!withBoundaries && (
-              <div className="flex items-center gap-2">
-                <span className="font-semibold">Bubble size</span>
-                <span>dispersed volume (area)</span>
-                <span className="flex items-end gap-1" aria-hidden="true">
-                  {legend.sizeSamples.map((sample) => (
-                    <span
-                      key={sample.value}
-                      className="inline-block rounded-full bg-brand-700/80"
-                      style={{ width: sample.size, height: sample.size }}
-                      title={`${sample.value}`}
-                    />
-                  ))}
-                </span>
-              </div>
-            )}
-            {metric === "redispersal_rate" && (
-              <span className="text-slate-500">Greyed: not ranked (n &lt; {minRateAnimals})</span>
-            )}
-            {withBoundaries && metric !== "redispersal_rate" && choropleth?.max === 0 && (
-              <span className="text-slate-500">Greyed: no dispersals recorded in this period</span>
-            )}
-            {!withBoundaries && metric !== "redispersal_rate" && bubbleData.max === 0 && (
-              <span className="text-slate-500">Greyed: no population recorded</span>
-            )}
-            {includeCvo && (
-              <span className="text-slate-500">CVO → barangay lines included via the source toggle</span>
-            )}
-          </>
-        }
-        tooltipHtml={(properties) => {
-          const row = properties?.row;
-          const parsed = typeof row === "string" ? JSON.parse(row) : row;
-          return barangayTooltipHtml(parsed, properties?.name, {
-            metric,
-            per1000,
-            metricLabel,
-            minRateAnimals,
-          });
-        }}
+        legendNotes={legendNotesNode}
+        tooltipHtml={tooltipHtml}
       />
 
       {selection && anchor && (

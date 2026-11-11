@@ -41,6 +41,19 @@ import { useOnlineStatus } from "../hooks/useOnlineStatus";
 // The map bundle (MapLibre GL) is heavy — load it only when the tab opens.
 const DateSelector = lazy(() => import("../components/DateSelector"));
 
+// Static choropleth props, hoisted so the memoised BarangayChoropleth keeps
+// its identity across the page's polls.
+const MAP_CLICK_THROUGH = [
+  "cvo-date-pins-clusters",
+  "cvo-date-pins-point",
+  "cvo-date-pins-spider-point",
+];
+const MAP_LEGEND = {
+  stops: ["#eaf3dd", "#c7e2a6", "#8bc34a", "#558b2f", "#33691e"],
+  minLabel: "fewer animals",
+  maxLabel: "more",
+};
+
 const MODES = [
   {
     key: "on",
@@ -117,6 +130,13 @@ export default function DispersalMapPage({ roleKey }) {
   // (never "today" — today may be empty). It arrives with the dates list.
   const selectedDate = dateParam || dates[0]?.date || null;
 
+  // The dates list itself never depends on the chosen date — only the
+  // "follow new records" decision below does. Reading the param through a
+  // ref keeps loadDates stable, so flipping ?date= refetches ONLY the
+  // snapshot, not the whole 60-row dates list alongside it.
+  const dateParamRef = useRef(dateParam);
+  dateParamRef.current = dateParam;
+
   const loadDates = useCallback(
     async (quiet = false) => {
       if (!quiet) setDatesError(null);
@@ -129,8 +149,9 @@ export default function DispersalMapPage({ roleKey }) {
         const previousLatest = latestKnownRef.current;
         if (latest !== null) {
           if (previousLatest !== null && latest > previousLatest) {
-            const selected = dateParam || previousLatest;
-            if (!dateParam || selected >= previousLatest) {
+            const currentParam = dateParamRef.current;
+            const selected = currentParam || previousLatest;
+            if (!currentParam || selected >= previousLatest) {
               // The user is sitting on the latest date (or none): follow the
               // new records instead of leaving them behind.
               latestKnownRef.current = latest;
@@ -148,7 +169,7 @@ export default function DispersalMapPage({ roleKey }) {
         if (!quiet) setDatesError(getErrorMessage(err));
       }
     },
-    [dateParam, updateParams],
+    [updateParams],
   );
 
   const loadSnapshot = useCallback(
@@ -473,13 +494,13 @@ export default function DispersalMapPage({ roleKey }) {
                       choropleth={choropleth}
                       height="h-[72vh] min-h-[520px]"
                       beforeLayerId="cvo-date-pins-clusters"
+                      // The map sits in a scrolling dashboard: wheel-zoom asks
+                      // for ctrl (two fingers on touch) so the map never
+                      // traps the page scroll.
+                      cooperativeGestures
                       // Pin clicks (and hovers) belong to the pins: without
                       // this gate the polygon underneath would also select.
-                      clickThroughLayers={[
-                        "cvo-date-pins-clusters",
-                        "cvo-date-pins-point",
-                        "cvo-date-pins-spider-point",
-                      ]}
+                      clickThroughLayers={MAP_CLICK_THROUGH}
                       onMapReady={onMapReady}
                       selectedName={barangayFilter || null}
                       selectedFeatureId={selectedFeatureId}
@@ -496,11 +517,7 @@ export default function DispersalMapPage({ roleKey }) {
                       ariaLabel={`Map of Bayawan City's barangays with the animals dispersed on ${
                         selectedDate ? formatDay(selectedDate) : "no date"
                       }.`}
-                      legend={{
-                        stops: ["#eaf3dd", "#c7e2a6", "#8bc34a", "#558b2f", "#33691e"],
-                        minLabel: "fewer animals",
-                        maxLabel: "more",
-                      }}
+                      legend={MAP_LEGEND}
                       legendNotes={
                         <>
                           {skippedNoLocation > 0 && (

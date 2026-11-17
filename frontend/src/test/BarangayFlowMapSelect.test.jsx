@@ -121,6 +121,7 @@ vi.mock("maplibre-gl", () => {
     Popup: FakePopup,
     NavigationControl: class {},
     AttributionControl: class {},
+    setWorkerUrl: () => {},
   };
 });
 

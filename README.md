@@ -175,9 +175,8 @@ Real `.env*` files are gitignored; only the `*.example` files are committed. Nev
 cp .env.production.example .env.production
 
 # 1. Fill in DB_PASSWORD / DB_ROOT_PASSWORD / APP_URL / SANCTUM_STATEFUL_DOMAINS.
-# 2. Generate and paste a key:
-php artisan key:generate --show                 # with local PHP, or:
-docker compose --env-file .env.production -f docker-compose.prod.yml run --rm backend php artisan key:generate --show
+# 2. Generate and paste a key (see READMEProduction.md §4):
+printf 'base64:%s\n' "$(openssl rand -base64 32)"   # or, with local PHP: php artisan key:generate --show
 
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```

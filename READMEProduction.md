@@ -57,14 +57,15 @@ docker build -f frontend/Dockerfile .
 
 `backend/docker/entrypoint.sh` is idempotent and runs in this order:
 
-1. Refuses to boot if `APP_KEY` is empty (production).
-2. Waits for MySQL over a TCP probe (`DB_HOST:DB_PORT`).
-3. `php artisan storage:link`
-4. `php artisan migrate --force` — migrations always run automatically.
-5. `php artisan db:seed --force` **only** when `RUN_SEEDERS=true` (off by default).
-6. With `APP_ENV=production`: caches config, routes and views.
-7. Rebinds nginx to `$PORT` when a platform injects one (Render sets `10000`); otherwise it stays on `8080`.
-8. Starts supervisord (nginx + php-fpm).
+1. Creates `backend/.env` from `.env.docker.example` — **development only**; production gets real environment variables and no `.env`.
+2. Refuses to boot if `APP_KEY` is empty (production); generates one in development.
+3. Waits for MySQL over a TCP probe (`DB_HOST:DB_PORT`).
+4. `php artisan storage:link`
+5. `php artisan migrate --force` — migrations always run automatically.
+6. `php artisan db:seed --force` **only** when `RUN_SEEDERS=true` (off by default).
+7. With `APP_ENV=production`: caches config, routes and views (development clears them instead).
+8. Rebinds nginx to `$PORT` when a platform injects one (Render sets `10000`); otherwise it stays on `8080`.
+9. Starts supervisord (nginx + php-fpm).
 
 ---
 
@@ -76,13 +77,13 @@ docker build -f frontend/Dockerfile .
 - Outbound HTTPS for pulling base images and (on first build) package registries.
 - For a real deployment: a TLS terminator in front of the frontend port (Caddy, nginx, a cloud load balancer, or your PaaS's edge).
 
-Default ports (overridable in `.env.production`):
+Default ports — `WEB_PORT` is the only one the production file reads:
 
-| Variable      | Default | Purpose                              |
-|---------------|---------|--------------------------------------|
-| `WEB_PORT`    | `8080`  | The single public entry point        |
-| `API_PORT`    | `8005`  | dev only (not published in prod)     |
-| `DB_HOST_PORT`| `3307`  | dev only (not published in prod)     |
+| Variable      | Default | Where it applies                                         |
+|---------------|---------|----------------------------------------------------------|
+| `WEB_PORT`    | `8080`  | `.env.production` — the single public entry point         |
+| `API_PORT`    | `8005`  | `docker-compose.yml` only (`make up`); ignored in prod    |
+| `DB_HOST_PORT`| `3307`  | `docker-compose.yml` only (`make up`); ignored in prod    |
 
 ---
 
@@ -137,8 +138,8 @@ SANCTUM_STATEFUL_DOMAINS=cvo.example.gov.ph
 
 # --- Cookies / CORS ---
 SESSION_DOMAIN=
-SESSION_SECURE_COOKIE=true
-CORS_ALLOWED_ORIGINS=https://cvo.example.gov.ph
+SESSION_SECURE_COOKIE=false   # set true once served over HTTPS
+CORS_ALLOWED_ORIGINS=
 
 # --- Seeding (keep false in production) ---
 RUN_SEEDERS=false
@@ -155,18 +156,22 @@ VITE_API_URL=
 Production **never** generates a key automatically. Any one of these works:
 
 ```bash
-# With local PHP
+# 1. No PHP, no Docker image needed (openssl ships with Git Bash, macOS, Linux).
+#    Equivalent to `php artisan key:generate --show`: base64 of 32 random bytes.
+printf 'base64:%s\n' "$(openssl rand -base64 32)"
+
+# 2. With local PHP
 php artisan key:generate --show
 
-# Makefile (dev stack must be running)
+# 3. Makefile (dev stack must be running)
 make key
-
-# From the production image itself (no local PHP required)
-docker compose --env-file .env.production -f docker-compose.prod.yml \
-  run --rm --no-deps backend php artisan key:generate --show
 ```
 
-Paste the whole `base64:...` value into `APP_KEY` in `.env.production`. Rotating it invalidates all existing sessions and encrypted attributes — treat it as a secret and store it in your secret manager.
+Paste the whole `base64:...` value into `APP_KEY` in `.env.production`.
+
+> Compose interpolates `${APP_KEY:?...}` for **every** command, so `backend` cannot start while `APP_KEY` is empty — including a `docker compose run` meant to generate it. If you want to use the image itself (`make prod-key`), put a throwaway value in `.env.production` first (`APP_KEY=base64:placeholder`), run the command, then replace it with the printed key.
+
+Rotating the key invalidates all existing sessions and encrypted attributes — treat it as a secret and store it in your secret manager.
 
 ---
 
@@ -272,15 +277,20 @@ Render has **no managed MySQL**, and the backend image ships `pdo_mysql` but not
 
 ### Required dashboard values (`sync: false`)
 
-Set these in the Render dashboard — the blueprint deliberately leaves them unset:
+Set these in the Render dashboard — the blueprint deliberately leaves every hostname-dependent value unset (`sync: false`), so nothing is hard-coded to someone else's service URLs:
 
 | Service | Key | Value |
 |---------|-----|-------|
-| `cvo-backend` | `APP_KEY` | output of `php artisan key:generate --show` |
+| `cvo-backend` | `APP_KEY` | output of §4 |
 | `cvo-backend` | `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | your external MySQL |
-| `cvo-frontend` | `BACKEND_UPSTREAM` | the backend's public origin, e.g. `https://cvotestfinal.onrender.com` |
+| `cvo-backend` | `APP_URL` | the **frontend** origin, e.g. `https://cvo-frontend.onrender.com` |
+| `cvo-backend` | `SANCTUM_STATEFUL_DOMAINS` | the frontend **host**, no scheme: `cvo-frontend.onrender.com` |
+| `cvo-backend` | `FRONTEND_URL` | the frontend origin (password-reset / account-setup links) |
+| `cvo-frontend` | `BACKEND_UPSTREAM` | the backend's public origin, e.g. `https://cvo-backend.onrender.com` |
 
-Everything else is already set in the blueprint: `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL` = frontend origin, `SANCTUM_STATEFUL_DOMAINS` = frontend host, `SESSION_SECURE_COOKIE=true`, `SESSION_SAME_SITE=lax`, `CACHE_STORE=file`, `RUN_SEEDERS=false`, `VITE_API_URL=""`, `FRONTEND_URL` = frontend origin.
+Use the hostnames Render actually assigned your two services (the dashboard shows them) — the `cvo-frontend`/`cvo-backend` names above are only the blueprint's defaults. `APP_URL`, `SANCTUM_STATEFUL_DOMAINS` and `FRONTEND_URL` must all name the **frontend**; only `BACKEND_UPSTREAM` names the backend, because the proxy is what calls it.
+
+Everything else is already set in the blueprint: `APP_ENV=production`, `APP_DEBUG=false`, `SESSION_DRIVER=database`, `SESSION_SECURE_COOKIE=true`, `SESSION_SAME_SITE=lax`, `CACHE_STORE=file`, `RUN_SEEDERS=false`, `VITE_API_URL=""`, `CORS_ALLOWED_ORIGINS=""`.
 
 ### Deploy
 
@@ -428,8 +438,7 @@ Because migrations run in the entrypoint with `--force`, a bad migration fails f
 ```bash
 # First deploy
 cp .env.production.example .env.production   # then edit
-docker compose --env-file .env.production -f docker-compose.prod.yml run --rm --no-deps \
-  backend php artisan key:generate --show    # paste into APP_KEY
+printf 'base64:%s\n' "$(openssl rand -base64 32)"   # paste into APP_KEY
 make prod-up
 
 # Everyday

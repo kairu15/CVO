@@ -262,10 +262,11 @@ describe("DispersalMapPage mount (real map tree)", () => {
       expect(map.getLayer("cvo-flight-casing")).toBeTruthy();
     }, { timeout: 8000 });
 
-    // The records panel replaces the pin layers: NO pin source or layers.
-    expect(map.getSource("cvo-date-pins")).toBeFalsy();
-    expect(map.getLayer("cvo-date-pins-clusters")).toBeFalsy();
-    expect(map.getLayer("cvo-date-pins-point")).toBeFalsy();
+    // The Admin Map now draws household clusters by default; the records
+    // inspector is a page-level dock and does not replace the pin layer.
+    expect(map.getSource("cvo-date-pins")).toBeTruthy();
+    expect(map.getLayer("cvo-date-pins-clusters")).toBeTruthy();
+    expect(map.getLayer("cvo-date-pins-point")).toBeTruthy();
 
     // The boundary layers exist alongside — one map, not two.
     expect(maps).toHaveLength(1);

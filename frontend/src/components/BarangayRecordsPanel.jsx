@@ -2,33 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icons";
 
 /**
- * The barangay records panel: a floating information window on the Admin Map
- * that opens when the admin clicks a barangay polygon.
+ * The barangay inspector: a DOCKED side panel on the Admin Map, not a window
+ * floating over it. The map keeps the width the inspector does not need, and
+ * on a phone the inspector stacks below the map.
  *
- * It is a WINDOW, not a dock: it floats over the map clear of the zoom and
- * fullscreen controls (default: below the fullscreen button, top-right), it
- * can be dragged by its header anywhere within the map that suits the admin
- * better, and it stays inside the map — a drag can never park it where the
- * header would be unreachable. There is ONE window: selecting another
- * barangay updates it in place, never a second overlapping one.
- *
- * Header: the barangay's name, its headline counts (total / active /
- * re-dispersed), an animal-type summary, a search field and the close
- * button. Body: one card per dispersed animal in a responsive grid — five
- * cards per row on desktop, three on tablet, one or two on mobile — that
- * scrolls when a barangay holds many animals, each card with its own
- * working "Show flight path" and "Re-disperse" actions.
- *
- * The animals come straight from the dated snapshot the map already renders
- * (animal-keyed pins), so the cards, the counts and the map can never
- * disagree. No records are duplicated: one card per animal.
+ * It opens when a barangay polygon or a household pin is selected. Header:
+ * barangay name, headline counts, animal-type summary, search and close.
+ * Body: one card per dispersed animal, each with its own flight-path and
+ * re-disperse actions. The animals come straight from the dated snapshot the
+ * map already renders, so the cards and the map can never disagree.
  */
-
-/** Keep at least this much of the panel inside the map while dragging. */
-const MIN_VISIBLE = 96;
-/** Default placement: clear of the top-right fullscreen control. */
-const DEFAULT_TOP = 56;
-const DEFAULT_EDGE = 12;
 
 const LOCATION_SOURCE_LABELS = {
   device_gps: "GPS pin",
@@ -55,128 +38,62 @@ const STATUS_STYLES = {
  * @param {string} props.barangay display name of the selected barangay
  * @param {Array<object>} props.animals the barangay's animal records (the
  *   dated snapshot's pins, geotag and owner fields included)
- * @param {number|string|null} [props.activeFlightAnimalId] the animal whose
- *   flight path is currently on the map (flips the card's button label)
+ * @param {number|string|null} [props.focusOwnerId] narrow to one household
+ * @param {string} [props.focusOwnerName] household label for the focus chip
+ * @param {() => void} [props.onClearFocus]
+ * @param {number|string|null} [props.activeFlightAnimalId]
  * @param {(animalId: number|string) => void} [props.onShowFlightPath]
  * @param {() => void} [props.onHideFlightPath]
- * @param {(pin: object) => void} [props.onRedisperse] opens the re-dispersal
- *   workflow for the animal's household
+ * @param {(pin: object) => void} [props.onRedisperse]
  * @param {() => void} props.onClose
+ * @param {string} [props.className] layout classes supplied by the page
  */
 export function BarangayRecordsPanel({
   barangay,
   animals = [],
+  focusOwnerId = null,
+  focusOwnerName = "",
+  onClearFocus = null,
   activeFlightAnimalId = null,
   onShowFlightPath = null,
   onHideFlightPath = null,
   onRedisperse = null,
   onClose,
+  className = "",
 }) {
-  const [visible, setVisible] = useState(false);
-  const [leaving, setLeaving] = useState(false);
   const [search, setSearch] = useState("");
-  const [position, setPosition] = useState(null); // {left, top} once dragged
-  const [dragging, setDragging] = useState(false);
-  const panelRef = useRef(null);
-  const closeTimerRef = useRef(null);
-  const dragRef = useRef(null);
-  // Latest leaving flag, read by the Escape handler below — its empty
-  // dependency array must not capture the first render's `leaving` (which
-  // would let a second Escape during the leave animation schedule a second
-  // close timer).
-  const leavingRef = useRef(false);
-  leavingRef.current = leaving;
+  const closeRef = useRef(null);
 
-  // Mount → visible for the open transition; leaving fades before unmount.
+  // A docked inspector is a real region of the page: move focus to its close
+  // control when it opens, and let Escape close it.
   useEffect(() => {
-    const frame = requestAnimationFrame(() => setVisible(true));
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => () => clearTimeout(closeTimerRef.current), []);
-
-  function requestClose() {
-    if (leaving) return;
-    setLeaving(true);
-    setVisible(false);
-    closeTimerRef.current = setTimeout(() => onClose?.(), 200);
-  }
-
-  /* --------------------------- drag handling --------------------------- */
-
-  // Drag from the header (never from its buttons/inputs). The window is
-  // clamped to the map: at least MIN_VISIBLE px of it always stays inside,
-  // so it can be dropped anywhere but never lost off the map.
-  function startDrag(event) {
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    if (event.target.closest("button, input, a, select, textarea")) return;
-    const panel = panelRef.current;
-    const shell = panel?.parentElement;
-    if (!panel || !shell) return;
-    const panelRect = panel.getBoundingClientRect();
-    const shellRect = shell.getBoundingClientRect();
-    dragRef.current = {
-      pointerId: event.pointerId,
-      offsetX: event.clientX - panelRect.left,
-      offsetY: event.clientY - panelRect.top,
-      shellLeft: shellRect.left,
-      shellTop: shellRect.top,
-      shellWidth: shellRect.width,
-      shellHeight: shellRect.height,
-      panelWidth: panelRect.width,
-      panelHeight: panelRect.height,
-    };
-    setDragging(true);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }
-
-  function moveDrag(event) {
-    const drag = dragRef.current;
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    const left = Math.min(
-      drag.shellWidth - MIN_VISIBLE,
-      Math.max(MIN_VISIBLE - drag.panelWidth, event.clientX - drag.offsetX - drag.shellLeft),
-    );
-    const top = Math.min(
-      Math.max(0, drag.shellHeight - 48),
-      Math.max(0, event.clientY - drag.offsetY - drag.shellTop),
-    );
-    setPosition({ left: Math.round(left), top: Math.round(top) });
-  }
-
-  function endDrag(event) {
-    if (!dragRef.current || event.pointerId !== dragRef.current.pointerId) return;
-    dragRef.current = null;
-    setDragging(false);
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-  }
-
-  // Escape closes the panel.
-  useEffect(() => {
+    closeRef.current?.focus?.();
     const onKeyDown = (event) => {
-      if (event.key !== "Escape") return;
-      if (leavingRef.current) return;
-      setLeaving(true);
-      setVisible(false);
-      closeTimerRef.current = setTimeout(() => onClose?.(), 200);
+      if (event.key === "Escape") onClose?.();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onClose is idempotent (it clears the URL param)
-  }, []);
+  }, [onClose]);
+
+  const scopedAnimals = useMemo(() => {
+    if (focusOwnerId === null || focusOwnerId === undefined) return animals;
+    return animals.filter(
+      (animal) => String(animal.owner?.id) === String(focusOwnerId),
+    );
+  }, [animals, focusOwnerId]);
 
   const counts = useMemo(() => {
-    const active = animals.filter((animal) => animal.animal_status === "active").length;
-    const redispersed = animals.filter(
+    const active = scopedAnimals.filter((animal) => animal.animal_status === "active").length;
+    const redispersed = scopedAnimals.filter(
       (animal) => animal.event_type === "re_dispersal" || animal.event_type === "pass_on",
     ).length;
     const types = new Map();
-    for (const animal of animals) {
+    for (const animal of scopedAnimals) {
       const type = animal.animal_type ?? "Unspecified";
       types.set(type, (types.get(type) ?? 0) + 1);
     }
     return {
-      total: animals.length,
+      total: scopedAnimals.length,
       active,
       redispersed,
       types: [...types.entries()]
@@ -184,67 +101,64 @@ export function BarangayRecordsPanel({
         .map(([type, count]) => `${type} × ${count}`)
         .join(" · "),
     };
-  }, [animals]);
+  }, [scopedAnimals]);
 
   const visibleAnimals = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    if (!needle) return animals;
-    return animals.filter((animal) =>
+    if (!needle) return scopedAnimals;
+    return scopedAnimals.filter((animal) =>
       [animal.ear_tag_number, animal.animal_type, animal.owner?.label, animal.event_type]
         .filter(Boolean)
         .some((field) => String(field).toLowerCase().includes(needle)),
     );
-  }, [animals, search]);
-
-  // Un-dragged: float below the fullscreen control, top-right of the map.
-  // After a drag: wherever the admin dropped it (clamped to the map).
-  const placement = position
-    ? { left: position.left, top: position.top, right: "auto", bottom: "auto" }
-    : { top: DEFAULT_TOP, right: DEFAULT_EDGE, left: "auto", bottom: "auto" };
+  }, [scopedAnimals, search]);
 
   return (
-    <div
-      ref={panelRef}
+    <aside
       role="dialog"
       aria-modal="false"
       aria-label={`Animal dispersal records of barangay ${barangay}`}
       data-testid="barangay-records-panel"
-      style={{ ...placement, transition: dragging ? "none" : undefined }}
-      className={`absolute z-[35] flex max-h-[calc(100%-4.5rem)] w-[min(62rem,calc(100%-1.5rem))] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel dark:border-slate-700 dark:bg-slate-900 ${
-        dragging ? "" : "transition-opacity duration-200"
-      } ${visible && !leaving ? "opacity-100" : "opacity-0"}`}
+      className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel dark:border-slate-700 dark:bg-slate-900 ${className}`}
     >
       {/* ------------------------------------------------------- Header */}
-      <div
-        onPointerDown={startDrag}
-        onPointerMove={moveDrag}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        className={`flex touch-none select-none items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-brand-600 to-brand-500 px-4 py-3 dark:border-slate-700 ${
-          dragging ? "cursor-grabbing" : "cursor-grab"
-        }`}
-        title="Drag to move this window"
-      >
+      <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-brand-600 to-brand-500 px-4 py-3 dark:border-slate-700">
         <div className="min-w-0">
           <p className="eyebrow !text-brand-100">Barangay records</p>
           <h2 className="truncate font-display text-base font-bold text-white sm:text-lg">
             Barangay: {barangay}
           </h2>
           <p className="mt-0.5 text-[11px] font-medium text-brand-50">
-            Total animals: {counts.total} · Active: {counts.active} ·
-            Re-dispersed: {counts.redispersed}
+            Total animals: {counts.total} · Active: {counts.active} · Re-dispersed:{" "}
+            {counts.redispersed}
             {counts.types ? ` · ${counts.types}` : ""}
           </p>
         </div>
         <button
+          ref={closeRef}
           type="button"
-          onClick={requestClose}
+          onClick={onClose}
           aria-label="Close barangay records panel"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-pill bg-white/15 text-white transition hover:bg-white/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-pill bg-white/15 text-white transition hover:bg-white/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           <Icon name="close" className="h-4 w-4" />
         </button>
       </div>
+
+      {focusOwnerId !== null && focusOwnerId !== undefined && (
+        <div className="flex items-center justify-between gap-2 border-b border-brand-100 bg-brand-50 px-4 py-2 text-[11px] font-semibold text-brand-800 dark:border-slate-700 dark:bg-slate-800 dark:text-brand-200">
+          <span className="truncate">Household: {focusOwnerName || `#${focusOwnerId}`}</span>
+          {onClearFocus && (
+            <button
+              type="button"
+              onClick={onClearFocus}
+              className="shrink-0 rounded-pill px-2 py-1 underline hover:bg-brand-100 dark:hover:bg-slate-700"
+            >
+              Show barangay
+            </button>
+          )}
+        </div>
+      )}
 
       {/* -------------------------------------------------------- Search */}
       <div className="border-b border-slate-100 px-4 py-2.5 dark:border-slate-700">
@@ -255,7 +169,7 @@ export function BarangayRecordsPanel({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Find by ear tag, animal type, record name…"
-            className="field !py-1.5 text-xs"
+            className="field !py-2 text-xs"
           />
         </label>
       </div>
@@ -269,7 +183,7 @@ export function BarangayRecordsPanel({
               : "No animals match that search."}
           </p>
         ) : (
-          <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+          <ul className="grid grid-cols-1 gap-2.5">
             {visibleAnimals.map((animal) => {
               const flightActive =
                 activeFlightAnimalId !== null &&
@@ -281,7 +195,7 @@ export function BarangayRecordsPanel({
               const coords =
                 animal.latitude !== null && animal.longitude !== null
                   ? animal.approximate
-                    ? `Barangay centre`
+                    ? "Barangay centre"
                     : `${animal.latitude.toFixed(5)}, ${animal.longitude.toFixed(5)}`
                   : null;
 
@@ -364,7 +278,6 @@ export function BarangayRecordsPanel({
                     </div>
                   </dl>
 
-                  {/* Actions — independent per card. */}
                   <div className="mt-3 flex gap-1.5">
                     <button
                       type="button"
@@ -398,7 +311,7 @@ export function BarangayRecordsPanel({
           </ul>
         )}
       </div>
-    </div>
+    </aside>
   );
 }
 

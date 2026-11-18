@@ -28,6 +28,11 @@ export const mapApi = {
    * scoped }. `date` (Y-m-d) absent = an empty snapshot; `mode` is "on"
    * (that day's events) or "as_of" (state at the end of that day).
    */
-  pins: async ({ date, mode = "on", signal } = {}) =>
-    unwrap(await api.get("/api/v1/map/pins", { params: { date, mode }, signal })),
+  pins: async ({ date, mode = "on", animalType, signal } = {}) =>
+    unwrap(
+      await api.get("/api/v1/map/pins", {
+        params: { date, mode, animal_type: animalType || undefined },
+        signal,
+      }),
+    ),
 };

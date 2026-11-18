@@ -247,13 +247,13 @@ export const AUTO_REFRESH_INTERVAL = 30_000;
  * loud, first/mutation refresh). Polling pauses while the tab is hidden, and
  * `load` identity changes (filter/search edits) restart the timer.
  */
-export function useAutoRefresh(load, { enabled = true } = {}) {
+export function useAutoRefresh(load, { enabled = true, interval = AUTO_REFRESH_INTERVAL } = {}) {
   useEffect(() => {
     if (!enabled) return undefined;
 
     const intervalId = setInterval(() => {
       if (document.visibilityState === "visible") load(true);
-    }, AUTO_REFRESH_INTERVAL);
+    }, interval);
 
     const onVisible = () => {
       if (document.visibilityState === "visible") load(true);
@@ -264,6 +264,6 @@ export function useAutoRefresh(load, { enabled = true } = {}) {
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [load, enabled]);
+  }, [load, enabled, interval]);
 }
 

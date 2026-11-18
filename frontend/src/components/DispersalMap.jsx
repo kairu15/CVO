@@ -257,6 +257,10 @@ function ensurePinLayers(map) {
     cluster: true,
     clusterRadius: 44,
     clusterMaxZoom: 15,
+    // Household pins stand for several animals: the badge must count ANIMALS,
+    // not features. Animal pins carry animal_count = 1, so the same expression
+    // keeps the date view's badge honest too.
+    clusterProperties: { animals: ["+", ["get", "animal_count"]] },
   });
   map.addSource(SPIDER_SOURCE, {
     type: "geojson",
@@ -273,7 +277,7 @@ function ensurePinLayers(map) {
       "circle-stroke-color": "#ffffff",
       "circle-stroke-width": 2,
       "circle-opacity": 0.9,
-      "circle-radius": ["step", ["get", "point_count"], 13, 5, 17, 15, 22],
+      "circle-radius": ["step", ["get", "animals"], 13, 5, 17, 15, 22],
     },
   });
   map.addLayer({
@@ -282,7 +286,7 @@ function ensurePinLayers(map) {
     source: PIN_SOURCE,
     filter: ["has", "point_count"],
     layout: {
-      "text-field": ["get", "point_count_abbreviated"],
+      "text-field": ["to-string", ["get", "animals"]],
       "text-size": 11,
       "text-allow-overlap": true,
     },
@@ -370,8 +374,44 @@ function formatPopupDate(iso) {
  * animal, where, what it is, how the location was captured and when the
  * animal last moved — with the flight-path and re-disperse actions beneath.
  */
-function pinPopupHtml(pin, { flightActive = false, showFlightPath = false, offerRedisperse = false } = {}) {
+function pinPopupHtml(pin, {
+  flightActive = false,
+  showFlightPath = false,
+  offerRedisperse = false,
+  offerOpenHousehold = false,
+} = {}) {
   const ownerLabel = escapeHtml(pin.owner?.label ?? "Unknown owner");
+
+  // Household view: one pin stands for a beneficiary, not an animal. The
+  // popup answers "who, where, how many, which species" and hands the
+  // animal-level detail back to the records panel.
+  if (pin.household) {
+    const approximate = pin.approximate
+      ? '<span style="margin-left:6px;padding:1px 8px;border-radius:9999px;background:#fef9c3;color:#854d0e;font-size:10px;font-weight:600;text-transform:uppercase">Approximate</span>'
+      : "";
+    const types = (pin.animal_types ?? []).filter(Boolean).join(", ") || "Unspecified";
+    const lastEvent = pin.last_event_date
+      ? `${escapeHtml(formatPopupDate(pin.last_event_date))}${pin.event_type ? ` · ${escapeHtml(EVENT_TYPE_LABELS[pin.event_type] ?? pin.event_type)}` : ""}`
+      : null;
+    const open = offerOpenHousehold
+      ? `<button type="button" class="cvo-open-household" data-household-id="${escapeHtml(String(pin.owner?.id ?? ""))}" data-barangay="${escapeHtml(pin.barangay ?? "")}" style="margin-top:2px;width:100%;justify-content:center;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:5px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">View household animals</button>`
+      : "";
+
+    return (
+      `<div style="min-width:230px;max-width:290px;font-size:13px;line-height:1.45">` +
+      `<p style="margin:0 0 1px;font-weight:700;font-size:13.5px;color:#0f172a">${ownerLabel}</p>` +
+      `<p style="margin:0 0 8px;font-size:12px;color:#64748b">${escapeHtml(pin.barangay ?? "No barangay on record")}${approximate}</p>` +
+      `<table style="border-collapse:collapse;width:100%;margin:0 0 8px"><tbody>` +
+      infoRow("Household animals", escapeHtml(String(pin.animal_count ?? 0))) +
+      infoRow("Species", escapeHtml(types)) +
+      infoRow("Location", pin.latitude !== null && pin.longitude !== null ? "Recorded" : "Not recorded") +
+      infoRow("Last event", lastEvent) +
+      `</tbody></table>` +
+      open +
+      `</div>`
+    );
+  }
+
   const maskedNote = pin.owner?.masked
     ? '<span style="margin-left:6px;padding:1px 8px;border-radius:9999px;background:#f1f5f9;color:#64748b;font-size:10px;font-weight:600;text-transform:uppercase">Hidden</span>'
     : "";
@@ -486,6 +526,14 @@ export function DispersalMap({
   center,
   selected = null,
   onRedisperse,
+  onOpenHousehold = null,
+  householdView = false,
+  // Animal-level rows for the panel's flight-path buttons. In household view
+  // the map source carries household pins, but a selected animal's trail is
+  // still looked up from this list.
+  flightPathPins = null,
+  showPinFilters = true,
+  showPinTypeLegend = true,
   refreshTrail = null,
 }) {
   const toast = useOptionalToast();
@@ -496,6 +544,7 @@ export function DispersalMap({
   const selectedMarkerRef = useRef(null);
   // Latest "Re-disperse" handler, read by the delegated popup click below.
   const onRedisperseRef = useRef(onRedisperse);
+  const onOpenHouseholdRef = useRef(onOpenHousehold);
   const onPickRef = useRef(onPick);
   // True while fullscreen is emulated with fixed positioning because the
   // Fullscreen API is missing (iPhone Safari) or refused the request.
@@ -564,6 +613,10 @@ export function DispersalMap({
   }, [onPick]);
 
   useEffect(() => {
+    onOpenHouseholdRef.current = onOpenHousehold;
+  }, [onOpenHousehold]);
+
+  useEffect(() => {
     flightRef.current = flightPath;
   }, [flightPath]);
 
@@ -583,6 +636,17 @@ export function DispersalMap({
         is_re_dispersal: false,
       })),
     [pins],
+  );
+  const flightPathRows = useMemo(
+    () =>
+      (flightPathPins ?? []).map((pin) => ({
+        ...pin,
+        id: pin.animal_id,
+        name_of_farmer: pin.owner?.label ?? "Unknown owner",
+        address: pin.barangay ?? "",
+        is_re_dispersal: false,
+      })),
+    [flightPathPins],
   );
   // Cluster pins either stand for ANIMALS (the date view) or for the
   // HOUSEHOLDS that hold them (the Overview's location map). The pin layer is
@@ -640,14 +704,22 @@ export function DispersalMap({
   useEffect(() => {
     visibleRef.current = visible;
   }, [visible]);
+  const flightPathRowsRef = useRef(flightPathRows);
+  useEffect(() => {
+    flightPathRowsRef.current = flightPathRows;
+  }, [flightPathRows]);
 
   useEffect(() => {
     if (!onControlsReadyRef.current) return;
     const api = {
       showFlightPath(animalId) {
-        const row = (visibleRef.current ?? []).find(
-          (candidate) => String(candidate.id) === String(animalId),
-        );
+        const row =
+          (visibleRef.current ?? []).find(
+            (candidate) => String(candidate.id) === String(animalId),
+          ) ??
+          (flightPathRowsRef.current ?? []).find(
+            (candidate) => String(candidate.id) === String(animalId),
+          );
         if (row) showFlightPathRef.current?.(row);
       },
       hideFlightPath() {
@@ -912,6 +984,17 @@ export function DispersalMap({
     setAllPaths((prev) => (prev.active ? { ...NO_ALL_PATHS } : prev));
   }
 
+  // Switching to household pins changes what the visible set means: an
+  // animal-level overview trail (or a single animal path) would point at
+  // animals the household layer does not draw. Clear both before the new
+  // layer paints, so the household view never carries stale trails.
+  useEffect(() => {
+    if (!householdView) return;
+    resetAllPaths();
+    hideFlightPath();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mode switch is the trigger; these helpers are stable closures over refs
+  }, [householdView]);
+
   /**
    * Fetch every visible household's trail and draw them on one map.
    *
@@ -1019,10 +1102,12 @@ export function DispersalMap({
     // The date view trails ANIMALS: the revealed trail's own animal is the
     // one that must refetch (the save named no household in that world).
     const targetId = Number(refreshTrail?.beneficiaryId ?? 0);
+    const lookup = (row) => String(row.id) === String(flightRef.current.id);
     const target = targetId
-      ? visible.find((row) => Number(row.id) === targetId)
+      ? (visible.find((row) => Number(row.id) === targetId) ??
+        flightPathRows.find((row) => Number(row.id) === targetId))
       : (isDateView
-        ? visible.find((row) => String(row.id) === String(flightRef.current.id))
+        ? (visible.find(lookup) ?? flightPathRows.find(lookup))
         : undefined);
 
     // The animal left for a household the map cannot draw (filtered out, or
@@ -1060,6 +1145,15 @@ export function DispersalMap({
         const id = toggle.getAttribute("data-path-id");
         const beneficiary = visible.find((row) => String(row.id) === String(id));
         if (beneficiary) toggleRef.current?.(beneficiary);
+        return;
+      }
+
+      const openHousehold = event.target?.closest?.(".cvo-open-household");
+
+      if (openHousehold) {
+        const id = openHousehold.getAttribute("data-household-id");
+        const household = visible.find((row) => String(row.owner?.id) === String(id));
+        if (household) onOpenHouseholdRef.current?.(household);
         return;
       }
 
@@ -1609,8 +1703,9 @@ export function DispersalMap({
         .setLngLat(lngLat)
         .setHTML(
           pinPopupHtml(row, {
-            showFlightPath: true,
-            offerRedisperse: Boolean(onRedisperseRef.current),
+            showFlightPath: !householdView,
+            offerRedisperse: Boolean(onRedisperseRef.current) && !householdView,
+            offerOpenHousehold: Boolean(onOpenHouseholdRef.current),
             flightActive: String(flightRef.current.id) === String(row.id),
           }),
         )
@@ -1740,7 +1835,7 @@ export function DispersalMap({
     // the animals' identity KEY, so a poll that answers with the same set
     // rebinds nothing — and an open popup survives the refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, onPick, hasPins, visibleKey, flightPathsOnly, showPins]);
+  }, [mapReady, onPick, hasPins, visibleKey, flightPathsOnly, showPins, householdView]);
 
   // Picker mode: keep exactly one marker on the selected spot.
   useEffect(() => {
@@ -1827,7 +1922,7 @@ export function DispersalMap({
           <span className="font-semibold text-slate-700">Legend:</span>
           {/* The per-type dots describe pin colours — meaningless when the
               map draws no pins (the barangay-records redesign). */}
-          {showPins &&
+          {showPins && showPinTypeLegend && !householdView &&
             animalTypes.map((type) => (
               <span key={type} className="inline-flex items-center gap-1.5">
                 <span
@@ -1838,6 +1933,17 @@ export function DispersalMap({
                 {type}
               </span>
             ))}
+          {showPins && householdView && (
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="h-3 w-3 rounded-full ring-2 ring-white"
+                style={{ backgroundColor: colorFor({ household: true }), boxShadow: "0 0 0 1px rgb(15 23 42 / 0.2)" }}
+              />
+              Household · badge counts animals
+            </span>
+          )}
+          {!householdView && (
           <span className="inline-flex items-center gap-1.5" title="Shown when a pin asks for its animal's history">
             <span
               aria-hidden="true"
@@ -1848,8 +1954,9 @@ export function DispersalMap({
             />
             Flight path
           </span>
+          )}
           <div className="ml-auto flex items-center gap-2">
-            {!flightPathsOnly && (
+            {!flightPathsOnly && !householdView && (
             <button
               type="button"
               onClick={allPaths.active ? resetAllPaths : showAllFlightPaths}
@@ -1865,7 +1972,7 @@ export function DispersalMap({
             )}
             {/* The type filter narrows the pins; without pins it has nothing
                 to do (the records panel has its own search instead). */}
-            {showPins && (
+            {showPins && showPinFilters && !householdView && (
               <label className="flex items-center gap-2">
                 <span className="sr-only">Filter by animal type</span>
                 <select

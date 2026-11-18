@@ -6,8 +6,10 @@ import { getErrorMessage } from "../api/client";
 import {
   buildChoropleth,
   normalizeBarangayName,
+  QUALITY_STOPS,
   SEQUENTIAL_STOPS,
 } from "../lib/barangayBoundaries";
+import { FLOW_LAYER_IDS } from "../lib/mapFlows";
 import { useBarangayBoundaries } from "../hooks/useBarangayBoundaries";
 import { fetchAnimalTrail } from "../lib/ownershipPath";
 import { DispersalMap } from "../components/DispersalMap";
@@ -17,41 +19,38 @@ import { DispersalDialog } from "../components/DispersalDialog";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icons";
 import { InlineAlert } from "../components/InlineAlert";
+import { Modal } from "../components/Modal";
 import { SkeletonList } from "../components/Skeleton";
 import { useAuth } from "../context/AuthContext";
 import { useOnlineStatus } from "../hooks/useOnlineStatus";
 
 /**
  * "Dispersal Map" — the animals of the program on the shared barangay
- * choropleth, viewed BY DATE: the newest date with records is selected by
- * default, and the pins + the polygons' counts follow the chosen date.
+ * choropleth, viewed BY DATE. The map is the page: household clusters answer
+ * where beneficiaries are, polygons answer how many animals are in each
+ * barangay, and a docked inspector opens only when a barangay is selected.
  *
- * Two date modes (the URL carries both):
- *   on     "On this date" — pins for the animals that arrived (or moved on)
- *          that day; an animal is pinned at its recipient that day.
- *   as_of  "As of this date" — every animal's state at the END of that day
- *          from its latest active event on or before it; an animal
- *          re-dispersed later still sits at its earlier owner here.
- *
- * The trail a pin draws is the ANIMAL's OWNERSHIP CHAIN (its own flight
- * path), and recording happens through the one shared DispersalDialog opened
- * from a pin's "Re-disperse" action. Live polling keeps the latest date
- * fresh without ever dragging the user off the date they picked.
+ * URL state (shareable): date, mode, barangay, species, pin view, movements,
+ * data-quality view. The heavier snapshot is only refetched when the dates
+ * endpoint's active-event version changes.
  */
 
-// The map bundle (MapLibre GL) is heavy — load it only when the tab opens.
 const DateSelector = lazy(() => import("../components/DateSelector"));
 
-// Static choropleth props, hoisted so the memoised BarangayMap keeps
-// its identity across the page's polls.
 const MAP_CLICK_THROUGH = [
   "cvo-date-pins-clusters",
   "cvo-date-pins-point",
   "cvo-date-pins-spider-point",
+  ...FLOW_LAYER_IDS,
 ];
 const MAP_LEGEND = {
   stops: SEQUENTIAL_STOPS,
   minLabel: "fewer animals",
+  maxLabel: "more",
+};
+const QUALITY_LEGEND = {
+  stops: QUALITY_STOPS,
+  minLabel: "fewer approximate pins",
   maxLabel: "more",
 };
 
@@ -75,6 +74,99 @@ function formatDay(iso) {
   return parsed.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
+function formatFreshness(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function csvCell(value) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+/** One household pin per beneficiary, so city-wide pins do not overplot. */
+function aggregateHouseholds(pins) {
+  const groups = new Map();
+
+  for (const pin of pins) {
+    const ownerId = pin.owner?.id;
+    if (ownerId === null || ownerId === undefined) continue;
+
+    const key = String(ownerId);
+    let row = groups.get(key);
+    if (!row) {
+      row = {
+        ...pin,
+        animal_id: -Number(ownerId),
+        household_id: Number(ownerId),
+        household: true,
+        animal_count: 0,
+        animal_types: new Set(),
+        animal_status: "active",
+        event_type: pin.event_type,
+        approximate: false,
+      };
+      groups.set(key, row);
+    }
+
+    row.animal_count += 1;
+    row.animal_types.add(pin.animal_type ?? "Unspecified");
+    // A household is exact if ANY of its animals has an exact pin; the
+    // coordinates are the owner's, so mixed flags would be misleading.
+    if (!pin.approximate) row.approximate = false;
+    if (pin.owner?.label) row.owner = pin.owner;
+    if (pin.barangay) row.barangay = pin.barangay;
+    if (pin.latitude !== null && pin.longitude !== null) {
+      row.latitude = pin.latitude;
+      row.longitude = pin.longitude;
+    }
+    if (pin.last_event_date && (!row.last_event_date || pin.last_event_date >= row.last_event_date)) {
+      row.last_event_date = pin.last_event_date;
+      row.last_event_id = pin.last_event_id;
+      row.event_type = pin.event_type;
+      row.location_source = pin.location_source;
+    }
+  }
+
+  return [...groups.values()].map((row) => ({
+    ...row,
+    animal_types: [...row.animal_types],
+    animal_type: "Household",
+  }));
+}
+
+function Metric({ label, value, hint, onClick, active = false }) {
+  const content = (
+    <>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">{value}</p>
+      {hint && <p className="mt-0.5 text-[10px] leading-tight text-slate-500">{hint}</p>}
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={active}
+        className={`min-h-[72px] p-3 text-left transition hover:bg-brand-50/70 ${active ? "bg-brand-50" : "bg-white"}`}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div className="min-h-[72px] bg-white p-3">{content}</div>;
+}
+
 export default function DispersalMapPage({ roleKey }) {
   const { user } = useAuth();
   const online = useOnlineStatus();
@@ -88,6 +180,11 @@ export default function DispersalMapPage({ roleKey }) {
   const modeParam = params.get("mode");
   const mode = modeParam === "as_of" ? "as_of" : "on";
   const barangayFilter = params.get("barangay") ?? "";
+  const animalType = params.get("animal_type") ?? "";
+  const pinView = params.get("pins") === "animals" ? "animals" : "households";
+  const movementsOn = params.get("movements") === "1";
+  const qualityOn = params.get("quality") === "1";
+  const householdView = pinView === "households";
 
   const updateParams = useCallback(
     (patch) => {
@@ -108,33 +205,23 @@ export default function DispersalMapPage({ roleKey }) {
 
   /* ------------------------------ data -------------------------------- */
 
-  // The dates with records (newest first) — polled, so a handover recorded
-  // elsewhere adds its date without a manual reload.
   const [datesData, setDatesData] = useState(null);
   const [datesError, setDatesError] = useState(null);
-  const latestKnownRef = useRef(null); // the newest date we have shown the user
-  const [newerDate, setNewerDate] = useState(null); // "new records on …" chip
+  const latestKnownRef = useRef(null);
+  const [newerDate, setNewerDate] = useState(null);
 
-  // The snapshot for the selected date + mode. Aborted and re-fetched when
-  // either changes quickly: a slow earlier response must never overwrite a
-  // newer one, and the pins must never blank out between dates.
   const [snapshot, setSnapshot] = useState(null);
   const [snapshotLoading, setSnapshotLoading] = useState(true);
   const [snapshotError, setSnapshotError] = useState(null);
   const [fetchedAt, setFetchedAt] = useState(null);
+  const snapshotRef = useRef(null);
 
   const snapshotAbortRef = useRef(null);
   const snapshotTokenRef = useRef(0);
 
   const dates = useMemo(() => datesData?.dates ?? [], [datesData]);
-  // No ?date in the URL means the DEFAULT: the newest date that has records
-  // (never "today" — today may be empty). It arrives with the dates list.
   const selectedDate = dateParam || dates[0]?.date || null;
 
-  // The dates list itself never depends on the chosen date — only the
-  // "follow new records" decision below does. Reading the param through a
-  // ref keeps loadDates stable, so flipping ?date= refetches ONLY the
-  // snapshot, not the whole 60-row dates list alongside it.
   const dateParamRef = useRef(dateParam);
   dateParamRef.current = dateParam;
 
@@ -153,13 +240,10 @@ export default function DispersalMapPage({ roleKey }) {
             const currentParam = dateParamRef.current;
             const selected = currentParam || previousLatest;
             if (!currentParam || selected >= previousLatest) {
-              // The user is sitting on the latest date (or none): follow the
-              // new records instead of leaving them behind.
               latestKnownRef.current = latest;
               updateParams({ date: latest });
               setNewerDate(null);
             } else {
-              // Viewing history: never drag them forward, just offer it.
               setNewerDate(latest);
             }
           } else {
@@ -175,12 +259,6 @@ export default function DispersalMapPage({ roleKey }) {
 
   const loadSnapshot = useCallback(
     async (quiet = false) => {
-      // A quick date flip must not let an earlier response land last: a
-      // user-driven fetch ABORTS the one before it, and a token guards the
-      // race the signal cannot close. A quiet POLL never aborts — under a
-      // slow backend, aborting each poll's predecessor would livelock and
-      // no snapshot would ever complete; the token alone discards whatever
-      // stale answer lands out of order.
       if (!quiet) {
         snapshotAbortRef.current?.abort();
         snapshotAbortRef.current = new AbortController();
@@ -192,16 +270,15 @@ export default function DispersalMapPage({ roleKey }) {
       setSnapshotError(null);
 
       try {
-        // selectedDate (not the raw param): with no ?date in the URL the
-        // DEFAULT is the newest date that has records, which arrives with
-        // the dates list — the snapshot then follows it.
         const data = await mapApi.pins({
           date: selectedDate || undefined,
           mode,
+          animalType: animalType || undefined,
           signal: controller.signal,
         });
         if (token !== snapshotTokenRef.current) return;
 
+        snapshotRef.current = data;
         setSnapshot(data);
         setFetchedAt(new Date());
         setSnapshotLoading(false);
@@ -213,8 +290,13 @@ export default function DispersalMapPage({ roleKey }) {
         setSnapshotError(getErrorMessage(err));
       }
     },
-    [selectedDate, mode],
+    [selectedDate, mode, animalType],
   );
+
+  const loadSnapshotRef = useRef(loadSnapshot);
+  useEffect(() => {
+    loadSnapshotRef.current = loadSnapshot;
+  }, [loadSnapshot]);
 
   useEffect(() => {
     loadDates();
@@ -224,41 +306,75 @@ export default function DispersalMapPage({ roleKey }) {
     loadSnapshot();
   }, [loadSnapshot]);
 
-  // Quietly re-fetch so handovers registered elsewhere appear without a
-  // manual reload.
-  useAutoRefresh(loadDates);
-  useAutoRefresh(loadSnapshot);
+  // The dates endpoint is cheap and carries the active-event version. Poll
+  // ONLY that at the map's idle cadence (60s); fetch the heavier snapshot
+  // only when the version changes.
+  useAutoRefresh(loadDates, { interval: 60_000 });
+  const dataVersion = datesData?.version ?? null;
+  useEffect(() => {
+    if (!dataVersion || !snapshotRef.current) return;
+    loadSnapshotRef.current?.(true);
+  }, [dataVersion]);
 
-  // The shared dialog state: `{ mode, beneficiary }` while open, null closed.
   const [dispersal, setDispersal] = useState(null);
   const [notice, setNotice] = useState(null);
-  // Bumped after every recorded handover so an OPEN flight path refetches
-  // itself — a saved event is immediately part of the trail, with no page
-  // refresh. The date view trails animals, so the map re-resolves the
-  // revealed animal on its own; no id needs to travel here.
   const [trailRefresh, setTrailRefresh] = useState({ token: 0 });
+  const [showMissing, setShowMissing] = useState(false);
+  const mapInstanceRef = useRef(null);
+  const [focusOwnerId, setFocusOwnerId] = useState(null);
+  const [focusOwnerName, setFocusOwnerName] = useState("");
+  const [clipboardNotice, setClipboardNotice] = useState(false);
 
   const role = roleKey ?? user?.role;
   const isTechnician = role === "technician";
   const canDisperse = role === "admin" || role === "technician";
 
-  // Stable identities so the memoised joins and side list never recompute on
-  // an unrelated render.
   const pins = useMemo(() => snapshot?.pins ?? [], [snapshot]);
   const barangayRows = useMemo(() => snapshot?.barangays ?? [], [snapshot]);
   const skippedNoLocation = snapshot?.skipped_no_location ?? 0;
+  const unlocated = useMemo(() => snapshot?.unlocated ?? [], [snapshot]);
+  const missingCount = unlocated.length || skippedNoLocation;
+  const householdPins = useMemo(() => aggregateHouseholds(pins), [pins]);
+  const mapPins = householdView ? householdPins : pins;
+  const availableTypes = useMemo(() => {
+    const listed = snapshot?.animal_types ?? [];
+    if (listed.length > 0) return listed;
+    return [...new Set(pins.map((pin) => pin.animal_type).filter(Boolean))].sort();
+  }, [snapshot, pins]);
 
-  // The polygons: pins per barangay on the same single-hue scale the
-  // Barangay Dispersal page uses. Zero pins → the LIGHTEST fill, never grey.
+  const stats = useMemo(() => {
+    const households = new Set(
+      pins.map((pin) => pin.owner?.id).filter((id) => id !== null && id !== undefined),
+    ).size;
+    const reached = barangayRows.filter((row) => (row.pins ?? 0) > 0).length;
+    const redispersals = pins.filter(
+      (pin) => pin.event_type === "re_dispersal" || pin.event_type === "pass_on",
+    ).length;
+    const approximate = pins.filter((pin) => pin.approximate).length;
+    return {
+      animals: pins.length,
+      households,
+      reached,
+      redispersals,
+      approximate,
+      missing: missingCount,
+    };
+  }, [pins, barangayRows, missingCount]);
+
   const choropleth = useMemo(() => {
     if (boundaries.status !== "ready") return null;
-    return buildChoropleth(boundaries.collection, barangayRows, { metric: "pins" });
-  }, [boundaries, barangayRows]);
+    return buildChoropleth(boundaries.collection, barangayRows, {
+      metric: qualityOn ? "quality" : "pins",
+    });
+  }, [boundaries, barangayRows, qualityOn]);
+
+  const movementFlows = useMemo(
+    () => (movementsOn ? snapshot?.flows ?? [] : []),
+    [movementsOn, snapshot],
+  );
 
   /* -------------------- barangay records panel ------------------------ */
 
-  // The selected barangay's animal records: the pins from the SAME snapshot,
-  // scoped to the barangay the admin clicked on the map.
   const panelAnimals = useMemo(() => {
     if (!barangayFilter) return [];
     return pins.filter(
@@ -268,12 +384,6 @@ export default function DispersalMapPage({ roleKey }) {
 
   const [activeFlightAnimalId, setActiveFlightAnimalId] = useState(null);
   const controlsRef = useRef(null);
-  // The selected polygon's MapLibre feature id so the barangay keeps its
-  // yellow selection highlight while its panel is open. Captured at click
-  // time AND derived from the URL: a shared link with ?barangay=… must paint
-  // the same highlight as a click does — the id resolves against the boundary
-  // asset's stable per-feature indices, so no rendered-feature query is
-  // needed.
   const [clickedFeatureId, setClickedFeatureId] = useState(null);
   const urlFeatureId = useMemo(() => {
     if (!barangayFilter || !choropleth) return null;
@@ -286,48 +396,46 @@ export default function DispersalMapPage({ roleKey }) {
   }, [barangayFilter, choropleth]);
   const selectedFeatureId = clickedFeatureId ?? urlFeatureId;
 
-  // A barangay change hides the previous animal's trail: the admin asked to
-  // see a different barangay, and its records are the ones on show now.
   useEffect(() => {
     controlsRef.current?.hideFlightPath();
   }, [barangayFilter]);
 
-  const openDispersal = useCallback(
-    (pin) => {
-      if (pin.owner?.id === null || pin.owner?.masked) return;
-      setDispersal({
-        mode: "re-disperse",
-        // The dialog speaks beneficiary: the pin's current owner.
-        beneficiary: {
-          id: pin.owner.id,
-          name_of_farmer: pin.owner.label,
-          address: pin.barangay ?? "",
-        },
-      });
-    },
-    [],
-  );
+  const openDispersal = useCallback((pin) => {
+    if (pin.owner?.id === null || pin.owner?.masked) return;
+    setDispersal({
+      mode: "re-disperse",
+      beneficiary: {
+        id: pin.owner.id,
+        name_of_farmer: pin.owner.label,
+        address: pin.barangay ?? "",
+      },
+    });
+  }, []);
 
-  // Stable choropleth callbacks: the memoised BarangayMap must not see new
-  // identities on every poll. The fresh `renderChoropleth` closure is
-  // deliberate (see DispersalMap's render) — these handlers are not.
   const handleBarangayClick = useCallback(
     (name, event) => {
-      // Click a barangay to zoom to it, filter the side list, open its
-      // floating beneficiary window; click it again (or another) to clear.
-      // The feature id keeps the polygon painted yellow while the selection
-      // lasts.
       const clear = barangayFilter === name || name === null;
       updateParams({ barangay: clear ? "" : name });
       setClickedFeatureId(clear ? null : (event?.features?.[0]?.id ?? null));
+      setFocusOwnerId(null);
+      setFocusOwnerName("");
     },
     [barangayFilter, updateParams],
   );
+
+  const handleOpenHousehold = useCallback(
+    (pin) => {
+      if (!pin?.barangay) return;
+      updateParams({ barangay: pin.barangay });
+      setFocusOwnerId(pin.owner?.id ?? null);
+      setFocusOwnerName(pin.owner?.label ?? "");
+    },
+    [updateParams],
+  );
+
   const handleControlsReady = useCallback((api) => {
     controlsRef.current = api;
   }, []);
-  // The records panel's trail buttons, through the map's control api (the
-  // api object is stable; the panel's buttons stay referentially quiet).
   const showFlightPath = useCallback((animalId) => {
     controlsRef.current?.showFlightPath(animalId);
   }, []);
@@ -337,17 +445,96 @@ export default function DispersalMapPage({ roleKey }) {
   const handleFlightPathChange = useCallback((animalId) => {
     setActiveFlightAnimalId(animalId);
   }, []);
-  // "Reset view" on the shared map also clears the URL selection: the reset
-  // control returns the whole feature — camera AND selection — to the
-  // city-wide view.
   const handleResetView = useCallback(() => {
     updateParams({ barangay: "" });
     setClickedFeatureId(null);
+    setFocusOwnerId(null);
+    setFocusOwnerName("");
   }, [updateParams]);
+
+  const clearFilters = useCallback(() => {
+    updateParams({ barangay: "", animal_type: "" });
+    setClickedFeatureId(null);
+    setFocusOwnerId(null);
+    setFocusOwnerName("");
+  }, [updateParams]);
+
+  const download = useCallback((href, filename) => {
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = filename;
+    anchor.click();
+  }, []);
+
+  const exportCsv = useCallback(() => {
+    if (typeof URL?.createObjectURL !== "function") {
+      setNotice("CSV export is not available in this browser.");
+      return;
+    }
+    const header = [
+      "animal_id",
+      "ear_tag",
+      "animal_type",
+      "animal_status",
+      "owner",
+      "barangay",
+      "latitude",
+      "longitude",
+      "location_source",
+      "approximate",
+      "event_type",
+      "last_event_date",
+    ];
+    const rows = pins.map((pin) => [
+      pin.animal_id,
+      pin.ear_tag_number,
+      pin.animal_type,
+      pin.animal_status,
+      pin.owner?.label,
+      pin.barangay,
+      pin.latitude,
+      pin.longitude,
+      pin.location_source,
+      pin.approximate ? "yes" : "no",
+      pin.event_type,
+      pin.last_event_date,
+    ]);
+    const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    download(url, `dispersal-map-${selectedDate ?? "snapshot"}.csv`);
+    URL.revokeObjectURL(url);
+    setNotice("Current map view exported as CSV.");
+  }, [pins, selectedDate, download]);
+
+  const exportMapPng = useCallback(() => {
+    const canvas = mapInstanceRef.current?.getCanvas?.();
+    if (!canvas?.toDataURL) {
+      setNotice("The map image is not ready yet.");
+      return;
+    }
+    try {
+      download(canvas.toDataURL("image/png"), `dispersal-map-${selectedDate ?? "snapshot"}.png`);
+      setNotice("Current map view exported as PNG.");
+    } catch {
+      setNotice("The map image could not be exported — use the CSV export instead.");
+    }
+  }, [selectedDate, download]);
+
+  const copyViewLink = useCallback(async () => {
+    try {
+      await navigator.clipboard?.writeText?.(window.location.href);
+      setClipboardNotice(true);
+      window.setTimeout(() => setClipboardNotice(false), 2500);
+    } catch {
+      setNotice("Could not copy the link — copy it from the address bar.");
+    }
+  }, []);
 
   /* ------------------------------ render ------------------------------ */
 
   const hasAnyData = dates.length > 0;
+  const freshness = formatFreshness(snapshot?.generated_at) ?? (fetchedAt ? fetchedAt.toLocaleString() : null);
 
   return (
     <div className="space-y-6">
@@ -359,17 +546,13 @@ export default function DispersalMapPage({ roleKey }) {
               Dispersal Map
             </h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              The program's animals on one map, day by day. Click a barangay to
-              see every animal dispersed there — each card can reveal that
-              animal's flight path, its recorded journey from CVO through each
-              owner.
-              {canDisperse && " Re-disperse an animal from its card."}
+              Bayawan City's barangays, the households that received animals, and
+              each day's dispersal activity. Select a barangay for its records;
+              open a household pin to focus its animals.
             </p>
           </div>
         </div>
 
-        {/* Date + mode selector — the two filters every visual follows. The
-            state lives in the URL, so a view can be shared by its address. */}
         <div className="mt-5">
           <Suspense fallback={<div className="h-10 rounded-pill bg-slate-100" />}>
             <DateSelector
@@ -390,28 +573,149 @@ export default function DispersalMapPage({ roleKey }) {
           </p>
         </div>
 
-        {(barangayFilter || dateParam) && (
-          <p className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-pill bg-brand-50 px-3.5 py-1.5 text-xs font-semibold text-brand-800">
-            <Icon name="map-pin" className="h-3.5 w-3.5" />
-            Filters:{" "}
-            {[
-              selectedDate && `${mode === "as_of" ? "as of" : "on"} ${formatDay(selectedDate)}`,
-              barangayFilter && `barangay ${barangayFilter}`,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
+        <div className="mt-4 flex flex-wrap items-end gap-2.5">
+          <label className="flex min-w-[11rem] flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              Animal type
+            </span>
+            <select
+              className="field !py-2 text-xs"
+              value={animalType}
+              onChange={(event) => updateParams({ animal_type: event.target.value })}
+              aria-label="Filter map by animal type"
+            >
+              <option value="">All animal types</option>
+              {availableTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              Pin view
+            </span>
+            <div className="inline-flex h-10 overflow-hidden rounded-lg border border-slate-200 bg-white">
+              {[
+                ["households", "Households"],
+                ["animals", "Animals"],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => updateParams({ pins: key === "households" ? "" : key })}
+                  aria-pressed={pinView === key}
+                  className={`px-3 text-xs font-semibold transition ${
+                    pinView === key
+                      ? "bg-brand-700 text-white"
+                      : "text-slate-600 hover:bg-brand-50"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => updateParams({ movements: movementsOn ? "" : "1" })}
+            aria-pressed={movementsOn}
+            className={`inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${
+              movementsOn
+                ? "border-amber-500 bg-amber-50 text-amber-900"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <Icon name="route" className="h-3.5 w-3.5" />
+            Movements
+          </button>
+
+          <button
+            type="button"
+            onClick={() => updateParams({ quality: qualityOn ? "" : "1" })}
+            aria-pressed={qualityOn}
+            className={`inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${
+              qualityOn
+                ? "border-amber-500 bg-amber-50 text-amber-900"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <Icon name="sliders" className="h-3.5 w-3.5" />
+            Data quality
+          </button>
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className="font-semibold underline"
-              onClick={() => {
-                updateParams({ barangay: "" });
-                setSelectedFeatureId(null);
-              }}
+              onClick={copyViewLink}
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
             >
-              clear
+              <Icon name="map" className="h-3.5 w-3.5" />
+              {clipboardNotice ? "Link copied" : "Copy view"}
             </button>
-          </p>
-        )}
+            <button
+              type="button"
+              onClick={exportMapPng}
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Icon name="printer" className="h-3.5 w-3.5" />
+              Map PNG
+            </button>
+            <button
+              type="button"
+              onClick={exportCsv}
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Icon name="clipboard" className="h-3.5 w-3.5" />
+              Export CSV
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-3 lg:grid-cols-6">
+          <Metric label="Animals" value={stats.animals} hint="in this view" />
+          <Metric label="Households" value={stats.households} hint="represented" />
+          <Metric label="Barangays" value={stats.reached} hint="with animals" />
+          <Metric label="Re-dispersals" value={stats.redispersals} hint="on this date" />
+          <Metric
+            label="Missing location"
+            value={stats.missing}
+            hint="needs a pin"
+            onClick={stats.missing > 0 ? () => setShowMissing(true) : undefined}
+          />
+          <Metric
+            label="Approximate"
+            value={stats.approximate}
+            hint="centroid pins"
+            onClick={() => updateParams({ quality: qualityOn ? "" : "1" })}
+            active={qualityOn}
+          />
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+          <span>
+            {freshness ? `Data updated ${freshness}` : "Waiting for map data…"}
+            {householdView ? " · household pins are clustered; badges count animals" : " · animal-level pins"}
+          </span>
+          {(barangayFilter || animalType) && (
+            <span className="inline-flex flex-wrap items-center gap-2 rounded-pill bg-brand-50 px-3 py-1 font-semibold text-brand-800">
+              <Icon name="map-pin" className="h-3.5 w-3.5" />
+              {[
+                selectedDate && `${mode === "as_of" ? "as of" : "on"} ${formatDay(selectedDate)}`,
+                animalType,
+                barangayFilter && `barangay ${barangayFilter}`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              <button type="button" className="underline" onClick={clearFilters}>
+                clear
+              </button>
+            </span>
+          )}
+        </div>
       </section>
 
       {newerDate && (
@@ -433,8 +737,6 @@ export default function DispersalMapPage({ roleKey }) {
         </div>
       )}
 
-      {/* An empty DAY is an answer, not an error — but hand the user the
-          nearest day that has records instead of leaving them stranded. */}
       {!snapshotLoading && !snapshotError && selectedDate && pins.length === 0 && dates.length > 0 && (
         <section className="card">
           {(() => {
@@ -508,11 +810,13 @@ export default function DispersalMapPage({ roleKey }) {
           />
         </section>
       ) : (
-        <>
-          <section className="space-y-3">
-            {/* The map: the shared barangay choropleth UNDER the animal pins
-                (clustered), flight trails above both — one map, one shell. */}
-            <div className="space-y-2">
+        <section className="space-y-3">
+          <div
+            className={`grid min-w-0 gap-4 ${
+              barangayFilter ? "lg:grid-cols-[minmax(0,1fr)_380px]" : ""
+            }`}
+          >
+            <div className="min-w-0 space-y-2">
               {snapshotError ? (
                 <div className="card flex flex-col items-start gap-3 p-6">
                   <InlineAlert message={snapshotError} onDismiss={() => setSnapshotError(null)} />
@@ -526,10 +830,14 @@ export default function DispersalMapPage({ roleKey }) {
                 </div>
               ) : (
                 <DispersalMap
-                  pins={pins}
+                  pins={mapPins}
+                  flightPathPins={pins}
                   trailFetcher={fetchAnimalTrail}
                   showTable={false}
-                  showPins={false}
+                  showPins
+                  householdView={householdView}
+                  showPinFilters={false}
+                  onOpenHousehold={handleOpenHousehold}
                   loading={snapshotLoading}
                   onRedisperse={canDisperse ? openDispersal : undefined}
                   onControlsReady={handleControlsReady}
@@ -537,30 +845,39 @@ export default function DispersalMapPage({ roleKey }) {
                   selectedBarangay={barangayFilter || null}
                   refreshTrail={trailRefresh}
                   renderChoropleth={(onMapReady) => (
-                    <>
                     <BarangayMap
                       boundaries={boundaries}
                       choropleth={choropleth}
                       height="h-[72vh] min-h-[520px]"
                       beforeLayerId="cvo-date-pins-clusters"
-                      // The map sits in a scrolling dashboard: wheel-zoom asks
-                      // for ctrl (two fingers on touch) so the map never
-                      // traps the page scroll.
                       cooperativeGestures
-                      // Pin clicks (and hovers) belong to the pins: without
-                      // this gate the polygon underneath would also select.
                       clickThroughLayers={MAP_CLICK_THROUGH}
-                      onMapReady={onMapReady}
+                      onMapReady={(map) => {
+                        mapInstanceRef.current = map;
+                        onMapReady(map);
+                      }}
+                      preserveDrawingBuffer
                       selectedName={barangayFilter || null}
                       selectedFeatureId={selectedFeatureId}
                       onBarangayClick={handleBarangayClick}
                       onReset={handleResetView}
-                      ariaLabel={`Map of Bayawan City's barangays with the animals dispersed on ${
-                        selectedDate ? formatDay(selectedDate) : "no date"
-                      }.`}
-                      legend={MAP_LEGEND}
+                      flows={movementFlows}
+                      ariaLabel={`Map of Bayawan City's barangays with ${
+                        householdView ? "household" : "animal"
+                      } locations for ${selectedDate ? formatDay(selectedDate) : "no date"}.`}
+                      legend={qualityOn ? QUALITY_LEGEND : MAP_LEGEND}
                       legendNotes={
                         <>
+                          {qualityOn && (
+                            <span className="text-amber-800">
+                              Amber = approximate (barangay-centre) household pins
+                            </span>
+                          )}
+                          {movementsOn && (
+                            <span className="text-amber-800">
+                              Dashed lines = selected-day movements
+                            </span>
+                          )}
                           {skippedNoLocation > 0 && (
                             <span className="text-slate-500">
                               {skippedNoLocation} animal{skippedNoLocation === 1 ? "" : "s"} with no location recorded
@@ -568,24 +885,9 @@ export default function DispersalMapPage({ roleKey }) {
                           )}
                         </>
                       }
-                      // Every barangay wears its name and its dispersal count
-                      // on the map itself — no hover needed, and no
-                      // cursor-side label to cover the zoom controls.
                       showLabels
                       labelShowCounts
                     />
-                    {barangayFilter && (
-                      <BarangayRecordsPanel
-                        barangay={barangayFilter}
-                        animals={panelAnimals}
-                        activeFlightAnimalId={activeFlightAnimalId}
-                        onShowFlightPath={showFlightPath}
-                        onHideFlightPath={hideFlightPath}
-                        onRedisperse={canDisperse ? openDispersal : undefined}
-                        onClose={handleResetView}
-                      />
-                    )}
-                    </>
                   )}
                 />
               )}
@@ -593,13 +895,65 @@ export default function DispersalMapPage({ roleKey }) {
                 <p className="text-xs text-slate-500">
                   Showing {pins.length} animal{pins.length === 1 ? "" : "s"}{" "}
                   {mode === "as_of" ? "as of" : "on"} {formatDay(selectedDate)}.
+                  {householdView && ` ${householdPins.length} household pin${householdPins.length === 1 ? "" : "s"}.`}
                 </p>
               )}
             </div>
 
-          </section>
-        </>
+            {barangayFilter && (
+              <BarangayRecordsPanel
+                barangay={barangayFilter}
+                animals={panelAnimals}
+                focusOwnerId={focusOwnerId}
+                focusOwnerName={focusOwnerName}
+                onClearFocus={() => {
+                  setFocusOwnerId(null);
+                  setFocusOwnerName("");
+                }}
+                activeFlightAnimalId={activeFlightAnimalId}
+                onShowFlightPath={showFlightPath}
+                onHideFlightPath={hideFlightPath}
+                onRedisperse={canDisperse ? openDispersal : undefined}
+                onClose={handleResetView}
+                className="max-lg:fixed max-lg:inset-x-2 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[72vh] max-lg:rounded-b-none max-lg:shadow-2xl lg:h-[72vh] lg:max-h-none"
+              />
+            )}
+          </div>
+        </section>
       )}
+
+      <Modal
+        open={showMissing}
+        title="Animals without a mapped location"
+        onClose={() => setShowMissing(false)}
+      >
+        {unlocated.length === 0 ? (
+          <p className="text-sm text-slate-600">
+            {skippedNoLocation > 0
+              ? `${skippedNoLocation} animal${skippedNoLocation === 1 ? "" : "s"} are missing a location, but the detail list was not returned by this snapshot.`
+              : "Every animal in this view has a mapped location."}
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-slate-600">
+              These records cannot be pinned until the household or barangay has a valid coordinate.
+            </p>
+            <ul className="mt-3 divide-y divide-slate-100">
+              {unlocated.map((row) => (
+                <li key={row.animal_id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                  <span className="font-semibold text-slate-800">
+                    {row.ear_tag_number ? `#${row.ear_tag_number}` : `Animal #${row.animal_id}`}
+                    <span className="ml-2 font-normal text-slate-500">{row.animal_type ?? "Unspecified"}</span>
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {row.owner?.label ?? "Unknown owner"} · {row.barangay ?? "No barangay"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </Modal>
 
       <DispersalDialog
         open={dispersal !== null}

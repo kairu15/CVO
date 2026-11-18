@@ -46,6 +46,9 @@ export function fallbackColor(animalType) {
 }
 
 export function colorFor(beneficiary) {
+  // A household pin is deliberately neutral: it stands for several animals
+  // and may hold more than one species, so a species colour would lie.
+  if (beneficiary.household) return "#2d4d19";
   if (beneficiary.is_re_dispersal) return "#2d4d19";
   const animalType = beneficiary.animal_type ?? "";
   return ANIMAL_COLORS[animalType] ?? fallbackColor(animalType);
@@ -99,6 +102,8 @@ export function pinFeatures(pins) {
         animal_id: Number(pin.animal_id),
         color: colorFor(pin),
         approximate: Boolean(pin.approximate),
+        household: Boolean(pin.household),
+        animal_count: Number(pin.animal_count ?? 1),
         // Top-level so the map's paint expressions can dim pins outside the
         // selected barangay without reaching into the nested pin object.
         barangay: pin.barangay ?? null,

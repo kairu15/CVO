@@ -18,6 +18,13 @@ import {
   boundaryBounds,
   normalizeBarangayName,
 } from "../lib/barangayBoundaries";
+import {
+  buildFlowFeatures,
+  buildFlowLabelFeatures,
+  FLOW_LABEL_SOURCE,
+  FLOW_LAYER_IDS,
+  FLOW_SOURCE,
+} from "../lib/mapFlows";
 
 /**
  * A label shows only when its barangay spans at least this many on-screen
@@ -154,6 +161,11 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  *   flight trails) that the optional "Markers" layer toggle shows/hides.
  * @param {string} [props.markerLabel] wording for that toggle (default
  *   "Markers").
+ * @param {Array<object>} [props.flows] aggregate origin→destination movement
+ *   pairs (from/to coordinates + total) drawn above the polygons.
+ * @param {boolean} [props.preserveDrawingBuffer] keep the WebGL canvas
+ *   readable after a frame for the Admin Map's PNG export. Opt-in: the cost
+ *   is only paid by the one map that offers that action.
  */
 function BarangayMapImpl({
   boundaries,
@@ -179,6 +191,8 @@ function BarangayMapImpl({
   interactive = true,
   markerLayerIds = [],
   markerLabel = "Markers",
+  flows = [],
+  preserveDrawingBuffer = false,
 }) {
   const containerRef = useRef(null);
   const shellRef = useRef(null);
@@ -349,6 +363,7 @@ function BarangayMapImpl({
       attributionControl: false,
       interactive,
       cooperativeGestures,
+      preserveDrawingBuffer,
     });
     mapRef.current = map;
     // Debug/support handle, same convention as DispersalMap's: lets a
@@ -670,6 +685,62 @@ function BarangayMapImpl({
       map.getSource(BOUNDARY_SOURCE).setData(choropleth.collection);
     }
   }, [ready, withBoundaries, choropleth, beforeLayerId]);
+
+  // Aggregate movement flows: one dashed line per barangay pair, with the
+  // from → to label at its midpoint. The layers are created once and then
+  // only their data changes, so toggling movements never rebuilds the map.
+  useEffect(() => {
+    if (!ready) return;
+    const map = mapRef.current;
+    if (!map) return;
+
+    const lineData = { type: "FeatureCollection", features: buildFlowFeatures(flows) };
+    const labelData = { type: "FeatureCollection", features: buildFlowLabelFeatures(flows) };
+    const insertBefore = beforeLayerId && map.getLayer(beforeLayerId) ? beforeLayerId : undefined;
+
+    if (!map.getSource(FLOW_SOURCE)) {
+      map.addSource(FLOW_SOURCE, { type: "geojson", data: lineData });
+      map.addSource(FLOW_LABEL_SOURCE, { type: "geojson", data: labelData });
+      map.addLayer(
+        {
+          id: FLOW_LAYER_IDS[0],
+          type: "line",
+          source: FLOW_SOURCE,
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: {
+            "line-color": "#b45309",
+            "line-width": ["interpolate", ["linear"], ["get", "total"], 1, 1.4, 10, 5],
+            "line-opacity": 0.82,
+            "line-dasharray": [2, 1.2],
+          },
+        },
+        insertBefore,
+      );
+      map.addLayer(
+        {
+          id: FLOW_LAYER_IDS[1],
+          type: "symbol",
+          source: FLOW_LABEL_SOURCE,
+          layout: {
+            "text-field": ["get", "label"],
+            "text-size": 10,
+            "text-offset": [0, -0.9],
+            "text-allow-overlap": false,
+            "text-padding": 3,
+          },
+          paint: {
+            "text-color": "#92400e",
+            "text-halo-color": "#ffffff",
+            "text-halo-width": 1.5,
+          },
+        },
+        insertBefore,
+      );
+    } else {
+      map.getSource(FLOW_SOURCE)?.setData(lineData);
+      map.getSource(FLOW_LABEL_SOURCE)?.setData(labelData);
+    }
+  }, [ready, flows, beforeLayerId]);
 
   // Layer toggles: boundaries and labels are ours; marker layers belong to
   // the parent but are hidden by id. Declared AFTER the layer effect so the

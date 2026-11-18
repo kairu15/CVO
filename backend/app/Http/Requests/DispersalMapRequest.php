@@ -43,6 +43,9 @@ class DispersalMapRequest extends FormRequest
             // the latest date.
             'date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
             'mode' => ['nullable', Rule::in(DispersalMapService::MODES)],
+            // One species at a time; the snapshot's pins, polygons and panel
+            // all read the same filtered answer.
+            'animal_type' => ['nullable', 'string', 'max:80'],
         ];
     }
 
@@ -58,6 +61,7 @@ class DispersalMapRequest extends FormRequest
                 ? Carbon::createFromFormat('Y-m-d', $validated['date'], config('app.timezone'))->startOfDay()
                 : null,
             'mode' => $validated['mode'] ?? DispersalMapService::MODE_ON,
+            'animal_type' => $validated['animal_type'] ?? null,
         ];
     }
 }

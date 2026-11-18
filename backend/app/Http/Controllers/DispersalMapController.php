@@ -45,10 +45,10 @@ class DispersalMapController extends Controller
     /** The pins + per-barangay counts for one date and mode. */
     public function pins(DispersalMapRequest $request): JsonResponse
     {
-        ['date' => $date, 'mode' => $mode] = $request->snapshotFilters();
+        ['date' => $date, 'mode' => $mode, 'animal_type' => $animalType] = $request->snapshotFilters();
 
         return response()->json([
-            'data' => $this->map->snapshot($request->user(), $date, $mode),
+            'data' => $this->map->snapshot($request->user(), $date, $mode, $animalType),
         ]);
     }
 }

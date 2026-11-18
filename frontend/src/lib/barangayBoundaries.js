@@ -26,6 +26,9 @@ export const SEQUENTIAL_STOPS = ["#eaf3dd", "#c7e2a6", "#8bc34a", "#558b2f", "#3
 /** Diverging scale for net flow, centered on zero: blue out, amber in. */
 export const DIVERGING_STOPS = ["#075985", "#7dd3fc", "#cbd5e1", "#fdba74", "#b45309"];
 
+/** Amber scale for data quality: darker = more approximate/missing pins. */
+export const QUALITY_STOPS = ["#fffbeb", "#fde68a", "#f59e0b", "#d97706", "#b45309"];
+
 /** Greyed colour for values that cannot be ranked (no data / n < minimum). */
 export const NO_DATA_COLOR = "#94a3b8";
 
@@ -97,6 +100,10 @@ export function bubbleColor(value, max, metric) {
     return value < 0
       ? ["#7dd3fc", "#38bdf8", "#075985"][intensity]
       : ["#fdba74", "#fb923c", "#b45309"][intensity];
+  }
+
+  if (metric === "quality") {
+    return QUALITY_STOPS[scaleStep(value, max)];
   }
 
   return SEQUENTIAL_STOPS[scaleStep(value, max)];

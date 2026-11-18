@@ -123,6 +123,7 @@ class DispersalMapService
             'page' => $page,
             'per_page' => $perPage,
             'scoped' => false, // contract flag: nobody is row-scoped since the doctor role merged into technician
+            'version' => $this->latestVersion(),
             'generated_at' => now()->toIso8601String(),
         ];
     }
@@ -136,47 +137,55 @@ class DispersalMapService
      * @param  string  $mode  self::MODE_ON | self::MODE_AS_OF
      * @return array<string, mixed>
      */
-    public function snapshot(User $viewer, ?Carbon $date, string $mode): array
+    public function snapshot(User $viewer, ?Carbon $date, string $mode, ?string $animalType = null): array
     {
+        $animalType = $animalType !== null && trim($animalType) !== "" ? trim($animalType) : null;
+
         if ($date === null) {
-            return $this->emptySnapshot($mode);
+            return $this->emptySnapshot($mode, $animalType);
         }
 
-        // The newest active event anywhere is the cache invalidator: until a
-        // new event (or a void) lands, the same (date, mode, viewer) question
-        // has the same answer. Plain arrays only — see the analytics cache
-        // note on serializable_classes => false.
-        $latestEventId = (int) DB::table('animal_ownership_events')
-            ->where('status', AnimalOwnershipEvent::STATUS_ACTIVE)
-            ->max('id');
+        // The active event fingerprint is the cache invalidator: a new event,
+        // a void, or an edited chain changes it. Until then, the same
+        // (date, mode, species, viewer) question has the same answer. Plain
+        // arrays only — see the analytics cache note on serializable_classes.
+        $version = $this->latestVersion();
 
         $payload = Cache::remember(
-            $this->cacheKey($viewer, $date, $mode, $latestEventId),
+            $this->cacheKey($viewer, $date, $mode, $animalType, $version),
             self::CACHE_SECONDS,
-            fn (): array => $this->buildSnapshot($viewer, $date, $mode),
+            fn (): array => $this->buildSnapshot($viewer, $date, $mode, $animalType),
         );
 
-        return [...$payload, 'generated_at' => now()->toIso8601String()];
+        return [
+            ...$payload,
+            'version' => $version,
+            'generated_at' => now()->toIso8601String(),
+        ];
     }
 
     /* ------------------------------------------------------------------ *
      |  Internals                                                          |
      * ------------------------------------------------------------------ */
 
-    private function emptySnapshot(string $mode): array
+    private function emptySnapshot(string $mode, ?string $animalType = null): array
     {
         return [
             'pins' => [],
             // Even an empty day paints the city: every covered barangay at 0.
             'barangays' => $this->barangayRows(collect()),
             'skipped_no_location' => 0,
+            'unlocated' => [],
+            'flows' => [],
+            'animal_types' => $this->animalTypes(),
             'mode' => $mode,
             'date' => null,
+            'animal_type' => $animalType,
             'scoped' => false,
         ];
     }
 
-    private function buildSnapshot(User $viewer, Carbon $date, string $mode): array
+    private function buildSnapshot(User $viewer, Carbon $date, string $mode, ?string $animalType = null): array
     {
         // The latest event per animal within the mode's window; the window
         // filter goes INSIDE the ranking so "latest" means latest within it.
@@ -201,6 +210,7 @@ class DispersalMapService
             ->whereNotNull('r.to_beneficiary_id')
             ->join('animals as a', 'a.id', '=', 'r.animal_id')
             ->whereNull('a.deleted_at')
+            ->when($animalType !== null, fn ($q) => $q->where('a.animal_type', $animalType))
             ->leftJoin('beneficiaries as o', 'o.id', '=', 'r.to_beneficiary_id')
             ->leftJoin('barangays as ob', 'ob.id', '=', 'o.barangay_id')
             ->leftJoin('barangays as tb', 'tb.id', '=', 'r.to_barangay_id')
@@ -229,6 +239,7 @@ class DispersalMapService
 
         $skipped = 0;
         $pins = [];
+        $unlocated = [];
 
         foreach ($rows as $row) {
             // The pin's barangay: the handover snapshot when it exists, the
@@ -251,6 +262,22 @@ class DispersalMapService
 
             if ($latitude === null || $longitude === null) {
                 $skipped += 1;
+                $unlocated[] = [
+                    'animal_id' => (int) $row->animal_id,
+                    'animal_type' => $row->animal_type,
+                    'ear_tag_number' => $row->ear_tag_number,
+                    'animal_status' => $row->animal_status,
+                    'owner' => [
+                        'id' => (int) $row->to_beneficiary_id,
+                        'label' => $label,
+                        'masked' => false,
+                    ],
+                    'barangay_id' => $barangayId !== null ? (int) $barangayId : null,
+                    'barangay' => $barangayName,
+                    'last_event_id' => (int) $row->event_id,
+                    'last_event_date' => substr((string) $row->event_date, 0, 10),
+                    'event_type' => $row->event_type,
+                ];
                 Log::warning('map.pin.skipped_no_location', [
                     'animal_id' => (int) $row->animal_id,
                     'event_id' => (int) $row->event_id,
@@ -286,8 +313,14 @@ class DispersalMapService
             // never show a count the pins below it do not add up to.
             'barangays' => $this->barangayRows(collect($pins)),
             'skipped_no_location' => $skipped,
+            'unlocated' => $unlocated,
+            // Aggregate, selected-day movement pairs. The map draws these as
+            // directional flow lines; the panel and CSV read the same list.
+            'flows' => $this->flowsFor($date, $animalType),
+            'animal_types' => $this->animalTypes(),
             'mode' => $mode,
             'date' => $date->toDateString(),
+            'animal_type' => $animalType,
             'scoped' => false, // contract flag: nobody is row-scoped since the doctor role merged into technician
         ];
     }
@@ -309,14 +342,112 @@ class DispersalMapService
             ->orderBy('b.id')
             ->selectRaw('b.id, b.name, b.latitude, b.longitude')
             ->get()
+            ->map(function (object $row) use ($counts): array {
+                $group = $counts->get((int) $row->id);
+                $households = $group
+                    ? $group->pluck('owner.id')->filter(fn ($id): bool => $id !== null)->unique()->count()
+                    : 0;
+                $redispersals = $group
+                    ? $group->filter(fn (array $pin): bool => in_array($pin['event_type'], ['re_dispersal', 'pass_on'], true))->count()
+                    : 0;
+                $approximate = $group
+                    ? $group->filter(fn (array $pin): bool => (bool) ($pin['approximate'] ?? false))->count()
+                    : 0;
+
+                return [
+                    'barangay_id' => (int) $row->id,
+                    'name' => $row->name,
+                    'latitude' => (float) $row->latitude,
+                    'longitude' => (float) $row->longitude,
+                    'pins' => (int) ($group?->count() ?? 0),
+                    'households' => $households,
+                    're_dispersals' => $redispersals,
+                    'approximate' => $approximate,
+                    // The data-quality choropleth reads ONE field, named for
+                    // what it measures rather than how it is computed.
+                    'quality' => $approximate,
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * Aggregate barangay-to-barangay movement pairs for the selected day.
+     * Return-to-CVO legs carry a null destination (and are not drawable);
+     * CVO-origin dispersals carry a null origin. The API keeps both so the
+     * CSV and attention list can still report them.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function flowsFor(Carbon $date, ?string $animalType): array
+    {
+        return $this->scopedEvents()
+            ->where('e.event_date', '>=', $date->toDateString().' 00:00:00')
+            ->where('e.event_date', '<=', $date->toDateString().' 23:59:59')
+            ->join('animals as a', 'a.id', '=', 'e.animal_id')
+            ->whereNull('a.deleted_at')
+            ->when($animalType !== null, fn (Builder $q): Builder => $q->where('a.animal_type', $animalType))
+            ->leftJoin('barangays as fb', 'fb.id', '=', 'e.from_barangay_id')
+            ->leftJoin('barangays as tb', 'tb.id', '=', 'e.to_barangay_id')
+            ->groupBy(
+                'e.from_barangay_id',
+                'e.to_barangay_id',
+                'fb.name',
+                'fb.latitude',
+                'fb.longitude',
+                'tb.name',
+                'tb.latitude',
+                'tb.longitude',
+            )
+            ->orderByDesc(DB::raw('count(*)'))
+            ->selectRaw(implode(', ', [
+                'e.from_barangay_id',
+                'e.to_barangay_id',
+                'count(*) as total',
+                'fb.name as from_name',
+                'fb.latitude as from_latitude',
+                'fb.longitude as from_longitude',
+                'tb.name as to_name',
+                'tb.latitude as to_latitude',
+                'tb.longitude as to_longitude',
+            ]))
+            ->get()
             ->map(fn (object $row): array => [
-                'barangay_id' => (int) $row->id,
-                'name' => $row->name,
-                'latitude' => (float) $row->latitude,
-                'longitude' => (float) $row->longitude,
-                'pins' => (int) ($counts->get((int) $row->id)?->count() ?? 0),
+                'from_barangay_id' => $row->from_barangay_id !== null ? (int) $row->from_barangay_id : null,
+                'from_name' => $row->from_name,
+                'from_latitude' => $row->from_latitude !== null ? (float) $row->from_latitude : null,
+                'from_longitude' => $row->from_longitude !== null ? (float) $row->from_longitude : null,
+                'to_barangay_id' => $row->to_barangay_id !== null ? (int) $row->to_barangay_id : null,
+                'to_name' => $row->to_name,
+                'to_latitude' => $row->to_latitude !== null ? (float) $row->to_latitude : null,
+                'to_longitude' => $row->to_longitude !== null ? (float) $row->to_longitude : null,
+                'total' => (int) $row->total,
             ])
             ->all();
+    }
+
+    /** @return list<string> */
+    private function animalTypes(): array
+    {
+        return DB::table('animals')
+            ->whereNull('deleted_at')
+            ->whereNotNull('animal_type')
+            ->where('animal_type', '!=', '')
+            ->distinct()
+            ->orderBy('animal_type')
+            ->pluck('animal_type')
+            ->all();
+    }
+
+    /** A cheap fingerprint of the active event chain, for conditional refresh. */
+    private function latestVersion(): string
+    {
+        $row = DB::table('animal_ownership_events')
+            ->where('status', AnimalOwnershipEvent::STATUS_ACTIVE)
+            ->selectRaw("count(*) as total, coalesce(max(id), 0) as max_id, coalesce(max(updated_at), '') as updated_at")
+            ->first();
+
+        return sprintf('%d:%d:%s', (int) ($row->total ?? 0), (int) ($row->max_id ?? 0), (string) ($row->updated_at ?? ''));
     }
 
     /**
@@ -385,19 +516,20 @@ class DispersalMapService
             ->where('e.status', AnimalOwnershipEvent::STATUS_ACTIVE);
     }
 
-    private function cacheKey(User $viewer, Carbon $date, string $mode, int $latestEventId): string
+    private function cacheKey(User $viewer, Carbon $date, string $mode, ?string $animalType, string $version): string
     {
         // The viewer rides in the key because a scoped role's answer would be
         // a different answer to the same date (same convention as the
         // analytics cache; nobody is scoped since the doctor role merged into
-        // technician, but the key shape is kept); the latest event id is the
-        // invalidator.
-        return 'map:snapshot:v1:'.md5((string) json_encode([
+        // technician, but the key shape is kept); the active-event version is
+        // the invalidator, and the species filter is part of the question.
+        return 'map:snapshot:v2:'.md5((string) json_encode([
             'viewer' => $viewer->id,
             'role' => $viewer->role,
             'date' => $date->toDateString(),
             'mode' => $mode,
-            'latest_event_id' => $latestEventId,
+            'animal_type' => $animalType,
+            'version' => $version,
         ]));
     }
 }

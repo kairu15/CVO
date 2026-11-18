@@ -115,19 +115,20 @@ class DispersalMapTest extends TestCase
             ->json('data');
     }
 
-    private function pins(User $viewer, ?string $date, string $mode = 'on')
+    private function pins(User $viewer, ?string $date, string $mode = 'on', ?string $animalType = null)
     {
         return $this->actingAs($viewer)->getJson(
             '/api/v1/map/pins?'.http_build_query(array_filter([
                 'date' => $date,
                 'mode' => $mode,
+                'animal_type' => $animalType,
             ], fn ($value) => $value !== null)),
         );
     }
 
-    private function snapshot(User $viewer, ?string $date, string $mode = 'on'): array
+    private function snapshot(User $viewer, ?string $date, string $mode = 'on', ?string $animalType = null): array
     {
-        return $this->pins($viewer, $date, $mode)->assertOk()->json('data');
+        return $this->pins($viewer, $date, $mode, $animalType)->assertOk()->json('data');
     }
 
     private function rowFor(array $data, int $barangayId): array
@@ -565,6 +566,86 @@ class DispersalMapTest extends TestCase
             $this->assertSame($owner->name_of_farmer, $data['pins'][0]['owner']['label']);
             $this->assertSame(9.5, $data['pins'][0]['latitude']);
         }
+    }
+
+    /* ------------------------------------------------------------------ *
+     |  Species filter + decision-support payloads                         |
+     * ------------------------------------------------------------------ */
+
+    public function test_snapshot_species_filter_narrows_pins_and_polygons_but_keeps_filter_options(): void
+    {
+        $admin = $this->admin();
+        $barangay = $this->barangay(0);
+        $owner = $this->beneficiaryIn($barangay, ['latitude' => 9.5, 'longitude' => 122.8]);
+
+        $this->disperse($admin, $owner, '2026-10-20', 'T1');
+
+        $matching = $this->snapshot($admin, '2026-10-20', 'on', 'Swine (Pig)');
+        $other = $this->snapshot($admin, '2026-10-20', 'on', 'Cattle');
+
+        $this->assertCount(1, $matching['pins']);
+        $this->assertSame(1, $this->rowFor($matching, $barangay->id)['pins']);
+        $this->assertCount(0, $other['pins']);
+        $this->assertSame(0, $this->rowFor($other, $barangay->id)['pins']);
+        // The filter options are the program's full type list, not just the
+        // selected subset, or a user could never switch back.
+        $this->assertContains('Swine (Pig)', $other['animal_types']);
+    }
+
+    public function test_snapshot_exposes_unlocated_rows_for_the_attention_list(): void
+    {
+        $admin = $this->admin();
+        $owner = Beneficiary::factory()->create([
+            'barangay_id' => null,
+            'address' => 'Unlisted',
+            'latitude' => null,
+            'longitude' => null,
+        ]);
+
+        $animal = $this->disperse($admin, $owner, '2026-10-20', 'NO-GPS');
+        $data = $this->snapshot($admin, '2026-10-20', 'on');
+
+        $this->assertSame(1, $data['skipped_no_location']);
+        $this->assertCount(1, $data['unlocated']);
+        $this->assertSame($animal->id, $data['unlocated'][0]['animal_id']);
+        $this->assertSame('NO-GPS', $data['unlocated'][0]['ear_tag_number']);
+        $this->assertNull($data['unlocated'][0]['barangay']);
+    }
+
+    public function test_snapshot_returns_aggregate_movements_and_rows_expose_household_metrics(): void
+    {
+        $admin = $this->admin();
+        $firstHouse = $this->barangay(0);
+        $secondHouse = $this->barangay(1);
+        $first = $this->beneficiaryIn($firstHouse, ['latitude' => 9.5, 'longitude' => 122.8]);
+        $second = $this->beneficiaryIn($secondHouse, ['latitude' => 9.55, 'longitude' => 122.85]);
+
+        $animal = $this->disperse($admin, $first, '2026-10-20', 'T1');
+        $this->redisperse($admin, $animal->id, $second, '2026-10-21');
+
+        $data = $this->snapshot($admin, '2026-10-21', 'on');
+        $this->assertCount(1, $data['flows']);
+        $this->assertSame($firstHouse->name, $data['flows'][0]['from_name']);
+        $this->assertSame($secondHouse->name, $data['flows'][0]['to_name']);
+        $this->assertSame(1, $data['flows'][0]['total']);
+
+        $row = $this->rowFor($data, $secondHouse->id);
+        $this->assertSame(1, $row['households']);
+        $this->assertSame(1, $row['re_dispersals']);
+        $this->assertSame(0, $row['quality']);
+    }
+
+    public function test_dates_and_snapshot_share_an_active_event_version(): void
+    {
+        $admin = $this->admin();
+        $owner = $this->beneficiaryIn($this->barangay(0), ['latitude' => 9.5, 'longitude' => 122.8]);
+        $this->disperse($admin, $owner, '2026-10-20', 'T1');
+
+        $dates = $this->dates($admin);
+        $snapshot = $this->snapshot($admin, '2026-10-20', 'on');
+
+        $this->assertIsString($dates['version']);
+        $this->assertSame($dates['version'], $snapshot['version']);
     }
 
     /* ------------------------------------------------------------------ *

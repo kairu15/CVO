@@ -22,7 +22,12 @@ class AssignTechnicianRequest extends FormRequest
         return [
             'technician_id' => [
                 'nullable',
-                Rule::exists('users', 'id')->where('role', 'technician'),
+                // Deactivated accounts are soft-deleted rows; an exists check
+                // without the deleted_at guard would still let an admin
+                // assign new work to a technician who cannot sign in.
+                Rule::exists('users', 'id')
+                    ->where('role', 'technician')
+                    ->whereNull('deleted_at'),
             ],
         ];
     }

@@ -18,6 +18,24 @@ export const adminApi = {
   listUsersPage: async (params = {}) =>
     unwrap.page(await api.get("/api/v1/admin/users", { params })),
 
+  /**
+   * The Technicians screen: one filtered page plus the page-independent KPI
+   * strip, barangay filter vocabulary and unassigned-household entry point.
+   */
+  listTechnicians: async (params = {}) => {
+    const response = await api.get("/api/v1/admin/technicians", { params });
+
+    return {
+      ...unwrap.page(response),
+      summary: response.data?.summary ?? null,
+      barangays: Array.isArray(response.data?.barangays) ? response.data.barangays : [],
+      unassigned: response.data?.unassigned ?? { total: 0, households: [] },
+    };
+  },
+
+  /** One technician's profile drawer: workload, assignments, visits, activity. */
+  getTechnician: async (id) => unwrap(await api.get(`/api/v1/admin/technicians/${id}`)),
+
   /** Set a user's role between the staff roles. */
   assignRole: async (userId, role) => {
     await ensureCsrfCookie();

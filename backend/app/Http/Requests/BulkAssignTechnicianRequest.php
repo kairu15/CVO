@@ -26,7 +26,11 @@ class BulkAssignTechnicianRequest extends FormRequest
             'ids.*' => ['integer', Rule::exists('beneficiaries', 'id')],
             'technician_id' => [
                 'nullable',
-                Rule::exists('users', 'id')->where('role', 'technician'),
+                // Keep bulk assignment aligned with the single-row guard:
+                // deactivated accounts cannot receive new households.
+                Rule::exists('users', 'id')
+                    ->where('role', 'technician')
+                    ->whereNull('deleted_at'),
             ],
         ];
     }

@@ -32,6 +32,7 @@ use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SiteController;
 use App\Http\Controllers\SyncConflictController;
 use App\Http\Controllers\SymptomRuleController;
+use App\Http\Controllers\TechnicianDirectoryController;
 use App\Http\Controllers\VaccinationScheduleController;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use Illuminate\Support\Facades\Route;
@@ -440,6 +441,16 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
             ->middleware('permission:manage_users')->name('api.admin.users.activity');
         Route::post('/users/bulk-deactivate', [AdminController::class, 'bulkDeactivateUsers'])
             ->middleware('permission:manage_users')->name('api.admin.users.bulk-deactivate');
+
+        // The Technicians screen: workload is derived from the same
+        // beneficiaries and field_visits rows every other module reads. The
+        // profile drawer is a second, on-demand request so the directory page
+        // does not load every technician's history.
+        Route::get('/technicians', [TechnicianDirectoryController::class, 'index'])
+            ->middleware('permission:manage_users')->name('api.admin.technicians');
+        Route::get('/technicians/{id}', [TechnicianDirectoryController::class, 'show'])
+            ->whereNumber('id')
+            ->middleware('permission:manage_users')->name('api.admin.technicians.show');
         Route::get('/beneficiaries', [AdminController::class, 'beneficiaries'])
             ->middleware('permission:assign_technicians')->name('api.admin.beneficiaries');
         // KPI strip, "select all matching" ids and the filtered CSV export.

@@ -262,7 +262,10 @@ class BarangayApiTest extends TestCase
         ]);
 
         // A manual dropdown choice (or any older client) records as manual.
-        $this->postEnrol()
+        // This is the same farmer/barangay as the first row, so the duplicate
+        // warning must be acknowledged explicitly — the test is about the
+        // location source, not about bypassing that safeguard.
+        $this->postEnrol(['confirm_duplicate' => true])
             ->assertCreated();
 
         $this->assertDatabaseHas('beneficiaries', ['location_source' => 'manual']);

@@ -16,7 +16,11 @@ class FieldVisitFactory extends Factory
     {
         return [
             'beneficiary_id' => Beneficiary::factory(),
-            'technician_id' => User::factory()->create(['role' => 'technician'])->id,
+            // Return the factory, not an eagerly-created model: a nested
+            // factory is only resolved when the attribute is not overridden,
+            // so `->by($technician)` no longer leaves a stray technician
+            // account behind on every factory call.
+            'technician_id' => User::factory()->state(['role' => 'technician']),
             'visited_on' => fake()->dateTimeBetween('-6 months', 'now'),
             'purpose' => fake()->randomElement(config('cvo.field_visit_purposes')),
             // A fix is not always captured, so leave roughly one in five without.

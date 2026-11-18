@@ -101,6 +101,42 @@ describe("AnnouncementsPage", () => {
     expect(api.create).not.toHaveBeenCalled();
   });
 
+  it("filters by status and search text", async () => {
+    renderPage();
+
+    await screen.findByText("Rabies drive");
+
+    fireEvent.change(screen.getByLabelText("Search announcements"), {
+      target: { value: "draft" },
+    });
+
+    expect(screen.queryByText("Rabies drive")).not.toBeInTheDocument();
+    expect(screen.getByText("Draft notice")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+
+    expect(await screen.findByText("No announcements match these filters")).toBeInTheDocument();
+  });
+
+  it("publishes a draft with one click", async () => {
+    renderPage();
+
+    const row = (await screen.findByText("Draft notice")).closest("li");
+    fireEvent.click(within(row).getByRole("button", { name: "Publish" }));
+
+    await waitFor(() =>
+      expect(api.update).toHaveBeenCalledWith(2, {
+        title: "Draft notice",
+        body: "Not public yet.",
+        is_pinned: false,
+        published: true,
+      }),
+    );
+    expect(toast.success).toHaveBeenCalledWith(
+      "Announcement published. It is live on the landing page.",
+    );
+  });
+
   it("deletes an announcement after confirming", async () => {
     renderPage();
 

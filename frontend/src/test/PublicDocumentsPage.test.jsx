@@ -12,6 +12,7 @@ import PublicDocumentsPage from "../pages/PublicDocumentsPage";
 const api = vi.hoisted(() => ({
   list: vi.fn(),
   upload: vi.fn(),
+  update: vi.fn(),
   remove: vi.fn(),
 }));
 const publicApi = vi.hoisted(() => ({
@@ -67,6 +68,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   api.list.mockResolvedValue(DOCUMENTS);
   api.upload.mockResolvedValue({});
+  api.update.mockResolvedValue({});
   api.remove.mockResolvedValue();
 });
 
@@ -123,6 +125,61 @@ describe("PublicDocumentsPage", () => {
     expect(await screen.findByText("Give the document a title.")).toBeInTheDocument();
     expect(screen.getByText("Choose the PDF file to publish.")).toBeInTheDocument();
     expect(api.upload).not.toHaveBeenCalled();
+  });
+
+  it("filters by status and search text", async () => {
+    renderPage();
+
+    await screen.findByText("2025 Annual Report");
+
+    fireEvent.change(screen.getByLabelText("Search documents"), {
+      target: { value: "draft" },
+    });
+
+    expect(screen.queryByText("2025 Annual Report")).not.toBeInTheDocument();
+    expect(screen.getByText("Draft disclosure")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+
+    // The search still says "draft", so nothing matches the published filter.
+    expect(await screen.findByText("No documents match these filters")).toBeInTheDocument();
+  });
+
+  it("publishes a draft with one click", async () => {
+    renderPage();
+
+    const row = (await screen.findByText("Draft disclosure")).closest("li");
+    fireEvent.click(within(row).getByRole("button", { name: "Publish" }));
+
+    await waitFor(() => expect(api.update).toHaveBeenCalledWith(8, { published: true }));
+    expect(toast.success).toHaveBeenCalledWith(
+      "Document published. It is live on the transparency page.",
+    );
+  });
+
+  it("edits metadata through the edit dialog", async () => {
+    renderPage();
+
+    const row = (await screen.findByText("Draft disclosure")).closest("li");
+    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Edit document" });
+    fireEvent.change(within(dialog).getByLabelText("Title"), {
+      target: { value: "2026 Draft Disclosure" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(api.update).toHaveBeenCalledWith(
+        8,
+        expect.objectContaining({
+          title: "2026 Draft Disclosure",
+          category: "budget",
+          published: false,
+        }),
+      ),
+    );
+    expect(toast.success).toHaveBeenCalledWith("Document updated.");
   });
 
   it("deletes a document after confirming", async () => {

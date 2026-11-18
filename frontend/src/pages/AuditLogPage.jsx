@@ -6,6 +6,7 @@ import { Icon } from "../components/Icons";
 import { InlineAlert } from "../components/InlineAlert";
 import { PaginationFooter } from "../components/PaginationFooter";
 import { SkeletonList } from "../components/Skeleton";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { labelForAction, labelForEntity } from "../lib/auditLabels";
 
 /**
@@ -47,6 +48,19 @@ const NO_FILTERS = {
   date_to: "",
 };
 
+/** Local calendar date as the date input's YYYY-MM-DD value. */
+function dateInputValue(date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+/** One-click windows — the common "what changed recently" questions. */
+const DATE_PRESETS = [
+  { key: 7, label: "Last 7 days" },
+  { key: 30, label: "Last 30 days" },
+  { key: 90, label: "Last 90 days" },
+];
+
 export default function AuditLogPage() {
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState(null);
@@ -56,6 +70,8 @@ export default function AuditLogPage() {
   const [expandedId, setExpandedId] = useState(null);
 
   const [filters, setFilters] = useState(NO_FILTERS);
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [vocab, setVocab] = useState({ actions: [], target_types: [], actors: [] });
 
   // The vocabulary (actions, entity types, actors) is loaded once; it changes
@@ -87,6 +103,7 @@ export default function AuditLogPage() {
         ...Object.fromEntries(
           Object.entries(filters).filter(([, value]) => value !== ""),
         ),
+        ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
       };
 
       const result = await auditApi.list(params);
@@ -101,7 +118,7 @@ export default function AuditLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, page]);
+  }, [filters, page, debouncedSearch]);
 
   useEffect(() => {
     load();
@@ -113,7 +130,30 @@ export default function AuditLogPage() {
     setExpandedId(null);
   }
 
-  const hasFilters = Object.values(filters).some((value) => value !== "");
+  /** Fill from/to with an inclusive N-day window ending today. */
+  function applyPreset(days) {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - (days - 1));
+
+    setFilters((current) => ({
+      ...current,
+      date_from: dateInputValue(from),
+      date_to: dateInputValue(to),
+    }));
+    setPage(1);
+    setExpandedId(null);
+  }
+
+  const hasFilters =
+    search.trim() !== "" || Object.values(filters).some((value) => value !== "");
+
+  function clearAll() {
+    setFilters(NO_FILTERS);
+    setSearch("");
+    setPage(1);
+    setExpandedId(null);
+  }
 
   return (
     <div className="space-y-6">
@@ -137,8 +177,46 @@ export default function AuditLogPage() {
           </span>
         </div>
 
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Icon
+              name="search"
+              className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400"
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+                setExpandedId(null);
+              }}
+              placeholder="Search user, action or entity…"
+              className="field w-72 pl-9 text-xs"
+              aria-label="Search audit trail"
+            />
+          </div>
+
+          <div
+            className="inline-flex flex-wrap rounded-pill border border-slate-200 bg-slate-50 p-1"
+            role="group"
+            aria-label="Date presets"
+          >
+            {DATE_PRESETS.map((preset) => (
+              <button
+                key={preset.key}
+                type="button"
+                onClick={() => applyPreset(preset.key)}
+                className="rounded-pill px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-white hover:text-brand-800"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Server-side filters — each control maps to one query parameter. */}
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <label className="block">
             <span className="mb-1 block text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
               User
@@ -224,11 +302,7 @@ export default function AuditLogPage() {
           <div className="mt-3">
             <button
               type="button"
-              onClick={() => {
-                setFilters(NO_FILTERS);
-                setPage(1);
-                setExpandedId(null);
-              }}
+              onClick={clearAll}
               className="inline-flex items-center gap-1.5 rounded-pill border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
             >
               <Icon name="close" className="h-3.5 w-3.5" />

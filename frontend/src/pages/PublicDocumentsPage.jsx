@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { documentsApi } from "../api/documentsApi";
 import { publicDocumentsApi } from "../api/publicDocumentsApi";
@@ -18,9 +18,12 @@ import { useToast } from "../context/ToastContext";
  *
  * PDF only, 10 MB cap (mirrors the server rule): these are published reports
  * that residents stream through the API. Publishing is one checkbox — a draft
- * upload stays internal until it is published, and drafts stay listed here
- * (admin index) so they can always be published-later via re-upload or
- * deleted.
+ * upload stays internal until it is published. Drafts stay listed here (admin
+ * index) and can be published with one click, so re-uploading is never
+ * necessary just to flip visibility.
+ *
+ * The file itself is immutable: replacing the PDF is a new upload, which keeps
+ * one audit row per published artefact.
  */
 
 const CATEGORIES = [
@@ -39,6 +42,12 @@ const EMPTY_FORM = {
   file: null,
 };
 
+const STATUS_FILTERS = [
+  { key: "all", label: "All" },
+  { key: "published", label: "Published" },
+  { key: "draft", label: "Drafts" },
+];
+
 /** "184320" → "180 KB" — the same size line the transparency page shows. */
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "—";
@@ -52,10 +61,24 @@ export default function PublicDocumentsPage() {
   const [documents, setDocuments] = useState(null);
   const [loadError, setLoadError] = useState(null);
 
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const [category, setCategory] = useState("all");
+
   const [uploadOpen, setUploadOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Metadata editor — the PDF is never replaced here, only the row around it.
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState({ title: "", description: "", category: "other", published: false });
+  const [editErrors, setEditErrors] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+
+  // The publish/unpublish toggle in flight, so only that row waits.
+  const [publishingId, setPublishingId] = useState(null);
 
   const [deleting, setDeleting] = useState(null);
 
@@ -71,10 +94,31 @@ export default function PublicDocumentsPage() {
 
   useEffect(load, []);
 
+  const visible = useMemo(() => {
+    const term = search.trim().toLowerCase();
+
+    return (documents ?? []).filter((document) => {
+      const isPublished = Boolean(document.published_at);
+      if (status === "published" && !isPublished) return false;
+      if (status === "draft" && isPublished) return false;
+      if (category !== "all" && document.category !== category) return false;
+      if (!term) return true;
+
+      return [document.title, document.description, document.original_name, document.category_label]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term));
+    });
+  }, [documents, search, status, category]);
+
+  const filtering = search.trim() !== "" || status !== "all" || category !== "all";
+
   function openUpload() {
     setForm(EMPTY_FORM);
     setErrors({});
     setUploadOpen(true);
+    // The native file input is uncontrolled; clear it so the previous pick
+    // does not linger in the dialog.
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function update(field) {
@@ -84,6 +128,17 @@ export default function PublicDocumentsPage() {
       setForm((prev) => ({ ...prev, [field]: value }));
       setErrors((prev) => ({ ...prev, [field]: undefined }));
     };
+  }
+
+  function openEditor(document) {
+    setEditing(document);
+    setEditForm({
+      title: document.title,
+      description: document.description ?? "",
+      category: document.category,
+      published: Boolean(document.published_at),
+    });
+    setEditErrors({});
   }
 
   function validate() {
@@ -123,6 +178,49 @@ export default function PublicDocumentsPage() {
     }
   }
 
+  async function togglePublished(document) {
+    const next = !document.published_at;
+    setPublishingId(document.id);
+
+    try {
+      await documentsApi.update(document.id, { published: next });
+      toast.success(next ? "Document published. It is live on the transparency page." : "Document unpublished. It is now a draft.");
+      load();
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setPublishingId(null);
+    }
+  }
+
+  async function saveEdit(event) {
+    event.preventDefault();
+
+    if (!editForm.title.trim()) {
+      setEditErrors({ title: "Give the document a title." });
+      return;
+    }
+
+    setEditSaving(true);
+    try {
+      await documentsApi.update(editing.id, {
+        title: editForm.title.trim(),
+        description: editForm.description.trim() || null,
+        category: editForm.category,
+        published: editForm.published,
+      });
+      toast.success("Document updated.");
+      setEditing(null);
+      load();
+    } catch (error) {
+      const fields = getFieldErrors(error);
+      if (fields) setEditErrors(fields);
+      else toast.error(getErrorMessage(error));
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   async function handleDelete() {
     if (!deleting) return;
 
@@ -157,6 +255,81 @@ export default function PublicDocumentsPage() {
             Upload document
           </button>
         </div>
+
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Icon
+              name="search"
+              className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400"
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search title, description or file…"
+              className="field w-64 pl-9 text-xs"
+              aria-label="Search documents"
+            />
+          </div>
+
+          <select
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+            className="field w-44 text-xs"
+            aria-label="Filter by category"
+          >
+            <option value="all">All categories</option>
+            {CATEGORIES.map((item) => (
+              <option key={item.key} value={item.key}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+
+          <div
+            className="inline-flex rounded-pill border border-slate-200 bg-slate-50 p-1"
+            role="group"
+            aria-label="Filter by status"
+          >
+            {STATUS_FILTERS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setStatus(item.key)}
+                aria-pressed={status === item.key}
+                className={`rounded-pill px-3 py-1 text-xs font-semibold transition ${
+                  status === item.key
+                    ? "bg-white text-brand-800 shadow-sm"
+                    : "text-slate-600 hover:text-brand-800"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {filtering && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setStatus("all");
+                setCategory("all");
+              }}
+              className="inline-flex items-center gap-1.5 rounded-pill border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              <Icon name="close" className="h-3.5 w-3.5" />
+              Clear
+            </button>
+          )}
+
+          {documents !== null && (
+            <span className="ml-auto text-[11px] text-slate-500">
+              {visible.length} of {documents.length}{" "}
+              {documents.length === 1 ? "document" : "documents"}
+            </span>
+          )}
+        </div>
       </section>
 
       <section className="card overflow-hidden">
@@ -175,9 +348,16 @@ export default function PublicDocumentsPage() {
               description="Upload the office's first report or disclosure and it appears on the public transparency page."
             />
           </div>
+        ) : visible.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              title="No documents match these filters"
+              description="Try a different search term, category or status."
+            />
+          </div>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {documents.map((document) => (
+            {visible.map((document) => (
               <li
                 key={document.id}
                 className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
@@ -204,7 +384,7 @@ export default function PublicDocumentsPage() {
                   </p>
                 </div>
 
-                <div className="flex shrink-0 gap-2">
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
                   {document.download_url && (
                     <a
                       href={publicDocumentsApi.resolveDownload(document.download_url)}
@@ -215,6 +395,25 @@ export default function PublicDocumentsPage() {
                       View
                     </a>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => togglePublished(document)}
+                    disabled={publishingId === document.id}
+                    className="btn-secondary !px-3.5 !py-1.5 text-xs disabled:opacity-50"
+                  >
+                    {publishingId === document.id
+                      ? "Saving…"
+                      : document.published_at
+                        ? "Unpublish"
+                        : "Publish"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openEditor(document)}
+                    className="btn-secondary !px-3.5 !py-1.5 text-xs"
+                  >
+                    Edit
+                  </button>
                   <button
                     type="button"
                     onClick={() => setDeleting(document)}
@@ -280,9 +479,9 @@ export default function PublicDocumentsPage() {
               value={form.category}
               onChange={update("category")}
             >
-              {CATEGORIES.map((category) => (
-                <option key={category.key} value={category.key}>
-                  {category.label}
+              {CATEGORIES.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.label}
                 </option>
               ))}
             </select>
@@ -297,6 +496,7 @@ export default function PublicDocumentsPage() {
             </label>
             <input
               id="document-file"
+              ref={fileInputRef}
               type="file"
               accept="application/pdf,.pdf"
               onChange={(event) => {
@@ -339,6 +539,99 @@ export default function PublicDocumentsPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={editing !== null}
+        title="Edit document"
+        onClose={() => setEditing(null)}
+        contentClassName="max-w-xl"
+      >
+        {editing && (
+          <form onSubmit={saveEdit} noValidate className="space-y-4">
+            <TextField
+              id="edit-document-title"
+              label="Title"
+              type="text"
+              value={editForm.title}
+              onChange={(event) => {
+                setEditForm((prev) => ({ ...prev, title: event.target.value }));
+                setEditErrors((prev) => ({ ...prev, title: undefined }));
+              }}
+              error={editErrors.title}
+            />
+
+            <div>
+              <label
+                htmlFor="edit-document-description"
+                className="block text-sm font-medium text-slate-700 dark:text-slate-500"
+              >
+                Description (optional)
+              </label>
+              <textarea
+                id="edit-document-description"
+                rows={3}
+                className={`field mt-1.5 resize-y ${editErrors.description ? "field-invalid" : ""}`}
+                value={editForm.description}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, description: event.target.value }))
+                }
+              />
+              {editErrors.description && (
+                <p className="mt-1.5 text-xs font-medium text-red-600">{editErrors.description}</p>
+              )}
+            </div>
+
+            <div>
+              <label
+                htmlFor="edit-document-category"
+                className="block text-sm font-medium text-slate-700 dark:text-slate-500"
+              >
+                Category
+              </label>
+              <select
+                id="edit-document-category"
+                className="field mt-1.5"
+                value={editForm.category}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, category: event.target.value }))
+                }
+              >
+                {CATEGORIES.map((item) => (
+                  <option key={item.key} value={item.key}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <label className="flex items-center gap-2.5 rounded-xl border border-slate-100 p-4 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={editForm.published}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, published: event.target.checked }))
+                }
+                className="h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-2 focus:ring-brand-700 dark:border-slate-400"
+              />
+              Published — visible on the transparency page
+            </label>
+
+            <p className="text-[11px] text-slate-500">
+              The PDF file itself cannot be replaced here. Upload a new document
+              to publish a revised file.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setEditing(null)} className="btn-secondary text-sm">
+                Cancel
+              </button>
+              <button type="submit" disabled={editSaving} className="btn-primary text-sm">
+                {editSaving ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
 
       <ConfirmDialog

@@ -610,6 +610,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
             ->middleware('permission:manage_settings')->name('api.admin.documents');
         Route::post('/documents', [PublicDocumentController::class, 'store'])
             ->middleware('permission:manage_settings')->name('api.admin.documents.store');
+        Route::patch('/documents/{document}', [PublicDocumentController::class, 'update'])
+            ->middleware('permission:manage_settings')->name('api.admin.documents.update');
         Route::delete('/documents/{document}', [PublicDocumentController::class, 'destroy'])
             ->middleware('permission:manage_settings')->name('api.admin.documents.destroy');
     });

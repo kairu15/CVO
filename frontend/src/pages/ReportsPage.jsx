@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Bar,
@@ -141,6 +141,7 @@ export default function ReportsPage({ roleKey = "admin" }) {
   const [month, setMonth] = useState(null);
   const [typeOptions, setTypeOptions] = useState([]);
   const [monthOptions, setMonthOptions] = useState([]);
+  const [sort, setSort] = useState({ key: "barangay", dir: "asc" });
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -222,7 +223,29 @@ export default function ReportsPage({ roleKey = "admin" }) {
   const program = data?.program ?? {};
   const activity = data?.activity ?? {};
   const clinical = data?.clinical ?? {};
-  const rows = data?.per_barangay ?? [];
+  const rows = useMemo(() => data?.per_barangay ?? [], [data]);
+
+  const sortedRows = useMemo(() => {
+    const value = (row) => row[sort.key];
+
+    return [...rows].sort((a, b) => {
+      const result =
+        typeof value(a) === "string"
+          ? value(a).localeCompare(value(b))
+          : (value(a) ?? 0) - (value(b) ?? 0);
+
+      return sort.dir === "asc" ? result : -result;
+    });
+  }, [rows, sort]);
+
+  function toggleSort(key) {
+    setSort((current) => {
+      if (current.key === key) {
+        return { key, dir: current.dir === "desc" ? "asc" : "desc" };
+      }
+      return { key, dir: key === "barangay" ? "asc" : "desc" };
+    });
+  }
 
   const trend = trendState.data ?? [];
   const byBarangay = byBarangayState.data ?? [];
@@ -318,12 +341,17 @@ export default function ReportsPage({ roleKey = "admin" }) {
           </div>
         </div>
 
-        {(barangay || animalType || month) && (
+        {(barangay || animalType || month || from) && (
           <p className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-pill bg-brand-50 px-3.5 py-1.5 text-xs font-semibold text-brand-800">
             <Icon name="map-pin" className="h-3.5 w-3.5" />
-            Scoped to: {[barangay || "all barangays", animalType ?? "all types", month ? `month ${month}` : "all months"].join(" · ")}
+            Filters: {[barangay || "all barangays", animalType ?? "all types", month ? `month ${month}` : "all months", from ? `since ${from}` : "all dates"].join(" · ")}
           </p>
         )}
+        <p className="mt-2 text-[11px] text-slate-500">
+          Each chart states the filters it uses in its caption. Program totals
+          follow the barangay scope; the per-barangay table follows the barangay
+          filter.
+        </p>
 
         {/* The printable report: the office's own template, filled for the
             filters above, under an editable report name. */}
@@ -639,16 +667,46 @@ export default function ReportsPage({ roleKey = "admin" }) {
                   </colgroup>
                   <thead>
                     <tr className="border-b border-slate-100 text-left text-[11px] tracking-wide text-slate-500 uppercase">
-                      <th className="px-4 py-2.5 font-semibold">Barangay</th>
-                      <th className="px-4 py-2.5 text-right font-semibold">Households</th>
-                      <th className="px-4 py-2.5 text-right font-semibold">Monitoring</th>
-                      <th className="px-4 py-2.5 text-right font-semibold">Field visits</th>
-                      <th className="px-4 py-2.5 text-right font-semibold">Health records</th>
-                      <th className="px-4 py-2.5 text-right font-semibold">Dispersals</th>
+                      {[
+                        { key: "barangay", label: "Barangay" },
+                        { key: "households", label: "Households" },
+                        { key: "monitoring_visits", label: "Monitoring" },
+                        { key: "field_visits", label: "Field visits" },
+                        { key: "health_records", label: "Health records" },
+                        { key: "dispersals", label: "Dispersals" },
+                      ].map((column) => (
+                        <th
+                          key={column.key}
+                          scope="col"
+                          aria-sort={
+                            sort.key === column.key
+                              ? sort.dir === "asc"
+                                ? "ascending"
+                                : "descending"
+                              : "none"
+                          }
+                          className={`px-4 py-2.5 font-semibold ${
+                            column.key === "barangay" ? "" : "text-right"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleSort(column.key)}
+                            className={`inline-flex items-center gap-1 uppercase transition hover:text-brand-800 ${
+                              sort.key === column.key ? "text-brand-800" : ""
+                            }`}
+                          >
+                            {column.label}
+                            <span aria-hidden="true" className="text-[9px]">
+                              {sort.key === column.key ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {rows.map((row) => (
+                    {sortedRows.map((row) => (
                       <tr key={row.barangay} className="transition hover:bg-brand-50/40">
                         <td className="px-4 py-3 font-semibold text-slate-900">{row.barangay}</td>
                         <td className="px-4 py-3 text-right">{row.households}</td>

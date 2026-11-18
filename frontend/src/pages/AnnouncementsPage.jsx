@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { announcementsApi } from "../api/announcementsApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -22,6 +22,12 @@ import { useToast } from "../context/ToastContext";
 
 const EMPTY_FORM = { title: "", body: "", pinned: false, published: false };
 
+const STATUS_FILTERS = [
+  { key: "all", label: "All" },
+  { key: "published", label: "Published" },
+  { key: "draft", label: "Drafts" },
+];
+
 export default function AnnouncementsPage() {
   const toast = useToast();
 
@@ -35,6 +41,27 @@ export default function AnnouncementsPage() {
   const [saving, setSaving] = useState(false);
 
   const [deleting, setDeleting] = useState(null);
+
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  // The publish/unpublish toggle in flight, so only that row waits.
+  const [publishingId, setPublishingId] = useState(null);
+
+  const visible = useMemo(() => {
+    const term = search.trim().toLowerCase();
+
+    return (announcements ?? []).filter((announcement) => {
+      const published = Boolean(announcement.published_at);
+      if (status === "published" && !published) return false;
+      if (status === "draft" && published) return false;
+      if (!term) return true;
+
+      return [announcement.title, announcement.body]
+        .some((value) => String(value).toLowerCase().includes(term));
+    });
+  }, [announcements, search, status]);
+
+  const filtering = search.trim() !== "" || status !== "all";
 
   function load() {
     announcementsApi
@@ -119,6 +146,28 @@ export default function AnnouncementsPage() {
     }
   }
 
+  /** Flip draft/live in one click — the full row is sent because the update
+   * endpoint validates title and body as required. */
+  async function togglePublished(announcement) {
+    const next = !announcement.published_at;
+    setPublishingId(announcement.id);
+
+    try {
+      await announcementsApi.update(announcement.id, {
+        title: announcement.title,
+        body: announcement.body,
+        is_pinned: Boolean(announcement.is_pinned),
+        published: next,
+      });
+      toast.success(next ? "Announcement published. It is live on the landing page." : "Announcement unpublished. It is now a draft.");
+      load();
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setPublishingId(null);
+    }
+  }
+
   async function handleDelete() {
     if (!deleting) return;
 
@@ -153,6 +202,65 @@ export default function AnnouncementsPage() {
             New announcement
           </button>
         </div>
+
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Icon
+              name="search"
+              className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400"
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search title or text…"
+              className="field w-64 pl-9 text-xs"
+              aria-label="Search announcements"
+            />
+          </div>
+
+          <div
+            className="inline-flex rounded-pill border border-slate-200 bg-slate-50 p-1"
+            role="group"
+            aria-label="Filter by status"
+          >
+            {STATUS_FILTERS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setStatus(item.key)}
+                aria-pressed={status === item.key}
+                className={`rounded-pill px-3 py-1 text-xs font-semibold transition ${
+                  status === item.key
+                    ? "bg-white text-brand-800 shadow-sm"
+                    : "text-slate-600 hover:text-brand-800"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {filtering && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setStatus("all");
+              }}
+              className="inline-flex items-center gap-1.5 rounded-pill border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              <Icon name="close" className="h-3.5 w-3.5" />
+              Clear
+            </button>
+          )}
+
+          {announcements !== null && (
+            <span className="ml-auto text-[11px] text-slate-500">
+              {visible.length} of {announcements.length}
+            </span>
+          )}
+        </div>
       </section>
 
       <section className="card overflow-hidden">
@@ -171,9 +279,16 @@ export default function AnnouncementsPage() {
               description="Publish the office's first advisory — an outreach schedule, a rabies drive, a program notice — and it appears on the landing page."
             />
           </div>
+        ) : visible.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              title="No announcements match these filters"
+              description="Try a different search term or status."
+            />
+          </div>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {announcements.map((announcement) => (
+            {visible.map((announcement) => (
               <li
                 key={announcement.id}
                 className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
@@ -202,7 +317,19 @@ export default function AnnouncementsPage() {
                   </p>
                 </div>
 
-                <div className="flex shrink-0 gap-2">
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => togglePublished(announcement)}
+                    disabled={publishingId === announcement.id}
+                    className="btn-secondary !px-3.5 !py-1.5 text-xs disabled:opacity-50"
+                  >
+                    {publishingId === announcement.id
+                      ? "Saving…"
+                      : announcement.published_at
+                        ? "Unpublish"
+                        : "Publish"}
+                  </button>
                   <button
                     type="button"
                     onClick={() => openEdit(announcement)}

@@ -491,6 +491,9 @@ export default function UserManagementPage() {
               <span className="font-semibold text-slate-700">
                 {meta?.total ?? users.length} {(meta?.total ?? users.length) === 1 ? "account" : "accounts"}
               </span>
+              {ROLE_KEYS.some((key) => counts[key] > 0) && (
+                <span className="text-slate-400">On this page:</span>
+              )}
               {ROLE_KEYS.filter((key) => counts[key] > 0).map((key) => (
                 <span key={key}>
                   {counts[key]} {roleLabel(key)}

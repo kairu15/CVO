@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../api/adminApi";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
@@ -110,6 +110,7 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
   const [savingCell, setSavingCell] = useState(null);
   // Pending uncheck of a manage_roles grant that needs confirmation.
   const [confirmLockout, setConfirmLockout] = useState(null); // {role, key, label}
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -166,6 +167,27 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
 
   const saving = savingCell !== null;
 
+  // Filter the matrix by capability name or group; the full list re-appears
+  // when the search is cleared.
+  const filteredGroups = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return matrix?.groups ?? [];
+
+    return (matrix?.groups ?? [])
+      .map((group) => ({
+        ...group,
+        permissions: group.permissions.filter((permission) =>
+          `${permission.label} ${group.group}`.toLowerCase().includes(term),
+        ),
+      }))
+      .filter((group) => group.permissions.length > 0);
+  }, [matrix, search]);
+
+  const capabilityCount = (matrix?.groups ?? []).reduce(
+    (total, group) => total + group.permissions.length,
+    0,
+  );
+
   return (
     <div className="space-y-6">
       <section className="card p-6">
@@ -183,6 +205,39 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
             </p>
           </div>
         </div>
+
+        {matrix && (
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <Icon
+                name="search"
+                className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400"
+              />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Find a capability or group…"
+                className="field w-72 pl-9 text-xs"
+                aria-label="Search capabilities"
+              />
+            </div>
+            <span className="text-[11px] text-slate-500">
+              {filteredGroups.reduce((total, group) => total + group.permissions.length, 0)}{" "}
+              of {capabilityCount} capabilities
+            </span>
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="inline-flex items-center gap-1.5 rounded-pill border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+              >
+                <Icon name="close" className="h-3.5 w-3.5" />
+                Clear
+              </button>
+            )}
+          </div>
+        )}
       </section>
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
@@ -201,7 +256,15 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
       ) : (
         <>
           {/* The editable capability matrix */}
-          {matrix.groups.map((group) => (
+          {filteredGroups.length === 0 && (
+            <section className="card">
+              <EmptyState
+                title="No capabilities match"
+                description="Try a different word — for example “report”, “user” or “settings”."
+              />
+            </section>
+          )}
+          {filteredGroups.map((group) => (
             <section key={group.group} className="card overflow-hidden">
               <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
                 <h3 className="font-display text-xs font-semibold tracking-wide text-slate-700 uppercase">

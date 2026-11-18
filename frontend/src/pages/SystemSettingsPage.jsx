@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { settingsApi } from "../api/settingsApi";
 import { adminApi } from "../api/adminApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
@@ -209,6 +209,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
   // Optional per-barangay population behind the analytics per-1,000 view:
   // edited row-by-row like the puroks, saved through the barangay PATCH.
   const [populationDraftByBarangay, setPopulationDraftByBarangay] = useState({});
+  const [referenceSearch, setReferenceSearch] = useState("");
   const toast = useToast();
 
   // Which section's Save button is in flight — so only that button shows a
@@ -318,6 +319,19 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
   }
 
   const saving = savingSection !== null;
+
+  // Filtering the reference list matters once the city has all 28 barangays:
+  // it keeps the section navigable without hiding any row from the editor.
+  const filteredBarangays = useMemo(() => {
+    const term = referenceSearch.trim().toLowerCase();
+    if (!term) return data?.barangays ?? [];
+
+    return (data?.barangays ?? []).filter(
+      (barangay) =>
+        barangay.name.toLowerCase().includes(term) ||
+        barangay.puroks.some((purok) => purok.name.toLowerCase().includes(term)),
+    );
+  }, [data, referenceSearch]);
 
   // ── Reference data (puroks / barangays) ─────────────────────────────────
   // Each mutation is its own request, then the canonical list is refetched so
@@ -429,6 +443,28 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
           derived schedules run on, and the inactivity timeout for signed-in
           users. Saved values take effect immediately — no redeploy, no restart.
         </p>
+
+        <nav aria-label="Settings sections" className="mt-4 flex flex-wrap gap-1.5">
+          {[
+            { id: "settings-contact", label: "Contact" },
+            { id: "settings-thresholds", label: "Thresholds" },
+            { id: "settings-ownership", label: "Ownership" },
+            { id: "settings-route", label: "Route start" },
+            { id: "settings-session", label: "Session" },
+            { id: "settings-animal-types", label: "Animal types" },
+            { id: "settings-notifications", label: "Notifications" },
+            { id: "settings-reference", label: "Reference data" },
+            { id: "settings-vocabularies", label: "Vocabularies" },
+          ].map((section) => (
+            <a
+              key={section.id}
+              href={`#${section.id}`}
+              className="rounded-pill border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:text-brand-800"
+            >
+              {section.label}
+            </a>
+          ))}
+        </nav>
       </section>
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
@@ -452,7 +488,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
       ) : (
         <>
           {/* Writable: the office contact profile */}
-          <section className="card p-6">
+          <section id="settings-contact" className="card scroll-mt-24 p-6">
             <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
               Contact info
             </h3>
@@ -500,7 +536,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
           </section>
 
           {/* Writable: the vaccination cycle */}
-          <section className="card p-6">
+          <section id="settings-thresholds" className="card scroll-mt-24 p-6">
             <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
               Alerts &amp; thresholds
             </h3>
@@ -553,7 +589,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
           </section>
 
           {/* Writable: how far back an animal handover may be dated */}
-          <section className="card p-6">
+          <section id="settings-ownership" className="card scroll-mt-24 p-6">
             <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
               Animal ownership &amp; dispersal analytics
             </h3>
@@ -612,7 +648,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
           </section>
 
           {/* Writable: the office pin the route planner falls back to */}
-          <section className="card p-6">
+          <section id="settings-route" className="card scroll-mt-24 p-6">
             <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
               Route planner start point
             </h3>
@@ -684,7 +720,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
           </section>
 
           {/* Writable (client window) + read-only (server ceilings) */}
-          <section className="card p-6">
+          <section id="settings-session" className="card scroll-mt-24 p-6">
             <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
               Session
             </h3>
@@ -766,7 +802,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
           {/* Legacy: the casing hints the importer uses for values that are
               NOT in the master list. Kept because an import legitimately
               carries a spelling the catalogue has not seen yet. */}
-          <section className="card p-6">
+          <section id="settings-animal-types" className="card scroll-mt-24 p-6">
             <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
               Animal types
             </h3>
@@ -868,7 +904,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
           </section>
 
           {/* Writable: which notifications actually write rows */}
-          <section className="card p-6">
+          <section id="settings-notifications" className="card scroll-mt-24 p-6">
             <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
               Notification preferences
             </h3>
@@ -942,7 +978,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
           </section>
 
           {/* Writable: reference data (puroks) + add-only barangays */}
-          <section className="card p-6">
+          <section id="settings-reference" className="card scroll-mt-24 p-6">
             <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
               Reference data
             </h3>
@@ -956,47 +992,79 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
               residents" view — leave it blank until a verified figure exists.
             </p>
 
-            <div className="mt-4 space-y-4">
-              {data.barangays.map((barangay) => (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <div className="relative">
+                <Icon
+                  name="search"
+                  className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400"
+                />
+                <input
+                  type="search"
+                  value={referenceSearch}
+                  onChange={(event) => setReferenceSearch(event.target.value)}
+                  placeholder="Search a barangay or purok…"
+                  className="field w-64 pl-9 text-xs"
+                  aria-label="Search barangays or puroks"
+                />
+              </div>
+              <span className="text-[11px] text-slate-500">
+                {filteredBarangays.length} of {data.barangays.length} barangays
+              </span>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              {filteredBarangays.map((barangay) => (
                 <div key={barangay.id} className="rounded-xl border border-slate-200">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
-                    <p className="text-sm font-semibold text-slate-800">{barangay.name}</p>
-                    <span className="flex items-center gap-2">
+                  <details className="group">
+                    <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3">
+                      <span className="flex items-center gap-2">
+                        <Icon
+                          name="chevron-down"
+                          className="h-3.5 w-3.5 -rotate-90 text-slate-400 transition-transform group-open:rotate-0"
+                        />
+                        <span className="text-sm font-semibold text-slate-800">
+                          {barangay.name}
+                        </span>
+                      </span>
                       <span className="text-[11px] text-slate-500">
                         {barangay.puroks.length}{" "}
-                        {barangay.puroks.length === 1 ? "purok" : "puroks"}
+                        {barangay.puroks.length === 1 ? "purok" : "puroks"} · Population{" "}
+                        {barangay.population ?? "—"}
                       </span>
-                      <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                        Population
-                        <input
-                          type="number"
-                          min={0}
-                          step={1}
-                          defaultValue={barangay.population ?? ""}
-                          key={`population-${barangay.id}-${barangay.population ?? ""}`}
-                          placeholder="—"
-                          onChange={(event) =>
-                            setPopulationDraftByBarangay((prev) => ({
-                              ...prev,
-                              [barangay.id]: event.target.value,
-                            }))
-                          }
-                          className="field !w-24 !px-2 !py-1 text-xs"
-                          aria-label={`Population of ${barangay.name}`}
-                        />
-                        <button
-                          type="button"
-                          disabled={refBusy}
-                          onClick={() => savePopulation(barangay)}
-                          className="text-xs font-semibold text-brand-700 hover:text-brand-900 disabled:opacity-50"
-                        >
-                          Save
-                        </button>
-                      </label>
-                    </span>
-                  </div>
+                    </summary>
 
-                  <ul className="divide-y divide-slate-50 px-4">
+                    <div className="border-t border-slate-100 px-4 py-3">
+                      <div className="flex justify-end">
+                        <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                          Population
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            defaultValue={barangay.population ?? ""}
+                            key={`population-${barangay.id}-${barangay.population ?? ""}`}
+                            placeholder="—"
+                            onChange={(event) =>
+                              setPopulationDraftByBarangay((prev) => ({
+                                ...prev,
+                                [barangay.id]: event.target.value,
+                              }))
+                            }
+                            className="field !w-24 !px-2 !py-1 text-xs"
+                            aria-label={`Population of ${barangay.name}`}
+                          />
+                          <button
+                            type="button"
+                            disabled={refBusy}
+                            onClick={() => savePopulation(barangay)}
+                            className="text-xs font-semibold text-brand-700 hover:text-brand-900 disabled:opacity-50"
+                          >
+                            Save
+                          </button>
+                        </label>
+                      </div>
+
+                  <ul className="divide-y divide-slate-50">
                     {barangay.puroks.map((purok) => (
                       <li key={purok.id} className="flex items-center justify-between gap-3 py-2">
                         {renamingPurokId === purok.id ? (
@@ -1121,8 +1189,16 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
                       Add purok
                     </button>
                   </div>
+                    </div>
+                  </details>
                 </div>
               ))}
+
+              {filteredBarangays.length === 0 && (
+                <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-500">
+                  No barangay or purok matches “{referenceSearch}”.
+                </p>
+              )}
             </div>
 
             <form onSubmit={addBarangay} className="mt-6 rounded-xl border border-slate-200 p-4">
@@ -1180,6 +1256,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
             </form>
           </section>
 
+          <div id="settings-vocabularies" className="scroll-mt-24 space-y-6">
           {/* Writable: the clinical outcome vocabulary */}
           <VocabularyEditor
             title="Health outcomes"
@@ -1246,6 +1323,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
             error={fieldErrors.field_visit_purposes}
             display={(value) => value.replaceAll("-", " ")}
           />
+          </div>
         </>
       )}
 

@@ -23,6 +23,12 @@ export const documentsApi = {
     return unwrap(await api.post("/api/v1/admin/documents", form));
   },
 
+  /** Edit metadata, or publish/unpublish. The stored PDF never changes. */
+  update: async (id, payload) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.patch(`/api/v1/admin/documents/${id}`, payload));
+  },
+
   remove: async (id) => {
     await ensureCsrfCookie();
     await api.delete(`/api/v1/admin/documents/${id}`);

@@ -223,7 +223,7 @@ export default function NotificationsPage({ roleKey = "admin" }) {
           <Icon name="info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           {tab === "smart"
             ? "Smart Alerts are rule-based flags computed from records already in the system — not a diagnosis. A flag clears itself once the underlying record is updated."
-            : "Alerts come from your dispersal and vaccination records, so they clear once the visit or movement is recorded — there is nothing to mark as read here."}
+            : "Alerts come from your dispersal and vaccination records, so they clear once the visit or movement is recorded. Marking an event read only clears it from the bell count — the record itself stays."}
         </p>
       </section>
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StorePublicDocumentRequest;
+use App\Http\Requests\UpdatePublicDocumentRequest;
 use App\Models\PublicDocument;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -96,6 +97,26 @@ class PublicDocumentController extends Controller
         ]);
 
         return response()->json(['data' => $document], Response::HTTP_CREATED);
+    }
+
+    /**
+     * Admin: edit the metadata, or publish/unpublish. The stored file and
+     * its original name never change here.
+     */
+    public function update(UpdatePublicDocumentRequest $request, PublicDocument $document): JsonResponse
+    {
+        $document->fill($request->safe()->except('published'));
+
+        if ($request->has('published')) {
+            $published = $request->boolean('published');
+            $document->published_at = $published
+                ? ($document->published_at ?? now())
+                : null;
+        }
+
+        $document->save();
+
+        return response()->json(['data' => $this->present($document->refresh())]);
     }
 
     /**

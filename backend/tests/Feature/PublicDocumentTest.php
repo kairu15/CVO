@@ -236,6 +236,73 @@ class PublicDocumentTest extends TestCase
     }
 
     /* ------------------------------------------------------------------ *
+     |  Edit + publish state                                               |
+     * ------------------------------------------------------------------ */
+
+    public function test_admin_can_publish_edit_and_unpublish_a_document(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->post('/api/v1/admin/documents', [
+            'title' => 'Draft disclosure',
+            'category' => 'budget',
+            'published' => false,
+            'file' => $this->pdf(),
+        ])->assertCreated();
+
+        $document = PublicDocument::sole();
+        $this->assertNull($document->published_at);
+
+        // Publishing makes it public immediately.
+        $this->actingAs($admin)
+            ->patchJson("/api/v1/admin/documents/{$document->id}", ['published' => true])
+            ->assertOk()
+            ->assertJsonPath('data.title', 'Draft disclosure');
+
+        $this->assertNotNull($document->refresh()->published_at);
+        $this->getJson('/api/v1/public/documents')->assertJsonCount(1, 'data');
+
+        // Metadata edits keep the stored file untouched.
+        $this->actingAs($admin)
+            ->patchJson("/api/v1/admin/documents/{$document->id}", [
+                'title' => '2025 Budget Disclosure',
+                'description' => 'Approved budget.',
+                'category' => 'annual_report',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.title', '2025 Budget Disclosure')
+            ->assertJsonPath('data.category', 'annual_report');
+
+        $this->assertSame($document->file_path, $document->refresh()->file_path);
+
+        // Unpublishing removes it from the public page again.
+        $this->actingAs($admin)
+            ->patchJson("/api/v1/admin/documents/{$document->id}", ['published' => false])
+            ->assertOk();
+
+        $this->assertNull($document->refresh()->published_at);
+        $this->getJson('/api/v1/public/documents')->assertJsonCount(0, 'data');
+    }
+
+    public function test_technician_cannot_edit_or_publish_a_document(): void
+    {
+        $this->actingAs($this->admin())->post('/api/v1/admin/documents', [
+            'title' => 'Draft',
+            'category' => 'other',
+            'published' => false,
+            'file' => $this->pdf(),
+        ])->assertCreated();
+
+        $document = PublicDocument::sole();
+
+        $this->actingAs($this->technician())
+            ->patchJson("/api/v1/admin/documents/{$document->id}", ['published' => true])
+            ->assertForbidden();
+
+        $this->assertNull($document->refresh()->published_at);
+    }
+
+    /* ------------------------------------------------------------------ *
      |  Delete                                                             |
      * ------------------------------------------------------------------ */
 

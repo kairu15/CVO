@@ -47,6 +47,9 @@ class BarangayAnalyticsRequest extends FormRequest
             'event_types.*' => [Rule::in(BarangayDispersalAnalyticsService::FILTERABLE_EVENT_TYPES)],
             'per_1000' => ['sometimes', 'boolean'],
             'include_cvo' => ['sometimes', 'boolean'],
+            // Optional for the workbook summary; the report page sends it so
+            // the exported file names the metric the admin was reading.
+            'metric' => ['sometimes', 'nullable', Rule::in(array_keys(BarangayDispersalAnalyticsService::METRICS))],
             // Only the barangay detail card pages its lists; the service
             // clamps it to 1..100 regardless of what arrives here.
             'limit' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:100'],

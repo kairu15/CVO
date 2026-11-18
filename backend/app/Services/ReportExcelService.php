@@ -240,14 +240,14 @@ class ReportExcelService
      *
      * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>, per_1000: bool, include_cvo: bool}  $filters
      */
-    public function barangayDispersalDownloadResponse(User $viewer, array $filters): StreamedResponse
+    public function barangayDispersalDownloadResponse(User $viewer, array $filters, string $metric = 'dispersed'): StreamedResponse
     {
         $summary = $this->analytics->barangaySummary($viewer, $filters);
         $flows = $this->analytics->flows($viewer, $filters, $filters['include_cvo']);
 
-        $writer = new XlsxWriter($this->barangayDispersalWorkbook($summary, $flows, $filters, $viewer));
+        $writer = new XlsxWriter($this->barangayDispersalWorkbook($summary, $flows, $filters, $viewer, $metric));
 
-        $parts = ['cvo-barangay-dispersal'];
+        $parts = ['cvo-barangay-dispersal', $metric];
 
         if ($filters['from'] !== null) {
             $parts[] = 'from-'.$filters['from']->format('Y-m-d');
@@ -269,11 +269,11 @@ class ReportExcelService
      * @param  array<string, mixed>  $flows
      * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>, per_1000: bool, include_cvo: bool}  $filters
      */
-    private function barangayDispersalWorkbook(array $summary, array $flows, array $filters, User $viewer): Spreadsheet
+    private function barangayDispersalWorkbook(array $summary, array $flows, array $filters, User $viewer, string $metric): Spreadsheet
     {
         $spreadsheet = new Spreadsheet;
 
-        $this->barangayDispersalFiltersSheet($spreadsheet->getActiveSheet(), $filters, $viewer);
+        $this->barangayDispersalFiltersSheet($spreadsheet->getActiveSheet(), $summary, $filters, $viewer, $metric);
         $this->barangayTableSheet($spreadsheet->createSheet(), $summary['barangays'], $filters['per_1000']);
         $this->flowMatrixSheet($spreadsheet->createSheet(), $summary['barangays'], $flows['flows']);
         $this->topFlowsSheet($spreadsheet->createSheet(), $flows['flows']);
@@ -287,12 +287,15 @@ class ReportExcelService
      *
      * @param  array{from: ?Carbon, to: ?Carbon, animal_type_id: ?int, classification_id: ?int, event_types: list<string>, per_1000: bool, include_cvo: bool}  $filters
      */
-    private function barangayDispersalFiltersSheet(Worksheet $sheet, array $filters, User $viewer): void
+    private function barangayDispersalFiltersSheet(Worksheet $sheet, array $summary, array $filters, User $viewer, string $metric): void
     {
-        $sheet->setTitle('Filters');
+        $sheet->setTitle('Summary');
 
-        $sheet->fromArray(['BARANGAY DISPERSAL ANALYTICS'], null, 'A1');
+        $sheet->fromArray(['BARANGAY DISPERSAL REPORT'], null, 'A1');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+        $metricConfig = BarangayDispersalAnalyticsService::METRICS[$metric] ?? BarangayDispersalAnalyticsService::METRICS['dispersed'];
+        $metricSummary = $summary['summary'][$metric] ?? [];
+        $coverage = $summary['population_coverage'] ?? ['recorded' => 0, 'total' => 0];
 
         $animalType = $filters['animal_type_id'] !== null
             ? AnimalType::find($filters['animal_type_id'])?->name
@@ -301,20 +304,40 @@ class ReportExcelService
             ? AnimalClassification::find($filters['classification_id'])?->name
             : null;
 
+        $highest = collect($metricSummary['highest'] ?? [])->pluck('name')->take(3)->implode(' and ');
+        $lowest = collect($metricSummary['lowest'] ?? [])->pluck('name')->take(3)->implode(' and ');
+
         $sheet->fromArray([
-            ['From', $filters['from']?->toDateString() ?? 'Not filtered'],
-            ['To', $filters['to']?->toDateString() ?? 'Not filtered'],
+            ['Reporting period', $filters['from']?->toDateString() && $filters['to']?->toDateString()
+                ? $filters['from']->toDateString().' to '.$filters['to']->toDateString()
+                : ($filters['from']?->toDateString() ?? $filters['to']?->toDateString() ?? 'All records')],
+            ['Report metric', $metricConfig['label'].($filters['per_1000'] ? ' per 1,000 residents' : '')],
             ['Animal type', $animalType ?? 'All'],
             ['Classification', $classification ?? 'All'],
             ['Event types', implode(', ', $filters['event_types'])],
             ['Per 1,000 residents', $filters['per_1000'] ? 'Yes' : 'No'],
             ['Include CVO as a source', $filters['include_cvo'] ? 'Yes' : 'No'],
+            ['Population recorded', $coverage['recorded'].' of '.$coverage['total'].' barangays'],
+            ['Highest', $highest !== '' ? $highest : '—'],
+            ['Lowest', $lowest !== '' ? $lowest : '—'],
             ['Scope', $viewer->role === 'technician' ? 'Assigned beneficiaries only' : 'City-wide'],
+            ['Prepared by', $viewer->name ?? 'Administrator'],
             ['Generated at', now()->toDateTimeString()],
         ], null, 'A3');
 
-        $sheet->getColumnDimension('A')->setWidth(24);
-        $sheet->getColumnDimension('B')->setWidth(40);
+        $sheet->fromArray([
+            ['Definitions'],
+            ['Dispersal events', 'Active dispersal events delivered into the barangay. Events, not unique animals.'],
+            ['Re-dispersal events out/in', 'Household-to-household handovers, counted for the origin and destination. Events, not unique animals.'],
+            ['Net household flow', 'Re-dispersal events in minus re-dispersal events out. Initial CVO dispersals are not included.'],
+            ['Cumulative re-dispersal rate', 'Distinct animals re-dispersed out divided by distinct animals dispersed into the barangay, from the beginning of records through the period end.'],
+            ['Per 1,000 residents', 'Count divided by the barangay population, multiplied by 1,000. Blank when population is not recorded.'],
+            ['Filter limitation', 'Event counts include each active event; re-dispersal rates use distinct animals and are not directly comparable to event counts.'],
+        ], null, 'A17');
+
+        $sheet->getStyle('A17')->getFont()->setBold(true);
+        $sheet->getColumnDimension('A')->setWidth(28);
+        $sheet->getColumnDimension('B')->setWidth(90);
     }
 
     /**
@@ -327,10 +350,10 @@ class ReportExcelService
     {
         $sheet->setTitle('Barangay dispersal');
 
-        $header = ['Barangay', 'Population', 'Dispersed', 'Re-dispersed out', 'Re-dispersed in', 'Within barangay', 'Net flow', 'Distinct dispersed', 'Distinct re-dispersed out', 'Re-dispersal rate', 'Rate ranked'];
+        $header = ['Barangay', 'Population', 'Dispersal events', 'Re-dispersal events out', 'Re-dispersal events in', 'Within barangay', 'Net household flow', 'Distinct dispersed animals', 'Distinct re-dispersed animals', 'Cumulative re-dispersal rate', 'Rate ranked'];
 
         if ($per1000) {
-            $header = [...$header, 'Dispersed per 1,000', 'Re-dispersed out per 1,000', 'Re-dispersed in per 1,000', 'Net flow per 1,000'];
+            $header = [...$header, 'Dispersal events per 1,000', 'Re-dispersal events out per 1,000', 'Re-dispersal events in per 1,000', 'Net household flow per 1,000'];
         }
 
         $sheet->fromArray($header, null, 'A1');

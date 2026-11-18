@@ -74,6 +74,7 @@ class AnalyticsController extends Controller
     public function exportBarangayDispersal(BarangayAnalyticsRequest $request): StreamedResponse
     {
         $filters = $request->filters();
+        $metric = (string) ($request->validated('metric') ?? 'dispersed');
 
         // Data OUT: one row per export, with the filters it used.
         $this->audit->log($request->user(), 'exported', null, [
@@ -86,9 +87,10 @@ class AnalyticsController extends Controller
                 'event_types' => $filters['event_types'],
                 'per_1000' => $filters['per_1000'] ? '1' : null,
                 'include_cvo' => $filters['include_cvo'] ? '1' : null,
+                'metric' => $metric !== 'dispersed' ? $metric : null,
             ], static fn (mixed $value): bool => $value !== null && $value !== []),
         ]);
 
-        return $this->excel->barangayDispersalDownloadResponse($request->user(), $filters);
+        return $this->excel->barangayDispersalDownloadResponse($request->user(), $filters, $metric);
     }
 }

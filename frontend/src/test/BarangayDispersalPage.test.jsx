@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { ToastProvider } from "../context/ToastContext";
@@ -157,6 +157,16 @@ const DATA = {
   filters: {},
   scoped: false,
   generated_at: "2026-10-29T10:00:00+08:00",
+  population_coverage: { recorded: 1, total: 4, complete: false },
+  per_1000: false,
+  previous_period: { from: "2026-08-01", to: "2026-08-31" },
+  previous: {
+    dispersed: 50,
+    redispersed_out: 10,
+    redispersed_in: 18,
+    net_flow: 8,
+    redispersal_rate: 0.2,
+  },
 };
 
 const FLOWS = {
@@ -242,7 +252,11 @@ describe("BarangayDispersalPage", () => {
 
     await screen.findByText("Highest · Dispersed");
 
-    await user.click(screen.getByRole("button", { name: "Re-dispersed out" }));
+    await user.click(
+      within(screen.getByRole("group", { name: "Metric" })).getByRole("button", {
+        name: "Re-dispersed out",
+      }),
+    );
 
     // The metric is client-side only (the query does not change), and the
     // cards re-render straight from that metric's server summary.
@@ -274,7 +288,11 @@ describe("BarangayDispersalPage", () => {
 
     await screen.findByText("Highest · Dispersed");
 
-    await user.click(screen.getByRole("button", { name: "Re-dispersal rate" }));
+    await user.click(
+      within(screen.getByRole("group", { name: "Metric" })).getByRole("button", {
+        name: "Re-dispersal rate",
+      }),
+    );
 
     // Two barangays are below the minimum (Nangka at 0, Dawis at 3): their
     // table cells read "n < 5" instead of a rate, greyed out.
@@ -346,8 +364,96 @@ describe("BarangayDispersalPage", () => {
     await user.click(screen.getByRole("button", { name: /Export to Excel/i }));
 
     await waitFor(() => {
-      expect(analyticsApi.exportExcel).toHaveBeenCalled();
+      expect(analyticsApi.exportExcel).toHaveBeenCalledWith(
+        expect.objectContaining({ metric: "dispersed" }),
+      );
     });
     expect(await screen.findByText(/Downloaded: cvo-barangay-dispersal\.xlsx/)).toBeInTheDocument();
+  });
+
+  it("shows the previous-period change on the city total card", async () => {
+    renderPage();
+
+    await screen.findByText("Highest · Dispersed");
+
+    expect(screen.getByText(/\+11 vs previous period/)).toBeInTheDocument();
+    expect(screen.getByText(/2026-08-01 to 2026-08-31/)).toBeInTheDocument();
+  });
+
+  it("applies per 1,000 residents across the table and explains missing populations", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("Highest · Dispersed");
+
+    await user.click(screen.getByRole("checkbox", { name: "Per 1,000 residents" }));
+
+    expect(
+      await screen.findByText(/Population is recorded for 1 of 4 barangays/),
+    ).toBeInTheDocument();
+
+    const table = screen.getByRole("table", { name: /all barangay metrics/i });
+    expect(table.textContent).toContain("Dispersal events /1,000");
+    expect(table.textContent).toContain("9.6");
+  });
+
+  it("sorts by any column and filters the table by name", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("Highest · Dispersed");
+
+    const table = () => screen.getByRole("table", { name: /all barangay metrics/i });
+
+    await user.click(within(table()).getByRole("button", { name: /Barangay/ }));
+
+    await waitFor(() => {
+      expect(table().querySelector("tbody tr").textContent).toContain("Banga");
+    });
+    expect(
+      within(table()).getByRole("columnheader", { name: /Barangay/ }),
+    ).toHaveAttribute("aria-sort", "ascending");
+
+    await user.type(screen.getByLabelText("Search barangays"), "pob");
+
+    await waitFor(() => {
+      expect(table().querySelectorAll("tbody tr")).toHaveLength(1);
+      expect(table().querySelector("tbody tr").textContent).toContain("Poblacion");
+    });
+  });
+
+  it("compares up to three barangays side by side", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("Highest · Dispersed");
+
+    await user.selectOptions(screen.getByLabelText("Barangay 1"), "1");
+    await user.selectOptions(screen.getByLabelText("Barangay 2"), "2");
+
+    const comparison = screen.getByRole("table", { name: "Barangay comparison" });
+    expect(within(comparison).getByRole("columnheader", { name: "Poblacion" })).toBeInTheDocument();
+    expect(within(comparison).getByRole("columnheader", { name: "Banga" })).toBeInTheDocument();
+    expect(comparison.textContent).toContain("25.0%");
+  });
+
+  it("keeps the table when only the flows query fails", async () => {
+    analyticsApi.barangayFlows.mockRejectedValueOnce(new Error("flows down"));
+
+    renderPage();
+
+    await screen.findByText("Highest · Dispersed");
+
+    expect(screen.getByText(/Flow lines could not be loaded \(flows down\)/)).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: /all barangay metrics/i })).toBeInTheDocument();
+  });
+
+  it("keeps the flow matrix collapsed by default", async () => {
+    renderPage();
+
+    await screen.findByText("Highest · Dispersed");
+
+    const summary = screen.getByText("Flow matrix", { selector: "summary" });
+    expect(summary.closest("details").open).toBe(false);
   });
 });

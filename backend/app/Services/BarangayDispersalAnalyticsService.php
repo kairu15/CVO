@@ -128,9 +128,15 @@ class BarangayDispersalAnalyticsService
             ->map(fn (array $row): array => $this->rowPayload($row, $cumulative, $minRateAnimals))
             ->all();
 
+        $previous = $this->previousTotals($viewer, $filters, $minRateAnimals);
+
         return [
             'barangays' => $barangays,
             'summary' => $this->summary($barangays, $viewer, $filters, $minRateAnimals),
+            'previous_period' => $previous['period'] ?? null,
+            'previous' => $previous['values'] ?? null,
+            'population_coverage' => $this->populationCoverage($barangays),
+            'per_1000' => (bool) $filters['per_1000'],
             'min_rate_animals' => $minRateAnimals,
             'filters' => $this->filterEcho($filters),
             'scoped' => false, // contract flag: nobody is row-scoped since the doctor role merged into technician
@@ -661,29 +667,134 @@ class BarangayDispersalAnalyticsService
      */
     private function summary(array $barangays, User $viewer, array $filters, int $minRateAnimals): array
     {
+        $per1000 = (bool) ($filters['per_1000'] ?? false);
         $summary = [];
 
         foreach (self::METRICS as $metric => $config) {
+            // Project the chosen display unit first: per-1,000 rows without a
+            // population are excluded from the ranking, never treated as 0.
+            $projected = collect($barangays)->map(fn (array $row): array => [
+                'barangay_id' => $row['barangay_id'],
+                'name' => $row['name'],
+                'value' => $this->summaryValue($row, $config['key'], $per1000),
+                'rate_eligible' => $row['rate_eligible'],
+            ]);
+
             // The rate ranks only barangays whose denominator cleared the
-            // configured minimum; every other metric ranks all 28 rows.
-            $rankable = collect($barangays)->filter(
-                fn (array $row): bool => $config['kind'] !== 'rate' || $row['rate_eligible'],
+            // configured minimum; every other metric ranks all rows with a
+            // value in the chosen unit.
+            $rankable = $projected->filter(
+                fn (array $row): bool => $row['value'] !== null
+                    && ($config['kind'] !== 'rate' || $row['rate_eligible']),
             );
 
-            $extremes = $this->extremes($rankable, $config['key']);
+            $extremes = $this->extremes($rankable, 'value');
+            $inTotal = (int) collect($barangays)->sum('redispersed_in');
+            $outTotal = (int) collect($barangays)->sum('redispersed_out');
 
             $summary[$metric] = [
                 'kind' => $config['kind'],
                 'label' => $config['label'],
+                'unit' => $config['kind'] === 'rate' ? 'rate' : ($per1000 ? 'per_1000' : 'count'),
                 ...$extremes,
                 'total' => $config['kind'] === 'rate'
                     ? $this->cityRate($viewer, $filters, $minRateAnimals)
-                    : (int) collect($barangays)->sum($config['key']),
-                'sentence' => $this->sentence($config, $extremes, $rankable, $barangays, $minRateAnimals),
+                    : ($per1000
+                        ? $this->cityPer1000($barangays, $config['key'])
+                        : (int) collect($barangays)->sum($config['key'])),
+                ...($config['kind'] === 'net' ? [
+                    'in_total' => $inTotal,
+                    'out_total' => $outTotal,
+                    ...($per1000 ? [
+                        'in_total_per_1000' => $this->cityPer1000($barangays, 'redispersed_in'),
+                        'out_total_per_1000' => $this->cityPer1000($barangays, 'redispersed_out'),
+                    ] : []),
+                ] : []),
+                'sentence' => $this->sentence($config, $extremes, $rankable, $barangays, $minRateAnimals, $per1000),
             ];
         }
 
         return $summary;
+    }
+
+    /** The selected metric in the selected display unit. */
+    private function summaryValue(array $row, string $key, bool $per1000): int|float|null
+    {
+        if ($key === 'redispersal_rate') {
+            return $row['redispersal_rate'];
+        }
+
+        return $per1000 ? ($row[$key.'_per_1000'] ?? null) : (int) $row[$key];
+    }
+
+    /** A population-weighted city value, not the sum of barangay rates. */
+    private function cityPer1000(array $barangays, string $key): ?float
+    {
+        $eligible = collect($barangays)
+            ->filter(fn (array $row): bool => $row['population'] !== null && (int) $row['population'] > 0);
+        $population = (int) $eligible->sum('population');
+
+        if ($population <= 0) {
+            return null;
+        }
+
+        $total = (int) $eligible->sum($key);
+
+        return round($total / $population * 1000, 2);
+    }
+
+    /** @return array{recorded: int, total: int, complete: bool} */
+    private function populationCoverage(array $barangays): array
+    {
+        $recorded = collect($barangays)
+            ->filter(fn (array $row): bool => $row['population'] !== null && (int) $row['population'] > 0)
+            ->count();
+
+        return [
+            'recorded' => $recorded,
+            'total' => count($barangays),
+            'complete' => $recorded === count($barangays),
+        ];
+    }
+
+    /**
+     * Equal-length immediately preceding window, for the city-level change
+     * indicator. Only a fully bounded period has a meaningful predecessor.
+     *
+     * @return array{period: array{from: string, to: string}, values: array<string, int|float|null>}|null
+     */
+    private function previousTotals(User $viewer, array $filters, int $minRateAnimals): ?array
+    {
+        if ($filters['from'] === null || $filters['to'] === null) {
+            return null;
+        }
+
+        $days = $filters['from']->diffInDays($filters['to']) + 1;
+        $previousTo = $filters['from']->copy()->subDay();
+        $previousFrom = $previousTo->copy()->subDays($days - 1);
+        $previousFilters = [
+            ...$filters,
+            'from' => $previousFrom,
+            'to' => $previousTo,
+        ];
+
+        $rows = collect($this->aggregateRows($viewer, $previousFilters));
+        $in = (int) $rows->sum('redispersed_in');
+        $out = (int) $rows->sum('redispersed_out');
+
+        return [
+            'period' => [
+                'from' => $previousFrom->toDateString(),
+                'to' => $previousTo->toDateString(),
+            ],
+            'values' => [
+                'dispersed' => (int) $rows->sum('dispersed'),
+                'redispersed_out' => $out,
+                'redispersed_in' => $in,
+                'net_flow' => $in - $out,
+                'redispersal_rate' => $this->cityRate($viewer, $previousFilters, $minRateAnimals),
+            ],
+        ];
     }
 
     /**
@@ -751,8 +862,10 @@ class BarangayDispersalAnalyticsService
      * @param  Collection<int, array<string, mixed>>  $rankable
      * @param  list<array<string, mixed>>  $barangays
      */
-    private function sentence(array $config, array $extremes, Collection $rankable, array $barangays, int $minRateAnimals): string
+    private function sentence(array $config, array $extremes, Collection $rankable, array $barangays, int $minRateAnimals, bool $per1000 = false): string
     {
+        $unit = $per1000 && $config['kind'] !== 'rate' ? ' per 1,000 residents' : '';
+
         if ($rankable->isEmpty()) {
             return $config['kind'] === 'rate'
                 ? sprintf(
@@ -760,42 +873,58 @@ class BarangayDispersalAnalyticsService
                     $minRateAnimals,
                     $minRateAnimals,
                 )
-                : sprintf('No %s were recorded in this period.', $config['label']);
+                : sprintf('No %s%s were recorded in this period.', $config['label'], $unit);
         }
-
-        $names = fn (array $entries): string => collect($entries)->pluck('name')->implode(' and ');
 
         $highest = collect($extremes['highest']);
         $lowest = collect($extremes['lowest']);
         $top = $highest->first();
+        $format = fn (int|float $value): string => $per1000 && $config['kind'] !== 'rate'
+            ? number_format((float) $value, 1)
+            : (string) $value;
 
         return match ($config['kind']) {
             'rate' => sprintf(
                 '%s re-dispersed the largest share of the animals it received (%d%%). %s re-dispersed none%s Barangays under %d dispersed animals are not ranked (n < %d).',
-                $names($extremes['highest']),
+                $this->namesCapped($highest),
                 $this->percent($top['value']),
-                $names($extremes['lowest']),
+                $this->namesCapped($lowest),
                 (float) $lowest->first()['value'] === 0.0 ? '.' : sprintf(', at %d%%.', $this->percent($lowest->first()['value'])),
                 $minRateAnimals,
                 $minRateAnimals,
             ),
             'net' => sprintf(
-                '%s recorded the highest net inflow (%+d).%s',
-                $names($extremes['highest']),
+                '%s recorded the highest net inflow (%+d%s).%s',
+                $this->namesCapped($highest),
                 (int) $top['value'],
+                $unit,
                 (float) $lowest->first()['value'] < 0
-                    ? sprintf(' %s had the largest net outflow (%+d).', $names($extremes['lowest']), (int) $lowest->first()['value'])
+                    ? sprintf(' %s had the largest net outflow (%+d%s).', $this->namesCapped($lowest), (int) $lowest->first()['value'], $unit)
                     : '',
             ),
             default => sprintf(
-                '%s recorded the most %s (%s, %s%% of the total).%s',
-                $names($extremes['highest']),
+                '%s recorded the most %s%s (%s, %s%% of the total).%s',
+                $this->namesCapped($highest),
                 $config['label'],
-                $top['value'],
+                $unit,
+                $format($top['value']),
                 $this->percent($this->groupShare($highest, $barangays, $config['key'])),
                 $this->countTail($config, $extremes, $barangays),
             ),
         };
+    }
+
+    /** A readable cap for tied groups: “A, B and 15 others”. */
+    private function namesCapped(Collection $entries, int $limit = 3): string
+    {
+        $names = $entries->pluck('name')->filter()->values();
+        if ($names->count() <= $limit) {
+            return $names->implode(' and ');
+        }
+
+        $others = $names->count() - $limit;
+
+        return $names->take($limit)->implode(', ').sprintf(' and %d other%s', $others, $others === 1 ? '' : 's');
     }
 
     /** The tied group's combined share of the city total for a count metric. */
@@ -825,12 +954,14 @@ class BarangayDispersalAnalyticsService
                 ->filter(fn (array $row): bool => $row[$config['key']] === 0)
                 ->pluck('name');
 
-            return sprintf(' %s recorded none.', $zeros->implode(' and '));
+            return $zeros->count() > 3
+                ? sprintf(' %d barangays recorded none.', $zeros->count())
+                : sprintf(' %s recorded none.', $zeros->implode(' and '));
         }
 
         return sprintf(
             ' The lowest was %s (%s).',
-            collect($extremes['lowest'])->pluck('name')->implode(' and '),
+            $this->namesCapped(collect($extremes['lowest'])),
             $bottom['value'],
         );
     }
@@ -853,6 +984,7 @@ class BarangayDispersalAnalyticsService
             'animal_type_id' => $filters['animal_type_id'],
             'classification_id' => $filters['classification_id'],
             'event_types' => $filters['event_types'],
+            'per_1000' => (bool) ($filters['per_1000'] ?? false),
         ];
     }
 

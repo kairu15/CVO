@@ -86,7 +86,7 @@ export const analyticsApi = {
    * The barangay table + flow matrix + filter summary as one workbook, behind
    * the active filters.
    *
-   * @param {object} params  Same filters as barangayDispersal + include_cvo.
+   * @param {object} params  Same filters as barangayDispersal + include_cvo + metric.
    * @returns {Promise<{blob: Blob, filename: string}>}
    */
   exportExcel: async (params = {}) => {

@@ -679,6 +679,96 @@ class BarangayDispersalAnalyticsTest extends TestCase
         $this->assertNull($this->rowFor($data, $this->barangay(1)->id)['dispersed_per_1000']);
     }
 
+    public function test_per_1000_is_a_page_wide_summary_unit(): void
+    {
+        $admin = $this->admin();
+        $a = $this->barangay(0);
+        $b = $this->barangay(1);
+
+        $this->actingAs($admin)->patchJson("/api/v1/admin/barangays/{$a->id}", [
+            'population' => 1000,
+        ])->assertOk();
+        $this->actingAs($admin)->patchJson("/api/v1/admin/barangays/{$b->id}", [
+            'population' => 2000,
+        ])->assertOk();
+
+        $this->disperse($admin, $this->beneficiaryIn($a), now()->subDay(), 'TAG-PW1');
+        $this->disperse($admin, $this->beneficiaryIn($a), now()->subDay(), 'TAG-PW2');
+        $this->disperse($admin, $this->beneficiaryIn($b), now()->subDay(), 'TAG-PW3');
+
+        $data = $this->analytics($admin, ['per_1000' => 1]);
+
+        $this->assertTrue($data['per_1000']);
+        $this->assertTrue($data['filters']['per_1000']);
+        $this->assertSame('per_1000', $data['summary']['dispersed']['unit']);
+
+        // The city total is population-weighted (3 events / 3,000 residents),
+        // not a sum of the barangay rates.
+        $this->assertEqualsWithDelta(1.0, $data['summary']['dispersed']['total'], 0.0001);
+        $this->assertSame($a->id, $data['summary']['dispersed']['highest'][0]['barangay_id']);
+        $this->assertEqualsWithDelta(2.0, $data['summary']['dispersed']['highest'][0]['value'], 0.0001);
+
+        $this->assertSame(2, $data['population_coverage']['recorded']);
+        $this->assertSame(count($data['barangays']), $data['population_coverage']['total']);
+        $this->assertFalse($data['population_coverage']['complete']);
+    }
+
+    public function test_previous_period_compares_the_equal_length_window_before(): void
+    {
+        $admin = $this->admin();
+        $a = $this->barangay(0);
+
+        $to = now()->startOfDay();
+        $from = $to->copy()->subDays(4);
+        $previousTo = $from->copy()->subDay();
+        $previousFrom = $previousTo->copy()->subDays(4);
+
+        $this->disperse($admin, $this->beneficiaryIn($a), $previousFrom->copy()->addDay(), 'TAG-PRE1');
+        $this->disperse($admin, $this->beneficiaryIn($a), $previousFrom->copy()->addDays(2), 'TAG-PRE2');
+        $this->disperse($admin, $this->beneficiaryIn($a), $from->copy()->addDay(), 'TAG-CUR1');
+
+        $data = $this->analytics($admin, [
+            'from' => $from->toDateString(),
+            'to' => $to->toDateString(),
+        ]);
+
+        $this->assertSame(1, $data['summary']['dispersed']['total']);
+        $this->assertSame([
+            'from' => $previousFrom->toDateString(),
+            'to' => $previousTo->toDateString(),
+        ], $data['previous_period']);
+        $this->assertSame(2, $data['previous']['dispersed']);
+    }
+
+    public function test_net_flow_summary_reports_in_and_out_totals_separately(): void
+    {
+        $admin = $this->admin();
+        $a = $this->barangay(0);
+        $b = $this->barangay(1);
+        $c = $this->barangay(2);
+
+        $ownerA = $this->beneficiaryIn($a);
+        $ownerB = $this->beneficiaryIn($b);
+        $ownerC = $this->beneficiaryIn($c);
+
+        $first = $this->disperse($admin, $ownerA, now()->subDays(5), 'TAG-N1');
+        $this->redisperse($admin, $first->id, $ownerB, now()->subDays(4));
+
+        $second = $this->disperse($admin, $ownerB, now()->subDays(5), 'TAG-N2');
+        $this->redisperse($admin, $second->id, $ownerC, now()->subDays(4));
+
+        $third = $this->disperse($admin, $ownerC, now()->subDays(5), 'TAG-N3');
+        $this->redisperse($admin, $third->id, $ownerA, now()->subDays(4));
+
+        $net = $this->analytics($admin)['summary']['net_flow'];
+
+        // Three handovers in, three out: the city net is zero, but the card
+        // must still say how much moved in each direction.
+        $this->assertSame(0, $net['total']);
+        $this->assertSame(3, $net['in_total']);
+        $this->assertSame(3, $net['out_total']);
+    }
+
     public function test_the_minimum_rate_setting_is_a_policy_number_the_office_owns(): void
     {
         $admin = $this->admin();

@@ -168,7 +168,7 @@ try {
     waitUntil: "domcontentloaded",
   });
   await page.waitForSelector('table[aria-label="All barangay metrics"]', { timeout: 90000 });
-  await sleep(2500); // the lazy map chunk + the recharts layout
+  await sleep(2500); // the lazy map chunk and the deferred boundaries asset
 
   async function readTab() {
     return page.evaluate(() => {
@@ -179,7 +179,8 @@ try {
       const table = document.querySelector('table[aria-label="All barangay metrics"]');
       const rows = [...(table?.querySelectorAll("tbody tr") ?? [])].map((row) => {
         const cells = [...row.querySelectorAll("td, th")].map((cell) => cell.textContent.trim());
-        return { rank: cells[0], name: cells[1], dispersed: Number(cells[2]), out: Number(cells[3]), net: Number(cells[6]) };
+        // rank, name, population, dispersed, out, in, within, net, rate, rate n
+        return { rank: cells[0], name: cells[1], dispersed: Number(cells[3]), out: Number(cells[4]), net: Number(cells[7]) };
       });
 
       return {
@@ -187,7 +188,9 @@ try {
         lowest: lowestCard?.textContent ?? "",
         rows,
         hasMap: Boolean(document.querySelector(".cvo-map-shell, [role='application'][aria-label*='Map of barangay']")),
-        hasMatrix: Boolean(document.querySelector("table")) && rows.length > 0,
+        hasMatrix: [...document.querySelectorAll("summary")].some((summary) =>
+          summary.textContent.includes("Flow matrix"),
+        ),
         empty: document.body.textContent.includes("No dispersals recorded in this period"),
       };
     });

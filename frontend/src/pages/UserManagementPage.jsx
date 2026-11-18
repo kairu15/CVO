@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { adminApi } from "../api/adminApi";
 import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage, getFieldErrors } from "../api/client";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Modal } from "../components/Modal";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { EmptyState } from "../components/EmptyState";
@@ -55,6 +57,32 @@ const STATUS_FILTERS = [
   { key: "deactivated", label: "Deactivated only" },
 ];
 
+/** One sortable table heading; `aria-sort` carries the state. */
+function SortableHeader({ label, sortKey, sort, onSort, className = "" }) {
+  const active = sort.key === sortKey;
+
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+      className={`px-4 py-2.5 font-semibold ${className}`}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`inline-flex items-center gap-1 uppercase transition hover:text-brand-800 ${
+          active ? "text-brand-800" : ""
+        }`}
+      >
+        {label}
+        <span aria-hidden="true" className="text-[9px]">
+          {active ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 const EMPTY_CREATE = {
   name: "",
   email: "",
@@ -75,6 +103,25 @@ function formatDateTime(value) {
     : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+/** Compact "2 h ago" for the table; the exact timestamp rides in a title. */
+function relativeTime(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} d ago`;
+
+  return formatDate(value);
+}
+
 /** Human copy for the audit actions the activity modal shows. */
 const ACTIVITY_LABELS = {
   login: "Signed in",
@@ -91,6 +138,8 @@ const ACTIVITY_LABELS = {
   role_changed: "Role changed",
   user_deactivated: "Account deactivated",
   user_reactivated: "Account reactivated",
+  setup_link_resent: "Setup link re-sent",
+  sessions_revoked: "Signed out of every device",
 };
 
 export default function UserManagementPage() {
@@ -106,6 +155,9 @@ export default function UserManagementPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [neverSignedIn, setNeverSignedIn] = useState(false);
+  const [sort, setSort] = useState({ key: "name", dir: "asc" });
+  const [perPage, setPerPage] = useState(50);
   const debouncedSearch = useDebouncedValue(search, 300);
 
   // Account being edited / created, plus the field errors the server returned.
@@ -129,6 +181,16 @@ export default function UserManagementPage() {
   const { selected, toggle, toggleAll, clear } = useRowSelection();
   const [bulkConfirming, setBulkConfirming] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkReactivateConfirming, setBulkReactivateConfirming] = useState(false);
+  const [bulkReactivating, setBulkReactivating] = useState(false);
+
+  // A role change to administrator is the one edit that widens an account's
+  // power to everything; confirm it before the request leaves the page.
+  const [confirmRoleChange, setConfirmRoleChange] = useState(false);
+
+  // Security actions in the activity modal, each with its own in-flight key.
+  const [securityBusy, setSecurityBusy] = useState(null);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
 
   // Per-account activity modal.
   const [activity, setActivity] = useState(null); // {user, activity}
@@ -142,13 +204,16 @@ export default function UserManagementPage() {
 
     try {
       const rows = await adminApi.listUsersPage({
-        per_page: 50,
+        per_page: perPage,
         page,
         role: roleFilter === "all" ? undefined : roleFilter,
         search: debouncedSearch || undefined,
         // `all` keeps deactivated accounts visible so they can be brought
         // back; the API's own default is `active` for the picker endpoints.
         status: statusFilter,
+        never_signed_in: neverSignedIn || undefined,
+        sort: sort.key,
+        dir: sort.dir,
       });
 
       setUsers(rows?.data ?? []);
@@ -158,7 +223,7 @@ export default function UserManagementPage() {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [roleFilter, statusFilter, debouncedSearch, page]);
+  }, [roleFilter, statusFilter, debouncedSearch, page, neverSignedIn, perPage, sort]);
 
   useEffect(() => {
     load();
@@ -175,10 +240,24 @@ export default function UserManagementPage() {
     return tally;
   }, [users]);
 
-  /** Active accounts on this page are the selectable bulk rows. */
+  /** Every row except yourself is selectable; the two bulk actions then act
+   * on the active or deactivated subset of the selection. */
   const selectableIds = useMemo(
-    () => users.filter((row) => row.status === "active").map((row) => row.id),
-    [users],
+    () => users.filter((row) => row.id !== currentUser?.id).map((row) => row.id),
+    [users, currentUser?.id],
+  );
+
+  const selectedActive = useMemo(
+    () => users.filter((row) => row.status === "active" && selected.has(row.id)).map((row) => row.id),
+    [users, selected],
+  );
+
+  const selectedDeactivated = useMemo(
+    () =>
+      users
+        .filter((row) => row.status === "deactivated" && selected.has(row.id))
+        .map((row) => row.id),
+    [users, selected],
   );
 
   /** The account being edited is the signed-in administrator's own. */
@@ -234,7 +313,20 @@ export default function UserManagementPage() {
     toast.error(getErrorMessage(err));
   }
 
-  async function saveEdit() {
+  function saveEdit() {
+    if (!editing || !editDirty) return;
+
+    // Promoting to administrator grants every capability — ask first. Any
+    // other role change is saveable directly.
+    if (!editingSelf && editForm.role === "admin" && editing.role !== "admin") {
+      setConfirmRoleChange(true);
+      return;
+    }
+
+    commitEdit();
+  }
+
+  async function commitEdit() {
     if (!editing || !editDirty) return;
 
     setSaving(true);
@@ -359,6 +451,86 @@ export default function UserManagementPage() {
     }
   }
 
+  async function reactivateBulk() {
+    setBulkReactivating(true);
+
+    try {
+      const result = await adminApi.bulkReactivateUsers(selectedDeactivated);
+
+      setBulkReactivateConfirming(false);
+      clear();
+      await load();
+
+      const skipped = result?.failed_ids?.length ?? 0;
+
+      toast.success(
+        skipped > 0
+          ? `${result.updated} account${result.updated === 1 ? "" : "s"} reactivated — ${skipped} skipped.`
+          : `${result?.updated ?? 0} account${result?.updated === 1 ? "" : "s"} can sign in again.`,
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setBulkReactivating(false);
+    }
+  }
+
+  /** Re-issue the setup link for an invited account that has never signed in. */
+  async function sendSetupLink(row) {
+    setSecurityBusy(`setup-${row.id}`);
+
+    try {
+      const setupUrl = await adminApi.resendSetupLink(row.id);
+      setCreated({ name: row.name, setup_url: setupUrl, resent: true });
+      await load();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setSecurityBusy(null);
+    }
+  }
+
+  /** Email a reset link; the admin never types or sees the password. */
+  async function sendPasswordReset(row) {
+    setSecurityBusy(`reset-${row.id}`);
+
+    try {
+      const result = await adminApi.sendPasswordReset(row.id);
+      toast.success(result?.message ?? `A password reset link was sent to ${row.email}.`);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setSecurityBusy(null);
+    }
+  }
+
+  /** End every session without deactivating — the lost-device response. */
+  async function revokeSessions(row) {
+    setSecurityBusy(`revoke-${row.id}`);
+
+    try {
+      await adminApi.revokeSessions(row.id);
+      setConfirmRevoke(false);
+      setActivity(null);
+      toast.success(`${row.name} has been signed out of every device.`);
+      await load();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setSecurityBusy(null);
+    }
+  }
+
+  function toggleSort(key) {
+    setSort((current) => {
+      if (current.key === key) {
+        return { key, dir: current.dir === "desc" ? "asc" : "desc" };
+      }
+      return { key, dir: key === "name" ? "asc" : "desc" };
+    });
+    setPage(1);
+  }
+
   return (
     <div className="space-y-6">
       <section className="card p-6">
@@ -392,6 +564,21 @@ export default function UserManagementPage() {
                 aria-label="Search accounts"
               />
             </div>
+
+            <a
+              href={adminApi.exportUsersUrl({
+                role: roleFilter === "all" ? undefined : roleFilter,
+                status: statusFilter,
+                search: debouncedSearch || undefined,
+                never_signed_in: neverSignedIn || undefined,
+                sort: sort.key,
+                dir: sort.dir,
+              })}
+              className="btn-secondary inline-flex items-center gap-1.5 rounded-pill px-4 py-2 text-sm font-semibold"
+            >
+              <Icon name="clipboard" className="h-4 w-4" />
+              Export CSV
+            </a>
 
             <button
               type="button"
@@ -468,6 +655,41 @@ export default function UserManagementPage() {
               {label}
             </button>
           ))}
+
+          <button
+            type="button"
+            onClick={() => {
+              setNeverSignedIn((current) => !current);
+              setPage(1);
+            }}
+            aria-pressed={neverSignedIn}
+            className={`rounded-pill px-3 py-1.5 text-xs font-semibold transition ${
+              neverSignedIn
+                ? "bg-amber-500 text-white"
+                : "bg-amber-50 text-amber-800 hover:bg-amber-100"
+            }`}
+          >
+            Never signed in
+          </button>
+
+          <label className="ml-auto flex items-center gap-1.5 text-[11px] text-slate-500">
+            Rows
+            <select
+              value={perPage}
+              onChange={(event) => {
+                setPerPage(Number(event.target.value));
+                setPage(1);
+              }}
+              className="field !w-20 !px-2 !py-1 text-xs"
+              aria-label="Accounts per page"
+            >
+              {[25, 50].map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </section>
 
@@ -501,21 +723,30 @@ export default function UserManagementPage() {
               ))}
             </div>
 
-            {/* Bulk actions over the selected (active) accounts. */}
+            {/* Bulk actions act on the matching half of the selection. */}
             <BulkActionBar
               count={selected.size}
               onClear={clear}
               noun="account"
-              busy={bulkBusy}
+              busy={bulkBusy || bulkReactivating}
             >
               <button
                 type="button"
                 onClick={() => setBulkConfirming(true)}
-                disabled={bulkBusy}
+                disabled={bulkBusy || bulkReactivating || selectedActive.length === 0}
                 className="inline-flex items-center gap-1 rounded-pill bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {bulkBusy ? <ButtonSpinner className="border-rose-200 border-t-white" /> : null}
                 Deactivate selected
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkReactivateConfirming(true)}
+                disabled={bulkBusy || bulkReactivating || selectedDeactivated.length === 0}
+                className="inline-flex items-center gap-1 rounded-pill bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {bulkReactivating ? <ButtonSpinner className="border-emerald-200 border-t-white" /> : null}
+                Reactivate selected
               </button>
             </BulkActionBar>
 
@@ -523,12 +754,12 @@ export default function UserManagementPage() {
               <table className="w-full text-left text-xs">
                 <colgroup>
                   <col className="w-[4%]" />
-                  <col className="w-[19%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[22%]" />
-                  <col className="w-[11%]" />
+                  <col className="w-[23%]" />
+                  <col className="w-[20%]" />
                   <col className="w-[10%]" />
-                  <col className="w-[11%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[9%]" />
                   <col />
                 </colgroup>
                 <thead>
@@ -540,12 +771,30 @@ export default function UserManagementPage() {
                         onToggleAll={toggleAll}
                       />
                     </th>
-                    <th scope="col" className="px-4 py-2.5 font-semibold">Name</th>
-                    <th scope="col" className="px-4 py-2.5 font-semibold">Username</th>
-                    <th scope="col" className="px-4 py-2.5 font-semibold">Email</th>
+                    <SortableHeader
+                      label="Account"
+                      sortKey="name"
+                      sort={sort}
+                      onSort={toggleSort}
+                    />
+                    <th scope="col" className="hidden px-4 py-2.5 font-semibold md:table-cell">
+                      Email
+                    </th>
                     <th scope="col" className="px-4 py-2.5 font-semibold">Role</th>
                     <th scope="col" className="px-4 py-2.5 font-semibold">Status</th>
-                    <th scope="col" className="px-4 py-2.5 font-semibold">Added</th>
+                    <SortableHeader
+                      label="Last sign-in"
+                      sortKey="last_login_at"
+                      sort={sort}
+                      onSort={toggleSort}
+                    />
+                    <SortableHeader
+                      label="Added"
+                      sortKey="created_at"
+                      sort={sort}
+                      onSort={toggleSort}
+                      className="hidden lg:table-cell"
+                    />
                     <th scope="col" className="px-4 py-2.5 font-semibold">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -562,14 +811,14 @@ export default function UserManagementPage() {
                         className={`transition hover:bg-brand-50/40 ${deactivated ? "bg-slate-50/70" : ""}`}
                       >
                         <td className="px-4 py-2.5">
-                          {/* Only active accounts are bulk-deactivatable — a
-                              deactivated one would be a no-op, and the actor's
-                              own account is refused by the server. */}
+                          {/* Both statuses are selectable; the bulk buttons
+                              then act on the matching subset. Your own
+                              account is refused by the server. */}
                           <input
                             type="checkbox"
-                            aria-label={`Select ${row.name} for bulk deactivation`}
+                            aria-label={`Select ${row.name}`}
                             checked={selected.has(row.id)}
-                            disabled={deactivated || isSelf}
+                            disabled={isSelf}
                             onChange={() => toggle(row.id)}
                             className="h-4 w-4 accent-brand-700 disabled:opacity-30"
                           />
@@ -583,11 +832,11 @@ export default function UserManagementPage() {
                               You
                             </span>
                           )}
+                          <span className="block text-[11px] font-normal text-slate-500">
+                            {row.username ? `@${row.username}` : "No username"}
+                          </span>
                         </td>
-                        <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
-                          {row.username ?? "—"}
-                        </td>
-                        <td className="truncate px-4 py-2.5 text-slate-600">
+                        <td className="hidden truncate px-4 py-2.5 text-slate-600 md:table-cell">
                           {row.email}
                         </td>
                         <td className="px-4 py-2.5 whitespace-nowrap">
@@ -615,11 +864,38 @@ export default function UserManagementPage() {
                             />
                             {deactivated ? "Deactivated" : "Active"}
                           </span>
+                          {deactivated && row.deactivated_at && (
+                            <span className="mt-1 block text-[10px] text-slate-400">
+                              {formatDate(row.deactivated_at)}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-4 py-2.5 whitespace-nowrap text-slate-500">
+                        <td className="px-4 py-2.5 whitespace-nowrap">
+                          {row.last_login_at ? (
+                            <span
+                              className="text-slate-600"
+                              title={formatDateTime(row.last_login_at)}
+                            >
+                              {relativeTime(row.last_login_at)}
+                            </span>
+                          ) : (
+                            <span className="font-semibold text-amber-700">Never</span>
+                          )}
+                        </td>
+                        <td className="hidden px-4 py-2.5 whitespace-nowrap text-slate-500 lg:table-cell">
                           {formatDate(row.created_at)}
                         </td>
                         <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                          {!isSelf && !deactivated && !row.last_login_at && (
+                            <button
+                              type="button"
+                              onClick={() => sendSetupLink(row)}
+                              disabled={securityBusy === `setup-${row.id}`}
+                              className="mr-1 rounded-pill px-3 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-50 disabled:opacity-50"
+                            >
+                              {securityBusy === `setup-${row.id}` ? "Sending…" : "Setup link"}
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => openActivity(row)}
@@ -870,13 +1146,15 @@ export default function UserManagementPage() {
       {/* Invite created — the one-time setup link, copyable. */}
       <Modal
         open={created !== null}
-        title="Account created — setup link ready"
+        title={created?.resent ? "Setup link ready" : "Account created — setup link ready"}
         onClose={() => setCreated(null)}
         contentClassName="max-w-lg"
       >
         <p className="text-sm text-slate-600">
-          <span className="font-semibold text-slate-900">{created?.name}</span> has
-          an account. This one-time link lets them set their own password:
+          <span className="font-semibold text-slate-900">{created?.name}</span>{" "}
+          {created?.resent
+            ? "has not signed in yet. This new one-time link replaces any earlier setup link and lets them set their own password:"
+            : "has an account. This one-time link lets them set their own password:"}
         </p>
 
         <div className="mt-3 flex items-start gap-2">
@@ -955,6 +1233,44 @@ export default function UserManagementPage() {
         </div>
       </Modal>
 
+      {/* Bulk reactivation confirmation */}
+      <Modal
+        open={bulkReactivateConfirming}
+        title={`Reactivate ${selectedDeactivated.length} ${selectedDeactivated.length === 1 ? "account" : "accounts"}?`}
+        onClose={() => setBulkReactivateConfirming(false)}
+        contentClassName="max-w-md"
+      >
+        <p className="text-sm text-slate-600">
+          The selected accounts can sign in again with their existing passwords.
+          Their role and records are unchanged.
+        </p>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setBulkReactivateConfirming(false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-pill bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+            onClick={reactivateBulk}
+            disabled={bulkReactivating}
+          >
+            {bulkReactivating ? (
+              <>
+                <ButtonSpinner />
+                Reactivating…
+              </>
+            ) : (
+              "Reactivate accounts"
+            )}
+          </button>
+        </div>
+      </Modal>
+
       {/* One account's activity trail */}
       <Modal
         open={activity !== null}
@@ -995,10 +1311,85 @@ export default function UserManagementPage() {
               </div>
             </dl>
 
-            <div>
+            {/* Security actions live with the account context. Every one is
+                server-gated and audited; the UI only saves the round trip. */}
+            <div className="rounded-xl border border-slate-200 p-3">
               <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-                History (newest first)
+                Security
               </p>
+
+              {(activity.security?.failed_logins_7d ?? 0) > 0 && (
+                <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-800">
+                  {activity.security.failed_logins_7d} failed sign-in
+                  {activity.security.failed_logins_7d === 1 ? " attempt" : " attempts"} in
+                  the last 7 days
+                  {activity.security.last_failed_login_at
+                    ? ` · last ${formatDateTime(activity.security.last_failed_login_at)}`
+                    : ""}
+                </p>
+              )}
+
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => sendPasswordReset(activity.user)}
+                  disabled={
+                    activity.user.status !== "active" ||
+                    securityBusy === `reset-${activity.user.id}`
+                  }
+                  className="rounded-pill border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {securityBusy === `reset-${activity.user.id}`
+                    ? "Sending…"
+                    : "Send password reset"}
+                </button>
+
+                {activity.user.status === "active" && !activity.user.last_login_at && (
+                  <button
+                    type="button"
+                    onClick={() => sendSetupLink(activity.user)}
+                    disabled={securityBusy === `setup-${activity.user.id}`}
+                    className="rounded-pill border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-50 disabled:opacity-50"
+                  >
+                    {securityBusy === `setup-${activity.user.id}`
+                      ? "Sending…"
+                      : "Send setup link"}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setConfirmRevoke(true)}
+                  disabled={
+                    activity.user.id === currentUser?.id ||
+                    activity.user.status !== "active" ||
+                    securityBusy === `revoke-${activity.user.id}`
+                  }
+                  className="rounded-pill border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+                >
+                  Sign out everywhere
+                </button>
+              </div>
+
+              <p className="mt-2 text-[11px] text-slate-500">
+                Password reset and setup links are emailed to the account owner;
+                you never see their password. Signing out revokes sessions and
+                API tokens without deactivating the account.
+              </p>
+            </div>
+
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+                  History (newest first)
+                </p>
+                <Link
+                  to={`/dashboard/admin/audit?actor_id=${activity.user.id}`}
+                  className="text-[11px] font-semibold text-brand-800 hover:underline"
+                >
+                  Open in Audit Trail →
+                </Link>
+              </div>
               {activity.activity.length === 0 ? (
                 <p className="mt-2 text-xs text-slate-500">
                   Nothing recorded yet — this account has not signed in and has
@@ -1134,6 +1525,60 @@ export default function UserManagementPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Confirmation before granting full administrator access */}
+      <Modal
+        open={confirmRoleChange}
+        title="Grant administrator access?"
+        onClose={() => setConfirmRoleChange(false)}
+        contentClassName="max-w-md"
+      >
+        <p className="text-sm text-slate-600">
+          <span className="font-semibold text-slate-900">{editing?.name}</span> will
+          gain full administrator access — every capability in the role matrix,
+          including account and permission management.
+        </p>
+        <p className="mt-3 rounded-xl bg-amber-50 px-3.5 py-3 text-xs text-amber-800">
+          Only promote someone who needs that reach. The change is recorded in
+          the audit trail under your account.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setConfirmRoleChange(false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => {
+              setConfirmRoleChange(false);
+              commitEdit();
+            }}
+            className="btn-primary inline-flex items-center gap-2"
+          >
+            {saving ? <ButtonSpinner /> : null}
+            Grant administrator access
+          </button>
+        </div>
+      </Modal>
+
+      {/* Confirmation before revoking every session */}
+      <ConfirmDialog
+        open={confirmRevoke}
+        title="Sign this account out everywhere?"
+        message={
+          activity
+            ? `${activity.user.name} will be signed out of every browser and device. The account stays active and can sign in again immediately.`
+            : ""
+        }
+        confirmLabel="Sign out everywhere"
+        cancelLabel="Cancel"
+        onConfirm={() => revokeSessions(activity.user)}
+        onCancel={() => setConfirmRevoke(false)}
+      />
 
       {/* Confirmation before deactivating anyone */}
       <Modal

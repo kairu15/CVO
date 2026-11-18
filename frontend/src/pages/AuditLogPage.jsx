@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { auditApi } from "../api/auditApi";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
@@ -62,6 +63,11 @@ const DATE_PRESETS = [
 ];
 
 export default function AuditLogPage() {
+  // User Management's activity modal links here with ?actor_id=… so the trail
+  // opens on that account instead of asking the admin to pick it again.
+  const [searchParams] = useSearchParams();
+  const linkedActor = searchParams.get("actor_id") ?? "";
+
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState(null);
   const [page, setPage] = useState(1);
@@ -69,7 +75,10 @@ export default function AuditLogPage() {
   const [error, setError] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
 
-  const [filters, setFilters] = useState(NO_FILTERS);
+  const [filters, setFilters] = useState(() => ({
+    ...NO_FILTERS,
+    actor_id: linkedActor,
+  }));
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
   const [vocab, setVocab] = useState({ actions: [], target_types: [], actors: [] });

@@ -16,7 +16,12 @@ vi.mock("../api/adminApi", () => ({
     deactivateUser: vi.fn(),
     reactivateUser: vi.fn(),
     bulkDeactivateUsers: vi.fn(),
+    bulkReactivateUsers: vi.fn(),
     userActivity: vi.fn(),
+    resendSetupLink: vi.fn(),
+    sendPasswordReset: vi.fn(),
+    revokeSessions: vi.fn(),
+    exportUsersUrl: vi.fn(() => "/api/v1/admin/users/export"),
   },
 }));
 
@@ -91,6 +96,13 @@ describe("UserManagementPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     adminApi.listUsersPage.mockResolvedValue({ data: ACCOUNTS, meta: null });
+    adminApi.exportUsersUrl.mockReturnValue("/api/v1/admin/users/export");
+    adminApi.resendSetupLink.mockResolvedValue("http://localhost:5173/reset-password?token=abc");
+    adminApi.sendPasswordReset.mockResolvedValue({
+      message: "A password reset link has been sent.",
+    });
+    adminApi.revokeSessions.mockResolvedValue({ revoked: 1 });
+    adminApi.bulkReactivateUsers.mockResolvedValue({ updated: 1, failed_ids: [] });
   });
 
   it("lists accounts with their role and status", async () => {
@@ -259,22 +271,22 @@ describe("UserManagementPage", () => {
     renderPage();
     await screen.findByText("Jun Technician");
 
-    // Own row and deactivated rows have no selectable checkbox.
+    // Your own row cannot be selected; deactivated rows can, for reactivation.
     expect(
-      within(rowFor("CVO Administrator")).getByRole("checkbox", { name: /Select .* for bulk/ }),
+      within(rowFor("CVO Administrator")).getByRole("checkbox", { name: /^Select / }),
     ).toBeDisabled();
     expect(
-      within(rowFor("Lito Former")).getByRole("checkbox", { name: /Select .* for bulk/ }),
-    ).toBeDisabled();
+      within(rowFor("Lito Former")).getByRole("checkbox", { name: /^Select / }),
+    ).toBeEnabled();
 
     await act(async () => {
       await userEvent.click(
-        within(rowFor("Jun Technician")).getByRole("checkbox", { name: /Select .* for bulk/ }),
+        within(rowFor("Jun Technician")).getByRole("checkbox", { name: /^Select / }),
       );
     });
     await act(async () => {
       await userEvent.click(
-        within(rowFor("Nena Farmer")).getByRole("checkbox", { name: /Select .* for bulk/ }),
+        within(rowFor("Nena Farmer")).getByRole("checkbox", { name: /^Select / }),
       );
     });
 
@@ -325,10 +337,10 @@ describe("UserManagementPage", () => {
       );
     });
 
-    expect(await screen.findByText(/Account activity — Jun Technician/)).toBeInTheDocument();
-    expect(screen.getByText(/Last sign-in/i)).toBeInTheDocument();
-    expect(screen.getByText("Role changed")).toBeInTheDocument();
-    expect(screen.getByText(/admin → technician/)).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: /Account activity — Jun Technician/ });
+    expect(within(dialog).getByText(/Last sign-in/i)).toBeInTheDocument();
+    expect(within(dialog).getByText("Role changed")).toBeInTheDocument();
+    expect(within(dialog).getByText(/admin → technician/)).toBeInTheDocument();
   });
 
   it("shows server validation errors against the field that failed", async () => {
@@ -467,6 +479,171 @@ describe("UserManagementPage", () => {
 
     await waitFor(() => expect(adminApi.reactivateUser).toHaveBeenCalledWith(4));
     expect(await screen.findByRole("status")).toHaveTextContent("Lito Former can sign in again.");
+  });
+
+  it("sends sort and page-size parameters and exposes the export link", async () => {
+    renderPage();
+    await screen.findByText("Jun Technician");
+
+    expect(adminApi.exportUsersUrl).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "all", sort: "name", dir: "asc" }),
+    );
+    expect(screen.getByRole("link", { name: /Export CSV/ })).toHaveAttribute(
+      "href",
+      "/api/v1/admin/users/export",
+    );
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: /Last sign-in/ }));
+    });
+
+    await waitFor(() => {
+      const calls = adminApi.listUsersPage.mock.calls;
+      expect(calls[calls.length - 1]?.[0]).toEqual(
+        expect.objectContaining({ sort: "last_login_at", dir: "desc" }),
+      );
+    });
+
+    await act(async () => {
+      await userEvent.selectOptions(screen.getByLabelText("Accounts per page"), "25");
+    });
+
+    await waitFor(() => {
+      const calls = adminApi.listUsersPage.mock.calls;
+      expect(calls[calls.length - 1]?.[0]?.per_page).toBe(25);
+    });
+  });
+
+  it("filters to accounts that have never signed in", async () => {
+    renderPage();
+    await screen.findByText("Jun Technician");
+
+    // The fixture never signed in — the row must say so, not show a blank.
+    expect(within(rowFor("Jun Technician")).getByText("Never")).toBeInTheDocument();
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Never signed in" }));
+    });
+
+    await waitFor(() => {
+      const calls = adminApi.listUsersPage.mock.calls;
+      expect(calls[calls.length - 1]?.[0]?.never_signed_in).toBe(true);
+    });
+  });
+
+  it("reissues a setup link for an invited account", async () => {
+    renderPage();
+    await screen.findByText("Nena Farmer");
+
+    await act(async () => {
+      await userEvent.click(
+        within(rowFor("Nena Farmer")).getByRole("button", { name: "Setup link" }),
+      );
+    });
+
+    await waitFor(() => expect(adminApi.resendSetupLink).toHaveBeenCalledWith(3));
+    expect(await screen.findByText("Setup link ready")).toBeInTheDocument();
+    expect(screen.getByText(/token=abc/)).toBeInTheDocument();
+  });
+
+  it("shows recent failed sign-ins and runs security actions from the activity modal", async () => {
+    adminApi.userActivity.mockResolvedValue({
+      user: { ...ACCOUNTS[1], created_by_name: "CVO Administrator" },
+      activity: [],
+      security: {
+        failed_logins_7d: 3,
+        last_failed_login_at: "2026-10-05T08:30:00+00:00",
+      },
+    });
+
+    renderPage();
+    await screen.findByText("Jun Technician");
+
+    await act(async () => {
+      await userEvent.click(
+        within(rowFor("Jun Technician")).getByRole("button", { name: "Activity" }),
+      );
+    });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: /Account activity — Jun Technician/,
+    });
+    expect(within(dialog).getByText(/3 failed sign-in attempts/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("link", { name: /Open in Audit Trail/ }),
+    ).toHaveAttribute("href", "/dashboard/admin/audit?actor_id=2");
+
+    await act(async () => {
+      await userEvent.click(within(dialog).getByRole("button", { name: "Send password reset" }));
+    });
+    await waitFor(() => expect(adminApi.sendPasswordReset).toHaveBeenCalledWith(2));
+
+    await act(async () => {
+      await userEvent.click(within(dialog).getByRole("button", { name: "Sign out everywhere" }));
+    });
+    const confirm = await screen.findByRole("alertdialog", {
+      name: "Sign this account out everywhere?",
+    });
+    await act(async () => {
+      await userEvent.click(within(confirm).getByRole("button", { name: "Sign out everywhere" }));
+    });
+    await waitFor(() => expect(adminApi.revokeSessions).toHaveBeenCalledWith(2));
+  });
+
+  it("confirms before promoting an account to administrator", async () => {
+    adminApi.updateUser.mockResolvedValue({ ...ACCOUNTS[1], role: "admin" });
+
+    renderPage();
+    await screen.findByText("Jun Technician");
+
+    await act(async () => {
+      await userEvent.click(within(rowFor("Jun Technician")).getByRole("button", { name: "Edit" }));
+    });
+    await act(async () => {
+      await userEvent.selectOptions(screen.getByLabelText("Role"), "admin");
+    });
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    });
+
+    expect(adminApi.updateUser).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("dialog", { name: "Grant administrator access?" }),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      await userEvent.click(
+        screen.getByRole("button", { name: "Grant administrator access" }),
+      );
+    });
+
+    await waitFor(() =>
+      expect(adminApi.updateUser).toHaveBeenCalledWith(2, {
+        name: "Jun Technician",
+        email: "technician@example.com",
+        role: "admin",
+      }),
+    );
+  });
+
+  it("bulk-reactivates selected dormant accounts", async () => {
+    renderPage();
+    await screen.findByText("Lito Former");
+
+    await act(async () => {
+      await userEvent.click(
+        within(rowFor("Lito Former")).getByRole("checkbox", { name: /^Select / }),
+      );
+    });
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Reactivate selected" }));
+    });
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Reactivate accounts" }));
+    });
+
+    await waitFor(() => expect(adminApi.bulkReactivateUsers).toHaveBeenCalledWith([4]));
+    expect(await screen.findByRole("status")).toHaveTextContent("1 account can sign in again.");
   });
 
   it("surfaces an API failure on the list", async () => {

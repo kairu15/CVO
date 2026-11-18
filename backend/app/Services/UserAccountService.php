@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Notifications\AccountSetup;
 use App\Services\Auth\AuthService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -33,6 +34,7 @@ class UserAccountService
     public function __construct(
         private readonly UserRoleService $roles,
         private readonly AuthService $auth,
+        private readonly AuditLogger $audit,
     ) {}
 
     /**
@@ -84,10 +86,19 @@ class UserAccountService
             return ['user' => $user, 'setup_url' => null];
         }
 
-        // The same broker the public "forgot password" flow uses: the token
-        // is stored hashed, single-use, expiring per
-        // config('auth.passwords.users.expire').
-        $token = \Illuminate\Support\Facades\Password::createToken($user);
+        return ['user' => $user, 'setup_url' => $this->issueSetupUrl($user)];
+    }
+
+    /**
+     * One-time setup link (and its email) for an invited account.
+     *
+     * The same broker the public "forgot password" flow uses: hashed, single-use,
+     * expiring per config('auth.passwords.users.expire'). Issue again replaces
+     * the previous token, so an old link cannot be replayed.
+     */
+    private function issueSetupUrl(User $user): string
+    {
+        $token = Password::createToken($user);
 
         // Reuse the SPA URL shape the reset flow already publishes through
         // ResetPassword::createUrlUsing, so both links land on the same page
@@ -96,7 +107,7 @@ class UserAccountService
 
         $setupUrl = $frontend.'/reset-password?token='.$token.'&email='.urlencode($user->email);
 
-        // Best effort: a mailer failure must not fail the invite — the URL is
+        // Best effort: a mailer failure must not fail the action — the URL is
         // already in the admin's hands. Under the default `log` mailer this
         // simply writes to the application log.
         try {
@@ -105,7 +116,96 @@ class UserAccountService
             report($e);
         }
 
-        return ['user' => $user, 'setup_url' => $setupUrl];
+        return $setupUrl;
+    }
+
+    /**
+     * Re-issue the setup link for an account that has never signed in.
+     *
+     * Deliberately narrower than a password reset: an account that has already
+     * used the system has a password the owner knows, and handing an
+     * administrator a fresh setup token for it would be a takeover path.
+     */
+    public function resendSetupLink(User $actor, User $target): string
+    {
+        if ($target->trashed()) {
+            throw ValidationException::withMessages([
+                'user' => 'Reactivate the account before sending a setup link.',
+            ]);
+        }
+
+        if ($target->last_login_at !== null) {
+            throw ValidationException::withMessages([
+                'user' => 'This account has already signed in. Send a password reset instead.',
+            ]);
+        }
+
+        if (! in_array($target->role, User::STAFF_ROLES, true)) {
+            throw ValidationException::withMessages([
+                'user' => 'Only staff accounts have setup links.',
+            ]);
+        }
+
+        $setupUrl = $this->issueSetupUrl($target);
+        $this->audit->log($actor, 'setup_link_resent', $target);
+
+        return $setupUrl;
+    }
+
+    /**
+     * Email the account's owner a password-reset link. The administrator never
+     * types or sees a password; the broker's own throttle stops repeated
+     * sends.
+     *
+     * @return string One of Password::RESET_LINK_SENT / RESET_THROTTLED /
+     *                INVALID_USER — the controller maps it to a response.
+     */
+    public function sendPasswordReset(User $actor, User $target): string
+    {
+        if ($target->trashed()) {
+            throw ValidationException::withMessages([
+                'user' => 'Reactivate the account before sending a password reset.',
+            ]);
+        }
+
+        $status = Password::sendResetLink(['email' => $target->email]);
+
+        if ($status === Password::RESET_LINK_SENT) {
+            $this->audit->log($actor, 'password_reset_requested', $target, [
+                'admin_initiated' => true,
+            ]);
+        }
+
+        return $status;
+    }
+
+    /**
+     * End every session and API token the account holds without deactivating
+     * it — the response to a lost device or a suspected stolen session.
+     * Refuses the actor's own account: use Sign out, not a security action
+     * that would kill the session making the request.
+     */
+    public function revokeSessions(User $actor, User $target): int
+    {
+        if ($actor->is($target)) {
+            throw ValidationException::withMessages([
+                'user' => 'Use Sign out for your own account; this action is for other accounts.',
+            ]);
+        }
+
+        if ($target->trashed()) {
+            throw ValidationException::withMessages([
+                'user' => 'The account is deactivated and has no active sessions.',
+            ]);
+        }
+
+        $revoked = $this->auth->logoutEverywhere($target);
+
+        $this->audit->log($actor, 'sessions_revoked', $target, [
+            'tokens_revoked' => $revoked,
+        ]);
+
+        return $revoked;
     }
 
     /**
@@ -214,6 +314,31 @@ class UserAccountService
         foreach (User::query()->whereIn('id', $ids)->get() as $target) {
             try {
                 $this->deactivate($actor, $target);
+                $updated++;
+            } catch (ValidationException) {
+                $failed[] = $target->id;
+            }
+        }
+
+        return ['updated' => $updated, 'failed_ids' => $failed];
+    }
+
+    /**
+     * Restore many dormant accounts. Each row goes through reactivate(), so
+     * the staff-role guard and the per-row audit behave exactly as the single
+     * path does; a non-staff row is reported, not fatal to the batch.
+     *
+     * @param  list<int>  $ids
+     * @return array{updated: int, failed_ids: list<int>}
+     */
+    public function reactivateMany(User $actor, array $ids): array
+    {
+        $updated = 0;
+        $failed = [];
+
+        foreach (User::withTrashed()->whereIn('id', $ids)->get() as $target) {
+            try {
+                $this->reactivate($actor, $target);
                 $updated++;
             } catch (ValidationException) {
                 $failed[] = $target->id;

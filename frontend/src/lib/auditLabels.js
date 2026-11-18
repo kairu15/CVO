@@ -26,6 +26,8 @@ export const ACTION_LABELS = {
   user_updated: "Account details edited",
   user_deactivated: "Account deactivated",
   user_reactivated: "Account reactivated",
+  setup_link_resent: "Setup link re-sent",
+  sessions_revoked: "Signed out of every device",
   settings_updated: "Settings saved",
   permissions_updated: "Permission changed",
   reference_data_updated: "Reference data updated",

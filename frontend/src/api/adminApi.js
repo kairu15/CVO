@@ -108,6 +108,53 @@ export const adminApi = {
     return unwrap(await api.post(`/api/v1/admin/users/${userId}/reactivate`));
   },
 
+  /** Restore several dormant accounts in one request. */
+  bulkReactivateUsers: async (ids) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/admin/users/bulk-reactivate", { ids }));
+  },
+
+  /**
+   * Re-issue the one-time setup link for an invited account that has never
+   * signed in. Resolves to the URL (also emailed) so the admin can hand it over.
+   */
+  resendSetupLink: async (userId) => {
+    await ensureCsrfCookie();
+    return unwrap(
+      await api.post(`/api/v1/admin/users/${userId}/setup-link`),
+    ).setup_url;
+  },
+
+  /**
+   * Email an active account's owner a password-reset link. The administrator
+   * never sees or types a password. Resolves to the server's message.
+   */
+  sendPasswordReset: async (userId) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post(`/api/v1/admin/users/${userId}/password-reset`));
+  },
+
+  /** End every session/token the account holds (not a deactivation). */
+  revokeSessions: async (userId) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post(`/api/v1/admin/users/${userId}/revoke-sessions`));
+  },
+
+  /** Download link for the filtered account CSV (same filters as the table). */
+  exportUsersUrl: (params = {}) => {
+    const base = api.defaults.baseURL ?? "";
+    const query = new URLSearchParams();
+
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== null && value !== undefined && value !== "" && value !== false) {
+        query.set(key, String(value));
+      }
+    }
+
+    const qs = query.toString();
+    return `${base}/api/v1/admin/users/export${qs ? `?${qs}` : ""}`;
+  },
+
   /** Admin-wide beneficiary directory including current technician. */
   listBeneficiaries: async (params = {}) =>
     unwrap.list(await api.get("/api/v1/admin/beneficiaries", { params })),

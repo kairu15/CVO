@@ -18,6 +18,7 @@ import { Icon } from "./Icons";
  * @param {string} [props.title]
  * @param {string} props.message what is lost by leaving
  * @param {string} [props.confirmLabel]
+ * @param {string} [props.cancelLabel]
  * @param {() => void} props.onConfirm leave without saving
  * @param {() => void} props.onCancel keep editing
  */
@@ -26,6 +27,7 @@ export function ConfirmDialog({
   title = "Discard unsaved changes?",
   message,
   confirmLabel = "Discard",
+  cancelLabel = "Keep editing",
   onConfirm,
   onCancel,
 }) {
@@ -72,7 +74,7 @@ export function ConfirmDialog({
 
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onCancel} className="btn-secondary">
-            Keep editing
+            {cancelLabel}
           </button>
           <button type="button" onClick={onConfirm} className="btn-primary">
             {confirmLabel}

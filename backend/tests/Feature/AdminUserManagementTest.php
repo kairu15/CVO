@@ -3,9 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Notifications\AccountSetup;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 /**
@@ -629,6 +632,221 @@ class AdminUserManagementTest extends TestCase
 
             $this->assertNotContains($farmer->id, $ids->all());
         }
+    }
+
+    // ── Onboarding, security, and account exports ────────────────────────────
+
+    public function test_the_list_can_be_limited_to_accounts_that_never_signed_in(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $invited = User::factory()->create(['role' => 'technician', 'last_login_at' => null]);
+        $active = User::factory()->create(['role' => 'technician', 'last_login_at' => now()]);
+
+        $response = $this->actingAs($admin)
+            ->getJson('/api/v1/admin/users?status=all&role=technician&never_signed_in=1')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+
+        $this->assertSame($invited->id, $response->json('data.0.id'));
+        $this->assertNotSame($active->id, $response->json('data.0.id'));
+    }
+
+    public function test_the_list_sorts_by_name_added_or_last_sign_in(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $older = User::factory()->create(['role' => 'technician', 'name' => 'Zara Tech', 'last_login_at' => now()->subDays(2)]);
+        $newer = User::factory()->create(['role' => 'technician', 'name' => 'Abe Tech', 'last_login_at' => now()->subDay()]);
+        DB::table('users')->where('id', $older->id)->update(['created_at' => now()->subDays(5)]);
+
+        $byLastLogin = $this->actingAs($admin)
+            ->getJson('/api/v1/admin/users?role=technician&status=all&sort=last_login_at&dir=desc')
+            ->assertOk()
+            ->json('data');
+        $this->assertSame([$newer->id, $older->id], collect($byLastLogin)->pluck('id')->all());
+
+        $byCreated = $this->actingAs($admin)
+            ->getJson('/api/v1/admin/users?role=technician&status=all&sort=created_at&dir=asc')
+            ->assertOk()
+            ->json('data');
+        $this->assertSame($older->id, collect($byCreated)->first()['id']);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/admin/users?sort=password')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['sort']);
+    }
+
+    public function test_admin_can_export_the_filtered_account_list(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $tech = User::factory()->create([
+            'role' => 'technician',
+            'name' => 'Export Tech',
+            'email' => 'export.tech@example.com',
+            'last_login_at' => now(),
+        ]);
+
+        $response = $this->actingAs($admin)
+            ->get('/api/v1/admin/users/export?role=technician')
+            ->assertOk();
+
+        $csv = $response->streamedContent();
+        $this->assertStringContainsString('Name,Username,Email,Role,Status', $csv);
+        $this->assertStringContainsString('Export Tech', $csv);
+        $this->assertStringContainsString('export.tech@example.com', $csv);
+        $this->assertStringNotContainsString($admin->email, $csv);
+
+        $this->assertDatabaseHas('activity_logs', [
+            'actor_id' => $admin->id,
+            'action' => 'exported',
+        ]);
+    }
+
+    public function test_admin_can_reissue_a_setup_link_for_an_invited_account(): void
+    {
+        Notification::fake();
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $invited = User::factory()->create([
+            'role' => 'technician',
+            'email' => 'pending.tech@example.com',
+            'last_login_at' => null,
+        ]);
+
+        $setupUrl = $this->actingAs($admin)
+            ->postJson("/api/v1/admin/users/{$invited->id}/setup-link")
+            ->assertOk()
+            ->json('data.setup_url');
+
+        $this->assertStringContainsString('/reset-password?token=', $setupUrl);
+        Notification::assertSentTo($invited, AccountSetup::class);
+        $this->assertDatabaseHas('activity_logs', [
+            'actor_id' => $admin->id,
+            'action' => 'setup_link_resent',
+            'target_id' => $invited->id,
+        ]);
+
+        // The fresh link completes the same reset endpoint the invite uses.
+        parse_str((string) parse_url((string) $setupUrl, PHP_URL_QUERY), $query);
+        $this->postJson('/api/v1/reset-password', [
+            'token' => $query['token'],
+            'email' => 'pending.tech@example.com',
+            'password' => 'MyOwn!Pass1',
+            'password_confirmation' => 'MyOwn!Pass1',
+        ])->assertOk();
+    }
+
+    public function test_a_setup_link_is_refused_once_the_account_has_signed_in(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $active = User::factory()->create(['role' => 'technician', 'last_login_at' => now()]);
+
+        $this->actingAs($admin)
+            ->postJson("/api/v1/admin/users/{$active->id}/setup-link")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['user']);
+
+        $this->actingAs(User::factory()->create(['role' => 'technician']))
+            ->postJson("/api/v1/admin/users/{$active->id}/setup-link")
+            ->assertForbidden();
+    }
+
+    public function test_admin_can_send_a_password_reset_link_without_seeing_the_password(): void
+    {
+        Notification::fake();
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $target = User::factory()->create(['role' => 'technician', 'email' => 'reset.tech@example.com']);
+
+        $this->actingAs($admin)
+            ->postJson("/api/v1/admin/users/{$target->id}/password-reset")
+            ->assertOk();
+
+        Notification::assertSentTo($target, ResetPassword::class);
+        $this->assertDatabaseHas('activity_logs', [
+            'actor_id' => $admin->id,
+            'action' => 'password_reset_requested',
+            'target_id' => $target->id,
+        ]);
+    }
+
+    public function test_admin_can_revoke_every_session_without_deactivating_the_account(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $target = User::factory()->create(['role' => 'technician']);
+
+        $target->createToken('lost-phone');
+        DB::table('sessions')->insert([
+            'id' => 'revoke-session-'.$target->id,
+            'user_id' => $target->id,
+            'payload' => 'x',
+            'last_activity' => now()->getTimestamp(),
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson("/api/v1/admin/users/{$target->id}/revoke-sessions")
+            ->assertOk()
+            ->assertJsonPath('data.revoked', 1);
+
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+        $this->assertDatabaseCount('sessions', 0);
+        $this->assertNotSoftDeleted('users', ['id' => $target->id]);
+
+        $this->assertDatabaseHas('activity_logs', [
+            'actor_id' => $admin->id,
+            'action' => 'sessions_revoked',
+            'target_id' => $target->id,
+        ]);
+
+        // An administrator cannot use this to kill the session making the call.
+        $this->actingAs($admin)
+            ->postJson("/api/v1/admin/users/{$admin->id}/revoke-sessions")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['user']);
+    }
+
+    public function test_admin_can_bulk_reactivate_dormant_accounts(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $targets = User::factory()->count(2)->create(['role' => 'technician']);
+        foreach ($targets as $target) {
+            $target->delete();
+        }
+
+        $this->actingAs($admin)
+            ->postJson('/api/v1/admin/users/bulk-reactivate', ['ids' => $targets->pluck('id')->all()])
+            ->assertOk()
+            ->assertJsonPath('data.updated', 2)
+            ->assertJsonPath('data.failed_ids', []);
+
+        foreach ($targets as $target) {
+            $this->assertNotSoftDeleted('users', ['id' => $target->id]);
+        }
+
+        // An active id is not a valid bulk-reactivate target.
+        $this->actingAs($admin)
+            ->postJson('/api/v1/admin/users/bulk-reactivate', ['ids' => [$targets[0]->id]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['ids.0']);
+    }
+
+    public function test_activity_reports_recent_failed_sign_ins_without_exposing_them_in_the_table(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $target = User::factory()->create(['role' => 'technician']);
+
+        foreach ([now(), now()->subDay(), now()->subDays(10)] as $when) {
+            DB::table('activity_logs')->insert([
+                'actor_id' => $target->id,
+                'action' => 'failed_login',
+                'created_at' => $when,
+            ]);
+        }
+
+        $this->actingAs($admin)
+            ->getJson("/api/v1/admin/users/{$target->id}/activity")
+            ->assertOk()
+            ->assertJsonPath('data.security.failed_logins_7d', 2);
     }
 
     public function test_a_retired_farmer_row_cannot_be_reactivated_into_an_account(): void

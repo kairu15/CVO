@@ -30,6 +30,13 @@ class AdminUsersRequest extends FormRequest
         return [
             'role' => ['sometimes', 'nullable', Rule::in(User::ROLES)],
             'search' => ['sometimes', 'nullable', 'string', 'max:255'],
+            // Accounts that have never completed a sign-in — the onboarding
+            // worklist (invited staff whose setup link is still pending).
+            'never_signed_in' => ['sometimes', 'boolean'],
+            // Three sort keys are enough to answer "who is newest", "who is
+            // overdue for a sign-in", and the default alphabetical scan.
+            'sort' => ['sometimes', 'nullable', Rule::in(['name', 'created_at', 'last_login_at'])],
+            'dir' => ['sometimes', 'nullable', Rule::in(['asc', 'desc'])],
             // Which account states to include. Defaults to `active` so the
             // technician pickers (which share this endpoint) can never offer a
             // deactivated technician; User Management asks for `all` so

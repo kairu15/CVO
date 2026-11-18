@@ -13,6 +13,7 @@ use App\Http\Requests\AssignRoleRequest;
 use App\Http\Requests\AssignTechnicianRequest;
 use App\Http\Requests\BulkAssignTechnicianRequest;
 use App\Http\Requests\BulkDeactivateUsersRequest;
+use App\Http\Requests\BulkReactivateUsersRequest;
 use App\Http\Resources\BeneficiaryResource;
 use App\Http\Resources\UserResource;
 use App\Models\ActivityLog;
@@ -29,6 +30,7 @@ use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -58,31 +60,116 @@ class AdminController extends Controller
     public function users(AdminUsersRequest $request): AnonymousResourceCollection
     {
         $validated = $request->validated();
-        $status = $validated['status'] ?? 'active';
 
-        $users = User::query()
-            ->with('creator:id,name')
-            // Retired `farmer` rows (soft-deleted by the account-removal
-            // migration) are program history, not dormant accounts: they
-            // never list here — under any status filter — so no screen can
-            // edit or reactivate one back into a login.
-            ->whereIn('role', User::STAFF_ROLES)
-            ->when($status === 'deactivated', fn ($q) => $q->onlyTrashed())
-            ->when($status === 'all', fn ($q) => $q->withTrashed())
-            ->when($validated['role'] ?? null, fn ($q, $role) => $q->where('role', $role))
-            ->when($validated['search'] ?? null, function ($q, $search): void {
-                $pattern = Like::contains($search);
-
-                $q->where(function ($q) use ($pattern): void {
-                    $q->where('name', 'like', $pattern)
-                        ->orWhere('email', 'like', $pattern)
-                        ->orWhere('username', 'like', $pattern);
-                });
-            })
-            ->orderBy('name')
+        $users = $this->userQuery($validated)
             ->paginate(Pagination::perPage($validated['per_page'] ?? null));
 
         return UserResource::collection($users);
+    }
+
+    /**
+     * The filtered account list as a CSV — the access-review artefact.
+     * Same filters and sort as the table; the audit row records the filter
+     * set, never the rows themselves.
+     */
+    public function exportUsers(AdminUsersRequest $request): StreamedResponse
+    {
+        $validated = $request->validated();
+
+        $this->audit->log($request->user(), 'exported', null, [
+            'resource' => 'user_accounts',
+            'filters' => $validated,
+        ]);
+
+        $filename = 'user-accounts-'.now()->format('Ymd-His').'.csv';
+
+        return response()->streamDownload(function () use ($validated): void {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+
+            fputcsv($out, [
+                'Name', 'Username', 'Email', 'Role', 'Status',
+                'Added', 'Last sign-in', 'Deactivated', 'Created by',
+            ]);
+
+            foreach ($this->userQuery($validated)->lazy(200) as $user) {
+                fputcsv($out, [
+                    $user->name,
+                    $user->username,
+                    $user->email,
+                    $user->role,
+                    $user->deleted_at === null ? 'Active' : 'Deactivated',
+                    $user->created_at?->toDateString(),
+                    $user->last_login_at?->toDateTimeString(),
+                    $user->deleted_at?->toDateTimeString(),
+                    $user->creator?->name,
+                ]);
+            }
+
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * Re-issue a one-time setup link for an invited account that has never
+     * signed in. The URL is returned as well as emailed: mail delivery is
+     * best effort, and onboarding must not depend on SMTP.
+     */
+    public function resendSetupLink(AdminUserLifecycleRequest $request, int $id): JsonResponse
+    {
+        $target = User::withTrashed()->findOrFail($id);
+
+        return response()->json([
+            'data' => ['setup_url' => $this->accounts->resendSetupLink($request->user(), $target)],
+        ]);
+    }
+
+    /**
+     * Email an active account's owner a password-reset link. The broker's
+     * throttle is surfaced instead of silently swallowed.
+     */
+    public function sendPasswordReset(AdminUserLifecycleRequest $request, int $id): JsonResponse
+    {
+        $target = User::withTrashed()->findOrFail($id);
+        $status = $this->accounts->sendPasswordReset($request->user(), $target);
+
+        if ($status === Password::RESET_LINK_SENT) {
+            return response()->json([
+                'message' => 'A password reset link has been sent to '.$target->email.'.',
+            ]);
+        }
+
+        if ($status === Password::RESET_THROTTLED) {
+            return response()->json([
+                'message' => 'A reset link was requested recently. Try again in a minute.',
+            ], 429);
+        }
+
+        return response()->json([
+            'message' => 'A reset link could not be sent for that account.',
+        ], 422);
+    }
+
+    /**
+     * End every session/token an account holds without deactivating it.
+     */
+    public function revokeSessions(AdminUserLifecycleRequest $request, int $id): JsonResponse
+    {
+        $target = User::findOrFail($id);
+
+        return response()->json([
+            'data' => ['revoked' => $this->accounts->revokeSessions($request->user(), $target)],
+        ]);
+    }
+
+    /**
+     * Reactivate several dormant accounts in one request.
+     */
+    public function bulkReactivateUsers(BulkReactivateUsersRequest $request): JsonResponse
+    {
+        $result = $this->accounts->reactivateMany($request->user(), $request->validated()['ids']);
+
+        return response()->json(['data' => $result]);
     }
 
     /**
@@ -197,9 +284,18 @@ class AdminController extends Controller
             ->limit(50)
             ->get();
 
+        $failed = ActivityLog::query()
+            ->where('actor_id', $user->id)
+            ->where('action', 'failed_login')
+            ->where('created_at', '>=', now()->subDays(7));
+
         return response()->json(['data' => [
             'user' => new UserResource($user),
             'activity' => $activity,
+            'security' => [
+                'failed_logins_7d' => (clone $failed)->count(),
+                'last_failed_login_at' => (clone $failed)->max('created_at'),
+            ],
         ]]);
     }
 
@@ -367,6 +463,41 @@ class AdminController extends Controller
 
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * The account-list query shared by the paginated table and the CSV export.
+     * Retired `farmer` rows are program history, not dormant accounts: they
+     * never appear — under any status filter — so no screen can edit or
+     * reactivate one back into a login.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return \Illuminate\Database\Eloquent\Builder<User>
+     */
+    private function userQuery(array $validated)
+    {
+        $status = $validated['status'] ?? 'active';
+        $sort = $validated['sort'] ?? 'name';
+        $dir = $validated['dir'] ?? 'asc';
+
+        return User::query()
+            ->with('creator:id,name')
+            ->whereIn('role', User::STAFF_ROLES)
+            ->when($status === 'deactivated', fn ($q) => $q->onlyTrashed())
+            ->when($status === 'all', fn ($q) => $q->withTrashed())
+            ->when($validated['role'] ?? null, fn ($q, $role) => $q->where('role', $role))
+            ->when($validated['search'] ?? null, function ($q, $search): void {
+                $pattern = Like::contains($search);
+
+                $q->where(function ($q) use ($pattern): void {
+                    $q->where('name', 'like', $pattern)
+                        ->orWhere('email', 'like', $pattern)
+                        ->orWhere('username', 'like', $pattern);
+                });
+            })
+            ->when($validated['never_signed_in'] ?? false, fn ($q) => $q->whereNull('last_login_at'))
+            ->orderBy($sort, $dir)
+            ->orderBy('id');
     }
 
     /**

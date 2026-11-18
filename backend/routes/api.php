@@ -422,6 +422,10 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     Route::prefix('admin')->group(function (): void {
         Route::get('/users', [AdminController::class, 'users'])
             ->middleware('permission:manage_users')->name('api.admin.users');
+        Route::get('/users/export', [AdminController::class, 'exportUsers'])
+            ->middleware('permission:manage_users')->name('api.admin.users.export');
+        Route::post('/users/bulk-reactivate', [AdminController::class, 'bulkReactivateUsers'])
+            ->middleware('permission:manage_users')->name('api.admin.users.bulk-reactivate');
         Route::post('/users', [AdminController::class, 'storeUser'])
             ->middleware('permission:manage_users')->name('api.admin.users.store');
         // Declared before the {id} PATCH below only for readability — the two
@@ -437,6 +441,14 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
             ->middleware('permission:manage_users')->name('api.admin.users.deactivate');
         Route::post('/users/{id}/reactivate', [AdminController::class, 'reactivateUser'])
             ->middleware('permission:manage_users')->name('api.admin.users.reactivate');
+        Route::post('/users/{id}/setup-link', [AdminController::class, 'resendSetupLink'])
+            ->middleware(['permission:manage_users', 'throttle:6,1'])
+            ->name('api.admin.users.setup-link');
+        Route::post('/users/{id}/password-reset', [AdminController::class, 'sendPasswordReset'])
+            ->middleware(['permission:manage_users', 'throttle:6,1'])
+            ->name('api.admin.users.password-reset');
+        Route::post('/users/{id}/revoke-sessions', [AdminController::class, 'revokeSessions'])
+            ->middleware('permission:manage_users')->name('api.admin.users.revoke-sessions');
         Route::get('/users/{id}/activity', [AdminController::class, 'userActivity'])
             ->middleware('permission:manage_users')->name('api.admin.users.activity');
         Route::post('/users/bulk-deactivate', [AdminController::class, 'bulkDeactivateUsers'])

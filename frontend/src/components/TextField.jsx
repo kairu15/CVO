@@ -65,12 +65,12 @@ export function TextField({
 }
 
 /** Show/hide toggle that sits inside a password field. */
-export function PasswordToggle({ shown, onToggle }) {
+export function PasswordToggle({ shown, onToggle, label }) {
   return (
     <button
       type="button"
       onClick={onToggle}
-      aria-label={shown ? "Hide password" : "Show password"}
+      aria-label={label ?? (shown ? "Hide password" : "Show password")}
       aria-pressed={shown}
       className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 dark:hover:bg-slate-200/50 dark:hover:text-slate-500"
     >

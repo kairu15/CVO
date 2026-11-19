@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { AuthProvider, useAuth, USER_STORAGE_KEY } from "../context/AuthContext";
 import * as authApi from "../api/authApi";
-import { setUnauthorizedHandler } from "../api/client";
+import { setForbiddenHandler, setUnauthorizedHandler } from "../api/client";
 
 function Probe() {
   const { user, isAuthenticated, login, logout } = useAuth();
@@ -32,7 +32,7 @@ vi.mock("../api/authApi", () => ({
 // the surface minimal, so no axios calls actually happen.
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, setUnauthorizedHandler: vi.fn() };
+  return { ...actual, setUnauthorizedHandler: vi.fn(), setForbiddenHandler: vi.fn() };
 });
 
 describe("AuthContext", () => {
@@ -182,6 +182,33 @@ describe("AuthContext", () => {
 
     await waitFor(() => expect(screen.getByTestId("authed")).toHaveTextContent("false"));
     expect(sessionStorage.getItem("cvo.auth.notice")).toBe("expired");
+  });
+
+  it("re-reads the capability list when the server returns 403", async () => {
+    authApi.authApi.fetchUser.mockResolvedValue({ id: 1, name: "CVO Administrator", permissions: [] });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("authed")).toHaveTextContent("true"));
+
+    authApi.authApi.fetchUser.mockResolvedValue({
+      id: 1,
+      name: "Updated Administrator",
+      permissions: ["manage_roles"],
+    });
+
+    const handler = setForbiddenHandler.mock.calls.at(-1)[0];
+    await act(async () => {
+      handler();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("user")).toHaveTextContent("Updated Administrator"),
+    );
   });
 
   it("stays silent on a 401 for a guest with no session", async () => {

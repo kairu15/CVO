@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { adminApi } from "../api/adminApi";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
@@ -6,18 +7,19 @@ import { Icon } from "../components/Icons";
 import { InlineAlert } from "../components/InlineAlert";
 import { Modal } from "../components/Modal";
 import { SkeletonList } from "../components/Skeleton";
+import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { ROLE_KEYS, getRole, roles, roleLabel } from "../config/roles";
 
 /**
- * Admin "Roles & Permissions" screen — the editor over the capability matrix.
+ * Admin "Roles & Permissions" screen — role summaries over the capability
+ * matrix.
  *
  * The server-side truth is the `permissions` + `role_permissions` pair: rows
  * are capabilities, columns are roles, and every cell is a live grant the
  * Policies, FormRequests and route middleware consult on each request
- * ($user->hasPermission). The seed was the de facto permission set, so
- * day-one behaviour matched the pre-matrix role checks exactly; edits here
- * take effect on the next request, no deploy.
+ * ($user->hasPermission). Edits here take effect on the next request, no
+ * deploy.
  *
  * What a cell means — and what it does not:
  *   - Checking a capability lets that role DO it in principle. Row-level SCOPE
@@ -26,22 +28,25 @@ import { ROLE_KEYS, getRole, roles, roleLabel } from "../config/roles";
  *     it is not editable here on purpose: scope rules are the per-record
  *     contracts (an author keeps their note, a technician their trips), not
  *     switches.
+ *   - Write capabilities declare the read capability they need. The server
+ *     refuses a grant without its dependency and refuses to revoke a
+ *     capability another grant still requires; the dialogs below offer the
+ *     transaction that satisfies/removes the whole dependency set.
  *   - Unchecking the last holder of "Manage roles and permissions" is refused
  *     by the server (422) — the matrix must never be uneditable. The UI warns
  *     before that refusal happens.
  *
- * Admin-only: reached only through the admin dashboard route guard
- * (`RoleRoute dashboard="admin"`), and additionally gated by the manage_roles
- * capability itself — if that grant is ever moved off the admin role, a role
- * without it sees this page refuse, not silently read-only.
+ * Admin-only by role OR by capability: any account holding manage_roles can
+ * open this screen, even from another dashboard, so the lockout guard can
+ * never be satisfied by an account that cannot reach the matrix.
  */
 
 /** Server-side enforcement points, stated per row rather than implied. */
 const RULES = [
   {
     title: "Workspace access",
-    body: "Admin is an all-access role: it can open every dashboard. The technician sees only their own workspace — even by typing another dashboard's URL.",
-    enforced: "RoleRoute guard in the SPA (canAccessDashboard), re-checked per endpoint server-side.",
+    body: "Admin is an all-access role: it can open every dashboard. The technician sees only their own workspace — even by typing another dashboard's URL. A capability-gated admin tool can still be opened by any role that holds that capability.",
+    enforced: "RoleRoute guard in the SPA (canAccessDashboard + user.permissions), re-checked per endpoint server-side.",
   },
   {
     title: "Beneficiaries & monitoring",
@@ -70,10 +75,7 @@ const RULES = [
   },
 ];
 
-/**
- * How far each role's READ scope reaches, transcribed from the Policies'
- * view() methods. Values are the shorthand the legend below defines.
- */
+/** How far each role's READ scope reaches, transcribed from Policies. */
 const READ_SCOPE = [
   { label: "Beneficiaries", admin: "all", technician: "all" },
   { label: "Monitoring records", admin: "all", technician: "all" },
@@ -84,33 +86,46 @@ const READ_SCOPE = [
   { label: "Settings, reports & accounts", admin: "all" },
 ];
 
-/** Read-scope shorthand → the word shown in the table. */
-const SCOPE_LABELS = {
-  all: "All",
-  assigned: "Assigned",
-  own: "Own",
-};
-
-/** Shorthand → the colours the cell is tinted with. */
+const SCOPE_LABELS = { all: "All", assigned: "Assigned", own: "Own" };
 const SCOPE_TONES = {
   all: "bg-brand-50 text-brand-800",
   assigned: "bg-amber-50 text-amber-800",
   own: "bg-slate-100 text-slate-600",
 };
 
+const RISK_TONES = {
+  standard: "bg-slate-100 text-slate-600",
+  sensitive: "bg-amber-50 text-amber-800",
+  critical: "bg-rose-50 text-rose-700",
+};
+
+function formatDateTime(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? null
+    : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
 export default function RolesPermissionsPage({ roleKey = "admin" }) {
   const config = getRole(roleKey) ?? roles.admin;
   const toast = useToast();
+  const { user, refreshUser } = useAuth();
 
   const [matrix, setMatrix] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // The cell in flight, `${role}:${permissionKey}` — so only that checkbox
-  // waits and the rest of the matrix stays interactive.
   const [savingCell, setSavingCell] = useState(null);
-  // Pending uncheck of a manage_roles grant that needs confirmation.
-  const [confirmLockout, setConfirmLockout] = useState(null); // {role, key, label}
   const [search, setSearch] = useState("");
+  const [groupFilter, setGroupFilter] = useState("all");
+  const [grantFilter, setGrantFilter] = useState("all");
+  const [collapsed, setCollapsed] = useState(() => new Set());
+
+  const [confirmLockout, setConfirmLockout] = useState(null);
+  const [confirmDependency, setConfirmDependency] = useState(null);
+  const [confirmRevoke, setConfirmRevoke] = useState(null);
+  const [confirmGroup, setConfirmGroup] = useState(null);
+  const [groupActionRole, setGroupActionRole] = useState("admin");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -129,15 +144,62 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
     load();
   }, [load]);
 
-  /**
-   * Flip one cell. Returns true when the server accepted it.
-   */
-  async function flip(role, permissionKey, granted, label) {
+  const allPermissions = useMemo(
+    () => (matrix?.groups ?? []).flatMap((group) => group.permissions),
+    [matrix],
+  );
+
+  const permissionByKey = useMemo(
+    () => Object.fromEntries(allPermissions.map((permission) => [permission.key, permission])),
+    [allPermissions],
+  );
+
+  const permissionLabel = useCallback(
+    (key) => permissionByKey[key]?.label ?? key,
+    [permissionByKey],
+  );
+
+  const grantedTo = useCallback(
+    (role, key) => Boolean(permissionByKey[key]?.granted?.[role]),
+    [permissionByKey],
+  );
+
+  const missingDependencies = useCallback(
+    (role, permission) =>
+      (permission.requires ?? []).filter(
+        (key) => key !== permission.key && !grantedTo(role, key),
+      ),
+    [grantedTo],
+  );
+
+  const dependentsFor = useCallback(
+    (role, key) =>
+      allPermissions.filter(
+        (permission) =>
+          permission.key !== key &&
+          permission.granted?.[role] &&
+          (permission.requires ?? []).includes(key),
+      ),
+    [allPermissions],
+  );
+
+  async function adopt(next) {
+    setMatrix(next);
+    // The matrix may include the signed-in account's own role. Re-read /user
+    // so the sidebar and route guards reflect the change without a reload.
+    void refreshUser();
+  }
+
+  async function flip(role, permissionKey, granted, label, { withDependencies = false } = {}) {
     setSavingCell(`${role}:${permissionKey}`);
     setError(null);
 
     try {
-      setMatrix(await adminApi.setRolePermission(role, permissionKey, granted));
+      await adopt(
+        await adminApi.setRolePermission(role, permissionKey, granted, {
+          withDependencies,
+        }),
+      );
       toast.success(
         granted
           ? `${label} granted to ${roleLabel(role)}.`
@@ -152,100 +214,179 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
     }
   }
 
-  /** A checkbox changed — guard the lockout-prone one, else act at once. */
-  function onToggle(role, permissionKey, label, currentlyGranted) {
-    if (currentlyGranted && permissionKey === "manage_roles") {
-      // Removing manage_roles is the one edit that can strand the system.
-      // The server refuses when no active account would hold it afterwards;
-      // warn first so the refusal is expected, not surprising.
-      setConfirmLockout({ role, key: permissionKey, label });
+  async function applyGroup(role, permissionKeys, granted, label) {
+    setSavingCell(`${role}:group:${label}`);
+    setError(null);
+
+    try {
+      await adopt(await adminApi.setRolePermissions(role, permissionKeys, granted));
+      toast.success(
+        granted
+          ? `${label} granted to ${roleLabel(role)}.`
+          : `${label} removed from ${roleLabel(role)}.`,
+      );
+      return true;
+    } catch (err) {
+      setError(getErrorMessage(err));
+      return false;
+    } finally {
+      setSavingCell(null);
+    }
+  }
+
+  function onToggle(role, permission, currentlyGranted) {
+    const label = permission.label;
+
+    if (!currentlyGranted) {
+      const missing = missingDependencies(role, permission);
+
+      if (missing.length > 0) {
+        setConfirmDependency({
+          role,
+          permission,
+          missing: missing.map(permissionLabel),
+        });
+        return;
+      }
+
+      flip(role, permission.key, true, label);
       return;
     }
 
-    flip(role, permissionKey, !currentlyGranted, label);
+    if (permission.key === "manage_roles") {
+      setConfirmLockout({ role, key: permission.key, label });
+      return;
+    }
+
+    const dependents = dependentsFor(role, permission.key);
+
+    if (dependents.length > 0) {
+      setConfirmRevoke({ role, permission, dependents });
+      return;
+    }
+
+    flip(role, permission.key, false, label);
+  }
+
+  function requestGroup(group, granted, role) {
+    const permissions = group.allPermissions ?? group.permissions;
+    setConfirmGroup({ group, permissions, granted, role });
   }
 
   const saving = savingCell !== null;
 
-  // Filter the matrix by capability name or group; the full list re-appears
-  // when the search is cleared.
+  const groups = useMemo(() => matrix?.groups ?? [], [matrix]);
+  const totalPermissions = matrix?.total_permissions ?? allPermissions.length;
+  const canManageUsers = (user?.permissions ?? []).includes("manage_users");
+  const canViewAudit = (user?.permissions ?? []).includes("view_activity_logs");
+  const lastChange = formatDateTime(matrix?.last_change?.at);
+
+  const roleKeys = useMemo(
+    () => (matrix?.roles ?? ROLE_KEYS.map((key) => ({ key }))).map((role) => role.key),
+    [matrix],
+  );
+
   const filteredGroups = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return matrix?.groups ?? [];
 
-    return (matrix?.groups ?? [])
-      .map((group) => ({
-        ...group,
-        permissions: group.permissions.filter((permission) =>
-          `${permission.label} ${group.group}`.toLowerCase().includes(term),
-        ),
-      }))
-      .filter((group) => group.permissions.length > 0);
-  }, [matrix, search]);
+    return groups
+      .map((group) => {
+        if (groupFilter !== "all" && group.group !== groupFilter) return null;
 
-  const capabilityCount = (matrix?.groups ?? []).reduce(
+        const permissions = group.permissions.filter((permission) => {
+          if (term !== "") {
+            const haystack =
+              `${permission.label} ${permission.key} ${permission.description ?? ""} ${group.group}`.toLowerCase();
+
+            if (!haystack.includes(term)) return false;
+          }
+
+          const grants = roleKeys.map((key) => Boolean(permission.granted?.[key]));
+
+          if (grantFilter === "granted") return grants.some(Boolean);
+          if (grantFilter === "missing") return grants.some((granted) => !granted);
+          if (grantFilter === "different") return new Set(grants).size > 1;
+
+          return true;
+        });
+
+        return permissions.length > 0
+          ? { ...group, allPermissions: group.permissions, permissions }
+          : null;
+      })
+      .filter(Boolean);
+  }, [groups, groupFilter, grantFilter, roleKeys, search]);
+
+  const shownCount = filteredGroups.reduce(
     (total, group) => total + group.permissions.length,
     0,
   );
 
+  function toggleGroup(group) {
+    setCollapsed((current) => {
+      const next = new Set(current);
+
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+
+      return next;
+    });
+  }
+
   return (
     <div className="space-y-6">
-      <section className="card p-6">
+      <section className="card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="eyebrow">{config.label}</p>
             <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl">
               Roles &amp; Permissions
             </h2>
-            <p className="mt-2 max-w-2xl text-sm text-slate-600">
+            <p className="mt-2 max-w-3xl text-sm text-slate-600">
               What each role can do, as a live capability matrix. Every checkbox
               is a grant the server checks on each request — a change takes
               effect immediately, no redeploy. Row-level scope (whose records a
               role reaches) is shown further down and stays fixed per role.
             </p>
           </div>
-        </div>
 
-        {matrix && (
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <div className="relative">
-              <Icon
-                name="search"
-                className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400"
-              />
-              <input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Find a capability or group…"
-                className="field w-72 pl-9 text-xs"
-                aria-label="Search capabilities"
-              />
+          {lastChange && (
+            <div className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-[11px] text-slate-500">
+              <p className="font-semibold tracking-wide text-slate-400 uppercase">
+                Last matrix change
+              </p>
+              <p className="mt-1 font-medium text-slate-700">
+                {lastChange}
+                {matrix?.last_change?.actor_name
+                  ? ` · ${matrix.last_change.actor_name}`
+                  : ""}
+              </p>
+              {canViewAudit && (
+                <Link
+                  to="/dashboard/admin/audit?action=permissions_updated"
+                  className="mt-1 inline-flex items-center gap-1 font-semibold text-brand-700 hover:text-brand-900"
+                >
+                  Open in Audit Trail
+                  <Icon name="arrow-right" className="h-3 w-3" />
+                </Link>
+              )}
             </div>
-            <span className="text-[11px] text-slate-500">
-              {filteredGroups.reduce((total, group) => total + group.permissions.length, 0)}{" "}
-              of {capabilityCount} capabilities
-            </span>
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="inline-flex items-center gap-1.5 rounded-pill border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-              >
-                <Icon name="close" className="h-3.5 w-3.5" />
-                Clear
-              </button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </section>
 
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
 
       {loading ? (
-        <section className="card overflow-hidden">
-          <SkeletonList rows={6} rowClassName="h-12" />
-        </section>
+        <>
+          <section className="grid gap-3 sm:grid-cols-2">
+            <div className="card p-5"><SkeletonList rows={2} rowClassName="h-8" /></div>
+            <div className="card p-5"><SkeletonList rows={2} rowClassName="h-8" /></div>
+          </section>
+          <section className="card overflow-hidden">
+            <SkeletonList rows={6} rowClassName="h-12" />
+          </section>
+        </>
       ) : !matrix ? (
         <section className="card">
           <EmptyState
@@ -255,83 +396,319 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
         </section>
       ) : (
         <>
-          {/* The editable capability matrix */}
-          {filteredGroups.length === 0 && (
-            <section className="card">
+          {/* Roles at a glance */}
+          <section className="grid gap-3 sm:grid-cols-2">
+            {matrix.roles.map((role) => (
+              <article key={role.key} className="card p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-display text-base font-bold text-slate-900">
+                        {role.label}
+                      </h3>
+                      {role.manages_roles && (
+                        <span className="rounded-pill bg-brand-50 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-brand-800 uppercase">
+                          Manages access
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1.5 max-w-md text-xs leading-relaxed text-slate-600">
+                      {role.description}
+                    </p>
+                  </div>
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700">
+                    <Icon
+                      name={getRole(role.key)?.icon ?? "shield"}
+                      className="h-4 w-4"
+                    />
+                  </span>
+                </div>
+
+                <dl className="mt-4 grid grid-cols-3 gap-2">
+                  <div className="rounded-xl border border-slate-200 px-3 py-2">
+                    <dt className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">
+                      Active
+                    </dt>
+                    <dd className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">
+                      {role.active_users}
+                    </dd>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 px-3 py-2">
+                    <dt className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">
+                      Deactivated
+                    </dt>
+                    <dd className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">
+                      {role.deactivated_users}
+                    </dd>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 px-3 py-2">
+                    <dt className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">
+                      Capabilities
+                    </dt>
+                    <dd className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">
+                      {role.granted_count}
+                      <span className="text-xs font-medium text-slate-400">
+                        /{role.total_permissions ?? totalPermissions}
+                      </span>
+                    </dd>
+                  </div>
+                </dl>
+
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] text-slate-500">
+                    Dashboard: {role.dashboard}
+                  </span>
+                  {canManageUsers && (
+                    <Link
+                      to={`/dashboard/admin/users?role=${role.key}`}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-700 hover:text-brand-900"
+                    >
+                      Manage members
+                      <Icon name="arrow-right" className="h-3 w-3" />
+                    </Link>
+                  )}
+                </div>
+              </article>
+            ))}
+          </section>
+
+          {/* One sticky, filterable matrix */}
+          <section className="card overflow-hidden">
+            <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-56 flex-1 sm:max-w-sm">
+                  <Icon
+                    name="search"
+                    className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400"
+                  />
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search by name, key or description…"
+                    className="field w-full pl-9 text-xs"
+                    aria-label="Search capabilities"
+                  />
+                </div>
+
+                <select
+                  className="field w-auto text-xs"
+                  value={groupFilter}
+                  onChange={(event) => setGroupFilter(event.target.value)}
+                  aria-label="Filter by permission group"
+                >
+                  <option value="all">All groups</option>
+                  {groups.map((group) => (
+                    <option key={group.group} value={group.group}>
+                      {group.group}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  className="field w-auto text-xs"
+                  value={grantFilter}
+                  onChange={(event) => setGrantFilter(event.target.value)}
+                  aria-label="Filter by grant state"
+                >
+                  <option value="all">All grants</option>
+                  <option value="granted">Granted somewhere</option>
+                  <option value="missing">Missing somewhere</option>
+                  <option value="different">Role differences</option>
+                </select>
+
+                <span className="text-[11px] text-slate-500">
+                  {shownCount} of {totalPermissions} capabilities
+                </span>
+
+                {(search || groupFilter !== "all" || grantFilter !== "all") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch("");
+                      setGroupFilter("all");
+                      setGrantFilter("all");
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-pill border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    <Icon name="close" className="h-3.5 w-3.5" />
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {filteredGroups.length === 0 ? (
               <EmptyState
                 title="No capabilities match"
-                description="Try a different word — for example “report”, “user” or “settings”."
+                description="Try a different word, group or grant state."
               />
-            </section>
-          )}
-          {filteredGroups.map((group) => (
-            <section key={group.group} className="card overflow-hidden">
-              <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
-                <h3 className="font-display text-xs font-semibold tracking-wide text-slate-700 uppercase">
-                  {group.group}
-                </h3>
-              </div>
-
+            ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <colgroup>
-                    <col className="w-[40%]" />
-                    {matrix.roles.map((role) => (
-                      <col key={role.key} />
-                    ))}
-                  </colgroup>
-                  <thead>
+                <table className="w-full min-w-[640px] text-sm">
+                  <thead className="sticky top-0 z-20 bg-white">
                     <tr className="border-b border-slate-100 text-left text-[11px] tracking-wide text-slate-500 uppercase">
-                      <th className="px-4 py-2.5 font-semibold">Capability</th>
+                      <th className="sticky left-0 z-30 w-[52%] bg-white px-4 py-2.5 font-semibold">
+                        Capability
+                      </th>
                       {matrix.roles.map((role) => (
-                        <th key={role.key} className="px-4 py-2.5 text-center font-semibold">
-                          {role.label}
+                        <th
+                          key={role.key}
+                          className="px-4 py-2.5 text-center font-semibold"
+                        >
+                          <span className="block">{role.label}</span>
+                          <span className="mt-0.5 block text-[10px] font-medium normal-case text-slate-400">
+                            {role.granted_count}/{role.total_permissions ?? totalPermissions} granted
+                          </span>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {group.permissions.map((permission) => (
-                      <tr key={permission.key} className="transition hover:bg-brand-50/40">
-                        <td className="px-4 py-2.5 font-medium text-slate-900">
-                          {permission.label}
-                        </td>
-                        {matrix.roles.map((role) => {
-                          const granted = permission.granted[role.key] ?? false;
-                          const busy = savingCell === `${role.key}:${permission.key}`;
+                    {filteredGroups.map((group) => {
+                      const isCollapsed = collapsed.has(group.group);
+                      const fullGroup = group.allPermissions ?? group.permissions;
 
-                          return (
-                            <td key={role.key} className="px-4 py-2.5 text-center">
-                              <input
-                                type="checkbox"
-                                aria-label={`${permission.label} for ${role.label}`}
-                                checked={granted}
-                                disabled={busy}
-                                onChange={() =>
-                                  onToggle(role.key, permission.key, permission.label, granted)
-                                }
-                                className="h-4 w-4 accent-brand-700"
-                              />
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                      return (
+                        <Fragment key={group.group}>
+                          <tr className="bg-slate-50/80">
+                            <th
+                              colSpan={matrix.roles.length + 1}
+                              scope="colgroup"
+                              className="px-4 py-2.5"
+                            >
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleGroup(group.group)}
+                                  aria-expanded={!isCollapsed}
+                                  className="inline-flex items-center gap-1.5 font-display text-xs font-semibold tracking-wide text-slate-700 uppercase hover:text-brand-800"
+                                >
+                                  <Icon
+                                    name="chevron-down"
+                                    className={`h-3.5 w-3.5 transition-transform ${
+                                      isCollapsed ? "-rotate-90" : ""
+                                    }`}
+                                  />
+                                  {group.group}
+                                </button>
+
+                                <span className="text-[10px] font-medium text-slate-400">
+                                  {fullGroup[0]?.granted
+                                    ? matrix.roles
+                                        .map(
+                                          (role) =>
+                                            `${role.short_label ?? role.label} ${fullGroup.filter((permission) => permission.granted?.[role.key]).length}/${fullGroup.length}`,
+                                        )
+                                        .join(" · ")
+                                    : `${fullGroup.length} capabilities`}
+                                </span>
+
+                                <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                                  <select
+                                    value={groupActionRole}
+                                    onChange={(event) => setGroupActionRole(event.target.value)}
+                                    aria-label={`Role for ${group.group} group actions`}
+                                    className="rounded-pill border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600"
+                                  >
+                                    {matrix.roles.map((role) => (
+                                      <option key={role.key} value={role.key}>
+                                        {role.short_label ?? role.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    disabled={saving}
+                                    onClick={() => requestGroup(group, true, groupActionRole)}
+                                    className="rounded-pill border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-brand-50 hover:text-brand-800 disabled:opacity-50"
+                                  >
+                                    Grant all
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={saving}
+                                    onClick={() => requestGroup(group, false, groupActionRole)}
+                                    className="rounded-pill border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+                                  >
+                                    Clear
+                                  </button>
+                                </div>
+                              </div>
+                            </th>
+                          </tr>
+
+                          {!isCollapsed &&
+                            group.permissions.map((permission) => (
+                              <tr key={permission.key} className="group transition hover:bg-brand-50/30">
+                                <td className="sticky left-0 z-10 bg-white px-4 py-3 align-top group-hover:bg-brand-50/30">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-medium text-slate-900">
+                                      {permission.label}
+                                    </span>
+                                    {permission.risk && permission.risk !== "standard" && (
+                                      <span
+                                        className={`rounded-pill px-2 py-0.5 text-[9px] font-bold tracking-wide uppercase ${
+                                          RISK_TONES[permission.risk] ?? RISK_TONES.standard
+                                        }`}
+                                      >
+                                        {permission.risk}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {permission.description && (
+                                    <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-slate-500">
+                                      {permission.description}
+                                    </p>
+                                  )}
+
+                                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                    <code className="text-[10px] text-slate-400">
+                                      {permission.key}
+                                    </code>
+                                    {(permission.requires ?? []).length > 0 && (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-700">
+                                        <Icon name="lock" className="h-3 w-3" />
+                                        Needs {permission.requires.map(permissionLabel).join(", ")}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {matrix.roles.map((role) => {
+                                  const granted = Boolean(permission.granted?.[role.key]);
+                                  const busy = savingCell === `${role.key}:${permission.key}`;
+
+                                  return (
+                                    <td key={role.key} className="px-4 py-3 text-center align-top">
+                                      <input
+                                        type="checkbox"
+                                        aria-label={`${permission.label} for ${role.label}`}
+                                        checked={granted}
+                                        disabled={busy || savingCell?.startsWith(`${role.key}:group:`)}
+                                        onChange={() => onToggle(role.key, permission, granted)}
+                                        className="h-4 w-4 accent-brand-700"
+                                      />
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
-            </section>
-          ))}
+            )}
 
-          <p className="text-xs text-slate-500">
-            Saving a checkbox updates the role_permissions table immediately —
-            the feedback you see is the server's answer, not an optimistic
-            guess. The system refuses the last removal of{" "}
-            <span className="font-semibold text-slate-700">
-              Manage roles and permissions
-            </span>{" "}
-            so the matrix can never become uneditable.
-          </p>
+            <p className="border-t border-slate-100 px-4 py-2.5 text-[11px] text-slate-500">
+              Changes save immediately and are audited. Write capabilities
+              require their read capability; group actions apply in one
+              transaction.
+            </p>
+          </section>
 
           {/* Read scope — still role-driven, by design */}
           <section className="card overflow-hidden">
@@ -410,7 +787,7 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
           </section>
 
           {/* The rules and where they live */}
-          <section className="card p-6">
+          <section className="card p-5 sm:p-6">
             <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
               Rules and where they are enforced
             </h3>
@@ -430,7 +807,7 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
         </>
       )}
 
-      {/* Lockout confirmation for removing manage_roles */}
+      {/* Removal of manage_roles */}
       <Modal
         open={confirmLockout !== null}
         title="Remove roles management?"
@@ -472,6 +849,186 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
                 className="rounded-pill bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
               >
                 Remove capability
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Grant needs a read dependency */}
+      <Modal
+        open={confirmDependency !== null}
+        title="Grant required permissions?"
+        onClose={() => setConfirmDependency(null)}
+        contentClassName="max-w-md"
+      >
+        {confirmDependency && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-700">
+              <span className="font-semibold text-slate-900">
+                {confirmDependency.permission.label}
+              </span>{" "}
+              depends on the following capability for{" "}
+              <span className="font-semibold text-slate-900">
+                {roleLabel(confirmDependency.role)}
+              </span>
+              :
+            </p>
+            <ul className="space-y-1 rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-700">
+              {confirmDependency.missing.map((label) => (
+                <li key={label}>• {label}</li>
+              ))}
+            </ul>
+            <p className="text-xs text-slate-500">
+              The server applies the whole set in one transaction and audits
+              each changed grant.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDependency(null)}
+                className="btn-secondary rounded-pill px-4 py-2 text-sm font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={async () => {
+                  const { role, permission } = confirmDependency;
+                  setConfirmDependency(null);
+                  await flip(role, permission.key, true, permission.label, {
+                    withDependencies: true,
+                  });
+                }}
+                className="rounded-pill bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60"
+              >
+                Grant required permissions
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Revoke needs to take dependents too */}
+      <Modal
+        open={confirmRevoke !== null}
+        title="Revoke dependent permissions too?"
+        onClose={() => setConfirmRevoke(null)}
+        contentClassName="max-w-md"
+      >
+        {confirmRevoke && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-700">
+              Other granted capabilities for{" "}
+              <span className="font-semibold text-slate-900">
+                {roleLabel(confirmRevoke.role)}
+              </span>{" "}
+              still require{" "}
+              <span className="font-semibold text-slate-900">
+                {confirmRevoke.permission.label}
+              </span>
+              :
+            </p>
+            <ul className="space-y-1 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              {confirmRevoke.dependents.map((permission) => (
+                <li key={permission.key}>• {permission.label}</li>
+              ))}
+            </ul>
+            <p className="text-xs text-slate-500">
+              They will be revoked together so the role never keeps a write
+              permission without its read capability.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmRevoke(null)}
+                className="btn-secondary rounded-pill px-4 py-2 text-sm font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={async () => {
+                  const { role, permission, dependents } = confirmRevoke;
+                  setConfirmRevoke(null);
+                  await applyGroup(
+                    role,
+                    [permission.key, ...dependents.map((dependent) => dependent.key)],
+                    false,
+                    `${permission.label} and ${dependents.length} dependent ${
+                      dependents.length === 1 ? "capability" : "capabilities"
+                    }`,
+                  );
+                }}
+                className="rounded-pill bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+              >
+                Revoke all
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Group grant/revoke */}
+      <Modal
+        open={confirmGroup !== null}
+        title={confirmGroup?.granted ? "Grant this whole group?" : "Clear this whole group?"}
+        onClose={() => setConfirmGroup(null)}
+        contentClassName="max-w-md"
+      >
+        {confirmGroup && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-700">
+              {confirmGroup.granted ? "Grant" : "Remove"}{" "}
+              <span className="font-semibold text-slate-900">
+                {confirmGroup.permissions.length}{" "}
+                {confirmGroup.permissions.length === 1 ? "capability" : "capabilities"}
+              </span>{" "}
+              in{" "}
+              <span className="font-semibold text-slate-900">
+                {confirmGroup.group.group}
+              </span>{" "}
+              {confirmGroup.granted ? "to" : "from"}{" "}
+              <span className="font-semibold text-slate-900">
+                {roleLabel(confirmGroup.role)}
+              </span>
+              ?
+            </p>
+            <p className="rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-600">
+              {confirmGroup.granted
+                ? "Required read capabilities outside this group will be granted automatically in the same transaction."
+                : "Revocation is refused if another granted capability still requires one of these permissions."}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmGroup(null)}
+                className="btn-secondary rounded-pill px-4 py-2 text-sm font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={async () => {
+                  const { group, permissions, granted } = confirmGroup;
+                  setConfirmGroup(null);
+                  await applyGroup(
+                    confirmGroup.role,
+                    permissions.map((permission) => permission.key),
+                    granted,
+                    `${group.group} group`,
+                  );
+                }}
+                className={`rounded-pill px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${
+                  confirmGroup.granted
+                    ? "bg-brand-700 hover:bg-brand-800"
+                    : "bg-rose-600 hover:bg-rose-700"
+                }`}
+              >
+                {confirmGroup.granted ? "Grant group" : "Clear group"}
               </button>
             </div>
           </div>

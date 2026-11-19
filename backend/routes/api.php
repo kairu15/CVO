@@ -535,6 +535,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
             ->middleware('permission:manage_roles')->name('api.admin.roles.permissions');
         Route::patch('/roles/{role}/permissions', [RolePermissionController::class, 'update'])
             ->middleware('permission:manage_roles')->name('api.admin.roles.permissions.update');
+        Route::patch('/roles/{role}/permissions/bulk', [RolePermissionController::class, 'updateBulk'])
+            ->middleware('permission:manage_roles')->name('api.admin.roles.permissions.bulk');
 
         // System settings — office contact profile, alert thresholds, animal
         // types, notification preferences (writable); session ceilings and

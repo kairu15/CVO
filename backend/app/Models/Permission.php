@@ -23,7 +23,14 @@ class Permission extends Model
      */
     public const CACHE_KEY = 'permissions.by_role';
 
-    protected $fillable = ['key', 'label', 'group', 'sort_order'];
+    protected $fillable = ['key', 'label', 'description', 'risk', 'requires', 'group', 'sort_order'];
+
+    protected function casts(): array
+    {
+        return [
+            'requires' => 'array',
+        ];
+    }
 
     public function rolePermissions(): HasMany
     {

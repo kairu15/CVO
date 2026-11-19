@@ -36,10 +36,21 @@ export const api = axios.create({
 });
 
 let onUnauthorized = null;
+let onForbidden = null;
 
 /** Register a callback invoked on any 401 response (e.g. clear auth state). */
 export function setUnauthorizedHandler(handler) {
   onUnauthorized = handler;
+}
+
+/**
+ * Register a callback invoked on any 403 response. The auth layer uses this to
+ * re-read the caller's capability list when a grant changed in another tab or
+ * session; the request itself still fails and the page shows the server's
+ * message.
+ */
+export function setForbiddenHandler(handler) {
+  onForbidden = handler;
 }
 
 /**
@@ -113,6 +124,10 @@ api.interceptors.response.use(
   async (error) => {
     if (error.response?.status === 401) {
       onUnauthorized?.(error);
+    }
+
+    if (error.response?.status === 403) {
+      onForbidden?.(error);
     }
 
     const config = error.config;

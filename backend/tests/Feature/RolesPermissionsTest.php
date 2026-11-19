@@ -251,6 +251,212 @@ class RolesPermissionsTest extends TestCase
             ->assertStatus(422);
     }
 
+    // ── Metadata, dependencies and bulk groups ─────────────────────────────
+
+    public function test_the_matrix_describes_roles_permissions_and_their_dependencies(): void
+    {
+        $data = $this->actingAs($this->admin)
+            ->getJson('/api/v1/admin/roles/permissions')
+            ->assertOk()
+            ->json('data');
+
+        $admin = collect($data['roles'])->firstWhere('key', 'admin');
+        $allPermissions = collect($data['groups'])
+            ->flatMap(fn (array $group): array => $group['permissions']);
+
+        $this->assertSame('Administrator', $admin['label']);
+        $this->assertSame(1, $admin['active_users']);
+        $this->assertSame(0, $admin['deactivated_users']);
+        $this->assertTrue($admin['manages_roles']);
+        $this->assertSame($allPermissions->count(), $admin['total_permissions']);
+
+        $permission = $allPermissions->firstWhere('key', 'health_records.create');
+
+        $this->assertNotNull($permission['description']);
+        $this->assertSame('standard', $permission['risk']);
+        $this->assertSame(['health_records.view'], $permission['requires']);
+        $this->assertArrayHasKey('last_change', $data);
+    }
+
+    public function test_a_write_grant_requires_its_read_dependency_unless_asked_for_together(): void
+    {
+        $view = Permission::create([
+            'key' => 'test_records.view',
+            'label' => 'View test records',
+            'group' => 'Test records',
+            'sort_order' => 1,
+            'risk' => 'standard',
+        ]);
+        $write = Permission::create([
+            'key' => 'test_records.create',
+            'label' => 'Create test records',
+            'group' => 'Test records',
+            'sort_order' => 2,
+            'risk' => 'standard',
+            'requires' => ['test_records.view'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->patchJson('/api/v1/admin/roles/technician/permissions', [
+                'permission' => $write->key,
+                'granted' => true,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn (string $message) => str_contains($message, 'test_records.view'));
+
+        $this->actingAs($this->admin)
+            ->patchJson('/api/v1/admin/roles/technician/permissions', [
+                'permission' => $write->key,
+                'granted' => true,
+                'with_dependencies' => true,
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('role_permissions', [
+            'role' => 'technician',
+            'permission_id' => $view->id,
+        ]);
+        $this->assertDatabaseHas('role_permissions', [
+            'role' => 'technician',
+            'permission_id' => $write->id,
+        ]);
+        $this->assertSame(2, $this->permissionAuditCount());
+    }
+
+    public function test_a_dependency_cannot_be_revoked_while_a_granted_permission_needs_it(): void
+    {
+        $view = Permission::create([
+            'key' => 'test_records.view',
+            'label' => 'View test records',
+            'group' => 'Test records',
+            'sort_order' => 1,
+            'risk' => 'standard',
+        ]);
+        $write = Permission::create([
+            'key' => 'test_records.create',
+            'label' => 'Create test records',
+            'group' => 'Test records',
+            'sort_order' => 2,
+            'risk' => 'standard',
+            'requires' => ['test_records.view'],
+        ]);
+
+        $this->grant($view->key);
+        $this->grant($write->key);
+
+        $this->actingAs($this->admin)
+            ->patchJson('/api/v1/admin/roles/technician/permissions', [
+                'permission' => $view->key,
+                'granted' => false,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn (string $message) => str_contains($message, 'test_records.create'));
+
+        // Revoking both together is allowed; the dependency is satisfied by
+        // removing the dependent grant at the same time.
+        $this->actingAs($this->admin)
+            ->patchJson('/api/v1/admin/roles/technician/permissions/bulk', [
+                'permission_keys' => [$view->key, $write->key],
+                'granted' => false,
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseMissing('role_permissions', [
+            'role' => 'technician',
+            'permission_id' => $view->id,
+        ]);
+        $this->assertDatabaseMissing('role_permissions', [
+            'role' => 'technician',
+            'permission_id' => $write->id,
+        ]);
+    }
+
+    public function test_bulk_granting_a_group_adds_dependencies_and_writes_one_audit_row_per_change(): void
+    {
+        $view = Permission::create([
+            'key' => 'test_records.view',
+            'label' => 'View test records',
+            'group' => 'Test records',
+            'sort_order' => 1,
+            'risk' => 'standard',
+        ]);
+        $write = Permission::create([
+            'key' => 'test_records.create',
+            'label' => 'Create test records',
+            'group' => 'Test records',
+            'sort_order' => 2,
+            'risk' => 'standard',
+            'requires' => ['test_records.view'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->patchJson('/api/v1/admin/roles/technician/permissions/bulk', [
+                'permission_keys' => [$write->key],
+                'granted' => true,
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('role_permissions', [
+            'role' => 'technician',
+            'permission_id' => $view->id,
+        ]);
+        $this->assertSame(2, $this->permissionAuditCount());
+    }
+
+    private function grant(string $permission): void
+    {
+        $this->actingAs($this->admin)
+            ->patchJson('/api/v1/admin/roles/technician/permissions', [
+                'permission' => $permission,
+                'granted' => true,
+                'with_dependencies' => true,
+            ])
+            ->assertOk();
+    }
+
+    public function test_every_permission_used_by_the_backend_exists_in_the_catalog(): void
+    {
+        $catalog = Permission::query()->pluck('key')->all();
+        $used = [];
+
+        foreach (\Illuminate\Support\Facades\Route::getRoutes() as $route) {
+            foreach ($route->gatherMiddleware() as $middleware) {
+                if (! is_string($middleware) || ! str_starts_with($middleware, 'permission:')) {
+                    continue;
+                }
+
+                foreach (explode(',', substr($middleware, strlen('permission:'))) as $key) {
+                    $used[] = trim($key);
+                }
+            }
+        }
+
+        foreach (\Illuminate\Support\Facades\File::allFiles(app_path()) as $file) {
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+
+            preg_match_all(
+                "/hasPermission\\(\s*['\"]([^'\"]+)/",
+                $file->getContents(),
+                $matches,
+            );
+
+            $used = [...$used, ...$matches[1]];
+        }
+
+        $missing = array_values(array_diff(array_unique($used), $catalog));
+
+        $this->assertSame([], $missing, 'Permission keys used by code but missing from the catalog.');
+    }
+
+    private function permissionAuditCount(): int
+    {
+        return \App\Models\ActivityLog::query()
+            ->where('action', 'permissions_updated')
+            ->count();
+    }
+
     // ── The /user payload carries the caller's capabilities ─────────────────
 
     public function test_the_user_endpoint_includes_permission_keys(): void

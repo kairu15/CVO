@@ -32,6 +32,9 @@ class AdminRolePermissionRequest extends FormRequest
             'role' => [Rule::in(User::ROLES)],
             'permission' => ['required', 'string', 'exists:permissions,key'],
             'granted' => ['required', 'boolean'],
+            // When a write grant needs its read dependency, the SPA may ask
+            // for the dependency in the same transaction.
+            'with_dependencies' => ['sometimes', 'boolean'],
         ];
     }
 

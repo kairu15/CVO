@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { dashboardsFor, getRole, roleLabel } from "../config/roles";
+import { dashboardsFor, getRole, roleLabel, visibleNav } from "../config/roles";
 import { useUnreadNotificationsCount } from "../api/queries";
 import { Brand } from "./Brand";
 import { Icon } from "./Icons";
@@ -30,6 +30,7 @@ import { LogoutConfirmDialog } from "./LogoutConfirmDialog";
 export function DashboardSidebar({
   userRole,
   activeRole,
+  permissions = [],
   onNavigate,
   onClose,
 }) {
@@ -37,6 +38,8 @@ export function DashboardSidebar({
 
   const config = getRole(activeRole);
   const switchable = dashboardsFor(userRole);
+  const nav = visibleNav(activeRole, permissions);
+  const owningDashboard = userRole && activeRole !== userRole ? getRole(userRole) : null;
 
   // Shared with the header bell via the same query key, so the sidebar adds no
   // extra polling — it just mirrors the count as a badge.
@@ -102,8 +105,19 @@ export function DashboardSidebar({
           </div>
         )}
 
+        {owningDashboard && (
+          <NavLink
+            to={owningDashboard.path}
+            onClick={onNavigate}
+            className="mb-4 flex items-center gap-2.5 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-900 transition hover:bg-brand-100"
+          >
+            <Icon name="arrow-left" className="h-4 w-4 shrink-0" />
+            Back to my {owningDashboard.shortLabel} dashboard
+          </NavLink>
+        )}
+
         <nav aria-label="Dashboard" className="space-y-4">
-          {config?.nav.map((band, bandIndex) => (
+          {nav.map((band, bandIndex) => (
             <div key={band.group ?? `band-${bandIndex}`} className="space-y-1">
               {/* Named group header; ungrouped bands (Overview, the closing
                   row) render without one. */}

@@ -18,7 +18,7 @@ function Show({ label }) {
   return <span>{label}</span>;
 }
 
-function renderAt(path, element, dashboard) {
+function renderAt(path, element, dashboard, permission) {
   return render(
     <AuthProvider>
       <MemoryRouter initialEntries={[path]}>
@@ -27,7 +27,7 @@ function renderAt(path, element, dashboard) {
             path="/guarded"
             element={
               <ProtectedRoute>
-                <RoleRoute dashboard={dashboard}>
+                <RoleRoute dashboard={dashboard} permission={permission}>
                   <Show label="ALLOWED" />
                 </RoleRoute>
               </ProtectedRoute>
@@ -93,6 +93,22 @@ describe("ProtectedRoute + RoleRoute", () => {
 
     await waitForRole();
     expect(screen.getByText("LOGIN")).toBeInTheDocument();
+  });
+
+  it("a capability holder may open a tool under another role's dashboard", async () => {
+    setUser({ id: 2, role: "technician", permissions: ["manage_roles"] });
+    renderAt("/guarded", null, "admin", "manage_roles");
+
+    await waitForRole();
+    expect(screen.getByText("ALLOWED")).toBeInTheDocument();
+  });
+
+  it("a stale capability shows an access-changed state, not another role's page", async () => {
+    setUser({ id: 2, role: "technician", permissions: [] });
+    renderAt("/guarded", null, "admin", "manage_roles");
+
+    expect(await screen.findByText("Access changed")).toBeInTheDocument();
+    expect(screen.queryByText("ALLOWED")).not.toBeInTheDocument();
   });
 });
 

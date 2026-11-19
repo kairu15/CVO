@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { adminApi } from "../api/adminApi";
 import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage, getFieldErrors } from "../api/client";
@@ -145,6 +145,8 @@ const ACTIVITY_LABELS = {
 export default function UserManagementPage() {
   const toast = useToast();
   const { user: currentUser } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedRole = searchParams.get("role");
 
   const [users, setUsers] = useState([]);
   const [meta, setMeta] = useState(null);
@@ -153,7 +155,9 @@ export default function UserManagementPage() {
   const [error, setError] = useState(null);
 
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
+  const [roleFilter, setRoleFilter] = useState(() =>
+    requestedRole && ROLE_KEYS.includes(requestedRole) ? requestedRole : "all",
+  );
   const [statusFilter, setStatusFilter] = useState("all");
   const [neverSignedIn, setNeverSignedIn] = useState(false);
   const [sort, setSort] = useState({ key: "name", dir: "asc" });
@@ -228,6 +232,20 @@ export default function UserManagementPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Deep links from the role cards (and from any shared investigation) keep
+  // the role filter in the URL, so the view survives a reload and can be
+  // bookmarked.
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+
+    if (roleFilter === "all") next.delete("role");
+    else next.set("role", roleFilter);
+
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [roleFilter, searchParams, setSearchParams]);
 
   // Quietly re-fetch so accounts registered or changed elsewhere appear live.
   useAutoRefresh(load);

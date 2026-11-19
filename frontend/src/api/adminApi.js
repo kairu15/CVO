@@ -287,10 +287,20 @@ export const adminApi = {
    * answer, not an optimistic guess). The server refuses (422) a change that
    * would leave no active account holding manage_roles.
    */
-  setRolePermission: async (role, permissionKey, granted) =>
+  setRolePermission: async (role, permissionKey, granted, options = {}) =>
     unwrap(
       await api.patch(`/api/v1/admin/roles/${role}/permissions`, {
         permission: permissionKey,
+        granted,
+        with_dependencies: options.withDependencies || undefined,
+      }),
+    ),
+
+  /** Apply one decision to a group of capabilities in one transaction. */
+  setRolePermissions: async (role, permissionKeys, granted) =>
+    unwrap(
+      await api.patch(`/api/v1/admin/roles/${role}/permissions/bulk`, {
+        permission_keys: permissionKeys,
         granted,
       }),
     ),

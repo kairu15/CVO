@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { authApi } from "../api/authApi";
-import { setUnauthorizedHandler } from "../api/client";
+import { setForbiddenHandler, setUnauthorizedHandler } from "../api/client";
 import { queryClient } from "../api/queries";
 import { NOTICE_SESSION_EXPIRED, setSessionNotice } from "../lib/sessionNotice";
 
@@ -85,7 +85,10 @@ export function AuthProvider({ children }) {
   // (a guest's first fetchUser 401 must stay silent).
   useEffect(() => {
     setUnauthorizedHandler(() => {
-      if (userRef.current) setSessionNotice(NOTICE_SESSION_EXPIRED);
+      // `userRef` updates in an effect; the persisted snapshot is written in
+      // the same turn the fresh user is received. Read both so an immediate
+      // 401 cannot race that effect and lose the session-expired notice.
+      if (userRef.current || readStoredUser()) setSessionNotice(NOTICE_SESSION_EXPIRED);
 
       clearSession(setUser);
     });
@@ -155,6 +158,46 @@ export function AuthProvider({ children }) {
       return null;
     }
   }, []);
+
+  // A grant may have changed in another tab, another admin's session or the
+  // Roles page itself. Re-read the capability list when the tab becomes active
+  // again; a timer would add steady traffic for a rare change.
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    let lastRefresh = 0;
+    const revalidate = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastRefresh < 60_000) return;
+      lastRefresh = Date.now();
+      refreshUser();
+    };
+
+    window.addEventListener("focus", revalidate);
+    document.addEventListener("visibilitychange", revalidate);
+
+    return () => {
+      window.removeEventListener("focus", revalidate);
+      document.removeEventListener("visibilitychange", revalidate);
+    };
+  }, [user?.id, refreshUser]);
+
+  // A 403 is also a freshness signal: refresh the locally cached capability
+  // list so the sidebar/routes stop offering an action the server just
+  // refused. Throttled so a page with several parallel requests makes one
+  // /user call, not one per failure.
+  useEffect(() => {
+    let lastRefresh = 0;
+
+    setForbiddenHandler(() => {
+      if (!userRef.current) return;
+      if (Date.now() - lastRefresh < 30_000) return;
+      lastRefresh = Date.now();
+      refreshUser();
+    });
+
+    return () => setForbiddenHandler(null);
+  }, [refreshUser]);
 
   const logout = useCallback(async () => {
     // The local session is cleared no matter what the server says — a

@@ -49,7 +49,11 @@ export function DashboardLayout() {
     <div className="min-h-screen lg:pl-72">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-slate-200/70 lg:block">
-        <DashboardSidebar userRole={user?.role} activeRole={activeRole} />
+        <DashboardSidebar
+          userRole={user?.role}
+          activeRole={activeRole}
+          permissions={user?.permissions}
+        />
       </aside>
 
       {/* Mobile drawer */}
@@ -66,6 +70,7 @@ export function DashboardLayout() {
             <DashboardSidebar
               userRole={user?.role}
               activeRole={activeRole}
+              permissions={user?.permissions}
               onNavigate={() => setDrawerPath(null)}
               onClose={() => setDrawerPath(null)}
             />

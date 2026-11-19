@@ -6,6 +6,19 @@ import { DashboardSidebar } from "../components/DashboardSidebar";
 import { notificationsApi } from "../api/notificationsApi";
 import { flatNav, ROLE_KEYS } from "../config/roles";
 
+const ADMIN_PERMISSIONS = [
+  "view_reports",
+  "monitoring.view",
+  "assign_technicians",
+  "field_visits.view",
+  "manage_users",
+  "view_flight_path",
+  "view_analytics",
+  "manage_roles",
+  "view_activity_logs",
+  "manage_settings",
+];
+
 vi.mock("../api/notificationsApi", () => ({
   notificationsApi: { unreadCount: vi.fn() },
 }));
@@ -16,7 +29,7 @@ vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({ user: { id: 1, role: "admin" }, logout: vi.fn() }),
 }));
 
-function renderSidebar({ path = "/dashboard/admin" } = {}) {
+function renderSidebar({ path = "/dashboard/admin", permissions = ADMIN_PERMISSIONS } = {}) {
   // Fresh client per render: polling state must not leak between tests.
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -25,7 +38,11 @@ function renderSidebar({ path = "/dashboard/admin" } = {}) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
-        <DashboardSidebar userRole="admin" activeRole="admin" />
+        <DashboardSidebar
+          userRole="admin"
+          activeRole="admin"
+          permissions={permissions}
+        />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -105,6 +122,32 @@ describe("DashboardSidebar", () => {
         expect(item.to, `${role} → ${item.label}`).toBeTruthy();
       }
     }
+  });
+
+  it("hides capabilities the account does not hold", async () => {
+    renderSidebar({ permissions: ["monitoring.view"] });
+
+    await screen.findByRole("link", { name: /Monitoring Records/ });
+    expect(screen.queryByRole("link", { name: /Roles & Permissions/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /User Management/ })).not.toBeInTheDocument();
+  });
+
+  it("offers an admin tool to another role when that role holds its capability", async () => {
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <DashboardSidebar
+            userRole="technician"
+            activeRole="technician"
+            permissions={["monitoring.view", "manage_roles"]}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(
+      await screen.findByRole("link", { name: /Roles & Permissions/ }),
+    ).toHaveAttribute("href", "/dashboard/admin/roles");
   });
 
   it("scopes each role's sidebar to its own modules", () => {

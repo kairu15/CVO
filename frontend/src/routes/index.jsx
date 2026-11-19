@@ -119,7 +119,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="view_reports">
                   <AdminOverviewPage />
                 </RoleRoute>
               }
@@ -136,7 +136,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/monitoring"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="monitoring.view">
                   <MonitoringPage roleKey="admin" />
                 </RoleRoute>
               }
@@ -144,7 +144,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/technician/monitoring"
               element={
-                <RoleRoute dashboard="technician">
+                <RoleRoute dashboard="technician" permission="monitoring.view">
                   <MonitoringPage roleKey="technician" />
                 </RoleRoute>
               }
@@ -153,7 +153,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/technicians"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="manage_users">
                   <TechnicianAssignmentsPage />
                 </RoleRoute>
               }
@@ -161,7 +161,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/beneficiaries"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="assign_technicians">
                   <BeneficiariesPage />
                 </RoleRoute>
               }
@@ -173,7 +173,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/field-visits"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="field_visits.view">
                   <FieldVisitsPage roleKey="admin" />
                 </RoleRoute>
               }
@@ -181,7 +181,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/users"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="manage_users">
                   <UserManagementPage />
                 </RoleRoute>
               }
@@ -191,7 +191,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/reports"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="view_reports">
                   <ReportsPage roleKey="admin" />
                 </RoleRoute>
               }
@@ -203,7 +203,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/reports/barangay-dispersal"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="view_analytics">
                   <BarangayDispersalPage roleKey="admin" />
                 </RoleRoute>
               }
@@ -211,7 +211,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/technician/reports/barangay-dispersal"
               element={
-                <RoleRoute dashboard="technician">
+                <RoleRoute dashboard="technician" permission="view_analytics">
                   <BarangayDispersalPage roleKey="technician" />
                 </RoleRoute>
               }
@@ -221,7 +221,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/settings"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="manage_settings">
                   <SystemSettingsPage roleKey="admin" />
                 </RoleRoute>
               }
@@ -233,7 +233,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/announcements"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="manage_settings">
                   <AnnouncementsPage />
                 </RoleRoute>
               }
@@ -241,7 +241,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/documents"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="manage_settings">
                   <PublicDocumentsPage />
                 </RoleRoute>
               }
@@ -251,7 +251,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/roles"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="manage_roles">
                   <RolesPermissionsPage roleKey="admin" />
                 </RoleRoute>
               }
@@ -262,7 +262,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/audit"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="view_activity_logs">
                   <AuditLogPage />
                 </RoleRoute>
               }
@@ -272,7 +272,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/technician/health-records"
               element={
-                <RoleRoute dashboard="technician">
+                <RoleRoute dashboard="technician" permission="health_records.view">
                   <HealthRecordsPage roleKey="technician" />
                 </RoleRoute>
               }
@@ -292,7 +292,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/technician/case-notes"
               element={
-                <RoleRoute dashboard="technician">
+                <RoleRoute dashboard="technician" permission="case_notes.view">
                   <CaseNotesPage roleKey="technician" />
                 </RoleRoute>
               }
@@ -312,7 +312,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/technician/field-visits"
               element={
-                <RoleRoute dashboard="technician">
+                <RoleRoute dashboard="technician" permission="field_visits.view">
                   <FieldVisitsPage roleKey="technician" />
                 </RoleRoute>
               }
@@ -341,7 +341,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/admin/map"
               element={
-                <RoleRoute dashboard="admin">
+                <RoleRoute dashboard="admin" permission="view_flight_path">
                   <Suspense fallback={<MapFallback />}>
                     <DispersalMapPage roleKey="admin" />
                   </Suspense>
@@ -351,7 +351,7 @@ export default function AppRoutes() {
             <Route
               path="/dashboard/technician/map"
               element={
-                <RoleRoute dashboard="technician">
+                <RoleRoute dashboard="technician" permission="view_flight_path">
                   <Suspense fallback={<MapFallback />}>
                     <DispersalMapPage roleKey="technician" />
                   </Suspense>

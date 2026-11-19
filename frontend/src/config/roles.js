@@ -53,33 +53,38 @@ export const roles = {
     blurb: "Owns accounts, permissions and city-wide program reporting.",
     icon: "shield",
     nav: [
-      { group: null, items: [{ label: "Overview", icon: "grid", to: "/dashboard/admin" }] },
+      {
+        group: null,
+        items: [
+          { label: "Overview", icon: "grid", to: "/dashboard/admin", permission: "view_reports" },
+        ],
+      },
       {
         group: "Monitoring",
         items: [
-          { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/admin/monitoring" },
-          { label: "Beneficiaries", icon: "clipboard", to: "/dashboard/admin/beneficiaries" },
-          { label: "Field Visits", icon: "route", to: "/dashboard/admin/field-visits" },
-          { label: "Technicians", icon: "map-pin", to: "/dashboard/admin/technicians" },
+          { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/admin/monitoring", permission: "monitoring.view" },
+          { label: "Beneficiaries", icon: "clipboard", to: "/dashboard/admin/beneficiaries", permission: "assign_technicians", crossRole: true },
+          { label: "Field Visits", icon: "route", to: "/dashboard/admin/field-visits", permission: "field_visits.view" },
+          { label: "Technicians", icon: "map-pin", to: "/dashboard/admin/technicians", permission: "manage_users", crossRole: true },
         ],
       },
       {
         group: "Program",
         items: [
-          { label: "Dispersal Map", icon: "map", to: "/dashboard/admin/map" },
-          { label: "Barangay Dispersal", icon: "chart", to: "/dashboard/admin/reports/barangay-dispersal" },
+          { label: "Dispersal Map", icon: "map", to: "/dashboard/admin/map", permission: "view_flight_path" },
+          { label: "Barangay Dispersal", icon: "chart", to: "/dashboard/admin/reports/barangay-dispersal", permission: "view_analytics" },
         ],
       },
       {
         group: "Administration",
         items: [
-          { label: "User Management", icon: "users", to: "/dashboard/admin/users" },
-          { label: "Roles & Permissions", icon: "shield", to: "/dashboard/admin/roles" },
-          { label: "Audit Trail", icon: "activity", to: "/dashboard/admin/audit" },
-          { label: "Reports", icon: "chart", to: "/dashboard/admin/reports" },
-          { label: "Announcements", icon: "bell", to: "/dashboard/admin/announcements" },
-          { label: "Public Documents", icon: "file-text", to: "/dashboard/admin/documents" },
-          { label: "System Settings", icon: "sliders", to: "/dashboard/admin/settings" },
+          { label: "User Management", icon: "users", to: "/dashboard/admin/users", permission: "manage_users", crossRole: true },
+          { label: "Roles & Permissions", icon: "shield", to: "/dashboard/admin/roles", permission: "manage_roles", crossRole: true },
+          { label: "Audit Trail", icon: "activity", to: "/dashboard/admin/audit", permission: "view_activity_logs", crossRole: true },
+          { label: "Reports", icon: "chart", to: "/dashboard/admin/reports", permission: "view_reports", crossRole: true },
+          { label: "Announcements", icon: "bell", to: "/dashboard/admin/announcements", permission: "manage_settings", crossRole: true },
+          { label: "Public Documents", icon: "file-text", to: "/dashboard/admin/documents", permission: "manage_settings", crossRole: true },
+          { label: "System Settings", icon: "sliders", to: "/dashboard/admin/settings", permission: "manage_settings", crossRole: true },
         ],
       },
       {
@@ -104,21 +109,21 @@ export const roles = {
       {
         group: "Monitoring",
         items: [
-          { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/technician/monitoring" },
-          { label: "Health Records", icon: "medical-cross", to: "/dashboard/technician/health-records" },
+          { label: "Monitoring Records", icon: "clipboard-check", to: "/dashboard/technician/monitoring", permission: "monitoring.view" },
+          { label: "Health Records", icon: "medical-cross", to: "/dashboard/technician/health-records", permission: "health_records.view" },
           { label: "Vaccination Schedule", icon: "calendar", to: "/dashboard/technician/vaccination-schedule" },
-          { label: "Case Notes", icon: "file-text", to: "/dashboard/technician/case-notes" },
+          { label: "Case Notes", icon: "file-text", to: "/dashboard/technician/case-notes", permission: "case_notes.view" },
           { label: "Animal Health Monitoring", icon: "activity", to: "/dashboard/technician/animal-health" },
         ],
       },
       {
         group: "Program",
         items: [
-          { label: "Geo-Tagging Map", icon: "map", to: "/dashboard/technician/map" },
-          { label: "Field Visits", icon: "route", to: "/dashboard/technician/field-visits" },
-          { label: "Dispersal Records", icon: "truck", to: "/dashboard/technician/map" },
-          { label: "Re-Dispersal Tracking", icon: "refresh", to: "/dashboard/technician/map" },
-          { label: "Barangay Dispersal", icon: "chart", to: "/dashboard/technician/reports/barangay-dispersal" },
+          { label: "Geo-Tagging Map", icon: "map", to: "/dashboard/technician/map", permission: "view_flight_path" },
+          { label: "Field Visits", icon: "route", to: "/dashboard/technician/field-visits", permission: "field_visits.view" },
+          { label: "Dispersal Records", icon: "truck", to: "/dashboard/technician/map", permission: "view_flight_path" },
+          { label: "Re-Dispersal Tracking", icon: "refresh", to: "/dashboard/technician/map", permission: "view_flight_path" },
+          { label: "Barangay Dispersal", icon: "chart", to: "/dashboard/technician/reports/barangay-dispersal", permission: "view_analytics" },
         ],
       },
       {
@@ -140,6 +145,52 @@ export const roles = {
  */
 export function flatNav(roleKey) {
   return (roles[roleKey]?.nav ?? []).flatMap((band) => band.items);
+}
+
+/**
+ * The sidebar bands a signed-in account may actually use.
+ *
+ * A nav item is visible only when its declared capability is present. Nav
+ * filtering is a usability layer: every endpoint still enforces the same
+ * capability server-side. Admin tools marked `crossRole` also appear for a
+ * non-admin role that has been granted the capability, so a technician who
+ * holds `manage_roles` can reach the matrix rather than satisfying the
+ * lockout guard invisibly.
+ *
+ * @param {string} roleKey
+ * @param {list<string>} permissions
+ * @returns {list<{group: string|null, items: list<object>}>}
+ */
+export function visibleNav(roleKey, permissions) {
+  // An older cached identity has no capability list. Show the role's normal
+  // navigation rather than an empty sidebar; the server remains authoritative.
+  const known = Array.isArray(permissions);
+  const can = (permission) => !permission || !known || permissions.includes(permission);
+  const own = (roles[roleKey]?.nav ?? [])
+    .map((band) => ({
+      ...band,
+      items: band.items.filter((item) => can(item.permission)),
+    }))
+    .filter((band) => band.items.length > 0);
+
+  if (roleKey === "admin") return own;
+
+  const ownPaths = new Set(own.flatMap((band) => band.items.map((item) => item.to)));
+  const cross = (roles.admin?.nav ?? [])
+    .flatMap((band) => band.items)
+    .filter(
+      (item) =>
+        item.crossRole &&
+        item.to &&
+        !ownPaths.has(item.to) &&
+        can(item.permission),
+    );
+
+  if (cross.length > 0) {
+    own.push({ group: "Administration", items: cross });
+  }
+
+  return own;
 }
 
 /** Roles shown on the public landing page, in display order. */

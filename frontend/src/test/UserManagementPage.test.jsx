@@ -82,9 +82,9 @@ function rowFor(name) {
   return screen.getByText(name).closest("tr");
 }
 
-function renderPage() {
+function renderPage(path = "/dashboard/admin/users") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[path]}>
       <ToastProvider>
         <UserManagementPage />
       </ToastProvider>
@@ -122,6 +122,21 @@ describe("UserManagementPage", () => {
     await screen.findByText("Jun Technician");
 
     expect(within(rowFor("CVO Administrator")).getByText("You")).toBeInTheDocument();
+  });
+
+  it("restores a role filter from a manage-members deep link", async () => {
+    renderPage("/dashboard/admin/users?role=technician");
+
+    await screen.findByText("Jun Technician");
+
+    await waitFor(() => {
+      const calls = adminApi.listUsersPage.mock.calls;
+      expect(calls[calls.length - 1]?.[0]?.role).toBe("technician");
+    });
+    expect(screen.getByRole("button", { name: "Field Technician" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("re-queries the API when a role filter is chosen", async () => {

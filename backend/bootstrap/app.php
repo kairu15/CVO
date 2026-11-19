@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AbsoluteSessionExpiry;
+use App\Http\Middleware\AuditAccessDenied;
 use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
@@ -28,7 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // prepended): it must run after EnsureFrontendRequestsAreStateful has
         // started the SPA's session, but before route middleware so an
         // expired session is refused before any controller or auth check.
-        $middleware->api(append: [AbsoluteSessionExpiry::class]);
+        $middleware->api(append: [AbsoluteSessionExpiry::class, AuditAccessDenied::class]);
 
         // Security headers (CSP / XCTO / XFO / HSTS) on every response.
         $middleware->append(SecurityHeaders::class);

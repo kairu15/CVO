@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\AuditTaxonomy;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -17,16 +18,33 @@ class ActivityLogResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $module = AuditTaxonomy::moduleFor($this->action, $this->target_type);
+
         return [
             'id' => $this->id,
             'action' => $this->action,
+            'module' => $module,
+            'module_label' => AuditTaxonomy::moduleLabel($module),
+            'status' => AuditTaxonomy::statusFor($this->action),
+            'critical' => AuditTaxonomy::isCritical($this->action),
             'actor' => $this->whenLoaded('actor', fn () => $this->actor ? [
                 'id' => $this->actor->id,
-                'name' => $this->actor->name,
-                'email' => $this->actor->email,
-                'role' => $this->actor->role,
-            ] : null),
+                'name' => $this->actor_name ?? $this->actor->name,
+                'email' => $this->actor_email ?? $this->actor->email,
+                'role' => $this->actor_role ?? $this->actor->role,
+                'current_role' => $this->actor->role,
+                'deactivated' => $this->actor->trashed(),
+            ] : ($this->actor_id ? [
+                'id' => $this->actor_id,
+                'name' => $this->actor_name,
+                'email' => $this->actor_email,
+                'role' => $this->actor_role,
+                'current_role' => null,
+                'deactivated' => true,
+            ] : null)),
             'actor_id' => $this->actor_id,
+            'actor_name' => $this->actor_name,
+            'actor_email' => $this->actor_email,
             'actor_role' => $this->actor_role,
             'target_type' => $this->target_type,
             'target_id' => $this->target_id,

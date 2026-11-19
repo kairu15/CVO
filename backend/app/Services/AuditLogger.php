@@ -78,6 +78,11 @@ class AuditLogger
         try {
             ActivityLog::create([
                 'actor_id' => $actor instanceof User ? $actor->id : $actor,
+                // Identity is snapshotted beside the id: an account may be
+                // renamed or deactivated later, and a historical row must
+                // still say who performed the action.
+                'actor_name' => $actor instanceof User ? $actor->name : null,
+                'actor_email' => $actor instanceof User ? $actor->email : null,
                 'actor_role' => $actor instanceof User ? $actor->role : null,
                 'action' => $action,
                 'target_type' => $this->targetType($target),

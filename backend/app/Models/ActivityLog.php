@@ -48,6 +48,7 @@ class ActivityLog extends Model
         'logout_all',
         'failed_login',
         'account_locked',
+        'access_denied',
         'token_issued',
 
         // Password lifecycle
@@ -146,6 +147,8 @@ class ActivityLog extends Model
 
     protected $fillable = [
         'actor_id',
+        'actor_name',
+        'actor_email',
         'actor_role',
         'action',
         'target_type',
@@ -167,8 +170,29 @@ class ActivityLog extends Model
         ];
     }
 
+    /**
+     * Actor identity as it is today, including deactivated accounts. Rows
+     * also carry the name/email/role snapshotted at write time, so a renamed
+     * or deleted account never rewrites history.
+     */
     public function actor(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'actor_id');
+        return $this->belongsTo(User::class, 'actor_id')->withTrashed();
+    }
+
+    /**
+     * Append-only is a property of the model, not just a convention in the
+     * controller: there is no update or delete path anywhere in the app.
+     * Database-level restrictions, where deployed, are an additional layer.
+     */
+    protected static function booted(): void
+    {
+        static::updating(function (): never {
+            throw new \RuntimeException('Audit log rows are immutable.');
+        });
+
+        static::deleting(function (): never {
+            throw new \RuntimeException('Audit log rows are immutable.');
+        });
     }
 }

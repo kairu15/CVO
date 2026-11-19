@@ -1,28 +1,62 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { auditApi } from "../api/auditApi";
 import { getErrorMessage } from "../api/client";
+import { AuditDetailDrawer } from "../components/AuditDetailDrawer";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icons";
 import { InlineAlert } from "../components/InlineAlert";
 import { PaginationFooter } from "../components/PaginationFooter";
 import { SkeletonList } from "../components/Skeleton";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
-import { labelForAction, labelForEntity } from "../lib/auditLabels";
+import {
+  labelForAction,
+  labelForEntity,
+  labelForModule,
+} from "../lib/auditLabels";
 
 /**
- * Admin "Audit Trail" — READ-ONLY.
+ * Admin "Audit Trail" — READ-ONLY investigation screen.
  *
  * The log is append-only on the server (no write route exists), so this screen
- * deliberately offers no edit or delete controls: filtering and expanding a row
- * are the only things a reader can do.
- *
- * Filtering and paging happen server-side (every filter maps to a SQL WHERE),
- * so a year of history is never shipped to the browser to be sliced there.
- * A row expands into the before/after diff of exactly the fields that changed —
- * secrets are `[hidden]` and identifiers are masked before they were ever
- * stored, so what is shown here is what was recorded.
+ * offers no edit or delete controls. Filtering and paging happen server-side;
+ * the browser never receives a year of history to slice locally. Rows carry
+ * only summary fields, and the drawer fetches one entry's full before/after
+ * pair when it is opened.
  */
+
+const FILTER_KEYS = [
+  "action",
+  "actor_id",
+  "actor_role",
+  "target_type",
+  "module",
+  "status",
+  "ip_address",
+  "date_from",
+  "date_to",
+];
+
+const NO_FILTERS = Object.fromEntries(FILTER_KEYS.map((key) => [key, ""]));
+
+const DATE_PRESETS = [
+  { key: 1, label: "Today" },
+  { key: 7, label: "7 days" },
+  { key: 30, label: "30 days" },
+  { key: 90, label: "90 days" },
+];
+
+const STATUS_TONES = {
+  success: "bg-emerald-500",
+  failed: "bg-rose-500",
+  security: "bg-amber-500",
+};
+
+const STATUS_TEXT = {
+  success: "Successful",
+  failed: "Failed",
+  security: "Security",
+};
 
 function formatDateTime(value) {
   if (!value) return "—";
@@ -32,22 +66,26 @@ function formatDateTime(value) {
     : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-/** Scalar, boolean, object → a cell-safe string (never a React element). */
-function displayValue(value) {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
+function formatTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleTimeString(undefined, { timeStyle: "short" });
 }
 
-/** The unchanged per-row shape of the filter controls. */
-const NO_FILTERS = {
-  action: "",
-  actor_id: "",
-  target_type: "",
-  date_from: "",
-  date_to: "",
-};
+function formatDay(value) {
+  if (!value) return "Unknown date";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Unknown date"
+    : date.toLocaleDateString(undefined, {
+        weekday: "long",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+}
 
 /** Local calendar date as the date input's YYYY-MM-DD value. */
 function dateInputValue(date) {
@@ -55,44 +93,102 @@ function dateInputValue(date) {
   return local.toISOString().slice(0, 10);
 }
 
-/** One-click windows — the common "what changed recently" questions. */
-const DATE_PRESETS = [
-  { key: 7, label: "Last 7 days" },
-  { key: 30, label: "Last 30 days" },
-  { key: 90, label: "Last 90 days" },
-];
+function filtersFromParams(params) {
+  return Object.fromEntries(
+    FILTER_KEYS.map((key) => [key, params.get(key) ?? ""]),
+  );
+}
+
+/** Build the one active-filter object used by the list, summary and export. */
+function activeFiltersFor(filters, search) {
+  const active = Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value !== ""),
+  );
+
+  if (search.trim() !== "") active.search = search.trim();
+
+  return active;
+}
 
 export default function AuditLogPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // User Management's activity modal links here with ?actor_id=… so the trail
-  // opens on that account instead of asking the admin to pick it again.
-  const [searchParams] = useSearchParams();
-  const linkedActor = searchParams.get("actor_id") ?? "";
+  // opens on that account. Every other filter is restored from the URL too,
+  // which makes an investigation shareable and reload-safe.
+  const [filters, setFilters] = useState(() => filtersFromParams(searchParams));
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
+  const [page, setPage] = useState(() => {
+    const value = Number(searchParams.get("page"));
+    return Number.isFinite(value) && value > 0 ? value : 1;
+  });
+  const [view, setView] = useState(() =>
+    searchParams.get("view") === "timeline" ? "timeline" : "table",
+  );
+
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const debouncedIp = useDebouncedValue(filters.ip_address, 400);
 
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState(null);
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [expandedId, setExpandedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
 
-  const [filters, setFilters] = useState(() => ({
-    ...NO_FILTERS,
-    actor_id: linkedActor,
-  }));
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 300);
-  const [vocab, setVocab] = useState({ actions: [], target_types: [], actors: [] });
+  const [summary, setSummary] = useState(null);
+  const [summaryError, setSummaryError] = useState(false);
 
-  // The vocabulary (actions, entity types, actors) is loaded once; it changes
-  // at most when new kinds of rows appear, and a failed fetch only costs the
-  // dropdown options, not the table itself.
+  const [vocab, setVocab] = useState({
+    actions: [],
+    target_types: [],
+    actors: [],
+    roles: [],
+    modules: [],
+    statuses: [],
+  });
+
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const activeFilters = useMemo(
+    () => activeFiltersFor({ ...filters, ip_address: debouncedIp }, debouncedSearch),
+    [filters, debouncedIp, debouncedSearch],
+  );
+
+  // Keep the address bar in step with the screen. `replace` avoids flooding
+  // history with one entry per keystroke.
+  useEffect(() => {
+    const next = new URLSearchParams();
+
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== "") next.set(key, value);
+    }
+
+    if (search.trim() !== "") next.set("search", search.trim());
+    if (page > 1) next.set("page", String(page));
+    if (view !== "table") next.set("view", view);
+
+    setSearchParams(next, { replace: true });
+  }, [filters, search, page, view, setSearchParams]);
+
+  // The vocabulary changes only when new kinds of rows appear; a failed fetch
+  // costs dropdown options, not the table.
   useEffect(() => {
     let live = true;
 
     auditApi
       .filters()
       .then((data) => {
-        if (live) setVocab(data ?? { actions: [], target_types: [], actors: [] });
+        if (live) {
+          setVocab({
+            actions: data?.actions ?? [],
+            target_types: data?.target_types ?? [],
+            actors: data?.actors ?? [],
+            roles: data?.roles ?? [],
+            modules: data?.modules ?? [],
+            statuses: data?.statuses ?? [],
+          });
+        }
       })
       .catch(() => {});
 
@@ -105,21 +201,12 @@ export default function AuditLogPage() {
     setLoading(true);
 
     try {
-      const params = {
-        page,
-        // Only send what is actually set — an empty string would be a valid
-        // value for a nullable filter and quietly return nothing.
-        ...Object.fromEntries(
-          Object.entries(filters).filter(([, value]) => value !== ""),
-        ),
-        ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
-      };
-
-      const result = await auditApi.list(params);
+      const result = await auditApi.list({ ...activeFilters, page });
 
       setRows(result.data ?? []);
       setMeta(result.meta ?? null);
       setError(null);
+      setLastUpdated(new Date());
     } catch (err) {
       setError(getErrorMessage(err));
       setRows([]);
@@ -127,19 +214,43 @@ export default function AuditLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, page, debouncedSearch]);
+  }, [activeFilters, page]);
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, refreshKey]);
+
+  // The overview follows the filters but not the page number: paging must not
+  // re-query the aggregate.
+  useEffect(() => {
+    let live = true;
+
+    auditApi
+      .summary(activeFilters)
+      .then((data) => {
+        if (live) {
+          setSummary(data);
+          setSummaryError(false);
+        }
+      })
+      .catch(() => {
+        if (live) {
+          setSummary(null);
+          setSummaryError(true);
+        }
+      });
+
+    return () => {
+      live = false;
+    };
+  }, [activeFilters, refreshKey]);
 
   function setFilter(key, value) {
     setFilters((current) => ({ ...current, [key]: value }));
     setPage(1);
-    setExpandedId(null);
+    setSelectedId(null);
   }
 
-  /** Fill from/to with an inclusive N-day window ending today. */
   function applyPreset(days) {
     const to = new Date();
     const from = new Date();
@@ -151,43 +262,134 @@ export default function AuditLogPage() {
       date_to: dateInputValue(to),
     }));
     setPage(1);
-    setExpandedId(null);
+    setSelectedId(null);
   }
 
-  const hasFilters =
-    search.trim() !== "" || Object.values(filters).some((value) => value !== "");
+  function showSecurityEvents() {
+    setFilters((current) => ({ ...current, status: "security" }));
+    setPage(1);
+    setSelectedId(null);
+  }
 
   function clearAll() {
     setFilters(NO_FILTERS);
     setSearch("");
     setPage(1);
-    setExpandedId(null);
+    setSelectedId(null);
   }
 
+  const hasFilters =
+    search.trim() !== "" || Object.values(filters).some((value) => value !== "");
+
+  const closeDrawer = useCallback(() => setSelectedId(null), []);
+
+  const selectedRow = rows.find((row) => row.id === selectedId) ?? null;
+  const selectedIndex = rows.findIndex((row) => row.id === selectedId);
+
+  const dayGroups = useMemo(() => {
+    const groups = [];
+
+    for (const row of rows) {
+      const day = formatDay(row.created_at);
+      const current = groups.at(-1);
+
+      if (current?.day === day) current.rows.push(row);
+      else groups.push({ day, rows: [row] });
+    }
+
+    return groups;
+  }, [rows]);
+
+  const exportHref = auditApi.exportUrl(activeFilters);
+
   return (
-    <div className="space-y-6">
-      <section className="card p-6">
+    <div className="space-y-5">
+      <section className="card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="eyebrow">Administration</p>
-            <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl">
+            <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl dark:text-slate-100">
               Audit Trail
             </h2>
-            <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              Who did what, to which record, and when — including sign-ins,
-              exports, imports and the fields each change altered. The trail is
-              append-only: rows cannot be edited or removed from here.
+            <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">
+              Who did what, to which record, and when — sign-ins, exports,
+              imports, permission changes and the fields each change altered.
+              The trail is append-only.
             </p>
           </div>
 
-          <span className="inline-flex items-center gap-1.5 rounded-pill bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800">
-            <Icon name="activity" className="h-3.5 w-3.5" />
-            {meta?.total ?? rows.length} {meta?.total === 1 ? "entry" : "entries"}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-pill bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800">
+              <Icon name="activity" className="h-3.5 w-3.5" />
+              {meta?.total ?? rows.length} {meta?.total === 1 ? "matching entry" : "matching entries"}
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setRefreshKey((key) => key + 1)}
+              className="inline-flex items-center gap-1.5 rounded-pill border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              title="Refresh the trail"
+            >
+              <Icon name="refresh" className="h-3.5 w-3.5" />
+              Refresh
+            </button>
+
+            <a
+              href={exportHref}
+              className="inline-flex items-center gap-1.5 rounded-pill border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              title="Download the filtered rows as CSV"
+            >
+              <Icon name="file-text" className="h-3.5 w-3.5" />
+              Export CSV
+            </a>
+          </div>
         </div>
 
+        {/* Overview — one summary response drives every card. */}
+        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+          <StatCard label={hasFilters ? "Matching entries" : "Total entries"} value={summary?.total} />
+          <StatCard label="Today" value={summary?.today} />
+          <StatCard label="Successful sign-ins" value={summary?.logins} />
+          <StatCard
+            label="Failed sign-ins"
+            value={summary?.failed_logins}
+            tone={summary?.failed_logins > 0 ? "alert" : undefined}
+          />
+          <StatCard
+            label="Critical actions"
+            value={summary?.critical}
+            tone={summary?.critical > 0 ? "critical" : undefined}
+          />
+        </div>
+
+        {summaryError && (
+          <p className="mt-2 text-[11px] text-slate-400">
+            Overview figures are unavailable right now; the entries below are unaffected.
+          </p>
+        )}
+
+        {summary?.security && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl bg-amber-50/70 px-3.5 py-2.5 text-[11px] text-amber-900 dark:bg-amber-100/10 dark:text-amber-200">
+            <span className="inline-flex items-center gap-1.5 font-semibold">
+              <Icon name="shield" className="h-3.5 w-3.5" />
+              Last 24 hours
+            </span>
+            <span>{summary.security.failed_logins_24h} failed sign-ins</span>
+            <span>{summary.security.locked_accounts_24h} lockouts</span>
+            <span>{summary.security.repeat_sources_24h} source(s) with repeated failures</span>
+            <button
+              type="button"
+              onClick={showSecurityEvents}
+              className="font-semibold underline decoration-amber-400 underline-offset-2 hover:text-amber-950 dark:hover:text-amber-100"
+            >
+              Review security events
+            </button>
+          </div>
+        )}
+
+        {/* Search + quick windows */}
         <div className="mt-5 flex flex-wrap items-center gap-2">
-          <div className="relative">
+          <div className="relative min-w-56 flex-1 sm:max-w-sm">
             <Icon
               name="search"
               className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400"
@@ -198,16 +400,16 @@ export default function AuditLogPage() {
               onChange={(event) => {
                 setSearch(event.target.value);
                 setPage(1);
-                setExpandedId(null);
+                setSelectedId(null);
               }}
-              placeholder="Search user, action or entity…"
-              className="field w-72 pl-9 text-xs"
+              placeholder="Search user, action, entity or IP…"
+              className="field w-full pl-9 text-xs"
               aria-label="Search audit trail"
             />
           </div>
 
           <div
-            className="inline-flex flex-wrap rounded-pill border border-slate-200 bg-slate-50 p-1"
+            className="inline-flex flex-wrap rounded-pill border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/60"
             role="group"
             aria-label="Date presets"
           >
@@ -216,20 +418,30 @@ export default function AuditLogPage() {
                 key={preset.key}
                 type="button"
                 onClick={() => applyPreset(preset.key)}
-                className="rounded-pill px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-white hover:text-brand-800"
+                className="rounded-pill px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-white hover:text-brand-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-brand-200"
               >
                 {preset.label}
               </button>
             ))}
           </div>
+
+          <button
+            type="button"
+            onClick={showSecurityEvents}
+            className={`inline-flex items-center gap-1.5 rounded-pill border px-3 py-1.5 text-[11px] font-semibold transition ${
+              filters.status === "security"
+                ? "border-amber-300 bg-amber-100 text-amber-900"
+                : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            }`}
+          >
+            <Icon name="shield" className="h-3.5 w-3.5" />
+            Security
+          </button>
         </div>
 
         {/* Server-side filters — each control maps to one query parameter. */}
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-              User
-            </span>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <Filter label="User">
             <select
               className="field w-full"
               value={filters.actor_id}
@@ -242,12 +454,67 @@ export default function AuditLogPage() {
                 </option>
               ))}
             </select>
-          </label>
+          </Filter>
 
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-              Action
-            </span>
+          <Filter label="Role at the time">
+            <select
+              className="field w-full"
+              value={filters.actor_role}
+              onChange={(event) => setFilter("actor_role", event.target.value)}
+            >
+              <option value="">Any role</option>
+              {(vocab.roles.length
+                ? vocab.roles
+                : [
+                    { value: "admin", label: "Admin" },
+                    { value: "technician", label: "Technician" },
+                  ]
+              ).map((role) => (
+                <option key={role.value} value={role.value}>
+                  {role.label}
+                </option>
+              ))}
+            </select>
+          </Filter>
+
+          <Filter label="Status">
+            <select
+              className="field w-full"
+              value={filters.status}
+              onChange={(event) => setFilter("status", event.target.value)}
+            >
+              <option value="">Any status</option>
+              {(vocab.statuses.length
+                ? vocab.statuses
+                : [
+                    { value: "success", label: "Successful" },
+                    { value: "failed", label: "Failed" },
+                    { value: "security", label: "Security events" },
+                  ]
+              ).map((status) => (
+                <option key={status.value} value={status.value}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+          </Filter>
+
+          <Filter label="Module">
+            <select
+              className="field w-full"
+              value={filters.module}
+              onChange={(event) => setFilter("module", event.target.value)}
+            >
+              <option value="">All modules</option>
+              {vocab.modules.map((module) => (
+                <option key={module.value} value={module.value}>
+                  {module.label}
+                </option>
+              ))}
+            </select>
+          </Filter>
+
+          <Filter label="Action">
             <select
               className="field w-full"
               value={filters.action}
@@ -260,12 +527,9 @@ export default function AuditLogPage() {
                 </option>
               ))}
             </select>
-          </label>
+          </Filter>
 
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-              Entity type
-            </span>
+          <Filter label="Entity type">
             <select
               className="field w-full"
               value={filters.target_type}
@@ -278,12 +542,20 @@ export default function AuditLogPage() {
                 </option>
               ))}
             </select>
-          </label>
+          </Filter>
 
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-              From
-            </span>
+          <Filter label="IP address">
+            <input
+              type="text"
+              inputMode="text"
+              value={filters.ip_address}
+              onChange={(event) => setFilter("ip_address", event.target.value)}
+              placeholder="e.g. 192.168.1.10"
+              className="field w-full"
+            />
+          </Filter>
+
+          <Filter label="From">
             <input
               type="date"
               className="field w-full"
@@ -291,12 +563,9 @@ export default function AuditLogPage() {
               onChange={(event) => setFilter("date_from", event.target.value)}
               max={filters.date_to || undefined}
             />
-          </label>
+          </Filter>
 
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-              To
-            </span>
+          <Filter label="To">
             <input
               type="date"
               className="field w-full"
@@ -304,19 +573,24 @@ export default function AuditLogPage() {
               onChange={(event) => setFilter("date_to", event.target.value)}
               min={filters.date_from || undefined}
             />
-          </label>
+          </Filter>
         </div>
 
         {hasFilters && (
-          <div className="mt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={clearAll}
-              className="inline-flex items-center gap-1.5 rounded-pill border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 rounded-pill border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               <Icon name="close" className="h-3.5 w-3.5" />
               Clear filters
             </button>
+            {lastUpdated && (
+              <span className="text-[11px] text-slate-400">
+                Updated {formatTime(lastUpdated)}
+              </span>
+            )}
           </div>
         )}
       </section>
@@ -324,6 +598,35 @@ export default function AuditLogPage() {
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
 
       <section className="card overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 dark:border-slate-200/60">
+          <div className="inline-flex rounded-pill border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/60">
+            {[
+              { key: "table", label: "Table" },
+              { key: "timeline", label: "Timeline" },
+            ].map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setView(option.key)}
+                aria-pressed={view === option.key}
+                className={`rounded-pill px-3 py-1 text-[11px] font-semibold transition ${
+                  view === option.key
+                    ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100"
+                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          {lastUpdated && (
+            <span className="text-[11px] text-slate-400">
+              Loaded {formatTime(lastUpdated)}
+            </span>
+          )}
+        </div>
+
         {loading ? (
           <SkeletonList rows={6} />
         ) : rows.length === 0 ? (
@@ -337,40 +640,11 @@ export default function AuditLogPage() {
           />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <colgroup>
-                  <col className="w-[22%]" />
-                  <col className="w-[20%]" />
-                  <col className="w-[24%]" />
-                  <col className="w-[24%]" />
-                  <col />
-                </colgroup>
-                <thead>
-                  <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
-                    <th scope="col" className="px-4 py-2.5 font-semibold">When</th>
-                    <th scope="col" className="px-4 py-2.5 font-semibold">User</th>
-                    <th scope="col" className="px-4 py-2.5 font-semibold">Action</th>
-                    <th scope="col" className="px-4 py-2.5 font-semibold">Entity</th>
-                    <th scope="col" className="px-4 py-2.5">
-                      <span className="sr-only">Changes</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {rows.map((row) => (
-                    <AuditRow
-                      key={row.id}
-                      row={row}
-                      expanded={expandedId === row.id}
-                      onToggle={() =>
-                        setExpandedId((current) => (current === row.id ? null : row.id))
-                      }
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {view === "table" ? (
+              <AuditTable rows={rows} onOpen={setSelectedId} selectedId={selectedId} />
+            ) : (
+              <AuditTimeline groups={dayGroups} onOpen={setSelectedId} />
+            )}
 
             <PaginationFooter
               meta={meta}
@@ -378,146 +652,209 @@ export default function AuditLogPage() {
               noun="entry"
               onPageChange={(next) => {
                 setPage(next);
-                setExpandedId(null);
+                setSelectedId(null);
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
             />
           </>
         )}
       </section>
+
+      <AuditDetailDrawer
+        entryId={selectedId}
+        summary={selectedRow}
+        onClose={closeDrawer}
+        hasPrevious={selectedIndex > 0}
+        hasNext={selectedIndex >= 0 && selectedIndex < rows.length - 1}
+        onPrevious={() => {
+          if (selectedIndex > 0) setSelectedId(rows[selectedIndex - 1].id);
+        }}
+        onNext={() => {
+          if (selectedIndex >= 0 && selectedIndex < rows.length - 1) {
+            setSelectedId(rows[selectedIndex + 1].id);
+          }
+        }}
+      />
     </div>
   );
 }
 
-/** One trail row plus its expandable before/after diff. */
-function AuditRow({ row, expanded, onToggle }) {
-  const hasDiff = Boolean(
-    (row.old_values && Object.keys(row.old_values).length > 0) ||
-      (row.new_values && Object.keys(row.new_values).length > 0),
-  );
-
-  const fields = [
-    ...new Set([
-      ...Object.keys(row.old_values ?? {}),
-      ...Object.keys(row.new_values ?? {}),
-    ]),
-  ];
+function StatCard({ label, value, tone }) {
+  const toneClass =
+    tone === "alert"
+      ? "text-rose-700"
+      : tone === "critical"
+        ? "text-amber-700"
+        : "text-slate-900 dark:text-slate-100";
 
   return (
+    <div className="rounded-xl border border-slate-200 px-3.5 py-2.5 dark:border-slate-200/60">
+      <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
+        {label}
+      </p>
+      <p className={`mt-1 font-display text-xl font-bold tabular-nums ${toneClass}`}>
+        {value ?? "—"}
+      </p>
+    </div>
+  );
+}
+
+function Filter({ label, children }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function StatusDot({ status }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] text-slate-600 dark:text-slate-300">
+      <span
+        aria-hidden="true"
+        className={`h-1.5 w-1.5 rounded-full ${STATUS_TONES[status] ?? STATUS_TONES.success}`}
+      />
+      {STATUS_TEXT[status] ?? "Successful"}
+    </span>
+  );
+}
+
+function ActorCell({ row }) {
+  return (
     <>
-      <tr
-        className={`cursor-pointer transition hover:bg-brand-50/40 ${expanded ? "bg-brand-50/60" : ""}`}
-        onClick={onToggle}
-      >
-        <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
-          {formatDateTime(row.created_at)}
-        </td>
-        <td className="px-4 py-2.5">
-          <span className="block font-semibold text-slate-800">
-            {row.actor?.name ?? (row.actor_id ? `#${row.actor_id}` : "System")}
-          </span>
-          <span className="block text-[11px] text-slate-500">
-            {row.actor?.role ?? row.actor_role ?? (row.actor_id ? "deactivated" : "no session")}
-          </span>
-        </td>
-        <td className="px-4 py-2.5">
-          <span className="font-medium text-slate-800">{labelForAction(row.action)}</span>
-          <span className="block text-[11px] text-slate-500">{row.action}</span>
-        </td>
-        <td className="px-4 py-2.5 text-slate-600">
-          {labelForEntity(row.target_type)}
-          {row.target_id ? (
-            <span className="ml-1.5 text-slate-400">#{row.target_id}</span>
-          ) : null}
-        </td>
-        <td className="px-4 py-2.5 text-right">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggle();
-            }}
-            aria-expanded={expanded}
-            aria-label={expanded ? "Hide changes" : "Show changes"}
-            className="inline-flex items-center gap-1 rounded-pill border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-white"
-          >
-            {hasDiff ? "Changes" : "Details"}
-            <Icon name="chevron-down" className={`h-3 w-3 transition ${expanded ? "rotate-180" : ""}`} />
-          </button>
-        </td>
-      </tr>
-
-      {expanded && (
-        <tr className="bg-slate-50/70">
-          <td colSpan={5} className="px-4 py-4">
-            <div className="space-y-3">
-              <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-                Changed fields
-              </p>
-
-              {fields.length === 0 ? (
-                <p className="text-xs text-slate-500">
-                  {row.action === "login" || row.action === "logout"
-                    ? "This event records an action, not a change to a record — there is no before/after to show."
-                    : "No field-level values were stored for this entry (it predates the diff columns, or the event carries no values)."}
-                </p>
-              ) : (
-                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50 text-[10px] tracking-wider text-slate-500 uppercase">
-                        <th scope="col" className="px-3 py-2 font-semibold">Field</th>
-                        <th scope="col" className="px-3 py-2 font-semibold">Before</th>
-                        <th scope="col" className="px-3 py-2 font-semibold">After</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {fields.map((field) => {
-                        const before = displayValue(row.old_values?.[field]);
-                        const after = displayValue(row.new_values?.[field]);
-                        const unchanged = before === after;
-
-                        return (
-                          <tr key={field}>
-                            <td className="px-3 py-2 font-medium text-slate-700">{field}</td>
-                            <td
-                              className={`px-3 py-2 ${unchanged ? "text-slate-400" : "text-slate-600"}`}
-                            >
-                              {unchanged ? "—" : before}
-                            </td>
-                            <td className={`px-3 py-2 ${unchanged ? "text-slate-400" : "font-medium text-slate-900"}`}>
-                              {unchanged ? "—" : after}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {row.context && Object.keys(row.context).length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(row.context).map(([key, value]) => (
-                    <span
-                      key={key}
-                      className="inline-flex items-center gap-1.5 rounded-pill bg-white px-2.5 py-1 text-[11px] text-slate-600 ring-1 ring-slate-200"
-                    >
-                      <span className="font-semibold text-slate-700">{key}</span>
-                      {displayValue(value)}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <p className="text-[11px] text-slate-500">
-                {row.ip_address ? `IP ${row.ip_address}` : "No IP recorded"}
-                {row.user_agent ? ` · ${row.user_agent}` : ""}
-              </p>
-            </div>
-          </td>
-        </tr>
-      )}
+      <span className="block font-semibold text-slate-800 dark:text-slate-100">
+        {row.actor?.name ?? (row.actor_id ? `#${row.actor_id}` : "System")}
+      </span>
+      <span className="block text-[11px] text-slate-500">
+        {row.actor_role ?? row.actor?.role ?? (row.actor_id ? "deactivated" : "no session")}
+      </span>
     </>
+  );
+}
+
+function AuditTable({ rows, onOpen, selectedId }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-xs">
+        <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
+          <tr className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase dark:border-slate-200/60">
+            <th scope="col" className="px-4 py-2.5 font-semibold">When</th>
+            <th scope="col" className="px-4 py-2.5 font-semibold">User</th>
+            <th scope="col" className="px-4 py-2.5 font-semibold">Action</th>
+            <th scope="col" className="px-4 py-2.5 font-semibold">Module / entity</th>
+            <th scope="col" className="px-4 py-2.5 font-semibold">Status</th>
+            <th scope="col" className="px-4 py-2.5">
+              <span className="sr-only">Details</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          {rows.map((row) => (
+            <tr
+              key={row.id}
+              tabIndex={0}
+              onClick={() => onOpen(row.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onOpen(row.id);
+                }
+              }}
+              className={`cursor-pointer transition hover:bg-brand-50/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-700 ${
+                selectedId === row.id ? "bg-brand-50/60" : ""
+              }`}
+            >
+              <td className="px-4 py-2.5 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                {formatDateTime(row.created_at)}
+              </td>
+              <td className="px-4 py-2.5">
+                <ActorCell row={row} />
+              </td>
+              <td className="px-4 py-2.5">
+                <span className="font-medium text-slate-800 dark:text-slate-100">
+                  {labelForAction(row.action)}
+                </span>
+                <span className="block text-[11px] text-slate-500">{row.action}</span>
+              </td>
+              <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">
+                <span className="block">{row.module_label ?? labelForModule(row.module)}</span>
+                <span className="block text-[11px] text-slate-500">
+                  {labelForEntity(row.target_type)}
+                  {row.target_id ? ` #${row.target_id}` : ""}
+                </span>
+              </td>
+              <td className="px-4 py-2.5">
+                <StatusDot status={row.status} />
+              </td>
+              <td className="px-4 py-2.5 text-right">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpen(row.id);
+                  }}
+                  aria-label={`Open details for ${labelForAction(row.action)}`}
+                  className="inline-flex items-center gap-1 rounded-pill border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-white dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Details
+                  <Icon name="arrow-right" className="h-3 w-3" />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AuditTimeline({ groups, onOpen }) {
+  return (
+    <div className="space-y-5 px-4 py-4 sm:px-5">
+      {groups.map((group) => (
+        <section key={group.day}>
+          <h3 className="mb-2 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
+            {group.day}
+          </h3>
+          <ol className="relative space-y-1 border-l border-slate-200 pl-4 dark:border-slate-700">
+            {group.rows.map((row) => (
+              <li key={row.id} className="relative">
+                <span
+                  aria-hidden="true"
+                  className={`absolute top-3 -left-[21px] h-2 w-2 rounded-full ring-2 ring-white dark:ring-slate-900 ${
+                    STATUS_TONES[row.status] ?? STATUS_TONES.success
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => onOpen(row.id)}
+                  className="w-full rounded-xl px-3 py-2 text-left transition hover:bg-brand-50/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 dark:hover:bg-slate-800/60"
+                >
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="text-[11px] font-semibold tabular-nums text-slate-400">
+                      {formatTime(row.created_at)}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                      {labelForAction(row.action)}
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      · {row.actor?.name ?? (row.actor_id ? `User #${row.actor_id}` : "System")}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-slate-500">
+                    {row.module_label ?? labelForModule(row.module)}
+                    {row.target_id ? ` · #${row.target_id}` : ""}
+                    {row.ip_address ? ` · ${row.ip_address}` : ""}
+                  </p>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+    </div>
   );
 }

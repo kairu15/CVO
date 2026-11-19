@@ -15,6 +15,7 @@ export const ACTION_LABELS = {
   logout_all: "Signed out everywhere",
   failed_login: "Failed sign-in attempt",
   account_locked: "Account locked out",
+  access_denied: "Access denied",
   token_issued: "Signed in (mobile token)",
   password_changed: "Password changed",
   password_reset_requested: "Password reset requested",
@@ -65,3 +66,29 @@ export function labelForEntity(type) {
   if (!type) return "System";
   return ENTITY_LABELS[type] ?? type;
 }
+
+/** Module grouping — mirrors App\Support\AuditTaxonomy on the server. */
+export const MODULE_LABELS = {
+  authentication: "Authentication",
+  access_control: "Access control",
+  accounts: "Accounts",
+  beneficiaries: "Beneficiaries",
+  monitoring: "Monitoring records",
+  clinical: "Clinical records",
+  field_visits: "Field visits",
+  dispersal: "Dispersal",
+  settings: "Settings & reference data",
+  data_transfer: "Imports & exports",
+  system: "System",
+};
+
+export function labelForModule(module) {
+  return MODULE_LABELS[module] ?? "System";
+}
+
+/** Status labels for the row badge and the filter. */
+export const STATUS_LABELS = {
+  success: "Successful",
+  failed: "Failed",
+  security: "Security",
+};

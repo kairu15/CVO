@@ -595,8 +595,16 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         // the UI's filter dropdown from the canonical vocabulary.
         Route::get('/activity-logs', [ActivityLogController::class, 'index'])
             ->middleware('permission:view_activity_logs')->name('api.admin.activity-logs');
+        Route::get('/activity-logs/summary', [ActivityLogController::class, 'summary'])
+            ->middleware('permission:view_activity_logs')->name('api.admin.activity-logs.summary');
         Route::get('/activity-logs/actions', [ActivityLogController::class, 'actions'])
             ->middleware('permission:view_activity_logs')->name('api.admin.activity-logs.actions');
+        Route::get('/activity-logs/export', [ActivityLogController::class, 'export'])
+            ->middleware(['permission:view_activity_logs', 'throttle:6,1,audit-export'])
+            ->name('api.admin.activity-logs.export');
+        Route::get('/activity-logs/{id}', [ActivityLogController::class, 'show'])
+            ->whereNumber('id')
+            ->middleware('permission:view_activity_logs')->name('api.admin.activity-logs.show');
 
         // Offline sync conflicts — the admin audit view of conflicts logged
         // by field staff (reuses the audit-trail permission; it is the same

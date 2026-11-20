@@ -26,6 +26,7 @@ vi.mock("../api/reportsApi", () => ({
     animalTypeDistribution: vi.fn(),
     technicianWorkload: vi.fn(),
     verificationSummary: vi.fn(),
+    recentExports: vi.fn(),
     exportTemplate: vi.fn(),
   },
 }));
@@ -39,7 +40,25 @@ vi.mock("../api/monitoringApi", () => ({
 
 const REPORT = {
   scope: { barangay: null, barangays: ["Banay Banay", "Dawis"] },
-  program: { households: 12, animals: 12, with_technician: 9, unassigned: 3 },
+  program: {
+    households: 12,
+    animals: 12,
+    with_technician: 9,
+    unassigned: 3,
+    pending_follow_up: 4,
+    follow_up_days: 60,
+  },
+  dispersals: {
+    total: 30,
+    livestock: 24,
+    poultry: 5,
+    other: 1,
+    unclassified: 0,
+    initial: 20,
+    re_dispersals: 7,
+    pass_ons: 3,
+    returns: 0,
+  },
   activity: {
     monitoring_visits: 40,
     field_visits: 25,
@@ -62,6 +81,10 @@ const REPORT = {
       field_visits: 15,
       health_records: 13,
       dispersals: 19,
+      livestock: 16,
+      poultry: 3,
+      other: 0,
+      unclassified: 0,
     },
     {
       barangay: "Dawis",
@@ -70,6 +93,10 @@ const REPORT = {
       field_visits: 10,
       health_records: 9,
       dispersals: 11,
+      livestock: 8,
+      poultry: 2,
+      other: 1,
+      unclassified: 0,
     },
   ],
   trend: [],
@@ -97,6 +124,7 @@ describe("ReportsPage", () => {
     reportsApi.cityWide.mockResolvedValue(REPORT);
     // The verification card rides the same screen; its counts are asserted
     // indirectly through the band the card renders.
+    reportsApi.recentExports.mockResolvedValue([]);
     reportsApi.verificationSummary.mockResolvedValue({
       counts: { on_site: 18, off_site: 2, low_accuracy: 0, no_reference_location: 0, no_gps: 5, unreviewed: 0 },
       review_count: 2,
@@ -128,18 +156,18 @@ describe("ReportsPage", () => {
     URL.revokeObjectURL = vi.fn();
   });
 
-  it("renders the program summary, activity and clinical bands", async () => {
+  it("renders the overview, activity and clinical bands", async () => {
     renderPage();
 
-    await screen.findByText("Program");
+    await screen.findByText("Report overview");
 
-    // Matched within a band: "12" is deliberately ambiguous across the page
-    // (households, health records, vaccinations...), which is the point of
-    // the per-band structure.
-    const bands = screen.getAllByRole("heading");
-    const program = bands.find((h) => h.textContent === "Program").closest("section");
-    expect(within(program).getByText("Households")).toBeInTheDocument();
-    expect(within(program).getByText("3")).toBeInTheDocument(); // unassigned
+    const overview = screen.getByText("Report overview").closest("section");
+    expect(within(overview).getByText("Beneficiaries")).toBeInTheDocument();
+    expect(within(overview).getByText("Livestock distributed")).toBeInTheDocument();
+    expect(within(overview).getByText("Poultry distributed")).toBeInTheDocument();
+    expect(within(overview).getByText("Completed dispersals")).toBeInTheDocument();
+    expect(within(overview).getByText("Pending follow-up")).toBeInTheDocument();
+    expect(within(overview).getByText("4")).toBeInTheDocument();
     expect(screen.getByText("Visits with GPS fix")).toBeInTheDocument();
     expect(screen.getByText("Open cases")).toBeInTheDocument();
   });
@@ -149,7 +177,7 @@ describe("ReportsPage", () => {
 
     // Every chart's card renders with a title.
     expect(await screen.findByText("Dispersal trend")).toBeInTheDocument();
-    expect(screen.getByText("Animals dispersed by barangay")).toBeInTheDocument();
+    expect(screen.getByText("Dispersal events by barangay")).toBeInTheDocument();
     expect(screen.getByText("Vaccination compliance")).toBeInTheDocument();
     expect(screen.getByText("Animal type distribution")).toBeInTheDocument();
     expect(screen.getByText("Technician workload")).toBeInTheDocument();
@@ -165,7 +193,7 @@ describe("ReportsPage", () => {
   it("renders the per-barangay table with one row per barangay", async () => {
     renderPage();
 
-    await screen.findByText("Per barangay");
+    await screen.findByText("Barangay comparison");
 
     const table = screen.getByRole("table");
     const rows = within(table).getAllByRole("row");
@@ -191,7 +219,7 @@ describe("ReportsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await screen.findByText("Per barangay");
+    await screen.findByText("Barangay comparison");
 
     await user.selectOptions(screen.getByLabelText("Barangay"), "Dawis");
 
@@ -223,7 +251,7 @@ describe("ReportsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await screen.findByText("Per barangay");
+    await screen.findByText("Barangay comparison");
 
     await user.selectOptions(screen.getByLabelText("Filter by animal type"), "Goat");
 
@@ -252,6 +280,86 @@ describe("ReportsPage", () => {
     expect(await screen.findByText(/Busiest: Jun 2026 \(9\)/)).toBeInTheDocument();
   });
 
+  it("passes the category and end-date filters to the report and dispersal charts", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("Barangay comparison");
+
+    await user.selectOptions(screen.getByLabelText("Animal category"), "livestock");
+    await user.type(screen.getByLabelText("To"), "2026-06-30");
+
+    await vi.waitFor(() => {
+      expect(reportsApi.cityWide).toHaveBeenLastCalledWith(
+        expect.objectContaining({ category: "livestock", to: "2026-06-30" }),
+      );
+      expect(reportsApi.dispersalTrend).toHaveBeenLastCalledWith(
+        expect.objectContaining({ category: "livestock", to: "2026-06-30" }),
+      );
+      expect(reportsApi.animalsByBarangay).toHaveBeenLastCalledWith(
+        expect.objectContaining({ category: "livestock", to: "2026-06-30" }),
+      );
+    });
+  });
+
+  it("shows recent exports and restores their filters", async () => {
+    const user = userEvent.setup();
+    reportsApi.recentExports.mockResolvedValue([
+      {
+        id: 7,
+        category: "Livestock dispersal report",
+        title: "Dawis September Report",
+        filters: { barangay: "Dawis", from: "2026-09-01" },
+        actor: "CVO Administrator",
+        generated_at: "2026-09-30T10:00:00+08:00",
+      },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText("Dawis September Report")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Use filters" }));
+
+    await vi.waitFor(() =>
+      expect(reportsApi.cityWide).toHaveBeenLastCalledWith(
+        expect.objectContaining({ barangay: "Dawis", from: "2026-09-01" }),
+      ),
+    );
+  });
+
+  it("passes beneficiary and dispersal-status filters to the report and charts", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("Barangay comparison");
+    await user.type(screen.getByLabelText("Beneficiary"), "Maria");
+    await user.selectOptions(screen.getByLabelText("Dispersal status"), "re_dispersal");
+
+    await vi.waitFor(() => {
+      expect(reportsApi.cityWide).toHaveBeenLastCalledWith(
+        expect.objectContaining({ beneficiary: "Maria", dispersal_type: "re_dispersal" }),
+      );
+      expect(reportsApi.dispersalTrend).toHaveBeenLastCalledWith(
+        expect.objectContaining({ beneficiary: "Maria", dispersal_type: "re_dispersal" }),
+      );
+      expect(reportsApi.animalsByBarangay).toHaveBeenLastCalledWith(
+        expect.objectContaining({ beneficiary: "Maria", dispersal_type: "re_dispersal" }),
+      );
+    });
+  });
+
+  it("opens a printable preview of the current report", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("Barangay comparison");
+    await user.click(screen.getByRole("button", { name: /preview & print/i }));
+
+    expect(screen.getByText("Report preview")).toBeInTheDocument();
+    expect(screen.getByText("Livestock and Poultry Dispersal Report")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /print \/ save as pdf/i })).toBeInTheDocument();
+  });
+
   it("pre-fills the export name from the active filters", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -265,7 +373,7 @@ describe("ReportsPage", () => {
       ),
     );
 
-    await screen.findByText("Per barangay");
+    await screen.findByText("Barangay comparison");
     await user.selectOptions(screen.getByLabelText("Barangay"), "Dawis");
     await user.click(screen.getByRole("combobox", { name: /month/i }));
     await user.click(screen.getByRole("option", { name: "May 2026" }));
@@ -289,7 +397,7 @@ describe("ReportsPage", () => {
 
     renderPage();
 
-    await screen.findByText("Per barangay");
+    await screen.findByText("Barangay comparison");
     await user.selectOptions(screen.getByLabelText("Barangay"), "Dawis");
     await user.selectOptions(screen.getByLabelText("Filter by animal type"), "Goat");
 
@@ -322,7 +430,7 @@ describe("ReportsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await screen.findByText("Per barangay");
+    await screen.findByText("Barangay comparison");
 
     const nameField = screen.getByLabelText("Report name");
     await vi.waitFor(() => expect(nameField).not.toHaveValue(""));
@@ -345,7 +453,7 @@ describe("ReportsPage", () => {
 
     renderPage();
 
-    await screen.findByText("Per barangay");
+    await screen.findByText("Barangay comparison");
     await user.click(screen.getByRole("button", { name: /export report/i }));
 
     // The message appears inline and in a toast — both are the failure being

@@ -2,8 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\Animal;
+use App\Models\AnimalOwnershipEvent;
+use App\Models\AnimalType;
+use App\Models\Barangay;
 use App\Models\Beneficiary;
-use App\Models\DispersalEvent;
 use App\Models\User;
 use App\Services\ReportTemplateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,6 +34,44 @@ class ReportTemplateExportTest extends TestCase
     private function admin(array $attributes = []): User
     {
         return User::factory()->create(['role' => 'admin', ...$attributes]);
+    }
+
+    /** Create one active delivery in the canonical ownership-event log. */
+    private function delivery(
+        Beneficiary $beneficiary,
+        string $date,
+        string $eventType = AnimalOwnershipEvent::TYPE_DISPERSAL,
+        ?Beneficiary $from = null,
+    ): AnimalOwnershipEvent {
+        $type = $beneficiary->animal_type
+            ? AnimalType::query()->firstOrCreate(
+                ['name' => $beneficiary->animal_type],
+                ['main_category' => 'livestock', 'sort_order' => 0],
+            )
+            : null;
+        $barangayId = $beneficiary->barangay_id
+            ?? Barangay::query()->firstOrCreate(
+                ['name' => $beneficiary->address],
+                ['latitude' => 9.3, 'longitude' => 122.8],
+            )->id;
+
+        $animal = Animal::factory()->ownedBy($beneficiary)->create([
+            'animal_type' => $beneficiary->animal_type ?? $type?->name,
+            'animal_type_id' => $beneficiary->animal_type_id ?? $type?->id,
+            'sex' => $beneficiary->sex,
+            'ear_tag_number' => $beneficiary->ear_tag_number,
+        ]);
+
+        return AnimalOwnershipEvent::factory()
+            ->forAnimal($animal)
+            ->from($from)
+            ->to($beneficiary)
+            ->create([
+                'event_type' => $eventType,
+                'event_date' => $date,
+                'to_barangay_id' => $barangayId,
+                'from_barangay_id' => $from?->barangay_id,
+            ]);
     }
 
     /**
@@ -145,9 +186,9 @@ class ReportTemplateExportTest extends TestCase
     {
         $beneficiary = Beneficiary::factory()->create(['address' => 'Dawis']);
 
-        DispersalEvent::factory()->initial($beneficiary)->count(3)->create([
-            'date_dispersed' => '2026-09-10',
-        ]);
+        foreach (range(1, 3) as $ignored) {
+            $this->delivery($beneficiary, '2026-09-10');
+        }
 
         $sheet = $this->workbook($this->export($this->admin(), ['month' => '2026-09']));
 
@@ -182,8 +223,8 @@ class ReportTemplateExportTest extends TestCase
             'name_of_farmer' => 'Pedro Reyes',
         ]);
 
-        DispersalEvent::factory()->initial($inScope)->create(['date_dispersed' => '2026-09-21']);
-        DispersalEvent::factory()->initial($otherMonth)->create(['date_dispersed' => '2026-08-31']);
+        $this->delivery($inScope, '2026-09-21');
+        $this->delivery($otherMonth, '2026-08-31');
 
         $sheet = $this->workbook($this->export($this->admin(), ['month' => '2026-09']));
         $cells = array_merge(...array_values($this->grid($sheet)));
@@ -203,7 +244,7 @@ class ReportTemplateExportTest extends TestCase
         $recipient = Beneficiary::factory()->create(['address' => 'Dawis', 'name_of_farmer' => 'Ana Recipient']);
         $parent = Beneficiary::factory()->create(['address' => 'Dawis', 'name_of_farmer' => 'Ben Parent']);
 
-        DispersalEvent::factory()->reDispersal($recipient, $parent)->create(['date_dispersed' => '2026-09-05']);
+        $this->delivery($recipient, '2026-09-05', AnimalOwnershipEvent::TYPE_RE_DISPERSAL, $parent);
 
         $cells = array_merge(...array_values($this->grid(
             $this->workbook($this->export($this->admin(), ['month' => '2026-09'])),
@@ -232,7 +273,7 @@ class ReportTemplateExportTest extends TestCase
         ]);
 
         foreach ([$inScope, $otherBarangay, $otherType] as $beneficiary) {
-            DispersalEvent::factory()->initial($beneficiary)->create(['date_dispersed' => '2026-09-12']);
+            $this->delivery($beneficiary, '2026-09-12');
         }
 
         $cells = array_merge(...array_values($this->grid(
@@ -246,6 +287,27 @@ class ReportTemplateExportTest extends TestCase
         $this->assertContains('Scope Farmer', $cells);
         $this->assertNotContains('Other Barangay Farmer', $cells);
         $this->assertNotContains('Other Animal Farmer', $cells);
+    }
+
+    public function test_the_roster_respects_beneficiary_and_dispersal_status_filters(): void
+    {
+        $scope = Beneficiary::factory()->create(['address' => 'Dawis', 'name_of_farmer' => 'Scope Farmer']);
+        $other = Beneficiary::factory()->create(['address' => 'Dawis', 'name_of_farmer' => 'Other Farmer']);
+
+        $this->delivery($scope, '2026-09-02');
+        $this->delivery($scope, '2026-09-03', AnimalOwnershipEvent::TYPE_RE_DISPERSAL);
+        $this->delivery($other, '2026-09-04');
+
+        $cells = array_merge(...array_values($this->grid(
+            $this->workbook($this->export($this->admin(), [
+                'beneficiary' => 'Scope Farmer',
+                'dispersal_type' => 're_dispersal',
+            ])),
+        )));
+
+        $this->assertContains('Scope Farmer', $cells);
+        $this->assertNotContains('Other Farmer', $cells);
+        $this->assertContains('Re-dispersal', $cells);
     }
 
     public function test_an_empty_selection_says_so_instead_of_printing_an_empty_table(): void
@@ -313,8 +375,8 @@ class ReportTemplateExportTest extends TestCase
     {
         $beneficiary = Beneficiary::factory()->create(['address' => 'Dawis', 'name_of_farmer' => 'Range Farmer']);
 
-        DispersalEvent::factory()->initial($beneficiary)->create(['date_dispersed' => '2026-09-02']);
-        DispersalEvent::factory()->initial($beneficiary)->create(['date_dispersed' => '2026-09-28']);
+        $this->delivery($beneficiary, '2026-09-02');
+        $this->delivery($beneficiary, '2026-09-28');
 
         $sheet = $this->workbook($this->export($this->admin(), [
             'from' => '2026-09-01',
@@ -333,7 +395,7 @@ class ReportTemplateExportTest extends TestCase
         // sending, which must not break a later request.
         $admin = $this->admin();
         $beneficiary = Beneficiary::factory()->create(['address' => 'Dawis']);
-        DispersalEvent::factory()->initial($beneficiary)->create(['date_dispersed' => Carbon::parse('2026-09-09')]);
+        $this->delivery($beneficiary, '2026-09-09');
 
         $first = $this->export($admin, ['month' => '2026-09'])->assertOk();
         $second = $this->export($admin, ['month' => '2026-09'])->assertOk();

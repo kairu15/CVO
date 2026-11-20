@@ -44,9 +44,15 @@ export const reportsApi = {
   /**
    * @param {object} [params]
    * @param {string} [params.barangay]  Narrow every section to one barangay.
-   * @param {string} [params.from]      ISO date; adds a `dispersals_since` counter.
-   * @returns {Promise<{scope: object, program: object, activity: object,
-   *   clinical: object, per_barangay: Array<object>, trend: Array<object>}>}
+   * @param {string} [params.from]      ISO date; start of the dispersal window.
+   * @param {string} [params.to]        ISO date; end of the dispersal window.
+   * @param {string} [params.category]  livestock | poultry | other.
+   * @param {string} [params.animal_type] A specific master-list type.
+   * @param {string} [params.beneficiary] Name / RSBSA / ear-tag search.
+   * @param {string} [params.dispersal_type] dispersal | re_dispersal | pass_on.
+   * @returns {Promise<{scope: object, program: object, dispersals: object,
+   *   activity: object, clinical: object, per_barangay: Array<object>,
+   *   trend: Array<object>}>}
    */
   cityWide: async (params = {}) => {
     const response = await api.get("/api/v1/admin/report", {
@@ -63,6 +69,13 @@ export const reportsApi = {
    * the threshold the verdicts were judged against.
    * @returns {Promise<{counts: Record<string, number>, review_count: number, total: number, threshold_m: number}>}
    */
+  recentExports: async () => {
+    const response = await api.get("/api/v1/admin/report/recent", {
+      timeout: REPORT_READ_TIMEOUT_MS,
+    });
+    return response.data?.data ?? [];
+  },
+
   verificationSummary: async () => {
     const response = await api.get("/api/v1/admin/report/verification", {
       timeout: REPORT_READ_TIMEOUT_MS,
@@ -145,6 +158,9 @@ export const reportsApi = {
    * @param {string} payload.name       editable report title (also the filename)
    * @param {string} [payload.barangay]
    * @param {string} [payload.animal_type]
+   * @param {string} [payload.category] livestock | poultry | other
+   * @param {string} [payload.beneficiary] Name / RSBSA / ear-tag search
+   * @param {string} [payload.dispersal_type] dispersal | re_dispersal | pass_on
    * @param {string} [payload.month]    "YYYY-MM"
    * @param {string} [payload.from]     ISO date
    * @param {string} [payload.to]       ISO date

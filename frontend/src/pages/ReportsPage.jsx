@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Bar,
   BarChart,
@@ -25,12 +25,59 @@ import { InlineAlert } from "../components/InlineAlert";
 import { MonthYearDropdown } from "../components/MonthYearDropdown";
 import { AnimalTypeDropdown } from "../components/AnimalTypeDropdown";
 import { ReportExportPanel } from "../components/ReportExportPanel";
+import { Modal } from "../components/Modal";
 import { Icon } from "../components/Icons";
 import { getRole } from "../config/roles";
 import { CHART_COLORS, PIE_COLORS, AXIS_STYLE } from "../lib/charts";
 import { useChart } from "../hooks/useChart";
 import { ChartCard } from "../components/ChartCard";
 import { StatCard } from "../components/StatCard";
+import { downloadCsv } from "../lib/downloadCsv";
+
+const CATEGORY_OPTIONS = [
+  { value: "", label: "All animal categories" },
+  { value: "livestock", label: "Livestock" },
+  { value: "poultry", label: "Poultry" },
+  { value: "other", label: "Other farm animals" },
+];
+
+const DISPERSAL_STATUS_OPTIONS = [
+  { value: "", label: "All dispersal statuses" },
+  { value: "dispersal", label: "Initial dispersal" },
+  { value: "re_dispersal", label: "Re-dispersal" },
+  { value: "pass_on", label: "Pass-on" },
+];
+
+const CSV_COLUMNS = [
+  { key: "barangay", label: "Barangay" },
+  { key: "households", label: "Beneficiaries" },
+  { key: "dispersals", label: "Dispersal events" },
+  { key: "livestock", label: "Livestock" },
+  { key: "poultry", label: "Poultry" },
+  { key: "other", label: "Other farm animals" },
+  { key: "monitoring_visits", label: "Monitoring visits" },
+  { key: "field_visits", label: "Field visits" },
+  { key: "health_records", label: "Health records" },
+];
+
+function categoryLabel(value) {
+  return CATEGORY_OPTIONS.find((option) => option.value === value)?.label ?? "All animal categories";
+}
+
+function dispersalStatusLabel(value) {
+  return (
+    DISPERSAL_STATUS_OPTIONS.find((option) => option.value === value)?.label ??
+    "All dispersal statuses"
+  );
+}
+
+function formatGeneratedAt(value) {
+  if (!value) return "Unknown date";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Unknown date"
+    : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
 
 /**
  * Admin "Reports" screen — the city-wide program overview, with charts.
@@ -130,6 +177,7 @@ function VerificationCard({ roleKey }) {
 
 export default function ReportsPage({ roleKey = "admin" }) {
   const config = getRole(roleKey);
+  const navigate = useNavigate();
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -137,11 +185,18 @@ export default function ReportsPage({ roleKey = "admin" }) {
 
   const [barangay, setBarangay] = useState("");
   const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [category, setCategory] = useState("");
   const [animalType, setAnimalType] = useState(null);
+  const [beneficiary, setBeneficiary] = useState("");
+  const [dispersalType, setDispersalType] = useState("");
   const [month, setMonth] = useState(null);
   const [typeOptions, setTypeOptions] = useState([]);
   const [monthOptions, setMonthOptions] = useState([]);
   const [sort, setSort] = useState({ key: "barangay", dir: "asc" });
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [recent, setRecent] = useState([]);
+  const [recentLoading, setRecentLoading] = useState(true);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -151,6 +206,11 @@ export default function ReportsPage({ roleKey = "admin" }) {
       const report = await reportsApi.cityWide({
         barangay: barangay || undefined,
         from: from || undefined,
+        to: to || undefined,
+        category: category || undefined,
+        animal_type: animalType ?? undefined,
+        beneficiary: beneficiary.trim() || undefined,
+        dispersal_type: dispersalType || undefined,
       });
 
       setData(report);
@@ -159,11 +219,26 @@ export default function ReportsPage({ roleKey = "admin" }) {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [barangay, from]);
+  }, [barangay, from, to, category, animalType, beneficiary, dispersalType]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadRecent = useCallback(async () => {
+    try {
+      setRecent(await reportsApi.recentExports());
+    } catch {
+      // A history outage must never hide the live report.
+      setRecent([]);
+    } finally {
+      setRecentLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRecent();
+  }, [loadRecent]);
 
   // Quietly re-fetch so the figures track records logged elsewhere.
   useAutoRefresh(load);
@@ -188,15 +263,27 @@ export default function ReportsPage({ roleKey = "admin" }) {
         reportsApi.dispersalTrend({
           barangay: barangay || undefined,
           animal_type: animalType ?? undefined,
+          category: category || undefined,
+          beneficiary: beneficiary.trim() || undefined,
+          dispersal_type: dispersalType || undefined,
           from: from || undefined,
+          to: to || undefined,
         }),
-      [barangay, animalType, from],
+      [barangay, animalType, category, beneficiary, dispersalType, from, to],
     ),
   );
   const byBarangayState = useChart(
     useCallback(
-      () => reportsApi.animalsByBarangay({ animal_type: animalType ?? undefined, from: from || undefined }),
-      [animalType, from],
+      () =>
+        reportsApi.animalsByBarangay({
+          animal_type: animalType ?? undefined,
+          category: category || undefined,
+          beneficiary: beneficiary.trim() || undefined,
+          dispersal_type: dispersalType || undefined,
+          from: from || undefined,
+          to: to || undefined,
+        }),
+      [animalType, category, beneficiary, dispersalType, from, to],
     ),
   );
   const complianceState = useChart(
@@ -205,18 +292,31 @@ export default function ReportsPage({ roleKey = "admin" }) {
         reportsApi.vaccinationCompliance({
           barangay: barangay || undefined,
           animal_type: animalType ?? undefined,
+          beneficiary: beneficiary.trim() || undefined,
         }),
-      [barangay, animalType],
+      [barangay, animalType, beneficiary],
     ),
   );
   const distributionState = useChart(
     useCallback(
-      () => reportsApi.animalTypeDistribution({ month: month ?? undefined, from: from || undefined }),
-      [month, from],
+      () =>
+        reportsApi.animalTypeDistribution({
+          month: month ?? undefined,
+          from: from || undefined,
+          beneficiary: beneficiary.trim() || undefined,
+        }),
+      [month, from, beneficiary],
     ),
   );
   const workloadState = useChart(
-    useCallback(() => reportsApi.technicianWorkload({ barangay: barangay || undefined }), [barangay]),
+    useCallback(
+      () =>
+        reportsApi.technicianWorkload({
+          barangay: barangay || undefined,
+          beneficiary: beneficiary.trim() || undefined,
+        }),
+      [barangay, beneficiary],
+    ),
   );
 
   const barangays = data?.scope?.barangays ?? [];
@@ -272,6 +372,45 @@ export default function ReportsPage({ roleKey = "admin" }) {
     null,
   );
 
+  const dispersals = data?.dispersals ?? {};
+  const filterSummary = [
+    barangay || "all barangays",
+    categoryLabel(category),
+    animalType ?? "all types",
+    dispersalType ? dispersalStatusLabel(dispersalType) : null,
+    beneficiary.trim() ? `beneficiary “${beneficiary.trim()}”` : null,
+    month ? `month ${month}` : "all months",
+    from || to ? `${from || "earliest"} to ${to || "today"}` : "all dates",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  function exportTableCsv() {
+    if (sortedRows.length === 0) return;
+
+    const scope = [barangay || "all-barangays", category || "all-categories", from || "all-dates", to || "today"]
+      .join("-")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    downloadCsv(sortedRows, CSV_COLUMNS, `cvo-barangay-report-${scope}.csv`);
+  }
+
+  function applyRecentFilters(report) {
+    const filters = report.filters ?? {};
+
+    setBarangay(filters.barangay ?? "");
+    setFrom(filters.from ?? "");
+    setTo(filters.to ?? "");
+    setCategory(filters.category ?? "");
+    setAnimalType(filters.animal_type ?? null);
+    setBeneficiary(filters.beneficiary ?? "");
+    setDispersalType(filters.dispersal_type ?? "");
+    setMonth(filters.month ?? null);
+    document.getElementById("report-overview")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <div className="space-y-6">
       <section className="card p-6">
@@ -313,16 +452,92 @@ export default function ReportsPage({ roleKey = "admin" }) {
 
             <div>
               <label
+                htmlFor="reports-beneficiary"
+                className="block text-xs font-semibold text-slate-600"
+              >
+                Beneficiary
+              </label>
+              <input
+                id="reports-beneficiary"
+                type="search"
+                value={beneficiary}
+                onChange={(event) => setBeneficiary(event.target.value)}
+                placeholder="Name or RSBSA #"
+                className="field mt-1 w-48 text-xs"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="reports-category"
+                className="block text-xs font-semibold text-slate-600"
+              >
+                Animal category
+              </label>
+              <select
+                id="reports-category"
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+                className="field mt-1 w-44 text-xs"
+              >
+                {CATEGORY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="reports-status"
+                className="block text-xs font-semibold text-slate-600"
+              >
+                Dispersal status
+              </label>
+              <select
+                id="reports-status"
+                value={dispersalType}
+                onChange={(event) => setDispersalType(event.target.value)}
+                className="field mt-1 w-44 text-xs"
+              >
+                {DISPERSAL_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
                 htmlFor="reports-from"
                 className="block text-xs font-semibold text-slate-600"
               >
-                Dispersals since
+                Dispersals from
               </label>
               <input
                 id="reports-from"
                 type="date"
                 value={from}
                 onChange={(event) => setFrom(event.target.value)}
+                className="field mt-1 w-40 text-xs"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="reports-to"
+                className="block text-xs font-semibold text-slate-600"
+              >
+                To
+              </label>
+              <input
+                id="reports-to"
+                type="date"
+                value={to}
+                min={from || undefined}
+                onChange={(event) => setTo(event.target.value)}
                 className="field mt-1 w-40 text-xs"
               />
             </div>
@@ -341,25 +556,105 @@ export default function ReportsPage({ roleKey = "admin" }) {
           </div>
         </div>
 
-        {(barangay || animalType || month || from) && (
+        <nav aria-label="Report categories" className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+          <span className="mr-1 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+            Report categories
+          </span>
+          {[
+            { label: "Overview", href: "#report-overview" },
+            { label: "Beneficiaries", to: `/dashboard/${roleKey}/beneficiaries` },
+            { label: "Livestock dispersal", category: "livestock" },
+            { label: "Poultry dispersal", category: "poultry" },
+            { label: "Barangay comparison", href: "#report-barangay" },
+            { label: "Field visits", to: `/dashboard/${roleKey}/field-visits` },
+            { label: "Monitoring", to: `/dashboard/${roleKey}/monitoring` },
+          ].map((item) => {
+            if (item.to) {
+              return (
+                <Link key={item.label} to={item.to} className="rounded-pill border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-brand-300 hover:text-brand-800">
+                  {item.label}
+                </Link>
+              );
+            }
+
+            if (item.category) {
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => setCategory(category === item.category ? "" : item.category)}
+                  aria-pressed={category === item.category}
+                  className={`rounded-pill border px-3 py-1 text-xs font-semibold transition ${
+                    category === item.category
+                      ? "border-brand-300 bg-brand-50 text-brand-800"
+                      : "border-slate-200 text-slate-700 hover:border-brand-300 hover:text-brand-800"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            }
+
+            return (
+              <a
+                key={item.label}
+                href={item.href}
+                className="rounded-pill border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-brand-300 hover:text-brand-800"
+              >
+                {item.label}
+              </a>
+            );
+          })}
+        </nav>
+
+        {(barangay || animalType || beneficiary || dispersalType || month || from || to || category) && (
           <p className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-pill bg-brand-50 px-3.5 py-1.5 text-xs font-semibold text-brand-800">
             <Icon name="map-pin" className="h-3.5 w-3.5" />
-            Filters: {[barangay || "all barangays", animalType ?? "all types", month ? `month ${month}` : "all months", from ? `since ${from}` : "all dates"].join(" · ")}
+            Filters: {filterSummary}
           </p>
         )}
         <p className="mt-2 text-[11px] text-slate-500">
-          Each chart states the filters it uses in its caption. Program totals
-          follow the barangay scope; the per-barangay table follows the barangay
-          filter.
+          The overview and per-barangay comparison use active ownership events;
+          program totals follow the barangay, category and type scope. Each chart
+          states the filters it applies in its caption.
         </p>
 
         {/* The printable report: the office's own template, filled for the
             filters above, under an editable report name. */}
-        <ReportExportPanel barangay={barangay} month={month} animalType={animalType} from={from} />
+        <ReportExportPanel
+          barangay={barangay}
+          month={month}
+          animalType={animalType}
+          category={category}
+          beneficiary={beneficiary.trim()}
+          dispersalType={dispersalType}
+          from={from}
+          to={to}
+          onExported={loadRecent}
+        />
 
-        {/* Barangay dispersal analytics — its own tab, with the bubble map,
-            flow matrix and per-barangay ranking. */}
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={exportTableCsv}
+            disabled={sortedRows.length === 0}
+            className="btn-secondary !px-3.5 !py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Icon name="clipboard" className="h-3.5 w-3.5" />
+            CSV table
+          </button>
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            disabled={!data}
+            className="btn-secondary !px-3.5 !py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Icon name="printer" className="h-3.5 w-3.5" />
+            Preview &amp; print / PDF
+          </button>
+
+          {/* Barangay dispersal analytics — its own tab, with the bubble map,
+              flow matrix and per-barangay ranking. */}
           <Link
             to={`/dashboard/${roleKey}/reports/barangay-dispersal`}
             className="btn-secondary !px-3.5 !py-1.5 text-xs"
@@ -392,25 +687,54 @@ export default function ReportsPage({ roleKey = "admin" }) {
         </section>
       ) : (
         <>
-          {/* Program size */}
-          <section className="card p-6">
-            <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
-              Program
-            </h3>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard label="Households" value={program.households ?? 0} />
-              <StatCard label="Animals tagged" value={program.animals ?? 0} />
+          {/* Overview — the five questions an administrator asks first. */}
+          <section id="report-overview" className="card p-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="font-display text-sm font-semibold tracking-wide text-slate-700 uppercase">
+                Report overview
+              </h3>
+              <p className="text-[11px] text-slate-500">Active dispersal records, not estimates</p>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               <StatCard
-                label="With technician"
-                value={program.with_technician ?? 0}
-                hint="Actively monitored"
+                label="Beneficiaries"
+                value={program.households ?? 0}
+                hint={`${program.with_technician ?? 0} with a technician`}
+                to={`/dashboard/${roleKey}/beneficiaries`}
+                icon="users"
               />
               <StatCard
-                label="Unassigned"
-                value={program.unassigned ?? 0}
-                hint="Awaiting a technician"
+                label="Livestock distributed"
+                value={dispersals.livestock ?? 0}
+                hint="Carabao, cattle, swine, goats, sheep…"
+                icon="livestock"
+              />
+              <StatCard
+                label="Poultry distributed"
+                value={dispersals.poultry ?? 0}
+                hint="Chicken, duck, quail, turkey…"
+                icon="sprout"
+              />
+              <StatCard
+                label="Completed dispersals"
+                value={dispersals.total ?? 0}
+                hint={`${dispersals.initial ?? 0} initial · ${dispersals.re_dispersals ?? 0} re-dispersals · ${dispersals.pass_ons ?? 0} pass-ons`}
+                icon="shield"
+              />
+              <StatCard
+                label="Pending follow-up"
+                value={program.pending_follow_up ?? 0}
+                hint={`Unassigned or no contact in ${program.follow_up_days ?? 60} days`}
+                to={`/dashboard/${roleKey}/beneficiaries?monitoring=overdue`}
+                icon="clock"
+                tone="warning"
               />
             </div>
+            {(dispersals.unclassified ?? 0) > 0 && (
+              <p className="mt-3 text-[11px] text-slate-500">
+                {dispersals.unclassified} delivery record(s) use an animal type not yet mapped to the master list.
+              </p>
+            )}
           </section>
 
           {/* Field activity + clinical load */}
@@ -429,9 +753,6 @@ export default function ReportsPage({ roleKey = "admin" }) {
                 />
                 <StatCard label="Dispersals" value={activity.dispersals ?? 0} />
                 <StatCard label="Re-dispersals" value={activity.re_dispersals ?? 0} />
-                {"dispersals_since" in activity && (
-                  <StatCard label="Dispersals since filter date" value={activity.dispersals_since ?? 0} />
-                )}
               </div>
             </div>
 
@@ -518,11 +839,11 @@ export default function ReportsPage({ roleKey = "admin" }) {
           {/* Charts 2 + 3 side by side */}
           <section className="grid gap-6 xl:grid-cols-2">
             <ChartCard
-              title="Animals dispersed by barangay"
+              title="Dispersal events by barangay"
               caption={
                 topBarangay && topBarangay.dispersals > 0
-                  ? `Most: ${topBarangay.barangay} (${topBarangay.dispersals})`
-                  : undefined
+                  ? `Most: ${topBarangay.barangay} (${topBarangay.dispersals}) · click a bar for records`
+                  : "Click a bar to open its records"
               }
               state={byBarangayState}
               isEmpty={byBarangayEmpty}
@@ -543,7 +864,18 @@ export default function ReportsPage({ roleKey = "admin" }) {
                   />
                   <YAxis allowDecimals={false} tick={AXIS_STYLE} tickLine={false} />
                   <Tooltip />
-                  <Bar dataKey="dispersals" name="Dispersals" fill={CHART_COLORS.accent} radius={[4, 4, 0, 0]} />
+                  <Bar
+                    dataKey="dispersals"
+                    name="Dispersals"
+                    fill={CHART_COLORS.accent}
+                    radius={[4, 4, 0, 0]}
+                    cursor="pointer"
+                    onClick={(entry) => {
+                      const name = entry?.barangay ?? entry?.payload?.barangay;
+                      if (!name) return;
+                      navigate(`/dashboard/${roleKey}/beneficiaries?barangay=${encodeURIComponent(name)}`);
+                    }}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -641,12 +973,15 @@ export default function ReportsPage({ roleKey = "admin" }) {
             </ChartCard>
           </section>
 
-          {/* Per-barangay table — the anchor the charts must agree with */}
-          <section className="card overflow-hidden">
-            <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
+          {/* Per-barangay comparison — the anchor the charts must agree with */}
+          <section id="report-barangay" className="card overflow-hidden">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
               <h3 className="font-display text-xs font-semibold tracking-wide text-slate-700 uppercase">
-                Per barangay
+                Barangay comparison
               </h3>
+              <p className="text-[11px] text-slate-500">
+                Sort any column; open a barangay to see its beneficiary records.
+              </p>
             </div>
 
             {rows.length === 0 ? (
@@ -658,22 +993,18 @@ export default function ReportsPage({ roleKey = "admin" }) {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <colgroup>
-                    <col className="w-[25%]" />
-                    {Array.from({ length: 5 }, (_, i) => (
-                      <col key={i} />
-                    ))}
-                  </colgroup>
+                <table className="w-full min-w-[860px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 text-left text-[11px] tracking-wide text-slate-500 uppercase">
                       {[
                         { key: "barangay", label: "Barangay" },
-                        { key: "households", label: "Households" },
+                        { key: "households", label: "Beneficiaries" },
+                        { key: "dispersals", label: "Dispersals" },
+                        { key: "livestock", label: "Livestock" },
+                        { key: "poultry", label: "Poultry" },
+                        { key: "other", label: "Other" },
                         { key: "monitoring_visits", label: "Monitoring" },
                         { key: "field_visits", label: "Field visits" },
-                        { key: "health_records", label: "Health records" },
-                        { key: "dispersals", label: "Dispersals" },
                       ].map((column) => (
                         <th
                           key={column.key}
@@ -685,7 +1016,7 @@ export default function ReportsPage({ roleKey = "admin" }) {
                                 : "descending"
                               : "none"
                           }
-                          className={`px-4 py-2.5 font-semibold ${
+                          className={`px-3 py-2.5 font-semibold ${
                             column.key === "barangay" ? "" : "text-right"
                           }`}
                         >
@@ -703,17 +1034,30 @@ export default function ReportsPage({ roleKey = "admin" }) {
                           </button>
                         </th>
                       ))}
+                      <th scope="col" className="px-3 py-2.5 text-right font-semibold">
+                        Records
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {sortedRows.map((row) => (
                       <tr key={row.barangay} className="transition hover:bg-brand-50/40">
-                        <td className="px-4 py-3 font-semibold text-slate-900">{row.barangay}</td>
-                        <td className="px-4 py-3 text-right">{row.households}</td>
-                        <td className="px-4 py-3 text-right">{row.monitoring_visits}</td>
-                        <td className="px-4 py-3 text-right">{row.field_visits}</td>
-                        <td className="px-4 py-3 text-right">{row.health_records}</td>
-                        <td className="px-4 py-3 text-right">{row.dispersals}</td>
+                        <td className="px-3 py-3 font-semibold text-slate-900">{row.barangay}</td>
+                        <td className="px-3 py-3 text-right">{row.households}</td>
+                        <td className="px-3 py-3 text-right">{row.dispersals}</td>
+                        <td className="px-3 py-3 text-right">{row.livestock ?? 0}</td>
+                        <td className="px-3 py-3 text-right">{row.poultry ?? 0}</td>
+                        <td className="px-3 py-3 text-right">{row.other ?? 0}</td>
+                        <td className="px-3 py-3 text-right">{row.monitoring_visits}</td>
+                        <td className="px-3 py-3 text-right">{row.field_visits}</td>
+                        <td className="px-3 py-3 text-right">
+                          <Link
+                            to={`/dashboard/${roleKey}/beneficiaries?barangay=${encodeURIComponent(row.barangay)}`}
+                            className="text-xs font-semibold text-brand-800 underline-offset-2 hover:underline"
+                          >
+                            View
+                          </Link>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -721,6 +1065,116 @@ export default function ReportsPage({ roleKey = "admin" }) {
               </div>
             )}
           </section>
+
+          {/* Recent exports are read from the audit trail — not a new table. */}
+          <section id="report-recent" className="card overflow-hidden">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
+              <h3 className="font-display text-xs font-semibold tracking-wide text-slate-700 uppercase">
+                Recent reports
+              </h3>
+              <p className="text-[11px] text-slate-500">From the audit trail · latest 8 exports</p>
+            </div>
+
+            {recentLoading ? (
+              <SkeletonList rows={2} rowClassName="h-12" />
+            ) : recent.length === 0 ? (
+              <div className="p-6">
+                <EmptyState
+                  title="No report exports yet"
+                  description="Excel, CSV and printable report generations will appear here with their filters."
+                />
+              </div>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {recent.map((item) => {
+                  const itemFilters = item.filters ?? {};
+                  const hasFilters = Object.keys(itemFilters).length > 0;
+
+                  return (
+                    <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">{item.title}</p>
+                        <p className="mt-0.5 text-[11px] text-slate-500">
+                          {item.category} · {formatGeneratedAt(item.generated_at)}
+                          {item.actor ? ` · ${item.actor}` : ""}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => applyRecentFilters(item)}
+                        disabled={!hasFilters}
+                        className="btn-secondary !px-3 !py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Use filters
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          <Modal
+            open={previewOpen}
+            title="Report preview"
+            onClose={() => setPreviewOpen(false)}
+            contentClassName="max-w-5xl"
+          >
+            <div className="print-area rounded-xl border border-slate-200 bg-white p-6 text-slate-900">
+              <p className="text-[10px] font-semibold tracking-widest text-slate-500 uppercase">
+                City Veterinary Office · Bayawan City
+              </p>
+              <h2 className="mt-1 font-display text-xl font-bold">Livestock and Poultry Dispersal Report</h2>
+              <p className="mt-1 text-xs text-slate-600">{filterSummary}</p>
+
+              <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+                {[
+                  ["Beneficiaries", program.households ?? 0],
+                  ["Livestock", dispersals.livestock ?? 0],
+                  ["Poultry", dispersals.poultry ?? 0],
+                  ["Dispersals", dispersals.total ?? 0],
+                  ["Follow-up", program.pending_follow_up ?? 0],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-lg border border-slate-200 p-2">
+                    <p className="text-[9px] font-semibold tracking-wide text-slate-500 uppercase">{label}</p>
+                    <p className="text-lg font-bold">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <table className="mt-4 w-full text-[10px]">
+                <thead>
+                  <tr className="border-b border-slate-300 text-left">
+                    {CSV_COLUMNS.map((column) => (
+                      <th key={column.key} className="px-1 py-1 font-semibold">{column.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRows.map((row) => (
+                    <tr key={row.barangay} className="border-b border-slate-100">
+                      {CSV_COLUMNS.map((column) => (
+                        <td key={column.key} className="px-1 py-1">{row[column.key] ?? 0}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="mt-4 text-[9px] text-slate-500">
+                Generated {new Date().toLocaleString()} from active program records.
+              </p>
+            </div>
+
+            <div className="no-print mt-4 flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={() => setPreviewOpen(false)} className="btn-secondary">
+                Close
+              </button>
+              <button type="button" onClick={() => window.print()} className="btn-primary">
+                <Icon name="printer" className="h-4 w-4" />
+                Print / Save as PDF
+              </button>
+            </div>
+          </Modal>
         </>
       )}
     </div>

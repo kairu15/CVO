@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\DispersalEvent;
+use App\Models\AnimalOwnershipEvent;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -90,8 +90,23 @@ class ReportTemplateService
         ?Carbon $from = null,
         ?Carbon $to = null,
         ?string $animalType = null,
+        ?string $category = null,
+        ?string $beneficiary = null,
+        ?string $dispersalType = null,
     ): BinaryFileResponse {
-        $spreadsheet = $this->build($viewer, $template, $name, $barangay, $month, $from, $to, $animalType);
+        $spreadsheet = $this->build(
+            $viewer,
+            $template,
+            $name,
+            $barangay,
+            $month,
+            $from,
+            $to,
+            $animalType,
+            $category,
+            $beneficiary,
+            $dispersalType,
+        );
 
         $path = tempnam(sys_get_temp_dir(), 'cvo-report-');
 
@@ -132,13 +147,25 @@ class ReportTemplateService
         ?Carbon $from = null,
         ?Carbon $to = null,
         ?string $animalType = null,
+        ?string $category = null,
+        ?string $beneficiary = null,
+        ?string $dispersalType = null,
     ): Spreadsheet {
         $spreadsheet = IOFactory::load($this->templatePath($template));
         $sheet = $spreadsheet->getActiveSheet();
 
         $this->fillCover($sheet, $viewer, $name, $month);
 
-        $records = $this->records($barangay, $month, $from, $to, $animalType);
+        $records = $this->records(
+            $barangay,
+            $month,
+            $from,
+            $to,
+            $animalType,
+            $category,
+            $beneficiary,
+            $dispersalType,
+        );
 
         $this->appendTable($sheet, $records);
 
@@ -212,7 +239,7 @@ class ReportTemplateService
      * The dispersal roster the template is titled after, scoped exactly like
      * the Reports screen: barangay, animal type, month and an optional range.
      *
-     * @return Collection<int, DispersalEvent>
+     * @return Collection<int, AnimalOwnershipEvent>
      */
     private function records(
         ?string $barangay,
@@ -220,21 +247,50 @@ class ReportTemplateService
         ?Carbon $from,
         ?Carbon $to,
         ?string $animalType,
+        ?string $category,
+        ?string $beneficiary = null,
+        ?string $dispersalType = null,
     ): Collection {
-        return DispersalEvent::query()
-            ->with('beneficiary')
-            ->whereHas('beneficiary', function ($query) use ($barangay, $animalType): void {
-                $query
-                    ->when($barangay, fn ($q) => $q->where('address', $barangay))
-                    ->when($animalType, fn ($q) => $q->where('animal_type', $animalType));
+        return AnimalOwnershipEvent::query()
+            ->where('status', AnimalOwnershipEvent::STATUS_ACTIVE)
+            ->whereIn('event_type', [
+                AnimalOwnershipEvent::TYPE_DISPERSAL,
+                AnimalOwnershipEvent::TYPE_RE_DISPERSAL,
+                AnimalOwnershipEvent::TYPE_PASS_ON,
+            ])
+            ->whereNotNull('to_beneficiary_id')
+            ->with(['animal.animalType', 'toBeneficiary'])
+            ->whereHas('toBeneficiary', function ($query) use ($barangay): void {
+                $query->when($barangay, fn ($q) => $q->where('address', $barangay));
             })
             ->when($month, function ($query) use ($month): void {
-                $query->whereYear('date_dispersed', substr($month, 0, 4))
-                    ->whereMonth('date_dispersed', substr($month, 5, 2));
+                $query->whereYear('event_date', substr($month, 0, 4))
+                    ->whereMonth('event_date', substr($month, 5, 2));
             })
-            ->when($from, fn ($query) => $query->whereDate('date_dispersed', '>=', $from->toDateString()))
-            ->when($to, fn ($query) => $query->whereDate('date_dispersed', '<=', $to->toDateString()))
-            ->orderBy('date_dispersed')
+            ->when($from, fn ($query) => $query->whereDate('event_date', '>=', $from->toDateString()))
+            ->when($to, fn ($query) => $query->whereDate('event_date', '<=', $to->toDateString()))
+            ->when($animalType, fn ($query) => $query->whereHas(
+                'animal',
+                fn ($animal) => $animal->where(function ($value) use ($animalType): void {
+                    $value->where('animal_type', $animalType)
+                        ->orWhereHas('animalType', fn ($type) => $type->where('name', $animalType));
+                }),
+            ))
+            ->when($category, fn ($query) => $query->whereHas(
+                'animal.animalType',
+                fn ($type) => $type->where('main_category', $category),
+            ))
+            ->when($beneficiary, fn ($query) => $query->whereHas(
+                'toBeneficiary',
+                fn ($household) => $household->where(function ($search) use ($beneficiary): void {
+                    $like = '%'.$beneficiary.'%';
+                    $search->where('name_of_farmer', 'like', $like)
+                        ->orWhere('rsbsa_number', 'like', $like)
+                        ->orWhere('ear_tag_number', 'like', $like);
+                }),
+            ))
+            ->when($dispersalType, fn ($query) => $query->where('event_type', $dispersalType))
+            ->orderBy('event_date')
             ->orderBy('id')
             ->get();
     }
@@ -249,7 +305,7 @@ class ReportTemplateService
      * WITHOUT touching column widths — the letterhead images are anchored to
      * those columns and the writer would stretch them to match.
      *
-     * @param  Collection<int, DispersalEvent>  $records
+     * @param  Collection<int, AnimalOwnershipEvent>  $records
      */
     private function appendTable(Worksheet $sheet, Collection $records): void
     {
@@ -304,14 +360,15 @@ class ReportTemplateService
         $row = self::FIRST_DATA_ROW;
 
         foreach ($records as $record) {
-            $beneficiary = $record->beneficiary;
+            $beneficiary = $record->toBeneficiary;
+            $animal = $record->animal;
 
             // A real date cell (Excel serial + format), not a text date: the
             // column stays sortable and reads correctly in any locale.
             $sheet->setCellValue(
                 'A'.$row,
-                $record->date_dispersed !== null
-                    ? ExcelDate::PHPToExcel($record->date_dispersed->toDateTime())
+                $record->event_date !== null
+                    ? ExcelDate::PHPToExcel($record->event_date->toDateTime())
                     : '',
             );
             $sheet->getStyle('A'.$row)->getNumberFormat()->setFormatCode('dd/mm/yy');
@@ -322,10 +379,14 @@ class ReportTemplateService
             $sheet->setCellValue('D'.$row, $beneficiary?->address ?? '');
             $sheet->mergeCells('D'.$row.':E'.$row);
 
-            $sheet->setCellValue('F'.$row, $beneficiary?->animal_type ?? '');
-            $sheet->setCellValue('G'.$row, $beneficiary?->sex ?? '');
-            $sheet->setCellValue('H'.$row, ucfirst((string) $record->dispersal_type));
-            $sheet->setCellValue('I'.$row, $beneficiary?->ear_tag_number ?? '');
+            $sheet->setCellValue('F'.$row, $animal?->typeName() ?? $beneficiary?->animal_type ?? '');
+            $sheet->setCellValue('G'.$row, $animal?->sex ?? $beneficiary?->sex ?? '');
+            $sheet->setCellValue('H'.$row, match ($record->event_type) {
+                AnimalOwnershipEvent::TYPE_RE_DISPERSAL => 'Re-dispersal',
+                AnimalOwnershipEvent::TYPE_PASS_ON => 'Pass on',
+                default => 'Initial',
+            });
+            $sheet->setCellValue('I'.$row, $animal?->ear_tag_number ?? $beneficiary?->ear_tag_number ?? '');
 
             $range = 'A'.$row.':'.self::LAST_COLUMN.$row;
             $sheet->getStyle($range)->getBorders()->getAllBorders()

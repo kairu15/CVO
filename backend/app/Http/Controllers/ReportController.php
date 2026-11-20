@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ReportChartRequest;
 use App\Http\Requests\ReportRequest;
+use App\Models\ActivityLog;
 use App\Http\Requests\ReportTemplateExportRequest;
 use App\Services\AuditLogger;
 use App\Services\FieldVisitVerificationService;
@@ -64,11 +65,21 @@ class ReportController extends Controller
                     'viewer' => $request->user()->id,
                     'barangay' => $validated['barangay'] ?? null,
                     'from' => $validated['from'] ?? null,
+                    'to' => $validated['to'] ?? null,
+                    'category' => $validated['category'] ?? null,
+                    'animal_type' => $validated['animal_type'] ?? null,
+                    'beneficiary' => $validated['beneficiary'] ?? null,
+                    'dispersal_type' => $validated['dispersal_type'] ?? null,
                 ],
                 fn (): array => $this->reports->cityWide(
                     $request->user(),
                     $validated['barangay'] ?? null,
                     isset($validated['from']) ? Carbon::parse($validated['from']) : null,
+                    isset($validated['to']) ? Carbon::parse($validated['to']) : null,
+                    $validated['category'] ?? null,
+                    $validated['animal_type'] ?? null,
+                    $validated['beneficiary'] ?? null,
+                    $validated['dispersal_type'] ?? null,
                 ),
                 self::REPORT_CACHE_SECONDS,
             ),
@@ -88,7 +99,12 @@ class ReportController extends Controller
             'resource' => 'city_report',
             'filters' => array_filter([
                 'barangay' => $validated['barangay'] ?? null,
+                'category' => $validated['category'] ?? null,
+                'animal_type' => $validated['animal_type'] ?? null,
+                'beneficiary' => $validated['beneficiary'] ?? null,
+                'dispersal_type' => $validated['dispersal_type'] ?? null,
                 'from' => isset($validated['from']) ? (string) $validated['from'] : null,
+                'to' => isset($validated['to']) ? (string) $validated['to'] : null,
             ], static fn (?string $value): bool => $value !== null),
         ]);
 
@@ -96,6 +112,11 @@ class ReportController extends Controller
             $request->user(),
             $validated['barangay'] ?? null,
             isset($validated['from']) ? Carbon::parse($validated['from']) : null,
+            isset($validated['to']) ? Carbon::parse($validated['to']) : null,
+            $validated['category'] ?? null,
+            $validated['animal_type'] ?? null,
+            $validated['beneficiary'] ?? null,
+            $validated['dispersal_type'] ?? null,
         );
     }
 
@@ -118,6 +139,9 @@ class ReportController extends Controller
                 'report_name' => $v['name'],
                 'barangay' => $v['barangay'] ?? null,
                 'animal_type' => $v['animal_type'] ?? null,
+                'category' => $v['category'] ?? null,
+                'beneficiary' => $v['beneficiary'] ?? null,
+                'dispersal_type' => $v['dispersal_type'] ?? null,
                 'month' => $v['month'] ?? null,
                 'from' => $v['from'] ?? null,
                 'to' => $v['to'] ?? null,
@@ -133,6 +157,9 @@ class ReportController extends Controller
             isset($v['from']) ? Carbon::parse($v['from']) : null,
             isset($v['to']) ? Carbon::parse($v['to']) : null,
             $v['animal_type'] ?? null,
+            $v['category'] ?? null,
+            $v['beneficiary'] ?? null,
+            $v['dispersal_type'] ?? null,
         );
     }
 
@@ -146,6 +173,9 @@ class ReportController extends Controller
             [
                 'barangay' => $v['barangay'] ?? null,
                 'animal_type' => $v['animal_type'] ?? null,
+                'category' => $v['category'] ?? null,
+                'beneficiary' => $v['beneficiary'] ?? null,
+                'dispersal_type' => $v['dispersal_type'] ?? null,
                 'from' => $v['from'] ?? null,
                 'to' => $v['to'] ?? null,
             ],
@@ -154,6 +184,9 @@ class ReportController extends Controller
                 $v['animal_type'] ?? null,
                 $v['from'] ?? null,
                 $v['to'] ?? null,
+                $v['category'] ?? null,
+                $v['beneficiary'] ?? null,
+                $v['dispersal_type'] ?? null,
             ),
             self::CHART_CACHE_SECONDS,
         )]);
@@ -168,6 +201,9 @@ class ReportController extends Controller
             'animals-by-barangay',
             [
                 'animal_type' => $v['animal_type'] ?? null,
+                'category' => $v['category'] ?? null,
+                'beneficiary' => $v['beneficiary'] ?? null,
+                'dispersal_type' => $v['dispersal_type'] ?? null,
                 'from' => $v['from'] ?? null,
                 'to' => $v['to'] ?? null,
             ],
@@ -175,6 +211,9 @@ class ReportController extends Controller
                 $v['animal_type'] ?? null,
                 $v['from'] ?? null,
                 $v['to'] ?? null,
+                $v['category'] ?? null,
+                $v['beneficiary'] ?? null,
+                $v['dispersal_type'] ?? null,
             ),
             self::CHART_CACHE_SECONDS,
         )]);
@@ -190,10 +229,13 @@ class ReportController extends Controller
             [
                 'barangay' => $v['barangay'] ?? null,
                 'animal_type' => $v['animal_type'] ?? null,
+                'beneficiary' => $v['beneficiary'] ?? null,
             ],
             fn (): array => $this->charts->vaccinationCompliance(
                 $v['barangay'] ?? null,
                 $v['animal_type'] ?? null,
+                null,
+                $v['beneficiary'] ?? null,
             ),
             self::CHART_CACHE_SECONDS,
         )]);
@@ -210,11 +252,13 @@ class ReportController extends Controller
                 'month' => $v['month'] ?? null,
                 'from' => $v['from'] ?? null,
                 'to' => $v['to'] ?? null,
+                'beneficiary' => $v['beneficiary'] ?? null,
             ],
             fn (): array => $this->charts->animalTypeDistribution(
                 $v['month'] ?? null,
                 $v['from'] ?? null,
                 $v['to'] ?? null,
+                $v['beneficiary'] ?? null,
             ),
             self::CHART_CACHE_SECONDS,
         )]);
@@ -227,12 +271,51 @@ class ReportController extends Controller
 
         return response()->json(['data' => $this->cached(
             'technician-workload',
-            ['barangay' => $v['barangay'] ?? null],
+            ['barangay' => $v['barangay'] ?? null, 'beneficiary' => $v['beneficiary'] ?? null],
             fn (): array => $this->charts->technicianWorkload(
                 $v['barangay'] ?? null,
+                $v['beneficiary'] ?? null,
             ),
             self::CHART_CACHE_SECONDS,
         )]);
+    }
+
+    /**
+     * The most recent report exports, taken from the immutable audit trail.
+     * No report table is needed: the audit row already records the resource,
+     * filters and reader. Only the last eight are returned.
+     */
+    public function recentExports(ReportChartRequest $request): JsonResponse
+    {
+        $labels = [
+            'city_report' => 'Program report',
+            'report_template' => 'Livestock dispersal report',
+            'barangay_dispersal_analytics' => 'Barangay dispersal analytics',
+        ];
+
+        $rows = ActivityLog::query()
+            ->where('action', 'exported')
+            ->whereIn('new_values->resource', array_keys($labels))
+            ->latest('created_at')
+            ->latest('id')
+            ->limit(8)
+            ->get();
+
+        return response()->json(['data' => $rows->map(function (ActivityLog $row) use ($labels): array {
+            $values = $row->new_values ?? [];
+            $resource = (string) ($values['resource'] ?? '');
+            $filters = is_array($values['filters'] ?? null) ? $values['filters'] : [];
+
+            return [
+                'id' => $row->id,
+                'category' => $labels[$resource] ?? 'Report',
+                'resource' => $resource,
+                'title' => $values['report_name'] ?? ($labels[$resource] ?? 'Report'),
+                'filters' => $filters,
+                'actor' => $row->actor_name,
+                'generated_at' => $row->created_at?->toIso8601String(),
+            ];
+        })->values()]);
     }
 
     /**

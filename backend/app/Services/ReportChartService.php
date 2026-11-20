@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\AnimalOwnershipEvent;
 use App\Models\Beneficiary;
-use App\Models\DispersalEvent;
 use App\Models\MonitoringRecord;
 use App\Models\User;
 use App\Support\Barangays;
@@ -45,6 +45,9 @@ class ReportChartService
         ?string $animalType = null,
         ?string $from = null,
         ?string $to = null,
+        ?string $category = null,
+        ?string $beneficiary = null,
+        ?string $dispersalType = null,
     ): array {
         // The window: explicit range, else the trailing months. Boundary
         // months are INCLUSIVE, so the count matches what the per-barangay
@@ -54,11 +57,11 @@ class ReportChartService
             : Carbon::now()->startOfMonth()->subMonths(self::TREND_MONTHS - 1);
         $end = $to !== null ? Carbon::parse($to)->endOfMonth() : Carbon::now()->endOfMonth();
 
-        $rows = $this->dispersalQuery($barangay, $animalType)
-            ->whereBetween('dispersal_events.date_dispersed', [$start->toDateString(), $end->toDateString()])
-            ->selectRaw('substr(dispersal_events.date_dispersed, 1, 7) as month')
+        $rows = $this->dispersalQuery($barangay, $animalType, $category, $beneficiary, $dispersalType)
+            ->whereBetween('animal_ownership_events.event_date', [$start->toDateString(), $end->toDateString()])
+            ->selectRaw('substr(animal_ownership_events.event_date, 1, 7) as month')
             ->selectRaw('count(*) as dispersals')
-            ->selectRaw('sum(case when dispersal_events.dispersal_type = ? then 1 else 0 end) as re_dispersals', [DispersalEvent::TYPE_RE_DISPERSAL])
+            ->selectRaw('sum(case when animal_ownership_events.event_type = ? then 1 else 0 end) as re_dispersals', [AnimalOwnershipEvent::TYPE_RE_DISPERSAL])
             ->groupBy('month')
             ->get()
             ->mapWithKeys(fn ($row) => [$row->month => $row]);
@@ -90,15 +93,23 @@ class ReportChartService
      *
      * @return list<array{barangay: string, dispersals: int, re_dispersals: int}>
      */
-    public function animalsByBarangay(?string $animalType = null, ?string $from = null, ?string $to = null): array
-    {
-        $rows = $this->dispersalQuery(null, $animalType)
-            ->when($from !== null, fn ($q) => $q->where('dispersal_events.date_dispersed', '>=', $from))
-            ->when($to !== null, fn ($q) => $q->where('dispersal_events.date_dispersed', '<=', $to))
-            ->selectRaw('beneficiaries.address as barangay')
+    public function animalsByBarangay(
+        ?string $animalType = null,
+        ?string $from = null,
+        ?string $to = null,
+        ?string $category = null,
+        ?string $beneficiary = null,
+        ?string $dispersalType = null,
+    ): array {
+        $rows = $this->dispersalQuery(null, $animalType, $category, $beneficiary, $dispersalType)
+            ->when($from !== null, fn ($q) => $q->where('animal_ownership_events.event_date', '>=', $from))
+            ->when($to !== null, fn ($q) => $q->where('animal_ownership_events.event_date', '<=', $to))
+            ->join('barangays as destination_barangays', 'destination_barangays.id', '=', 'animal_ownership_events.to_barangay_id')
+            ->whereNotNull('animal_ownership_events.to_barangay_id')
+            ->selectRaw('destination_barangays.name as barangay')
             ->selectRaw('count(*) as dispersals')
-            ->selectRaw('sum(case when dispersal_events.dispersal_type = ? then 1 else 0 end) as re_dispersals', [DispersalEvent::TYPE_RE_DISPERSAL])
-            ->groupBy('barangay')
+            ->selectRaw('sum(case when animal_ownership_events.event_type = ? then 1 else 0 end) as re_dispersals', [AnimalOwnershipEvent::TYPE_RE_DISPERSAL])
+            ->groupBy('destination_barangays.name')
             ->get()
             ->mapWithKeys(fn ($row) => [$row->barangay => $row]);
 
@@ -125,7 +136,12 @@ class ReportChartService
      *
      * @return list<array{month: string, label: string, total: int, compliant: int, rate: float}>
      */
-    public function vaccinationCompliance(?string $barangay = null, ?string $animalType = null, ?int $months = null): array
+    public function vaccinationCompliance(
+        ?string $barangay = null,
+        ?string $animalType = null,
+        ?int $months = null,
+        ?string $beneficiary = null,
+    ): array
     {
         $interval = $this->settings->vaccinationIntervalDays();
         $window = max(1, min(24, $months ?? self::TREND_MONTHS));
@@ -140,6 +156,12 @@ class ReportChartService
                 ->where('created_at', '<=', $end)
                 ->when($barangay !== null && $barangay !== '', fn ($q) => $q->where('address', $barangay))
                 ->when($animalType !== null && $animalType !== '', fn ($q) => $q->where('animal_type', $animalType))
+                ->when($beneficiary !== null && $beneficiary !== '', fn ($q) => $q->where(function ($search) use ($beneficiary): void {
+                    $like = '%'.$beneficiary.'%';
+                    $search->where('name_of_farmer', 'like', $like)
+                        ->orWhere('rsbsa_number', 'like', $like)
+                        ->orWhere('ear_tag_number', 'like', $like);
+                }))
                 ->selectRaw('count(*) as total')
                 ->selectRaw('sum(case when exists (
                     select 1 from monitoring_records mr
@@ -173,11 +195,21 @@ class ReportChartService
      *
      * @return list<array{animal_type: string, animals: int}>
      */
-    public function animalTypeDistribution(?string $month = null, ?string $from = null, ?string $to = null): array
-    {
+    public function animalTypeDistribution(
+        ?string $month = null,
+        ?string $from = null,
+        ?string $to = null,
+        ?string $beneficiary = null,
+    ): array {
         return MonitoringRecord::query()
             ->join('beneficiaries', 'beneficiaries.id', '=', 'monitoring_records.beneficiary_id')
             ->whereNull('beneficiaries.deleted_at')
+            ->when($beneficiary !== null && $beneficiary !== '', fn ($q) => $q->where(function ($search) use ($beneficiary): void {
+                $like = '%'.$beneficiary.'%';
+                $search->where('beneficiaries.name_of_farmer', 'like', $like)
+                    ->orWhere('beneficiaries.rsbsa_number', 'like', $like)
+                    ->orWhere('beneficiaries.ear_tag_number', 'like', $like);
+            }))
             ->when($month !== null && $month !== '', fn ($q) => $q->whereRaw('substr(monitoring_records.date_monitored, 1, 7) = ?', [$month]))
             ->when($from !== null, fn ($q) => $q->where('monitoring_records.date_monitored', '>=', $from))
             ->when($to !== null, fn ($q) => $q->where('monitoring_records.date_monitored', '<=', $to))
@@ -200,7 +232,7 @@ class ReportChartService
      *
      * @return list<array{technician: string, households: int}>
      */
-    public function technicianWorkload(?string $barangay = null): array
+    public function technicianWorkload(?string $barangay = null, ?string $beneficiary = null): array
     {
         $rows = User::query()
             ->leftJoin('beneficiaries', function ($join): void {
@@ -208,6 +240,12 @@ class ReportChartService
                     ->whereNull('beneficiaries.deleted_at');
             })
             ->when($barangay !== null && $barangay !== '', fn ($q) => $q->where('beneficiaries.address', $barangay))
+            ->when($beneficiary !== null && $beneficiary !== '', fn ($q) => $q->where(function ($search) use ($beneficiary): void {
+                $like = '%'.$beneficiary.'%';
+                $search->where('beneficiaries.name_of_farmer', 'like', $like)
+                    ->orWhere('beneficiaries.rsbsa_number', 'like', $like)
+                    ->orWhere('beneficiaries.ear_tag_number', 'like', $like);
+            }))
             ->where('users.role', 'technician')
             ->whereNull('users.deleted_at')
             ->selectRaw('users.id as user_id, users.name as technician')
@@ -230,13 +268,44 @@ class ReportChartService
      * with the SoftDeletes filters written explicitly — raw joins bypass
      * Eloquent's global scope, the same trap perBarangaySection documents.
      */
-    private function dispersalQuery(?string $barangay, ?string $animalType)
-    {
-        return DispersalEvent::query()
-            ->join('beneficiaries', 'beneficiaries.id', '=', 'dispersal_events.beneficiary_id')
-            ->whereNull('dispersal_events.deleted_at')
-            ->whereNull('beneficiaries.deleted_at')
-            ->when($barangay !== null && $barangay !== '', fn ($q) => $q->where('beneficiaries.address', $barangay))
-            ->when($animalType !== null && $animalType !== '', fn ($q) => $q->where('beneficiaries.animal_type', $animalType));
+    private function dispersalQuery(
+        ?string $barangay,
+        ?string $animalType,
+        ?string $category = null,
+        ?string $beneficiary = null,
+        ?string $dispersalType = null,
+    ) {
+        return AnimalOwnershipEvent::query()
+            ->where('status', AnimalOwnershipEvent::STATUS_ACTIVE)
+            ->whereIn('event_type', [
+                AnimalOwnershipEvent::TYPE_DISPERSAL,
+                AnimalOwnershipEvent::TYPE_RE_DISPERSAL,
+                AnimalOwnershipEvent::TYPE_PASS_ON,
+            ])
+            ->when($barangay !== null && $barangay !== '', fn ($q) => $q->whereHas(
+                'toBeneficiary',
+                fn ($beneficiary) => $beneficiary->where('address', $barangay),
+            ))
+            ->when($animalType !== null && $animalType !== '', fn ($q) => $q->whereHas(
+                'animal',
+                fn ($animal) => $animal->where(function ($value) use ($animalType): void {
+                    $value->where('animal_type', $animalType)
+                        ->orWhereHas('animalType', fn ($type) => $type->where('name', $animalType));
+                }),
+            ))
+            ->when($category !== null && $category !== '', fn ($q) => $q->whereHas(
+                'animal.animalType',
+                fn ($type) => $type->where('main_category', $category),
+            ))
+            ->when($beneficiary !== null && $beneficiary !== '', fn ($q) => $q->whereHas(
+                'toBeneficiary',
+                fn ($b) => $b->where(function ($search) use ($beneficiary): void {
+                    $like = '%'.$beneficiary.'%';
+                    $search->where('name_of_farmer', 'like', $like)
+                        ->orWhere('rsbsa_number', 'like', $like)
+                        ->orWhere('ear_tag_number', 'like', $like);
+                }),
+            ))
+            ->when($dispersalType !== null && $dispersalType !== '', fn ($q) => $q->where('event_type', $dispersalType));
     }
 }

@@ -46,9 +46,26 @@ class ReportExcelService
     /**
      * Build and stream the workbook for the current scope.
      */
-    public function downloadResponse(User $viewer, ?string $barangay = null, ?Carbon $from = null): StreamedResponse
-    {
-        $report = $this->reports->cityWide($viewer, $barangay, $from);
+    public function downloadResponse(
+        User $viewer,
+        ?string $barangay = null,
+        ?Carbon $from = null,
+        ?Carbon $to = null,
+        ?string $category = null,
+        ?string $animalType = null,
+        ?string $beneficiary = null,
+        ?string $dispersalType = null,
+    ): StreamedResponse {
+        $report = $this->reports->cityWide(
+            $viewer,
+            $barangay,
+            $from,
+            $to,
+            $category,
+            $animalType,
+            $beneficiary,
+            $dispersalType,
+        );
         $writer = new XlsxWriter($this->workbook($report, $barangay, $from));
 
         // Name the file after the filters that were active, so a folder of
@@ -62,6 +79,22 @@ class ReportExcelService
 
         if ($from !== null) {
             $parts[] = 'from-'.$from->format('Y-m-d');
+        }
+
+        if ($to !== null) {
+            $parts[] = 'to-'.$to->format('Y-m-d');
+        }
+
+        if ($category !== null && $category !== '') {
+            $parts[] = $category;
+        }
+
+        if ($beneficiary !== null && $beneficiary !== '') {
+            $parts[] = Str::limit(Str::slug($beneficiary), 40, '');
+        }
+
+        if ($dispersalType !== null && $dispersalType !== '') {
+            $parts[] = $dispersalType;
         }
 
         return response()->streamDownload(function () use ($writer): void {
@@ -100,6 +133,8 @@ class ReportExcelService
 
         $sheet->fromArray([
             ['Scope', $barangay !== null && $barangay !== '' ? $barangay : 'All barangays'],
+            ['Beneficiary', $report['scope']['beneficiary'] ?: 'All beneficiaries'],
+            ['Dispersal type', $report['scope']['dispersal_type'] ?: 'All completed placements'],
             ['Dispersals since', $from?->toDateString() ?? 'Not filtered'],
             ['Generated at', now()->toDateTimeString()],
         ], null, 'A3');
@@ -157,6 +192,10 @@ class ReportExcelService
             }
         }
 
+        foreach (['total' => 'Completed dispersals', 'livestock' => 'Livestock distributed', 'poultry' => 'Poultry distributed', 'other' => 'Other animals distributed', 'unclassified' => 'Unclassified deliveries', 'initial' => 'Initial dispersals', 're_dispersals' => 'Re-dispersals', 'pass_ons' => 'Pass-ons', 'returns' => 'Returns to CVO'] as $key => $label) {
+            $rows[] = ["Dispersals|{$label}", $report['dispersals'][$key] ?? 0];
+        }
+
         foreach (['health_records' => 'Health records', 'open_cases' => 'Open cases', 'case_notes' => 'Case notes', 'vaccinations' => 'Vaccinations logged'] as $key => $label) {
             $rows[] = ["Clinical|{$label}", $report['clinical'][$key] ?? 0];
         }
@@ -177,7 +216,7 @@ class ReportExcelService
     {
         $sheet->setTitle('Per barangay');
 
-        $header = ['Barangay', 'Households', 'Monitoring visits', 'Field visits', 'Health records', 'Dispersals'];
+        $header = ['Barangay', 'Beneficiaries', 'Dispersals', 'Livestock', 'Poultry', 'Other', 'Monitoring visits', 'Field visits', 'Health records'];
         $sheet->fromArray($header, null, 'A1');
         $this->styleHeaderRow($sheet, 1);
 
@@ -186,16 +225,19 @@ class ReportExcelService
                 fn (array $row): array => [
                     $row['barangay'],
                     $row['households'],
+                    $row['dispersals'],
+                    $row['livestock'] ?? 0,
+                    $row['poultry'] ?? 0,
+                    $row['other'] ?? 0,
                     $row['monitoring_visits'],
                     $row['field_visits'],
                     $row['health_records'],
-                    $row['dispersals'],
                 ],
                 $rows,
             ), null, 'A2');
         }
 
-        foreach (range('A', 'F') as $column) {
+        foreach (range('A', 'I') as $column) {
             $sheet->getColumnDimension($column)->setAutoSize(true);
         }
     }

@@ -10,6 +10,7 @@ use App\Models\Beneficiary;
 use App\Models\User;
 use App\Support\Barangays;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -33,6 +34,11 @@ class DispersalMapTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // The fixture dates below are fixed to October 2026. Pin the clock to
+        // their month so the 30-day backdating rule does not make this suite
+        // start failing merely because time passed.
+        $this->travelTo(Carbon::parse('2026-10-30 12:00:00'));
 
         $this->seed(\Database\Seeders\BarangaySeeder::class);
     }

@@ -49,7 +49,17 @@ function saveBlob(blob, filename) {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export function ReportExportPanel({ barangay = "", month = null, animalType = null, from = "" }) {
+export function ReportExportPanel({
+  barangay = "",
+  month = null,
+  animalType = null,
+  category = null,
+  beneficiary = "",
+  dispersalType = "",
+  from = "",
+  to = "",
+  onExported,
+}) {
   const toast = useToast();
 
   const [template, setTemplate] = useState(REPORT_TEMPLATES[0].value);
@@ -63,8 +73,15 @@ export function ReportExportPanel({ barangay = "", month = null, animalType = nu
     const scope = monthLabel(month) ?? "All Months";
     const label = (REPORT_TEMPLATES.find((option) => option.value === template) ?? REPORT_TEMPLATES[0]).label;
 
-    return `${label} — ${barangay || "All Barangays"} — ${scope}`;
-  }, [barangay, month, template]);
+    const detail = [
+      beneficiary ? `Beneficiary: ${beneficiary}` : null,
+      dispersalType ? dispersalType.replaceAll("_", "-") : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    return `${label} — ${barangay || "All Barangays"} — ${scope}${detail ? ` — ${detail}` : ""}`;
+  }, [barangay, month, template, beneficiary, dispersalType]);
 
   const name = customName ?? defaultName;
 
@@ -83,11 +100,16 @@ export function ReportExportPanel({ barangay = "", month = null, animalType = nu
         name: trimmed,
         barangay: barangay || undefined,
         animal_type: animalType || undefined,
+        category: category || undefined,
+        beneficiary: beneficiary || undefined,
+        dispersal_type: dispersalType || undefined,
         month: month || undefined,
         from: from || undefined,
+        to: to || undefined,
       });
 
       saveBlob(blob, filename);
+      onExported?.();
       toast.success(`Report downloaded: ${filename}`);
     } catch (err) {
       const message = getErrorMessage(err);

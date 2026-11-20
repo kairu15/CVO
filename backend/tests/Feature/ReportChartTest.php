@@ -2,10 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\Animal;
+use App\Models\AnimalOwnershipEvent;
+use App\Models\AnimalType;
+use App\Models\Barangay;
 use App\Models\Beneficiary;
-use App\Models\DispersalEvent;
 use App\Models\MonitoringRecord;
 use App\Models\User;
+use App\Support\Barangays;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -29,6 +33,15 @@ class ReportChartTest extends TestCase
         parent::setUp();
 
         $this->admin = User::factory()->create(['role' => 'admin']);
+
+        // The chart zero-fills every covered barangay from this table; seed
+        // the full catalogue before individual tests add their own rows.
+        foreach (Barangays::all() as $name) {
+            Barangay::query()->firstOrCreate(
+                ['name' => $name],
+                ['latitude' => 9.3, 'longitude' => 122.8],
+            );
+        }
     }
 
     private function chart(string $name, array $query = []): array
@@ -37,6 +50,49 @@ class ReportChartTest extends TestCase
             ->getJson('/api/v1/admin/report/charts/'.$name.(empty($query) ? '' : '?'.http_build_query($query)))
             ->assertOk()
             ->json('data');
+    }
+
+    private function delivery(
+        Beneficiary $beneficiary,
+        array $attributes = [],
+        string $typeName = 'Carabao',
+        string $eventType = AnimalOwnershipEvent::TYPE_DISPERSAL,
+    ): AnimalOwnershipEvent {
+        $type = AnimalType::query()->firstOrCreate(
+            ['name' => $typeName],
+            [
+                'main_category' => in_array($typeName, ['Chicken', 'Duck', 'Quail', 'Turkey', 'Goose'], true)
+                    ? 'poultry'
+                    : 'livestock',
+                'sort_order' => 0,
+            ],
+        );
+        $barangayId = $beneficiary->barangay_id
+            ?? Barangay::query()->firstOrCreate(
+                ['name' => $beneficiary->address],
+                ['latitude' => 9.3, 'longitude' => 122.8],
+            )->id;
+
+        $beneficiary->forceFill([
+            'barangay_id' => $barangayId,
+            'animal_type' => $type->name,
+            'animal_type_id' => $type->id,
+        ])->save();
+
+        $animal = Animal::factory()->ownedBy($beneficiary)->create([
+            'animal_type' => $type->name,
+            'animal_type_id' => $type->id,
+        ]);
+
+        return AnimalOwnershipEvent::factory()
+            ->forAnimal($animal)
+            ->to($beneficiary)
+            ->create([
+                'event_type' => $eventType,
+                'event_date' => now()->toDateString(),
+                'to_barangay_id' => $barangayId,
+                ...$attributes,
+            ]);
     }
 
     public function test_a_guest_and_non_holders_cannot_read_charts(): void
@@ -52,12 +108,14 @@ class ReportChartTest extends TestCase
     {
         $beneficiary = Beneficiary::factory()->create(['address' => 'Dawis']);
 
-        DispersalEvent::factory()->initial($beneficiary)
-            ->create(['date_dispersed' => now()->startOfMonth()->toDateString()]);
-        DispersalEvent::factory()->initial($beneficiary)
-            ->create(['date_dispersed' => now()->subMonths(2)->startOfMonth()->toDateString()]);
-        DispersalEvent::factory()->reDispersal($beneficiary, $beneficiary)
-            ->create(['date_dispersed' => now()->subMonths(2)->toDateString()]);
+        $this->delivery($beneficiary, ['event_date' => now()->startOfMonth()->toDateString()]);
+        $this->delivery($beneficiary, ['event_date' => now()->subMonths(2)->startOfMonth()->toDateString()]);
+        $this->delivery(
+            $beneficiary,
+            ['event_date' => now()->subMonths(2)->toDateString()],
+            'Carabao',
+            AnimalOwnershipEvent::TYPE_RE_DISPERSAL,
+        );
 
         $data = $this->chart('dispersal-trend');
 
@@ -82,8 +140,7 @@ class ReportChartTest extends TestCase
     {
         $beneficiary = Beneficiary::factory()->create();
 
-        DispersalEvent::factory()->initial($beneficiary)
-            ->create(['date_dispersed' => now()->subMonths(3)->toDateString()]);
+        $this->delivery($beneficiary, ['event_date' => now()->subMonths(3)->toDateString()]);
 
         $from = now()->subMonth()->startOfMonth()->toDateString();
         $to = now()->toDateString();
@@ -102,9 +159,9 @@ class ReportChartTest extends TestCase
         $inDawis2 = Beneficiary::factory()->create(['address' => 'Dawis']);
         $inTayawan = Beneficiary::factory()->create(['address' => 'Tayawan']);
 
-        DispersalEvent::factory()->initial($inDawis)->create();
-        DispersalEvent::factory()->initial($inDawis2)->create();
-        DispersalEvent::factory()->initial($inTayawan)->create();
+        $this->delivery($inDawis);
+        $this->delivery($inDawis2);
+        $this->delivery($inTayawan);
 
         $data = $this->chart('animals-by-barangay');
 
@@ -125,14 +182,30 @@ class ReportChartTest extends TestCase
         $carabao = Beneficiary::factory()->create(['address' => 'Dawis', 'animal_type' => 'Carabao']);
         $goat = Beneficiary::factory()->create(['address' => 'Dawis', 'animal_type' => 'Goat']);
 
-        DispersalEvent::factory()->initial($carabao)->create();
-        DispersalEvent::factory()->initial($goat)->create();
+        $this->delivery($carabao, [], 'Carabao');
+        $this->delivery($goat, [], 'Goat');
 
         $data = $this->chart('animals-by-barangay', ['animal_type' => 'Carabao']);
 
         $byBarangay = collect($data)->mapWithKeys(
             fn (array $row) => [$row['barangay'] => $row['dispersals']],
         );
+        $this->assertSame(1, $byBarangay['Dawis']);
+    }
+
+    public function test_dispersal_charts_respect_the_main_category(): void
+    {
+        $livestock = Beneficiary::factory()->create(['address' => 'Dawis']);
+        $poultry = Beneficiary::factory()->create(['address' => 'Dawis']);
+
+        $this->delivery($livestock, [], 'Carabao');
+        $this->delivery($poultry, [], 'Chicken');
+
+        $data = $this->chart('animals-by-barangay', ['category' => 'poultry']);
+        $byBarangay = collect($data)->mapWithKeys(
+            fn (array $row) => [$row['barangay'] => $row['dispersals']],
+        );
+
         $this->assertSame(1, $byBarangay['Dawis']);
     }
 

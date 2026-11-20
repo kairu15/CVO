@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * GET /api/v1/admin/report/charts/* — the chart endpoints' shared filter set.
@@ -36,6 +37,9 @@ class ReportChartRequest extends FormRequest
             'barangay' => ['sometimes', 'nullable', 'string', 'max:255'],
             'animal_type' => ['sometimes', 'nullable', 'string', 'max:255'],
             'month' => ['sometimes', 'nullable', 'date_format:Y-m'],
+            'category' => ['sometimes', 'nullable', 'string', 'in:livestock,poultry,other'],
+            'beneficiary' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'dispersal_type' => ['sometimes', 'nullable', Rule::in(['dispersal', 're_dispersal', 'pass_on'])],
             'from' => ['sometimes', 'nullable', 'date'],
             'to' => ['sometimes', 'nullable', 'date', 'after_or_equal:from'],
         ];

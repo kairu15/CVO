@@ -516,10 +516,18 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         Route::get('/report/export', [ReportController::class, 'export'])
             ->middleware('permission:view_reports')->name('api.admin.report.export');
 
+        // Recent report exports — read from the audit trail, not a duplicate
+        // report-history table.
+        Route::get('/report/recent', [ReportController::class, 'recentExports'])
+            ->middleware('permission:view_reports')->name('api.admin.report.recent');
+
         // Off-site / needs-review counts behind the Reports screen's
         // verification card (Feature 1).
         Route::get('/report/verification', [ReportController::class, 'verificationSummary'])
             ->middleware('permission:view_reports')->name('api.admin.report.verification');
+
+        // Note: `/report/recent` is declared above the parameterless report
+        // routes, and never collides with them (three segments).
 
         // The printable report built on the office's own Excel template — the
         // CVO cover sheet + signature block, filled with the dispersal roster

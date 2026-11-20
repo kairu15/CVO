@@ -317,7 +317,7 @@ class SettingsTest extends TestCase
 
         // The ownership-chain events sit beside the other stored event types:
         // they are written rows (not a derived feed), so each one gets a switch.
-        $this->assertSame(['beneficiary-added', 'technician-assigned', 'technician-reassigned', 'field-visit-photo', 'animal-dispersed', 'animal-re-dispersed', 'animal-returned', 'animal-event-voided', 'smart-vaccination-overdue', 'smart-bcs-out-of-range', 'smart-no-recent-visit', 'smart-barangay-flag', 'cluster-alert'], array_keys($data));
+        $this->assertSame(['beneficiary-added', 'technician-assigned', 'technician-reassigned', 'field-visit-photo', 'field-visit-completed', 'animal-dispersed', 'animal-re-dispersed', 'animal-returned', 'animal-event-voided', 'smart-vaccination-overdue', 'smart-bcs-out-of-range', 'smart-no-recent-visit', 'smart-barangay-flag', 'cluster-alert'], array_keys($data));
         $this->assertNotContains(false, $data);
     }
 

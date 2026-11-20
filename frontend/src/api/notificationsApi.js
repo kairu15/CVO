@@ -1,17 +1,12 @@
 import { api, ensureCsrfCookie, unwrap } from "./client";
 
 /**
- * Notifications — a feed of derived alerts (dispersal / vaccination) plus the
- * caller's stored event notifications.
+ * Notifications — the caller's stored event feed plus derived dispersal /
+ * vaccination alerts.
  *
- * Derived alerts have no read state: one disappears when the record it
- * describes is recorded. Stored events carry read state, which is what the
- * bell badge counts — opening an event marks just that one read, and
- * read-all clears the rest.
- *
- * The endpoint answers with the alerts *and* the counts across the whole feed,
- * so a capped page still reports how much sits behind it. Both are returned
- * together so the header bell and this page can never disagree.
+ * Stored events support server-side status/category/priority/search/date
+ * filters and own their read/archive state. Derived alerts are read-only: they
+ * disappear when the record they describe is recorded.
  */
 
 export const notificationsApi = {
@@ -20,6 +15,12 @@ export const notificationsApi = {
    *
    * @param {object} [params]
    * @param {number} [params.limit] 1–50, how many alerts to return
+   * @param {string} [params.status] all | unread | read | archived
+   * @param {string} [params.category] one of UserNotification::CATEGORIES
+   * @param {string} [params.priority] critical | high | normal | low
+   * @param {string} [params.search]
+   * @param {string} [params.from] YYYY-MM-DD
+   * @param {string} [params.to] YYYY-MM-DD
    * @returns {Promise<{alerts: Array<object>, counts: object}>}
    */
   list: async (params = {}) => {
@@ -39,7 +40,7 @@ export const notificationsApi = {
     return response.data;
   },
 
-  /** Mark every stored event notification read for the caller. */
+  /** Mark every active stored event notification read for the caller. */
   markAllRead: async () => {
     await ensureCsrfCookie();
     const response = await api.post("/api/v1/notifications/read-all");
@@ -58,5 +59,33 @@ export const notificationsApi = {
     const response = await api.post(`/api/v1/notifications/${id}/read`);
 
     return response.data;
+  },
+
+  /**
+   * Apply one action to many of the caller's own notifications.
+   *
+   * @param {number[]} ids
+   * @param {"read"|"unread"|"archive"|"unarchive"|"delete"} action
+   */
+  bulk: async (ids, action) => {
+    await ensureCsrfCookie();
+    const response = await api.post("/api/v1/notifications/bulk", { ids, action });
+
+    return response.data;
+  },
+
+  /** The caller's category switches. */
+  preferences: async () => {
+    const response = await api.get("/api/v1/notifications/preferences");
+
+    return response.data?.data ?? { preferences: {}, categories: [] };
+  },
+
+  /** Save the caller's category switches. */
+  updatePreferences: async (preferences) => {
+    await ensureCsrfCookie();
+    const response = await api.patch("/api/v1/notifications/preferences", { preferences });
+
+    return response.data?.data ?? { preferences: {}, categories: [] };
   },
 };

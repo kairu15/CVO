@@ -15,7 +15,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'username', 'email', 'password', 'role', 'avatar_path', 'created_by'])]
+#[Fillable(['name', 'username', 'email', 'phone', 'address', 'password', 'role', 'notification_preferences', 'avatar_path', 'created_by'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -98,6 +98,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'notification_preferences' => 'array',
             'password' => 'hashed',
         ];
     }
@@ -181,6 +182,16 @@ class User extends Authenticatable
     public function assignedBeneficiaries(): HasMany
     {
         return $this->hasMany(Beneficiary::class, 'technician_id');
+    }
+
+    /**
+     * Whether this account wants a notification category. A missing key means
+     * on, so rolling this out never silently stops an existing user's alerts;
+     * only an explicit false suppresses delivery.
+     */
+    public function wantsNotificationCategory(string $category): bool
+    {
+        return (bool) (($this->notification_preferences ?? [])[$category] ?? true);
     }
 
     /**

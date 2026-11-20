@@ -46,7 +46,10 @@ class SmartAlertService
 
     private const ALERT_LINK_TECHNICIAN = '/dashboard/technician/notifications';
 
-    public function __construct(private readonly SettingsService $settings) {}
+    public function __construct(
+        private readonly SettingsService $settings,
+        private readonly NotificationService $notifications,
+    ) {}
 
     /**
      * Admin recipients, resolved once per run rather than once per rule per
@@ -127,27 +130,17 @@ class SmartAlertService
         $keys = [];
 
         foreach ($specs as $spec) {
-            // A rule switched off in System Settings stops writing, and its
-            // existing rows age out as stale on this same pass — the alert
-            // restates a decision, and that decision is now "don't alert".
-            if (! $this->settings->notificationTypeEnabled((string) $spec['type'])) {
+            // NotificationService applies BOTH gates here: the organisation's
+            // notify_* switch and the recipient's own category preference. A
+            // suppressed spec is deliberately left out of $keys, so its old
+            // row ages out as stale on this same pass.
+            $written = $this->notifications->upsertSmart($spec);
+
+            if ($written === null) {
                 continue;
             }
 
             $keys[] = $spec['dedupe_key'];
-
-            UserNotification::updateOrCreate(
-                ['dedupe_key' => $spec['dedupe_key']],
-                [
-                    'user_id' => $spec['user_id'],
-                    'beneficiary_id' => $spec['beneficiary_id'] ?? null,
-                    'monitoring_record_id' => $spec['monitoring_record_id'] ?? null,
-                    'type' => $spec['type'],
-                    'title' => $spec['title'],
-                    'message' => $spec['message'],
-                    'link' => $spec['link'] ?? null,
-                ],
-            );
         }
 
         $stale = UserNotification::query()->whereIn('type', UserNotification::SMART_TYPES);

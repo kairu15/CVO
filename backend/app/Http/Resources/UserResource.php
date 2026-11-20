@@ -20,6 +20,8 @@ class UserResource extends JsonResource
             'username' => $this->username,
             'avatar_url' => $this->avatar_url,
             'email' => $this->email,
+            'phone' => $this->phone,
+            'address' => $this->address,
             'role' => $this->role,
             // The capability keys this account's role holds (the
             // role_permissions matrix). Lets the SPA hide what the server

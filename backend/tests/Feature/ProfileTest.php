@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\Barangay;
 use App\Models\Beneficiary;
 use App\Models\CaseNote;
@@ -10,6 +11,7 @@ use App\Models\Purok;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -48,7 +50,10 @@ class ProfileTest extends TestCase
             ->assertJsonPath('data.user.role', 'technician')
             ->assertJsonStructure([
                 'data' => [
-                    'user' => ['id', 'name', 'username', 'email', 'role', 'avatar_url', 'created_at'],
+                    'user' => [
+                        'id', 'name', 'username', 'email', 'phone', 'address',
+                        'role', 'status', 'avatar_url', 'last_login_at', 'created_at',
+                    ],
                     'technician' => ['assigned_farmers'],
                     'clinical' => ['health_records_count', 'case_notes_count'],
                 ],
@@ -84,7 +89,7 @@ class ProfileTest extends TestCase
             ->assertJsonMissingPath('data.clinical');
     }
 
-    public function test_user_can_update_own_name_and_email_only(): void
+    public function test_user_can_update_own_name_email_and_contact_details(): void
     {
         $user = User::factory()->create(['name' => 'Old Name']);
         $other = User::factory()->create();
@@ -92,19 +97,36 @@ class ProfileTest extends TestCase
         $this->actingAs($user)->patchJson('/api/v1/profile', [
             'name' => 'New Name',
             'email' => 'new-email@example.com',
+            'phone' => '+63 912 345 6789',
+            'address' => '12 Mabini Street, Dawis',
             // Role/username are not accepted inputs — silently ignored.
             'role' => 'admin',
         ])->assertOk()
             ->assertJsonPath('data.user.name', 'New Name')
+            ->assertJsonPath('data.user.phone', '+63 912 345 6789')
+            ->assertJsonPath('data.user.address', '12 Mabini Street, Dawis')
             ->assertJsonPath('data.user.role', $user->role);
 
         $this->assertDatabaseHas('users', [
             'id' => $user->id,
             'name' => 'New Name',
             'email' => 'new-email@example.com',
+            'phone' => '+63 912 345 6789',
+            'address' => '12 Mabini Street, Dawis',
         ]);
         $this->assertDatabaseMissing('users', ['id' => $user->id, 'role' => 'admin']);
         $this->assertDatabaseHas('users', ['id' => $other->id, 'name' => $other->name]);
+    }
+
+    public function test_contact_details_are_validated(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->patchJson('/api/v1/profile', [
+            'phone' => 'call me',
+            'address' => str_repeat('a', 256),
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['phone', 'address']);
     }
 
     public function test_email_must_stay_unique(): void
@@ -117,21 +139,89 @@ class ProfileTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('email');
     }
 
-    public function test_location_fields_are_not_writable_from_the_profile(): void
+    public function test_household_location_fields_are_not_writable_from_the_profile(): void
     {
-        // Household location is corrected on the admin Beneficiaries screen,
-        // never from a personal profile: the address fields are not accepted
-        // inputs at all, and writing them changes nothing.
+        // The personal `address` field belongs to the account. Household
+        // location (barangay/purok/coordinates) is corrected on the admin
+        // Beneficiaries screen and is not accepted here.
         $user = User::factory()->create(['role' => 'technician']);
 
         $this->actingAs($user)->patchJson('/api/v1/profile', [
-            'address' => 'Not A Barangay',
             'purok_id' => 999,
             'latitude' => 9.57,
             'longitude' => 122.88,
         ])->assertOk();
 
         $this->assertNull($user->fresh()->latitude ?? null);
+    }
+
+    public function test_security_payload_lists_only_the_callers_sessions_and_activity(): void
+    {
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+        $user->forceFill(['last_login_at' => now()->subHour()])->save();
+
+        $token = $user->createToken('Field phone');
+        $other->createToken('Other phone');
+
+        foreach ([[$user, 'user-session'], [$other, 'other-session']] as [$owner, $id]) {
+            DB::table('sessions')->insert([
+                'id' => $id,
+                'user_id' => $owner->id,
+                'ip_address' => '127.0.0.1',
+                'user_agent' => 'Mozilla/5.0 Chrome/120.0 Safari/537.36',
+                'payload' => 'payload',
+                'last_activity' => now()->timestamp,
+            ]);
+        }
+
+        ActivityLog::create([
+            'actor_id' => $user->id,
+            'action' => 'login',
+            'ip_address' => '127.0.0.1',
+        ]);
+        ActivityLog::create([
+            'actor_id' => $other->id,
+            'action' => 'login',
+            'ip_address' => '127.0.0.1',
+        ]);
+
+        $response = $this->withToken($token->plainTextToken)
+            ->getJson('/api/v1/profile/security')
+            ->assertOk()
+            ->assertJsonCount(2, 'data.sessions')
+            ->assertJsonCount(1, 'data.recent_activity')
+            ->assertJsonPath('data.recent_activity.0.label', 'Signed in')
+            ->assertJsonFragment(['device' => 'Field phone', 'current' => true])
+            ->assertJsonFragment(['device' => 'Chrome browser'])
+            ->assertJsonMissing(['device' => 'Other phone']);
+
+        $this->assertNotNull($response->json('data.last_login_at'));
+    }
+
+    public function test_the_caller_can_revoke_other_sessions_without_losing_their_own(): void
+    {
+        $user = User::factory()->create();
+        $current = $user->createToken('This phone');
+        $other = $user->createToken('Old phone');
+
+        DB::table('sessions')->insert([
+            'id' => 'old-browser',
+            'user_id' => $user->id,
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'Mozilla/5.0',
+            'payload' => 'payload',
+            'last_activity' => now()->timestamp,
+        ]);
+
+        $this->withToken($current->plainTextToken)
+            ->postJson('/api/v1/profile/sessions/revoke-others')
+            ->assertOk()
+            ->assertJsonPath('data.revoked', true);
+
+        $this->assertDatabaseHas('personal_access_tokens', ['id' => $current->accessToken->id]);
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $other->accessToken->id]);
+        $this->assertDatabaseMissing('sessions', ['id' => 'old-browser']);
     }
 
     public function test_password_change_requires_the_current_password(): void
@@ -187,6 +277,8 @@ class ProfileTest extends TestCase
     public function test_profile_requires_authentication(): void
     {
         $this->getJson('/api/v1/profile')->assertUnauthorized();
+        $this->getJson('/api/v1/profile/security')->assertUnauthorized();
         $this->patchJson('/api/v1/profile', [])->assertUnauthorized();
+        $this->postJson('/api/v1/profile/sessions/revoke-others')->assertUnauthorized();
     }
 }

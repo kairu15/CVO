@@ -59,6 +59,48 @@ class ProfileController extends Controller
         ]);
     }
 
+    /**
+     * Recent sign-ins and active sessions for the caller's own account.
+     */
+    public function security(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $token = $user->currentAccessToken();
+
+        return response()->json([
+            'data' => $this->profiles->security(
+                $user,
+                $request->hasSession() ? $request->session()->getId() : null,
+                $token instanceof PersonalAccessToken ? $token : null,
+            ),
+        ]);
+    }
+
+    /**
+     * Sign out every other browser/mobile session, keeping the device that
+     * made this request signed in. The same server path is used after a
+     * password change, so the two cannot diverge.
+     */
+    public function revokeOtherSessions(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $token = $user->currentAccessToken();
+
+        $this->auth->revokeOtherSessions(
+            $user,
+            $request->hasSession() ? $request->session()->getId() : null,
+            $token instanceof PersonalAccessToken ? $token : null,
+        );
+
+        $this->audit->log($user, 'sessions_revoked', User::class, [
+            'scope' => 'other_sessions',
+        ]);
+
+        return response()->json([
+            'data' => ['revoked' => true],
+        ]);
+    }
+
     public function updatePassword(UpdatePasswordRequest $request): JsonResponse
     {
         $user = $request->user();

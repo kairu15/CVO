@@ -177,7 +177,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     // The authenticated user's own profile — no {id} anywhere: every route
     // is scoped to the caller by construction.
     Route::get('/profile', [ProfileController::class, 'show'])->name('api.profile.show');
+    Route::get('/profile/security', [ProfileController::class, 'security'])
+        ->name('api.profile.security');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('api.profile.update');
+    Route::post('/profile/sessions/revoke-others', [ProfileController::class, 'revokeOtherSessions'])
+        ->name('api.profile.sessions.revoke-others');
     Route::patch('/profile/password', [ProfileController::class, 'updatePassword'])
         ->middleware('throttle:6,1,password')
         ->name('api.profile.password');
@@ -326,8 +330,14 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         ->name('api.notifications');
     Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount'])
         ->name('api.notifications.unread-count');
+    Route::get('notifications/preferences', [NotificationController::class, 'preferences'])
+        ->name('api.notifications.preferences');
+    Route::patch('notifications/preferences', [NotificationController::class, 'updatePreferences'])
+        ->name('api.notifications.preferences.update');
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])
         ->name('api.notifications.read-all');
+    Route::post('notifications/bulk', [NotificationController::class, 'bulk'])
+        ->name('api.notifications.bulk');
     Route::post('notifications/{id}/read', [NotificationController::class, 'markRead'])
         ->whereNumber('id')
         ->name('api.notifications.read');

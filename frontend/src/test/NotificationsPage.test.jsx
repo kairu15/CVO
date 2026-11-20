@@ -12,6 +12,9 @@ vi.mock("../api/notificationsApi", () => ({
     unreadCount: vi.fn(),
     markAllRead: vi.fn(),
     markRead: vi.fn(),
+    bulk: vi.fn(),
+    preferences: vi.fn(),
+    updatePreferences: vi.fn(),
   },
 }));
 
@@ -88,6 +91,16 @@ describe("NotificationsPage", () => {
     notificationsApi.unreadCount.mockResolvedValue({ data: { unread: 1 } });
     notificationsApi.markAllRead.mockResolvedValue({ data: { marked: 1 } });
     notificationsApi.markRead.mockResolvedValue({ data: { marked: true } });
+    notificationsApi.bulk.mockResolvedValue({ data: { changed: 1 } });
+    notificationsApi.preferences.mockResolvedValue({
+      preferences: { beneficiaries: true, dispersals: true, monitoring: true },
+      categories: [
+        { key: "beneficiaries", label: "Beneficiaries" },
+        { key: "dispersals", label: "Dispersals" },
+        { key: "monitoring", label: "Monitoring" },
+      ],
+    });
+    notificationsApi.updatePreferences.mockResolvedValue({ preferences: {}, categories: [] });
   });
 
   it("splits the feed into what needs action and what happened", async () => {
@@ -209,5 +222,76 @@ describe("NotificationsPage", () => {
     await screen.findByText("Vaccination overdue");
 
     expect(notificationsApi.list).toHaveBeenCalledWith({ limit: 50, page: 1 });
+  });
+
+  it("sends search and narrowing filters to the server", async () => {
+    renderPage();
+    await screen.findByText("Vaccination overdue");
+
+    await userEvent.type(screen.getByLabelText("Search notifications"), "Maria");
+    await userEvent.selectOptions(screen.getByLabelText("Filter by priority"), "high");
+    await userEvent.selectOptions(screen.getByLabelText("Filter by status"), "unread");
+    await userEvent.click(screen.getByRole("button", { name: "Beneficiaries" }));
+
+    await vi.waitFor(() =>
+      expect(notificationsApi.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          limit: 50,
+          page: 1,
+          search: "Maria",
+          priority: "high",
+          status: "unread",
+          category: "beneficiaries",
+        }),
+      ),
+    );
+  });
+
+  it("archives a selected stored event through the bulk endpoint", async () => {
+    renderPage();
+    await screen.findByText("Beneficiary added");
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Select Beneficiary added" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Archive" }));
+
+    await vi.waitFor(() =>
+      expect(notificationsApi.bulk).toHaveBeenCalledWith([21], "archive"),
+    );
+  });
+
+  it("opens a compact detail panel with the full message and record", async () => {
+    renderPage();
+    await screen.findByText("Beneficiary added");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Details for Beneficiary added" }),
+    );
+
+    const dialog = screen.getByRole("dialog", { name: /Beneficiary added/ });
+    expect(within(dialog).getByText("Pickle in Narra was added to the program.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: /Open record/ })).toHaveAttribute(
+      "href",
+      "/dashboard/admin/monitoring",
+    );
+  });
+
+  it("loads and saves per-user category preferences", async () => {
+    renderPage();
+    await screen.findByText("Vaccination overdue");
+
+    await userEvent.click(screen.getByRole("button", { name: "Preferences" }));
+    expect(await screen.findByRole("dialog", { name: "Notification preferences" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Beneficiaries")).toBeChecked();
+
+    await userEvent.click(screen.getByLabelText("Beneficiaries"));
+    await userEvent.click(screen.getByRole("button", { name: "Save preferences" }));
+
+    await vi.waitFor(() =>
+      expect(notificationsApi.updatePreferences).toHaveBeenCalledWith(
+        expect.objectContaining({ beneficiaries: false }),
+      ),
+    );
   });
 });

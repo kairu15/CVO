@@ -1326,6 +1326,7 @@ class AnimalDispersalService
                 'title' => $title,
                 'message' => $message,
                 'link' => '/dashboard/dispersal-map',
+                'dedupe_key' => "ownership-event:{$event->id}:u{$recipient->id}",
             ]);
         }
     }

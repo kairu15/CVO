@@ -6,30 +6,23 @@ use App\Models\Beneficiary;
 use App\Models\DispersalEvent;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Support\Like;
 use App\Support\Pagination;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
- * Notifications — a derived, read-only feed.
+ * Notifications — one central feed for stored events and derived alerts.
  *
- * Deliberately NOT a table, and deliberately with no read/unread state. Every
- * alert here restates something already recorded: a dispersal event, or a
- * vaccination derived from the visit log. A `notifications` table would be a
- * second copy of those facts, free to drift the moment a record is corrected —
- * the same reasoning that made Vaccination Schedule and Animal Health derived
- * views rather than stored ones.
+ * Stored event notifications are written once at the moment something happens
+ * (beneficiary added, technician assigned, field visit completed/photo,
+ * ownership change, smart-alert scan). They carry read/archive state per
+ * recipient. Derived alerts (vaccination and dispersal) are still computed
+ * from records already in the system and therefore have no read state.
  *
- * The alert ids are therefore stable but not meaningful: they are built from
- * the type and the record they restate, so the same underlying record always
- * produces the same id. That matters because the header bell and this page
- * read the same feed — one source, two presentations, so they cannot
- * disagree about what has happened. It also means a `read_at` column is
- * impossible without a real table; if per-user read state is ever wanted, that
- * is the point at which this stops being derived and becomes data.
- *
- * Alerts are worded from the record's point of view, never the reader's: an
- * animal "was released to" a household rather than "you received". The feed is
- * built for one user's own rows, but the same alert must not become a lie when
- * an all-access admin reads it.
+ * The two streams stay together so the bell and the Notifications page cannot
+ * disagree about what happened. Filters run in SQL for stored rows, before
+ * pagination; the bounded derived scan is filtered in memory because it is
+ * built from aggregate rules rather than a notification table.
  */
 class NotificationService
 {
@@ -42,19 +35,8 @@ class NotificationService
     public const TYPE_VACCINATION_DUE_SOON = 'vaccination-due-soon';
 
     /**
-     * The alert vocabulary, for validation and for the frontend's icon map.
-     *
-     * Every alert is either an event that happened (a dispersal) or a date that
-     * arrived (a vaccination falling due). An animal that has never been
-     * vaccinated is deliberately NOT here: that is a standing state, not an
-     * event, and it is true of every animal from the day it is registered. It
-     * would fire for the whole program at once and swamp the urgent band with
-     * animals nothing has happened to yet — which is precisely how a
-     * notification badge stops meaning anything.
-     *
-     * "Which animals lack a vaccination" is still answered, on the two screens
-     * built for it: the vaccination schedule lists never-vaccinated animals
-     * first, and the animal health rollup flags them.
+     * The derived alert vocabulary, for validation and for the frontend's
+     * icon map. Stored types live on UserNotification.
      *
      * @var list<string>
      */
@@ -74,25 +56,35 @@ class NotificationService
     /** The whole feed: derived alerts + every stored event. */
     public const FILTER_ALL = 'all';
 
-    /**
-     * Just the Smart Alerts — the daily rule-based flags, in their own tab so
-     * they are visually separable from routine events (registration,
-     * assignment, photo).
-     */
+    /** Just the Smart Alerts — the daily rule-based flags. */
     public const FILTER_SMART = 'smart';
 
     public const FILTERS = [self::FILTER_ALL, self::FILTER_SMART];
 
+    public const STATUS_ALL = 'all';
+
+    public const STATUS_UNREAD = 'unread';
+
+    public const STATUS_READ = 'read';
+
+    public const STATUS_ARCHIVED = 'archived';
+
+    public const STATUSES = [
+        self::STATUS_ALL,
+        self::STATUS_UNREAD,
+        self::STATUS_READ,
+        self::STATUS_ARCHIVED,
+    ];
+
+    public const ACTIONS = ['read', 'unread', 'archive', 'unarchive', 'delete'];
+
     public const DEFAULT_LIMIT = Pagination::DEFAULT_PER_PAGE;
 
     /**
-     * How many records of each kind are scanned per request.
-     *
-     * The feed is a recent window, not a full export, so the scan is bounded
-     * rather than unbounded. When it is hit, `truncated` says so — a feed that
-     * silently drops alerts is worse than one that admits it did.
+     * How many matching stored rows are scanned per request. Derived alerts
+     * have their own per-rule caps. When a scan is hit, `truncated` says so.
      */
-    public const SCAN_CAP = 50;
+    public const SCAN_CAP = 200;
 
     /** Set while building the feed when a scan hit its cap. */
     private bool $truncated = false;
@@ -106,66 +98,155 @@ class NotificationService
     /**
      * Record an event notification for a user at the moment it happens.
      *
-     * This is the stored half of the module: the derived feed (vaccination /
-     * dispersal) recomputes from records, but events like "an admin added a
-     * beneficiary" have no record to re-derive from — they must be written
-     * here, once, with read state, or they never existed.
-     *
-     * An event type switched off in System Settings (Notification Preferences)
-     * is suppressed here and answers null — the event still happened, it just
-     * does not ring the bell. Callers that fire-and-forget are unaffected;
-     * the return type went nullable exactly when this gate arrived.
+     * Both gates are applied here, once: the organisation-wide `notify_*`
+     * switch and the recipient's own category preference. That keeps every
+     * caller from having to remember either rule.
      */
     public function create(User $recipient, array $attributes): ?UserNotification
     {
-        if (! $this->settings->notificationTypeEnabled((string) $attributes['type'])) {
+        $type = (string) $attributes['type'];
+
+        if (! $this->settings->notificationTypeEnabled($type)) {
             return null;
         }
 
-        return UserNotification::create([
+        $category = (string) ($attributes['category'] ?? UserNotification::categoryFor($type));
+
+        if (! $recipient->wantsNotificationCategory($category)) {
+            return null;
+        }
+
+        $values = [
             'user_id' => $recipient->id,
             'actor_id' => $attributes['actor_id'] ?? null,
             'beneficiary_id' => $attributes['beneficiary_id'] ?? null,
             'monitoring_record_id' => $attributes['monitoring_record_id'] ?? null,
-            'type' => $attributes['type'],
+            'type' => $type,
+            'category' => $category,
+            'priority' => (string) ($attributes['priority'] ?? UserNotification::priorityFor($type)),
             'title' => $attributes['title'],
             'message' => $attributes['message'],
             'link' => $attributes['link'] ?? null,
-        ]);
+            'dedupe_key' => $attributes['dedupe_key'] ?? null,
+        ];
+
+        // Event callers normally fire once, but an offline replay or retry can
+        // call the same path twice. A supplied dedupe key makes that a no-op
+        // instead of a duplicate row.
+        if ($values['dedupe_key'] !== null) {
+            return UserNotification::firstOrCreate(
+                ['dedupe_key' => $values['dedupe_key']],
+                $values,
+            );
+        }
+
+        return UserNotification::create($values);
+    }
+
+    /**
+     * Idempotent write for the daily smart-alert scan. The scan re-derives the
+     * same facts every day, so it must update-or-create against a stable key
+     * and respect the same preference gates as ordinary events.
+     */
+    public function upsertSmart(array $attributes): ?UserNotification
+    {
+        $type = (string) $attributes['type'];
+        $recipient = User::query()->find($attributes['user_id'] ?? null);
+
+        if (! $recipient || ! $this->settings->notificationTypeEnabled($type)) {
+            return null;
+        }
+
+        $category = UserNotification::categoryFor($type);
+
+        if (! $recipient->wantsNotificationCategory($category)) {
+            return null;
+        }
+
+        return UserNotification::updateOrCreate(
+            ['dedupe_key' => $attributes['dedupe_key']],
+            [
+                'user_id' => $recipient->id,
+                'beneficiary_id' => $attributes['beneficiary_id'] ?? null,
+                'monitoring_record_id' => $attributes['monitoring_record_id'] ?? null,
+                'type' => $type,
+                'category' => $category,
+                'priority' => UserNotification::priorityFor($type),
+                'title' => $attributes['title'],
+                'message' => $attributes['message'],
+                'link' => $attributes['link'] ?? null,
+            ],
+        );
+    }
+
+    /**
+     * The caller's category switches, with missing keys defaulting to on.
+     *
+     * @return array<string, bool>
+     */
+    public function preferences(User $user): array
+    {
+        $stored = $user->notification_preferences ?? [];
+
+        return collect(UserNotification::CATEGORY_LABELS)
+            ->mapWithKeys(fn (string $label, string $category): array => [
+                $category => (bool) ($stored[$category] ?? true),
+            ])
+            ->all();
+    }
+
+    /**
+     * Persist a subset of category switches. Unknown keys are ignored rather
+     * than stored, so a client cannot grow the preferences blob arbitrarily.
+     *
+     * @param  array<string, mixed>  $preferences
+     * @return array<string, bool>
+     */
+    public function updatePreferences(User $user, array $preferences): array
+    {
+        $current = $this->preferences($user);
+
+        foreach (UserNotification::CATEGORIES as $category) {
+            if (array_key_exists($category, $preferences)) {
+                $current[$category] = (bool) $preferences[$category];
+            }
+        }
+
+        // Quietly: a preference change is not a user-record event and should
+        // not create an audit row just because it lives on the user row.
+        $user->forceFill(['notification_preferences' => $current])->saveQuietly();
+
+        return $current;
     }
 
     /**
      * The recipient's unread stored-event count — the bell badge number.
-     * Deliberately a plain COUNT of unread rows: cheap enough to poll.
+     * Archived rows are excluded: they have been deliberately put aside.
      */
     public function unreadCount(User $user): int
     {
         return UserNotification::query()
             ->where('user_id', $user->id)
+            ->whereNull('archived_at')
             ->whereNull('read_at')
             ->count();
     }
 
     /**
-     * Mark every unread stored notification read for this user — the bell
-     * panel's "mark all read". Returns how many rows changed.
+     * Mark every active stored notification read for this user.
      */
     public function markAllRead(User $user): int
     {
         return UserNotification::query()
             ->where('user_id', $user->id)
+            ->whereNull('archived_at')
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
     }
 
     /**
-     * Mark one stored notification read for this user — the per-row
-     * counterpart to markAllRead, written when the reader opens that specific
-     * event.
-     *
-     * Scoped to the caller's own rows: an id that belongs to someone else (or
-     * does not exist) changes nothing and reports false, so the endpoint never
-     * reveals that another user's notification exists.
+     * Mark one stored notification read for this user. Scoped to the caller's
+     * own rows, so an id that belongs to someone else cannot be probed.
      */
     public function markRead(User $user, int $id): bool
     {
@@ -183,12 +264,44 @@ class NotificationService
     }
 
     /**
+     * Apply one action to a selected set of the caller's own notifications.
+     * This is the single bulk endpoint — mark read/unread, archive/unarchive,
+     * or delete. Ids from other users are silently outside the query.
+     *
+     * @param  list<int>  $ids
+     */
+    public function bulk(User $user, array $ids, string $action): int
+    {
+        if ($ids === []) {
+            return 0;
+        }
+
+        $query = UserNotification::query()
+            ->where('user_id', $user->id)
+            ->whereIn('id', $ids);
+
+        return match ($action) {
+            'read' => $query->whereNull('read_at')->update(['read_at' => now()]),
+            'unread' => $query->whereNotNull('read_at')->update(['read_at' => null]),
+            'archive' => $query->whereNull('archived_at')->update([
+                'archived_at' => now(),
+                'read_at' => now(),
+            ]),
+            'unarchive' => $query->whereNotNull('archived_at')->update(['archived_at' => null]),
+            'delete' => $query->delete(),
+            default => 0,
+        };
+    }
+
+    /**
      * The role-scoped feed, most needing action first.
      *
-     * Stored event notifications (this module's write half) merge with the
-     * derived alerts (vaccination / dispersal): events lead — they are the
-     * newest facts — then the derived bands follow in urgency order.
+     * Stored events and derived alerts merge so one screen and the header bell
+     * remain one source of truth. Filters are applied to stored rows in SQL;
+     * the bounded derived set is filtered in memory using the same normalized
+     * criteria.
      *
+     * @param  array<string, mixed>  $filters
      * @return array{alerts: list<array<string, mixed>>, counts: array<string, mixed>}
      */
     public function feed(
@@ -196,21 +309,23 @@ class NotificationService
         int $limit = self::DEFAULT_LIMIT,
         string $filter = self::FILTER_ALL,
         int $page = 1,
+        array $filters = [],
     ): array {
-        // Reset per call: the flag is set while scanning, and a service
-        // instance reused across calls must not inherit the previous answer.
         $this->truncated = false;
+        $filters = $this->normaliseFilters($filters);
+        $smartOnly = $filter === self::FILTER_SMART;
 
-        // The Smart Alerts tab is stored rows only — the derived vaccination
-        // and dispersal bands are a different classification, and mixing them
-        // in would make "flagged" mean two things at once.
-        $alerts = $filter === self::FILTER_SMART
-            ? $this->storedAlerts($user, smartOnly: true)
-            : array_merge(
-                $this->storedAlerts($user),
-                $this->vaccinationAlerts($user),
-                $this->dispersalAlerts($user),
+        $alerts = $this->storedAlerts($user, $smartOnly, $filters);
+
+        // A read or archived view is about stored state; derived alerts have
+        // no such state and would contradict the selected filter.
+        if (! $smartOnly && ! in_array($filters['status'], [self::STATUS_READ, self::STATUS_ARCHIVED], true)) {
+            $alerts = array_merge(
+                $alerts,
+                $this->filterDerived($this->vaccinationAlerts($user), $filters),
+                $this->filterDerived($this->dispersalAlerts($user), $filters),
             );
+        }
 
         $alerts = $this->orderByUrgency($alerts);
 
@@ -219,74 +334,107 @@ class NotificationService
             self::URGENCY_URGENT => 0,
             self::URGENCY_WARNING => 0,
             self::URGENCY_INFO => 0,
+            'important' => 0,
             'unread_events' => $this->unreadCount($user),
-            // The tab badge, independent of the active filter — one cheap
-            // COUNT so the count is always the true number of open flags.
+            'read_events' => UserNotification::query()
+                ->where('user_id', $user->id)
+                ->whereNull('archived_at')
+                ->whereNotNull('read_at')
+                ->count(),
+            'archived_events' => UserNotification::query()
+                ->where('user_id', $user->id)
+                ->whereNotNull('archived_at')
+                ->count(),
+            // The tab badge, independent of the active filter.
             'smart' => $this->smartCount($user),
         ];
 
         foreach ($alerts as $alert) {
             $counts[$alert['urgency']]++;
+
+            if (in_array($alert['priority'] ?? UserNotification::PRIORITY_NORMAL, [
+                UserNotification::PRIORITY_CRITICAL,
+                UserNotification::PRIORITY_HIGH,
+            ], true)) {
+                $counts['important']++;
+            }
         }
 
         $counts['truncated'] = $this->truncated;
-
-        // Pagination metadata rides alongside the counts: `total` above is the
-        // WHOLE feed's size, so a page reports what it carries and what sits
-        // behind it. `$limit` is clamped to Pagination::MAX_PER_PAGE here, so
-        // the feed honours the same 50-row ceiling as every list endpoint.
-        $perPage = Pagination::perPage($limit);
-        $page = max(1, $page);
-
-        $counts['per_page'] = $perPage;
-        $counts['current_page'] = $page;
-        $counts['last_page'] = max(1, (int) ceil($counts['total'] / $perPage));
+        $counts['per_page'] = Pagination::perPage($limit);
+        $counts['current_page'] = max(1, $page);
+        $counts['last_page'] = max(1, (int) ceil($counts['total'] / $counts['per_page']));
 
         return [
-            'alerts' => array_slice($alerts, ($page - 1) * $perPage, $perPage),
+            'alerts' => array_slice(
+                $alerts,
+                ($counts['current_page'] - 1) * $counts['per_page'],
+                $counts['per_page'],
+            ),
             'counts' => $counts,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array{status: string, category: ?string, priority: ?string, search: string, from: ?string, to: ?string}
+     */
+    private function normaliseFilters(array $filters): array
+    {
+        $status = (string) ($filters['status'] ?? self::STATUS_ALL);
+        $category = $filters['category'] ?? null;
+        $priority = $filters['priority'] ?? null;
+
+        return [
+            'status' => in_array($status, self::STATUSES, true) ? $status : self::STATUS_ALL,
+            'category' => in_array($category, UserNotification::CATEGORIES, true) ? $category : null,
+            'priority' => in_array($priority, UserNotification::PRIORITIES, true) ? $priority : null,
+            'search' => trim((string) ($filters['search'] ?? '')),
+            'from' => $filters['from'] ?? null,
+            'to' => $filters['to'] ?? null,
         ];
     }
 
     /**
      * The recipient's stored notifications, as feed alerts.
      *
-     * Ordinary events are informational (they happened); Smart Alerts are
-     * flags to look at and sit in the attention band. `$smartOnly` narrows to
-     * the Smart Alert types for the dedicated tab.
-     *
+     * @param  array<string, mixed>  $filters
      * @return list<array<string, mixed>>
      */
-    private function storedAlerts(User $user, bool $smartOnly = false): array
+    private function storedAlerts(User $user, bool $smartOnly, array $filters): array
     {
-        $query = UserNotification::query()
-            ->where('user_id', $user->id)
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->limit(self::SCAN_CAP);
+        $query = $this->storedQuery($user, $smartOnly, $filters);
+        $matching = (clone $query)->count();
 
-        if ($smartOnly) {
-            $query->whereIn('type', UserNotification::SMART_TYPES);
+        if ($matching > self::SCAN_CAP) {
+            $this->truncated = true;
         }
 
-        return $query->get()
+        return $query
+            ->limit(self::SCAN_CAP)
+            ->get()
             ->map(function (UserNotification $notification) use ($user): array {
                 $isSmart = in_array($notification->type, UserNotification::SMART_TYPES, true);
+                $category = $notification->category ?: UserNotification::categoryFor($notification->type);
+                $priority = $notification->priority ?: UserNotification::priorityFor($notification->type);
 
                 return [
                     'id' => "event-{$notification->id}",
                     'type' => $notification->type,
+                    'category' => $category,
+                    'category_label' => UserNotification::CATEGORY_LABELS[$category] ?? 'System Updates',
+                    'priority' => $priority,
+                    'priority_label' => UserNotification::PRIORITY_LABELS[$priority] ?? 'Normal',
                     'is_smart' => $isSmart,
-                    // A flag is something to look at, so it sits in the
-                    // attention band; an event has already happened and is
-                    // informational. That is also what makes the two visually
-                    // separable on the main feed, before the tab splits them.
-                    'urgency' => $isSmart ? self::URGENCY_WARNING : self::URGENCY_INFO,
+                    'urgency' => $isSmart || $priority === UserNotification::PRIORITY_CRITICAL
+                        ? self::URGENCY_WARNING
+                        : self::URGENCY_INFO,
                     'title' => $notification->title,
                     'message' => $notification->message,
                     'date' => $notification->created_at->toIso8601String(),
                     'created_at' => $notification->created_at->toIso8601String(),
                     'read' => $notification->read_at !== null,
+                    'archived' => $notification->archived_at !== null,
                     'beneficiary_id' => $notification->beneficiary_id,
                     'monitoring_record_id' => $notification->monitoring_record_id,
                     'link' => $notification->link ?? "/dashboard/{$user->role}/monitoring",
@@ -296,26 +444,124 @@ class NotificationService
     }
 
     /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function storedQuery(User $user, bool $smartOnly, array $filters): Builder
+    {
+        $query = UserNotification::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
+
+        if ($smartOnly) {
+            $query->whereIn('type', UserNotification::SMART_TYPES);
+        }
+
+        match ($filters['status']) {
+            self::STATUS_ARCHIVED => $query->whereNotNull('archived_at'),
+            self::STATUS_UNREAD => $query->whereNull('archived_at')->whereNull('read_at'),
+            self::STATUS_READ => $query->whereNull('archived_at')->whereNotNull('read_at'),
+            default => $query->whereNull('archived_at'),
+        };
+
+        $query->when($filters['category'] !== null, fn (Builder $q) => $q->where('category', $filters['category']));
+        $query->when($filters['priority'] !== null, fn (Builder $q) => $q->where('priority', $filters['priority']));
+
+        if ($filters['search'] !== '') {
+            $pattern = Like::contains($filters['search']);
+
+            $query->where(function (Builder $group) use ($pattern): void {
+                $group->whereRaw('LOWER(title) LIKE ?', [$pattern])
+                    ->orWhereRaw('LOWER(message) LIKE ?', [$pattern])
+                    ->orWhereRaw('LOWER(type) LIKE ?', [$pattern])
+                    ->orWhereHas('actor', fn (Builder $actor) => $actor->whereRaw('LOWER(name) LIKE ?', [$pattern]))
+                    ->orWhereHas('beneficiary', function (Builder $beneficiary) use ($pattern): void {
+                        $beneficiary->where(function (Builder $identity) use ($pattern): void {
+                            $identity->whereRaw('LOWER(name_of_farmer) LIKE ?', [$pattern])
+                                ->orWhereRaw("LOWER(COALESCE(rsbsa_number, '')) LIKE ?", [$pattern])
+                                ->orWhereRaw("LOWER(COALESCE(ear_tag_number, '')) LIKE ?", [$pattern]);
+                        });
+                    });
+            });
+        }
+
+        $query->when($filters['from'] !== null, fn (Builder $q) => $q->whereDate('created_at', '>=', $filters['from']));
+        $query->when($filters['to'] !== null, fn (Builder $q) => $q->whereDate('created_at', '<=', $filters['to']));
+
+        return $query;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $alerts
+     * @param  array<string, mixed>  $filters
+     * @return list<array<string, mixed>>
+     */
+    private function filterDerived(array $alerts, array $filters): array
+    {
+        return array_values(array_filter(
+            $alerts,
+            fn (array $alert): bool => $this->matchesDerived($alert, $filters),
+        ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $alert
+     * @param  array<string, mixed>  $filters
+     */
+    private function matchesDerived(array $alert, array $filters): bool
+    {
+        if (in_array($filters['status'], [self::STATUS_READ, self::STATUS_ARCHIVED], true)) {
+            return false;
+        }
+
+        if ($filters['category'] !== null && ($alert['category'] ?? null) !== $filters['category']) {
+            return false;
+        }
+
+        if ($filters['priority'] !== null && ($alert['priority'] ?? null) !== $filters['priority']) {
+            return false;
+        }
+
+        if ($filters['search'] !== '') {
+            $haystack = mb_strtolower(implode(' ', [
+                (string) ($alert['title'] ?? ''),
+                (string) ($alert['message'] ?? ''),
+                (string) ($alert['address'] ?? ''),
+                (string) ($alert['animal_type'] ?? ''),
+            ]));
+
+            if (! str_contains($haystack, mb_strtolower($filters['search']))) {
+                return false;
+            }
+        }
+
+        $date = substr((string) ($alert['date'] ?? ''), 0, 10);
+
+        if ($filters['from'] !== null && ($date === '' || $date < $filters['from'])) {
+            return false;
+        }
+
+        if ($filters['to'] !== null && ($date === '' || $date > $filters['to'])) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * How many Smart Alerts this user currently holds — the tab badge.
      */
     public function smartCount(User $user): int
     {
         return UserNotification::query()
             ->where('user_id', $user->id)
+            ->whereNull('archived_at')
             ->whereIn('type', UserNotification::SMART_TYPES)
             ->count();
     }
 
     /**
      * Band the feed by urgency, and order each band by what is actionable.
-     *
-     * Each band sorts on its own terms rather than sharing one comparator, which
-     * is what makes "most needing action first" true at both scales:
-     *
-     * - urgent/warning — ascending, so the worst-overdue animal leads and the
-     *   soonest due date leads. This matches the vaccination schedule's own
-     *   ordering, which a vet already reads as worst-first.
-     * - info — descending, so the newest movement leads.
      *
      * @param  list<array<string, mixed>>  $alerts
      * @return list<array<string, mixed>>
@@ -333,8 +579,6 @@ class NotificationService
         foreach ($bands as $urgency => $direction) {
             $band = array_values(array_filter($alerts, fn (array $a): bool => $a['urgency'] === $urgency));
 
-            // A movement with no recorded date sorts last in its band, which is
-            // right: it is the one alert with no date to act on.
             usort($band, fn (array $a, array $b): int => $direction * strcmp((string) $a['date'], (string) $b['date']));
 
             $ordered = array_merge($ordered, $band);
@@ -345,14 +589,6 @@ class NotificationService
 
     /**
      * Overdue and due-soon animals.
-     *
-     * Reads the schedule service rather than re-deriving the cycle: the
-     * overdue/due-soon boundary is defined once, in `applyStatusFilter`, and a
-     * second copy here would eventually disagree with the schedule page about
-     * which animals are late.
-     *
-     * `total()` is the exact number of matching animals, so the counts stay
-     * right even when the scanned page is capped.
      *
      * @return list<array<string, mixed>>
      */
@@ -393,8 +629,6 @@ class NotificationService
         array $schedule,
         User $user,
     ): array {
-        // No default arm: an unknown type here is a bug, and `match` throws
-        // rather than quietly wording an alert as the wrong thing.
         $message = match ($type) {
             self::TYPE_VACCINATION_OVERDUE => "{$this->animal($animal)} passed its vaccination due date.",
             self::TYPE_VACCINATION_DUE_SOON => "{$this->animal($animal)} is coming due for vaccination.",
@@ -403,14 +637,17 @@ class NotificationService
         return [
             'id' => "{$type}-{$animal->id}",
             'type' => $type,
+            'category' => UserNotification::CATEGORY_MONITORING,
+            'category_label' => UserNotification::CATEGORY_LABELS[UserNotification::CATEGORY_MONITORING],
+            'priority' => $type === self::TYPE_VACCINATION_OVERDUE
+                ? UserNotification::PRIORITY_CRITICAL
+                : UserNotification::PRIORITY_HIGH,
+            'priority_label' => $type === self::TYPE_VACCINATION_OVERDUE ? 'Critical' : 'High',
             'urgency' => $urgency,
             'title' => match ($type) {
                 self::TYPE_VACCINATION_OVERDUE => 'Vaccination overdue',
                 self::TYPE_VACCINATION_DUE_SOON => 'Vaccination due soon',
             },
-            // No dates in the prose: the row renders `date` through the same
-            // formatter as every other screen, so one alert never shows two
-            // spellings of the same day.
             'message' => $message,
             'date' => $schedule['next_due_date'],
             'beneficiary_id' => $animal->id,
@@ -422,8 +659,7 @@ class NotificationService
     }
 
     /**
-     * Dispersal movements city-wide — every staff role sees every movement
-     * (the technician absorbed the old doctor role's oversight).
+     * Dispersal movements city-wide — every staff role sees every movement.
      *
      * @return list<array<string, mixed>>
      */
@@ -461,6 +697,10 @@ class NotificationService
         return [
             'id' => "{$event->dispersal_type}-{$event->id}",
             'type' => $isReDispersal ? self::TYPE_RE_DISPERSAL : self::TYPE_DISPERSAL,
+            'category' => UserNotification::CATEGORY_DISPERSALS,
+            'category_label' => UserNotification::CATEGORY_LABELS[UserNotification::CATEGORY_DISPERSALS],
+            'priority' => UserNotification::PRIORITY_NORMAL,
+            'priority_label' => 'Normal',
             'urgency' => self::URGENCY_INFO,
             'title' => $isReDispersal ? 'Re-dispersal recorded' : 'Animal dispersed',
             'message' => $isReDispersal
@@ -490,7 +730,6 @@ class NotificationService
     private function household(?Beneficiary $beneficiary): string
     {
         if (! $beneficiary) {
-            // An initial dispersal has no source household: the programme did.
             return 'the City Veterinary Office';
         }
 

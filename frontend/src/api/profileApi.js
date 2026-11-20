@@ -8,8 +8,14 @@ export const profileApi = {
   get: async () => unwrap(await api.get("/api/v1/profile")),
 
   /**
-   * Update the account (name/email) and the household location
-   * (address = barangay name, purok_id, coordinates, source).
+   * Last sign-in, active browser/mobile sessions and recent account activity.
+   * The server scopes every row to the caller.
+   */
+  security: async () => unwrap(await api.get("/api/v1/profile/security")),
+
+  /**
+   * Update the account name, email and optional personal contact details.
+   * Role, permissions and username are deliberately not accepted.
    * Returns the fresh profile payload.
    */
   update: async (payload) => {
@@ -35,6 +41,12 @@ export const profileApi = {
   removeAvatar: async () => {
     await ensureCsrfCookie();
     return unwrap(await api.delete("/api/v1/profile/avatar"));
+  },
+
+  /** Sign out every other browser/mobile session, keeping this one. */
+  revokeOtherSessions: async () => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/profile/sessions/revoke-others"));
   },
 
   /**

@@ -138,6 +138,7 @@ const NOTIFICATION_PREFERENCES = [
       { key: "notify_technician_assigned", type: "technician-assigned", label: "Technician assigned" },
       { key: "notify_technician_reassigned", type: "technician-reassigned", label: "Technician reassigned" },
       { key: "notify_field_visit_photo", type: "field-visit-photo", label: "Field visit photo uploaded" },
+      { key: "notify_field_visit_completed", type: "field-visit-completed", label: "Field visit completed" },
     ],
   },
   {

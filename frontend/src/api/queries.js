@@ -58,18 +58,21 @@ export function useUnreadNotificationsCount(enabled = true) {
  * The notification feed, polled.
  *
  * `filter` is "all" (stored events + derived alerts) or "smart" (the daily
- * rule-based flags only). The filter is a SERVER-side query parameter so a
- * capped page still reports the true counts for the selected set.
+ * rule-based flags only). The remaining filters are sent to the API so large
+ * stored inboxes are narrowed before pagination; empty values are omitted from
+ * the request rather than sent as blank query parameters.
  */
-export function useNotificationsFeed(limit = 20, filter = "all", page = 1) {
+export function useNotificationsFeed(limit = 20, filter = "all", page = 1, filters = {}) {
+  const params = { limit, page };
+
+  if (filter !== "all") params.filter = filter;
+  for (const key of ["status", "category", "priority", "search", "from", "to"]) {
+    if (filters[key]) params[key] = filters[key];
+  }
+
   return useQuery({
-    queryKey: ["notifications", "feed", limit, filter, page],
-    queryFn: () =>
-      notificationsApi.list({
-        limit,
-        page,
-        ...(filter !== "all" ? { filter } : {}),
-      }),
+    queryKey: ["notifications", "feed", limit, filter, page, params],
+    queryFn: () => notificationsApi.list(params),
     refetchInterval: POLL_INTERVALS.notifications,
   });
 }

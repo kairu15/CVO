@@ -108,6 +108,21 @@ const ICONS = {
   "arrow-left": <path d="M19.5 12h-14M11 6.5 5.5 12l5.5 5.5" />,
   "arrow-right": <path d="M4.5 12h14M13 6.5l5.5 5.5-5.5 5.5" />,
   check: <path d="m5 12.5 4.5 4.5L19 7" />,
+  archive: (
+    <>
+      <rect x="3.5" y="4" width="17" height="4.5" rx="1.2" />
+      <path d="M5.2 8.5V20h13.6V8.5" />
+      <path d="M9.5 12.5h5" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M4.5 6.5h15" />
+      <path d="M9 6.5V4.2h6v2.3" />
+      <path d="m6.5 6.5 1 13h9l1-13" />
+      <path d="M10 10.5v5.5M14 10.5v5.5" />
+    </>
+  ),
   plus: <path d="M12 5.5v13M5.5 12h13" />,
   logout: (
     <>

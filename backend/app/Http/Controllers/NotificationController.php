@@ -2,19 +2,22 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\NotificationBulkRequest;
 use App\Http\Requests\NotificationFeedRequest;
+use App\Http\Requests\NotificationPreferenceRequest;
+use App\Models\UserNotification;
 use App\Services\NotificationService;
 use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 
 /**
- * The notification feed — read-only, derived from existing records.
+ * The notification centre API.
  *
- * There is no store/update/destroy and nothing to mark as read: each alert
- * restates a dispersal event or a vaccination already on record, so the only
- * way to resolve one is to record the visit or movement it is about. See
- * NotificationService for why this has no backing table.
+ * Derived alerts remain read-only (they clear when their record changes), but
+ * stored events have per-recipient read/archive state. Every route is scoped to
+ * the authenticated caller; there is no user id in any path or payload.
  */
 class NotificationController extends Controller
 {
@@ -31,6 +34,7 @@ class NotificationController extends Controller
             Pagination::perPage($validated['per_page'] ?? $validated['limit'] ?? null),
             $validated['filter'] ?? NotificationService::FILTER_ALL,
             (int) ($validated['page'] ?? 1),
+            Arr::only($validated, ['status', 'category', 'priority', 'search', 'from', 'to']),
         );
 
         // `meta` carries the counts so the header bell can show a badge from
@@ -78,5 +82,68 @@ class NotificationController extends Controller
         return response()->json([
             'data' => ['marked' => $this->notifications->markRead($request->user(), $id)],
         ]);
+    }
+
+    /**
+     * The caller's own category switches. No {id}: preferences are always
+     * read from and written to the authenticated account.
+     */
+    public function preferences(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->preferencePayload($request->user()),
+        ]);
+    }
+
+    public function updatePreferences(NotificationPreferenceRequest $request): JsonResponse
+    {
+        $preferences = $this->notifications->updatePreferences(
+            $request->user(),
+            $request->validated('preferences'),
+        );
+
+        return response()->json([
+            'data' => [
+                'preferences' => $preferences,
+                'categories' => $this->categoryOptions(),
+            ],
+        ]);
+    }
+
+    /**
+     * Bulk read/unread/archive/unarchive/delete over the caller's own rows.
+     * One endpoint instead of five near-identical routes.
+     */
+    public function bulk(NotificationBulkRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+
+        return response()->json([
+            'data' => [
+                'changed' => $this->notifications->bulk(
+                    $request->user(),
+                    array_map('intval', $validated['ids']),
+                    $validated['action'],
+                ),
+            ],
+        ]);
+    }
+
+    /** @return array{preferences: array<string, bool>, categories: list<array{key: string, label: string}>} */
+    private function preferencePayload(\App\Models\User $user): array
+    {
+        return [
+            'preferences' => $this->notifications->preferences($user),
+            'categories' => $this->categoryOptions(),
+        ];
+    }
+
+    /** @return list<array{key: string, label: string}> */
+    private function categoryOptions(): array
+    {
+        return collect(UserNotification::CATEGORY_LABELS)
+            ->map(fn (string $label, string $key): array => ['key' => $key, 'label' => $label])
+            ->values()
+            ->all();
     }
 }

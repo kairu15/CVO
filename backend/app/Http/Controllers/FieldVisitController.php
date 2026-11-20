@@ -169,7 +169,33 @@ class FieldVisitController extends Controller
      */
     public function store(StoreFieldVisitRequest $request): JsonResponse
     {
-        $visit = $this->visits->create($request->user(), $request->validated());
+        $visit = $this->visits->create($request->user(), $request->validated())->load('beneficiary');
+
+        // The completed visit is an event in its own right. Deliver it to the
+        // administrators who oversee the programme and the technician assigned
+        // to the household; the visiting author is not told about their own
+        // trip, and unrelated technicians do not receive it.
+        $supervisors = User::query()
+            ->where(function ($query) use ($visit): void {
+                $query->where('role', 'admin')
+                    ->orWhere('id', $visit->beneficiary?->technician_id);
+            })
+            ->where('id', '!=', $request->user()->id)
+            ->get();
+
+        $purpose = str_replace('-', ' ', ucfirst((string) $visit->purpose));
+
+        foreach ($supervisors as $supervisor) {
+            $this->notifications->create($supervisor, [
+                'type' => UserNotification::TYPE_FIELD_VISIT_COMPLETED,
+                'actor_id' => $request->user()->id,
+                'beneficiary_id' => $visit->beneficiary_id,
+                'title' => 'Field visit completed',
+                'message' => "{$request->user()->name} completed a {$purpose} visit for {$visit->beneficiary?->name_of_farmer} in {$visit->beneficiary?->address}.",
+                'link' => "/dashboard/{$supervisor->role}/monitoring",
+                'dedupe_key' => "field-visit-completed:{$visit->id}:u{$supervisor->id}",
+            ]);
+        }
 
         return (new FieldVisitResource($visit->load(['beneficiary', 'technician', 'dispersalEvent'])))
             ->response()
@@ -346,6 +372,7 @@ class FieldVisitController extends Controller
                 // Role-shaped link: every staff role has its own monitoring
                 // dashboard now that technicians are photo reviewers too.
                 'link' => "/dashboard/{$admin->role}/monitoring",
+                'dedupe_key' => "field-visit-photo:{$photo->id}:u{$admin->id}",
             ]);
         }
 

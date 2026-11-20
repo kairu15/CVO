@@ -9,9 +9,11 @@ use Illuminate\Validation\Rule;
 /**
  * PATCH /profile — the authenticated user editing their own account.
  *
- * Only the account fields (name/email) are writable: every role is a staff
- * account now, and a beneficiary's household location is corrected on the
- * admin Beneficiaries screen, not from a personal profile.
+ * Name, email, personal phone and personal address are writable. These contact
+ * fields belong to the staff account; a beneficiary's household location is
+ * still corrected on the admin Beneficiaries screen. Role, username and
+ * permissions are deliberately absent, so a profile edit can never escalate an
+ * account.
  *
  * Everything is scoped to the caller: no user id is accepted, so one account
  * can never write another's profile by manipulating the payload.
@@ -39,6 +41,14 @@ class UpdateProfileRequest extends FormRequest
                 'max:255',
                 Rule::unique(User::class)->ignore($this->user()->id),
             ],
+            'phone' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:32',
+                'regex:/^[0-9+()\-\s.]{7,32}$/',
+            ],
+            'address' => ['sometimes', 'nullable', 'string', 'max:255'],
         ];
     }
 }

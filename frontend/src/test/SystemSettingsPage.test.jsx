@@ -310,7 +310,8 @@ describe("SystemSettingsPage", () => {
     // The ownership handovers ride alongside the programme events.
     expect(payload.notify_animal_dispersed).toBe(true);
     expect(payload.notify_animal_event_voided).toBe(true);
-    expect(Object.keys(payload)).toHaveLength(12);
+    expect(payload.notify_field_visit_completed).toBe(true);
+    expect(Object.keys(payload)).toHaveLength(13);
   });
 
   it("manages puroks: add, rename, delete with confirm", async () => {

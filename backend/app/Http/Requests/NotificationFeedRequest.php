@@ -3,8 +3,10 @@
 namespace App\Http\Requests;
 
 use App\Models\User;
+use App\Models\UserNotification;
 use App\Services\NotificationService;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class NotificationFeedRequest extends FormRequest
 {
@@ -38,6 +40,26 @@ class NotificationFeedRequest extends FormRequest
                 'string',
                 'in:'.implode(',', NotificationService::FILTERS),
             ],
+            'status' => [
+                'sometimes',
+                'string',
+                Rule::in(NotificationService::STATUSES),
+            ],
+            'category' => [
+                'sometimes',
+                'nullable',
+                'string',
+                Rule::in(UserNotification::CATEGORIES),
+            ],
+            'priority' => [
+                'sometimes',
+                'nullable',
+                'string',
+                Rule::in(UserNotification::PRIORITIES),
+            ],
+            'search' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'from' => ['sometimes', 'nullable', 'date'],
+            'to' => ['sometimes', 'nullable', 'date'],
         ];
     }
 }

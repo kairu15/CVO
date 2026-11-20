@@ -19,7 +19,7 @@ import ResetPasswordPage from "../pages/ResetPasswordPage";
 // bundle, and a signed-in user only ever opens a few of them. The shell —
 // sidebar, header, Suspense fallback — lives in DashboardLayout, so a lazy
 // page suspends inside the layout instead of blanking it.
-const RoleDashboard = lazy(() => import("../pages/RoleDashboard"));
+const TechnicianDashboard = lazy(() => import("../pages/TechnicianDashboard"));
 const AdminOverviewPage = lazy(() => import("../pages/AdminOverviewPage"));
 const AnnouncementsPage = lazy(() => import("../pages/AnnouncementsPage"));
 const PublicDocumentsPage = lazy(() => import("../pages/PublicDocumentsPage"));
@@ -128,7 +128,7 @@ export default function AppRoutes() {
               path="/dashboard/technician"
               element={
                 <RoleRoute dashboard="technician">
-                  <RoleDashboard roleKey="technician" />
+                  <TechnicianDashboard />
                 </RoleRoute>
               }
             />

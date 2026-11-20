@@ -42,6 +42,10 @@ class IndexBeneficiariesRequest extends FormRequest
             // Exact barangay filter (canonical name), paired with the search
             // box so a large directory narrows by place as well as by term.
             'barangay' => ['sometimes', 'nullable', 'string', 'max:255'],
+
+            // The technician's own assigned households. Ignored for an admin
+            // (who sees the city-wide list anyway); never widens a scope.
+            'assigned' => ['sometimes', 'boolean'],
         ];
     }
 }

@@ -43,6 +43,8 @@ const isOnline = () =>
  * @param {() => void} props.onClose called after a successful save or cancel
  * @param {object} [props.initialBeneficiary] household to pre-select (from a
  *   "Log visit" action); the picker otherwise searches server-side on open
+ * @param {string} [props.initialPurpose] purpose to pre-select when converting
+ *   a scheduled visit plan into the completed visit
  * @param {Array<string>} props.purposes served vocabulary for the purpose select
  * @param {object} [props.visit] existing visit to edit
  * @param {() => void} props.onSaved
@@ -51,6 +53,7 @@ export function FieldVisitFormModal({
   open,
   onClose,
   initialBeneficiary = null,
+  initialPurpose = "",
   purposes = [],
   visit = null,
   onSaved,
@@ -132,6 +135,10 @@ export function FieldVisitFormModal({
     beneficiariesApi
       .list({
         per_page: 25,
+        // The dashboard's quick-record path is a technician workflow: only
+        // their assigned households belong in the picker. Admins are not
+        // narrowed by this server-side filter.
+        assigned: 1,
         ...(debouncedPickerSearch ? { search: debouncedPickerSearch } : {}),
       })
       .then((rows) => {
@@ -177,7 +184,11 @@ export function FieldVisitFormModal({
           : null,
       );
     } else {
-      setForm({ ...EMPTY_FORM, visited_on: new Date().toISOString().slice(0, 10) });
+      setForm({
+        ...EMPTY_FORM,
+        visited_on: new Date().toISOString().slice(0, 10),
+        purpose: initialPurpose || "",
+      });
       setBeneficiaryId(initialId ? String(initialId) : "");
       setCoords(null);
       setPickerSearch("");
@@ -192,7 +203,7 @@ export function FieldVisitFormModal({
     setConfirmDiscard(false);
     // Seeded once per open/record; `initialId` rather than the object keeps a
     // poll handing back a new array from wiping live entry (see seededRef).
-  }, [open, visit, initialId]);
+  }, [open, visit, initialId, initialPurpose]);
 
   /** Close — asking first when there is unsaved input to lose. */
   function requestClose() {
@@ -413,7 +424,7 @@ export function FieldVisitFormModal({
 
         toast.success("Field visit updated.");
         setDirty(false);
-        onSaved?.();
+        onSaved?.(visit);
         onClose();
       } else {
         const createPayload = {
@@ -472,7 +483,7 @@ export function FieldVisitFormModal({
             });
             toast.success("Visit logged; the photo will upload when you're back online.");
             setDirty(false);
-            onSaved?.();
+            onSaved?.(target ?? createdVisit);
             onClose();
             return;
           }
@@ -480,13 +491,13 @@ export function FieldVisitFormModal({
           toast.error(
             'The visit was logged, but the photo upload failed — press "Log field visit" again to retry.',
           );
-          onSaved?.();
+          onSaved?.(target ?? createdVisit);
           return;
         }
 
         toast.success("Field visit recorded.");
         setDirty(false);
-        onSaved?.();
+        onSaved?.(target ?? createdVisit);
         onClose();
       }
     } catch (error) {

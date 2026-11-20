@@ -15,6 +15,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DispersalEventController;
 use App\Http\Controllers\DispersalMapController;
 use App\Http\Controllers\FieldVisitController;
+use App\Http\Controllers\FieldVisitPlanController;
 use App\Http\Controllers\HealthRecordController;
 use App\Http\Controllers\MonitoringRecordController;
 use App\Http\Controllers\NotificationController;
@@ -32,6 +33,7 @@ use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SiteController;
 use App\Http\Controllers\SyncConflictController;
 use App\Http\Controllers\SymptomRuleController;
+use App\Http\Controllers\TechnicianDashboardController;
 use App\Http\Controllers\TechnicianDirectoryController;
 use App\Http\Controllers\VaccinationScheduleController;
 use App\Http\Middleware\EnsureUserIsAdmin;
@@ -270,6 +272,21 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     // "options" as a visit id.
     Route::get('field-visits/options', [FieldVisitController::class, 'options'])
         ->name('api.field-visits.options');
+
+    // The technician's task-oriented landing page: plans, assigned
+    // households, visits due and recent activity in one aggregate.
+    Route::get('technician/dashboard', [TechnicianDashboardController::class, 'index'])
+        ->name('api.technician.dashboard');
+
+    // Planned visits are separate from the completed FieldVisit log. A plan
+    // is completed only after the visit is recorded, then links to that row.
+    Route::post('technician/visit-plans', [FieldVisitPlanController::class, 'store'])
+        ->middleware('permission:field_visits.create')
+        ->name('api.technician.visit-plans.store');
+    Route::patch('technician/visit-plans/{plan}', [FieldVisitPlanController::class, 'update'])
+        ->whereNumber('plan')
+        ->middleware('permission:field_visits.create')
+        ->name('api.technician.visit-plans.update');
 
     // Log aggregates and the filtered export. Declared before the
     // apiResource so `{field_visit}` cannot swallow these path segments.

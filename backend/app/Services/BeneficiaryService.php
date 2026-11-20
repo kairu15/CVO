@@ -7,6 +7,7 @@ use App\Models\CaseNote;
 use App\Models\DispersalEvent;
 use App\Models\FieldVisit;
 use App\Models\FieldVisitPhoto;
+use App\Models\FieldVisitPlan;
 use App\Models\HealthRecord;
 use App\Models\MonitoringRecord;
 use App\Models\TechnicianAssignment;
@@ -51,8 +52,10 @@ class BeneficiaryService
     ): LengthAwarePaginator {
         $search = trim((string) ($filters['search'] ?? ''));
         $barangay = trim((string) ($filters['barangay'] ?? ''));
+        $assignedOnly = (bool) ($filters['assigned'] ?? false) && $user->role === 'technician';
 
         return $this->scopeQueryFor($user)
+            ->when($assignedOnly, fn (Builder $query) => $query->where('technician_id', $user->id))
             ->with(['technician', 'animalType', 'animalClassification'])
             ->withCount('monitoringRecords')
             // Search runs INSIDE the role scope above, so a technician can
@@ -481,6 +484,7 @@ class BeneficiaryService
                 FieldVisitPhoto::query()->whereIn('field_visit_id', $visitIds)->delete();
             }
 
+            FieldVisitPlan::query()->where('beneficiary_id', $beneficiaryId)->delete();
             FieldVisit::query()->where('beneficiary_id', $beneficiaryId)->delete();
             HealthRecord::query()->where('beneficiary_id', $beneficiaryId)->delete();
             CaseNote::query()->where('beneficiary_id', $beneficiaryId)->delete();

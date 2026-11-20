@@ -42,7 +42,7 @@ class BeneficiaryController extends Controller
             $this->beneficiaries->listFor(
                 $request->user(),
                 Pagination::perPage($request->validated('per_page') ?? null),
-                $request->safe()->only(['search', 'barangay']),
+                $request->safe()->only(['search', 'barangay', 'assigned']),
             ),
         );
     }

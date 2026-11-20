@@ -5,6 +5,7 @@ import { monitoringApi } from "./monitoringApi";
 import { beneficiariesApi } from "./beneficiariesApi";
 import { symptomRulesApi } from "./symptomRulesApi";
 import { dashboardApi } from "./dashboardApi";
+import { technicianApi } from "./technicianApi";
 
 /**
  * Live data, the polling way.
@@ -194,8 +195,26 @@ export function useSymptomRules(enabled = true) {
 export function useAssignedBeneficiaries(enabled = true) {
   return useQuery({
     queryKey: ["beneficiaries", "assigned"],
-    queryFn: () => beneficiariesApi.list({ per_page: 100 }),
+    // `assigned` is a server-side technician filter. The picker used to ask
+    // for the city-wide list and rely on local state, which contradicted both
+    // the hook name and the "my households" workflow.
+    queryFn: () => beneficiariesApi.list({ assigned: 1, per_page: 50 }),
     refetchInterval: POLL_INTERVALS.beneficiaries,
+    enabled,
+  });
+}
+
+/**
+ * The technician's task dashboard — plans, assignments, due households and
+ * recent activity in one aggregate. Polled on the same 30s cadence as the
+ * beneficiary directory; a technician standing in the field sees a plan they
+ * completed on another device close within half a minute.
+ */
+export function useTechnicianDashboard(enabled = true) {
+  return useQuery({
+    queryKey: ["technician", "dashboard"],
+    queryFn: ({ signal }) => technicianApi.dashboard(signal),
+    refetchInterval: 30_000,
     enabled,
   });
 }
@@ -232,6 +251,15 @@ export function useInvalidate() {
     // not only from the monitoring table the admin clicked in.
     beneficiaries: () => {
       client.invalidateQueries({ queryKey: ["beneficiaries"] });
+    },
+    technicianDashboard: () => {
+      client.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+    },
+    // A technician's completed visit feeds the admin command center. Marking
+    // the aggregate stale here means the next admin visit refetches instead
+    // of showing a snapshot from before the fieldwork.
+    adminDashboard: () => {
+      client.invalidateQueries({ queryKey: ["dashboard", "overview"] });
     },
   };
 }

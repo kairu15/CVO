@@ -22,18 +22,43 @@ class HealthRecord extends Model
     protected $fillable = [
         'beneficiary_id',
         'doctor_id',
+        'animal_quantity',
         'date_recorded',
         'diagnosis',
+        'symptoms',
         'treatment',
         'outcome',
+        'follow_up_on',
+        'follow_up_completed_at',
         'remarks',
     ];
 
     protected function casts(): array
     {
         return [
+            'animal_quantity' => 'integer',
             'date_recorded' => 'date',
+            'follow_up_on' => 'date',
+            'follow_up_completed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Derived follow-up state: the date is the schedule, the completion stamp
+     * is the outcome. Nothing stores "overdue" because tomorrow it would be a
+     * lie — it is computed against today on every read.
+     */
+    public function followUpStatus(): ?string
+    {
+        if (! $this->follow_up_on) {
+            return null;
+        }
+
+        if ($this->follow_up_completed_at) {
+            return 'completed';
+        }
+
+        return $this->follow_up_on->lt(today()) ? 'overdue' : 'upcoming';
     }
 
     /**

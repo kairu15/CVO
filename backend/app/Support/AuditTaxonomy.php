@@ -73,7 +73,11 @@ class AuditTaxonomy
             'label' => 'Clinical records',
             'actions' => [
                 'health_record_created', 'health_record_updated', 'health_record_deleted',
+                'health_record_photo_uploaded',
+                'vaccination_created', 'vaccination_updated', 'vaccination_deleted',
+                'vaccination_rescheduled', 'vaccination_photo_uploaded',
                 'case_note_created', 'case_note_updated', 'case_note_deleted',
+                'case_note_update_added', 'case_note_photo_uploaded',
             ],
             'target_types' => ['HealthRecord', 'CaseNote'],
         ],

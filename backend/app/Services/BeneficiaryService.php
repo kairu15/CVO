@@ -13,11 +13,14 @@ use App\Models\MonitoringRecord;
 use App\Models\TechnicianAssignment;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Models\Vaccination;
+use App\Models\VaccinationScheduleOverride;
 use App\Support\Barangays;
 use App\Support\Pagination;
 use Database\Factories\BeneficiaryFactory;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 
 class BeneficiaryService
@@ -103,7 +106,7 @@ class BeneficiaryService
      * is simply not found — 404, exactly as before. There is no
      * assigned-only read slice left, so no 403 boundary arises here.
      *
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
+     * @throws ModelNotFoundException
      */
     public function findFor(User $user, int $beneficiaryId): Beneficiary
     {
@@ -466,7 +469,7 @@ class BeneficiaryService
      */
     public function deleteBeneficiary(User $actor, Beneficiary $beneficiary): void
     {
-        DB::transaction(function () use ($actor, $beneficiary): void {
+        DB::transaction(function () use ($beneficiary): void {
             $beneficiaryId = $beneficiary->id;
 
             // Collect the ids first: once the rows are soft-deleted the
@@ -487,6 +490,8 @@ class BeneficiaryService
             FieldVisitPlan::query()->where('beneficiary_id', $beneficiaryId)->delete();
             FieldVisit::query()->where('beneficiary_id', $beneficiaryId)->delete();
             HealthRecord::query()->where('beneficiary_id', $beneficiaryId)->delete();
+            Vaccination::query()->where('beneficiary_id', $beneficiaryId)->delete();
+            VaccinationScheduleOverride::query()->where('beneficiary_id', $beneficiaryId)->delete();
             CaseNote::query()->where('beneficiary_id', $beneficiaryId)->delete();
 
             // A dispersal event can touch this household as the recipient, as

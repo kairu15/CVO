@@ -10,11 +10,8 @@ use Illuminate\Validation\Rule;
 class VaccinationScheduleRequest extends FormRequest
 {
     /**
-     * Read-only derived view: every authenticated role may read it, and
-     * BeneficiaryService limits the rows to the animals that role owns.
-     *
-     * There is no Policy because there is no model to authorize against — the
-     * same shape as AssignRoleRequest, which is also a bare role check.
+     * Read-only derived view: every authenticated staff role may read it,
+     * scoped server-side by BeneficiaryService.
      */
     public function authorize(): bool
     {
@@ -25,7 +22,10 @@ class VaccinationScheduleRequest extends FormRequest
     {
         return [
             'status' => ['sometimes', 'string', Rule::in(VaccinationScheduleService::STATUSES)],
-            // Clamped to 50 by the controller (App\Support\Pagination).
+            'search' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'barangay' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'sort' => ['sometimes', Rule::in(['due', 'name', 'last_vaccination', 'barangay'])],
+            'direction' => ['sometimes', Rule::in(['asc', 'desc'])],
             'per_page' => ['sometimes', 'integer', 'min:1'],
         ];
     }

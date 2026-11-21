@@ -20,6 +20,9 @@ class CaseNoteFactory extends Factory
             // (a schema name, not a role) — authored by a technician account.
             'doctor_id' => User::factory()->create(['role' => 'technician'])->id,
             'date_noted' => fake()->dateTimeBetween('-6 months', 'now'),
+            'category' => fake()->randomElement(CaseNote::CATEGORIES),
+            'status' => CaseNote::STATUS_OPEN,
+            'location' => null,
             'body' => fake()->randomElement([
                 'Owner phoned — the animal is still limping, advised to rest it for a week.',
                 'Referred to the provincial veterinary office for an ultrasound.',

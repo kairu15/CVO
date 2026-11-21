@@ -19,10 +19,13 @@ export const outcomeLabel = (value) =>
   value ? value.charAt(0).toUpperCase() + value.slice(1) : "—";
 
 const EMPTY_FORM = {
+  animal_quantity: 1,
   date_recorded: "",
   diagnosis: "",
+  symptoms: "",
   treatment: "",
   outcome: "",
+  follow_up_on: "",
   remarks: "",
 };
 
@@ -62,6 +65,8 @@ export function HealthRecordFormModal({
   const { user } = useAuth();
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  const [photo, setPhoto] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
   // Unsaved-input tracking — see FieldVisitFormModal for the full rationale.
   const [dirty, setDirty] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -69,11 +74,25 @@ export function HealthRecordFormModal({
 
   useUnsavedChangesGuard({ when: open && dirty && !saving });
 
+  // Object URLs must be revoked or a long field session leaks every preview.
+  useEffect(() => {
+    if (!photo) {
+      setPhotoPreview(null);
+      return undefined;
+    }
+
+    const url = URL.createObjectURL(photo);
+    setPhotoPreview(url);
+
+    return () => URL.revokeObjectURL(url);
+  }, [photo]);
+
   // Which "session" of the form has been seeded. The beneficiaries prop is
   // re-fetched on a 30s poll (and on window focus) and arrives as a brand-new
   // array, so it must NOT re-run the seeding effect: doing so wipes the
   // beneficiary chosen and the diagnosis/treatment typed mid-entry.
   const seededRef = useRef(null);
+  const savingRef = useRef(false);
 
   const beneficiary = useMemo(
     () =>
@@ -99,10 +118,13 @@ export function HealthRecordFormModal({
 
     if (record) {
       setForm({
+        animal_quantity: record.animal_quantity ?? 1,
         date_recorded: record.date_recorded ?? "",
         diagnosis: record.diagnosis ?? "",
+        symptoms: record.symptoms ?? "",
         treatment: record.treatment ?? "",
         outcome: record.outcome ?? "",
+        follow_up_on: record.follow_up_on ?? "",
         remarks: record.remarks ?? "",
       });
       setBeneficiaryId(String(record.beneficiary_id));
@@ -111,6 +133,7 @@ export function HealthRecordFormModal({
       setBeneficiaryId(beneficiaries.length === 1 ? String(beneficiaries[0].id) : "");
     }
 
+    setPhoto(null);
     setErrors({});
     setDirty(false);
     setConfirmDiscard(false);
@@ -183,6 +206,10 @@ export function HealthRecordFormModal({
   async function handleSubmit(event) {
     event.preventDefault();
 
+    // The button is disabled while saving, but a double Enter keypress can
+    // still land two submits in the same tick. Refuse the second one.
+    if (savingRef.current) return;
+
     if (!editing && !beneficiaryId) {
       setErrors((prev) => ({ ...prev, beneficiary_id: "Choose the animal this record is about." }));
       return;
@@ -195,32 +222,47 @@ export function HealthRecordFormModal({
       setErrors((prev) => ({ ...prev, diagnosis: "Enter a diagnosis." }));
       return;
     }
+    if (form.follow_up_on && form.follow_up_on < form.date_recorded) {
+      setErrors((prev) => ({
+        ...prev,
+        follow_up_on: "The follow-up cannot be before the examination date.",
+      }));
+      return;
+    }
 
+    savingRef.current = true;
     setSaving(true);
     try {
       // Empty optional fields go up as null so a cleared field actually clears
       // rather than being ignored by the server's `nullable` rule.
       const payload = {
+        animal_quantity: Number(form.animal_quantity) || 1,
         date_recorded: form.date_recorded,
         diagnosis: form.diagnosis.trim(),
+        symptoms: form.symptoms.trim() || null,
         treatment: form.treatment.trim() || null,
         outcome: form.outcome || null,
+        follow_up_on: form.follow_up_on || null,
         remarks: form.remarks.trim() || null,
       };
+
+      let saved = null;
 
       if (editing) {
         // Offline: queue the edit; the queue replays it and flags a conflict
         // if the record changed on the server in the meantime.
         if (!isOnline()) {
           await queueRecordEdit(payload);
+          if (photo) toast.error("The edit will sync later, but the photo cannot be queued offline.");
           return;
         }
 
         try {
-          await healthRecordsApi.update(record.id, payload);
+          saved = await healthRecordsApi.update(record.id, payload);
         } catch (editError) {
           if (isNetworkError(editError)) {
             await queueRecordEdit(payload);
+            if (photo) toast.error("The edit will sync later, but the photo cannot be queued offline.");
             return;
           }
           throw editError;
@@ -231,19 +273,34 @@ export function HealthRecordFormModal({
         // No connection: queue the record for later instead of failing.
         if (!isOnline()) {
           await queueRecord(createPayload);
+          if (photo) toast.error("The record will sync later, but the photo cannot be queued offline.");
           return;
         }
 
         try {
-          await healthRecordsApi.create(createPayload);
+          saved = await healthRecordsApi.create(createPayload);
         } catch (createError) {
           // The request never reached the server — queue it rather than
           // surfacing a dead-end error.
           if (isNetworkError(createError)) {
             await queueRecord(createPayload);
+            if (photo) toast.error("The record will sync later, but the photo cannot be queued offline.");
             return;
           }
           throw createError;
+        }
+      }
+
+      // The record is the primary save. A photo failure must not discard a
+      // diagnosis that already reached the audit trail; tell the technician
+      // plainly and let them attach it again from the record.
+      if (photo && saved?.id) {
+        try {
+          await healthRecordsApi.uploadPhoto(saved.id, photo);
+        } catch (photoError) {
+          toast.error(
+            `Record saved, but the photo could not be uploaded: ${getErrorMessage(photoError)}`,
+          );
         }
       }
 
@@ -256,6 +313,7 @@ export function HealthRecordFormModal({
       if (fields) setErrors(fields);
       else toast.error(getErrorMessage(error));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -327,7 +385,13 @@ export function HealthRecordFormModal({
           </div>
         )}
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
+            Examination
+          </p>
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <TextField
             id="health-date"
             label="Date of examination"
@@ -335,6 +399,17 @@ export function HealthRecordFormModal({
             value={form.date_recorded}
             onChange={update("date_recorded")}
             error={errors.date_recorded}
+          />
+
+          <TextField
+            id="health-quantity"
+            label="Animals examined"
+            type="number"
+            min="1"
+            max="1000"
+            value={form.animal_quantity}
+            onChange={update("animal_quantity")}
+            error={errors.animal_quantity}
           />
 
           <div>
@@ -361,6 +436,29 @@ export function HealthRecordFormModal({
           </div>
         </div>
 
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
+            Observations & assessment
+          </p>
+        </div>
+
+        <div className="mt-3">
+          <label htmlFor="health-symptoms" className="block text-sm font-medium text-slate-700">
+            Observations / symptoms
+          </label>
+          <textarea
+            id="health-symptoms"
+            rows={2}
+            className="field mt-1.5"
+            placeholder="What did you see? e.g. fever, limping, loss of appetite"
+            value={form.symptoms}
+            onChange={update("symptoms")}
+          />
+          {errors.symptoms && (
+            <p className="mt-1.5 text-xs font-medium text-red-600">{errors.symptoms}</p>
+          )}
+        </div>
+
         <div className="mt-3">
           <TextField
             id="health-diagnosis"
@@ -373,13 +471,19 @@ export function HealthRecordFormModal({
           />
         </div>
 
-        {/* Rule-based, client-side keyword match over the diagnosis and
-            remarks — decision support, never a diagnosis of its own. */}
+        {/* Rule-based, client-side keyword match over the observations,
+            diagnosis and remarks — decision support, never a diagnosis. */}
         <HealthConcernHints
           className="mt-3"
-          text={`${form.diagnosis} ${form.remarks}`}
+          text={`${form.symptoms} ${form.diagnosis} ${form.remarks}`}
           animalType={beneficiary?.animal_type}
         />
+
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
+            Treatment & recommendations
+          </p>
+        </div>
 
         <div className="mt-3">
           <label htmlFor="health-treatment" className="block text-sm font-medium text-slate-700">
@@ -411,13 +515,13 @@ export function HealthRecordFormModal({
 
         <div className="mt-3">
           <label htmlFor="health-remarks" className="block text-sm font-medium text-slate-700">
-            Remarks
+            Recommendations / follow-up notes
           </label>
           <textarea
             id="health-remarks"
             rows={2}
             className="field mt-1.5"
-            placeholder="Follow-up notes"
+            placeholder="Home care, isolation, or what to check at the next visit"
             value={form.remarks}
             onChange={update("remarks")}
           />
@@ -434,6 +538,64 @@ export function HealthRecordFormModal({
               }))
             }
           />
+        </div>
+
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
+            Follow-up & supporting photo
+          </p>
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <TextField
+            id="health-follow-up"
+            label="Follow-up date"
+            type="date"
+            value={form.follow_up_on}
+            onChange={update("follow_up_on")}
+            error={errors.follow_up_on}
+            hint="Optional. Leave blank when no recheck is needed."
+          />
+
+          <div>
+            <label htmlFor="health-photo" className="block text-sm font-medium text-slate-700">
+              Supporting photo
+            </label>
+            <input
+              id="health-photo"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              capture="environment"
+              onChange={(event) => {
+                setPhoto(event.target.files?.[0] ?? null);
+                setErrors((prev) => ({ ...prev, image: undefined }));
+                markDirty();
+              }}
+              className="mt-1.5 block w-full text-xs text-slate-600 file:mr-3 file:rounded-pill file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-brand-800 hover:file:bg-brand-100"
+            />
+            <p className="mt-1.5 text-xs text-slate-500">
+              Optional. JPG, PNG or WebP, up to 8 MB; a new photo replaces the old one.
+            </p>
+            {errors.image && (
+              <p className="mt-1.5 text-xs font-medium text-red-600">{errors.image}</p>
+            )}
+            {photoPreview ? (
+              <img
+                src={photoPreview}
+                alt="Selected clinical photo preview"
+                className="mt-2 h-20 w-full rounded-lg object-cover ring-1 ring-slate-200"
+              />
+            ) : record?.photo_url ? (
+              <a
+                href={record.photo_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-block text-xs font-semibold text-brand-800 underline-offset-2 hover:underline"
+              >
+                View current photo
+              </a>
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-5 flex justify-end gap-2">

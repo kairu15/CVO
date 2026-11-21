@@ -6,6 +6,8 @@ use App\Models\Beneficiary;
 use App\Models\HealthRecord;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class HealthRecordTest extends TestCase
@@ -233,6 +235,176 @@ class HealthRecordTest extends TestCase
             ->getJson("/api/v1/health-records/{$record->id}")
             ->assertOk()
             ->assertJsonPath('data.id', $record->id);
+    }
+
+    public function test_the_overview_and_status_filters_use_current_examinations(): void
+    {
+        // An old recovered exam must not make the animal "healthy" after a
+        // newer ongoing exam with an overdue follow-up.
+        $this->beneficiary->healthRecords()->create([
+            'doctor_id' => $this->technician->id,
+            'date_recorded' => now()->subDays(30)->toDateString(),
+            'diagnosis' => 'Old recovered exam',
+            'outcome' => 'recovered',
+        ]);
+        $this->beneficiary->healthRecords()->create([
+            'doctor_id' => $this->technician->id,
+            'date_recorded' => now()->subDays(2)->toDateString(),
+            'diagnosis' => 'Current ongoing exam',
+            'outcome' => 'ongoing',
+            'follow_up_on' => now()->subDay()->toDateString(),
+        ]);
+
+        $healthyHousehold = Beneficiary::factory()->assignedTo($this->technician)->create();
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($healthyHousehold)->create([
+            'date_recorded' => now()->subDay()->toDateString(),
+            'diagnosis' => 'Healthy current exam',
+            'outcome' => 'recovered',
+            'follow_up_on' => null,
+        ]);
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/health-records/summary')
+            ->assertOk()
+            ->assertJsonPath('data.total_health_records', 3)
+            ->assertJsonPath('data.healthy_animals', 1)
+            ->assertJsonPath('data.observation_animals', 1)
+            ->assertJsonPath('data.follow_up_required', 1)
+            ->assertJsonPath('data.follow_up_overdue', 1)
+            ->assertJsonPath('data.follow_up_upcoming', 0)
+            ->assertJsonPath('data.follow_up_completed', 0);
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/health-records?status=healthy')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.diagnosis', 'Healthy current exam');
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/health-records?status=observation')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.diagnosis', 'Current ongoing exam');
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/health-records?status=overdue')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.follow_up_status', 'overdue');
+    }
+
+    public function test_search_and_barangay_filters_are_server_side(): void
+    {
+        $other = Beneficiary::factory()->assignedTo($this->technician)->create([
+            'name_of_farmer' => 'Different Farmer',
+            'address' => 'Dawis',
+        ]);
+
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($this->beneficiary)->create([
+            'diagnosis' => 'Mastitis',
+            'symptoms' => 'swollen udder',
+        ]);
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($other)->create([
+            'diagnosis' => 'Internal parasites',
+        ]);
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/health-records?search=swollen')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.diagnosis', 'Mastitis');
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/health-records?barangay=Dawis')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name_of_farmer', 'Different Farmer');
+    }
+
+    public function test_show_returns_the_beneficiary_history_without_recursive_payloads(): void
+    {
+        $older = HealthRecord::factory()->by($this->technician)->forBeneficiary($this->beneficiary)->create([
+            'date_recorded' => now()->subWeek()->toDateString(),
+            'diagnosis' => 'Earlier exam',
+        ]);
+        $current = HealthRecord::factory()->by($this->technician)->forBeneficiary($this->beneficiary)->create([
+            'date_recorded' => now()->toDateString(),
+            'diagnosis' => 'Current exam',
+            'follow_up_on' => now()->addWeek()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($this->technician)
+            ->getJson("/api/v1/health-records/{$current->id}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $current->id)
+            ->assertJsonCount(2, 'data.history')
+            ->assertJsonPath('data.history.0.id', $current->id)
+            ->assertJsonPath('data.history.1.id', $older->id);
+
+        $this->assertArrayNotHasKey('history', $response->json('data.history.0'));
+    }
+
+    public function test_a_technician_can_complete_and_reopen_their_follow_up(): void
+    {
+        $record = HealthRecord::factory()->by($this->technician)->forBeneficiary($this->beneficiary)->create([
+            'follow_up_on' => now()->subDay()->toDateString(),
+            'follow_up_completed_at' => null,
+        ]);
+
+        $this->actingAs($this->technician)
+            ->patchJson("/api/v1/health-records/{$record->id}", ['follow_up_completed' => true])
+            ->assertOk()
+            ->assertJsonPath('data.follow_up_status', 'completed');
+
+        $this->assertNotNull($record->refresh()->follow_up_completed_at);
+
+        $this->actingAs($this->technician)
+            ->patchJson("/api/v1/health-records/{$record->id}", ['follow_up_completed' => false])
+            ->assertOk()
+            ->assertJsonPath('data.follow_up_status', 'overdue');
+
+        $this->assertNull($record->refresh()->follow_up_completed_at);
+    }
+
+    public function test_a_follow_up_cannot_predate_the_examination(): void
+    {
+        $record = HealthRecord::factory()->by($this->technician)->forBeneficiary($this->beneficiary)->create([
+            'date_recorded' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($this->technician)
+            ->patchJson("/api/v1/health-records/{$record->id}", [
+                'follow_up_on' => now()->subDay()->toDateString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['follow_up_on']);
+    }
+
+    public function test_a_supporting_photo_is_private_and_owner_scoped(): void
+    {
+        Storage::fake('secure');
+
+        $record = HealthRecord::factory()->by($this->technician)->forBeneficiary($this->beneficiary)->create();
+
+        $response = $this->actingAs($this->technician)
+            ->post("/api/v1/health-records/{$record->id}/photo", [
+                'image' => UploadedFile::fake()->image('lesion.jpg')->size(300),
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.has_photo', true);
+
+        $this->assertStringContainsString('expiration=', $response->json('data.photo_url'));
+        $this->assertStringNotContainsString('/api/v1/health-records/', $response->json('data.photo_url'));
+
+        $this->assertNotNull($record->refresh()->photo_path);
+        Storage::disk('secure')->assertExists($record->photo_path);
+
+        $colleague = User::factory()->create(['role' => 'technician']);
+        $this->actingAs($colleague)
+            ->post("/api/v1/health-records/{$record->id}/photo", [
+                'image' => UploadedFile::fake()->image('lesion.jpg')->size(300),
+            ])
+            ->assertForbidden();
     }
 
     public function test_guests_are_rejected(): void

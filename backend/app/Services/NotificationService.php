@@ -602,14 +602,22 @@ class NotificationService
         $alerts = [];
 
         foreach ($bands as $status => [$type, $urgency]) {
-            $paginator = $this->schedule->listFor($user, $status, self::SCAN_CAP);
+            $paginator = $this->schedule->listFor($user, ['status' => $status], self::SCAN_CAP);
 
             if ($paginator->total() > self::SCAN_CAP) {
                 $this->truncated = true;
             }
 
             foreach ($paginator->items() as $animal) {
-                $schedule = VaccinationScheduleService::scheduleFor($animal->last_vaccination_date);
+                // Reuse the row's effective schedule, including a recorded
+                // protocol or a reschedule, so the alert label matches the
+                // list row that produced it.
+                $schedule = VaccinationScheduleService::scheduleFor(
+                    $animal->last_vaccination_date,
+                    $animal->scheduled_next_due_on,
+                    $animal->latestVaccination?->protocol_days,
+                    $animal->latest_vaccination_next_due_on,
+                );
 
                 $alerts[] = $this->vaccinationAlert($animal, $type, $urgency, $schedule, $user);
             }

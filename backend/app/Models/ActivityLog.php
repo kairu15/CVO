@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * One security-relevant event: who did what, to what, from where, when.
@@ -31,7 +32,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property array<string, mixed>|null $context
  * @property array<string, mixed>|null $old_values
  * @property array<string, mixed>|null $new_values
- * @property \Illuminate\Support\Carbon $created_at
+ * @property Carbon $created_at
  */
 class ActivityLog extends Model
 {
@@ -118,9 +119,17 @@ class ActivityLog extends Model
         'health_record_created',
         'health_record_updated',
         'health_record_deleted',
+        'health_record_photo_uploaded',
+        'vaccination_created',
+        'vaccination_updated',
+        'vaccination_deleted',
+        'vaccination_rescheduled',
+        'vaccination_photo_uploaded',
         'case_note_created',
         'case_note_updated',
         'case_note_deleted',
+        'case_note_update_added',
+        'case_note_photo_uploaded',
 
         // Generic model verbs — used by App\Models\Concerns\Auditable for
         // models with no bespoke action name (and for restores, which never

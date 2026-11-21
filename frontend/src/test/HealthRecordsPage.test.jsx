@@ -12,9 +12,12 @@ import { symptomRulesApi } from "../api/symptomRulesApi";
 vi.mock("../api/healthRecordsApi", () => ({
   healthRecordsApi: {
     list: vi.fn(),
+    summary: vi.fn(),
+    get: vi.fn(),
     options: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    uploadPhoto: vi.fn(),
     remove: vi.fn(),
     bulkRemove: vi.fn(),
   },
@@ -22,6 +25,10 @@ vi.mock("../api/healthRecordsApi", () => ({
 
 vi.mock("../api/beneficiariesApi", () => ({
   beneficiariesApi: { list: vi.fn() },
+  fetchBarangays: vi.fn().mockResolvedValue([
+    { id: 1, name: "Banay Banay", latitude: 9.6, longitude: 122.9 },
+    { id: 2, name: "Dawis", latitude: 9.6, longitude: 122.9 },
+  ]),
 }));
 
 vi.mock("../api/symptomRulesApi", () => ({
@@ -44,12 +51,21 @@ const RECORDS = [
     doctor: { id: 10, name: "Dr. Maria Santos" },
     name_of_farmer: "Aling Nena",
     address: "Banay Banay",
+    barangay: "Banay Banay",
+    rsbsa_number: "RSBSA-11",
     animal_type: "Carabao",
+    animal_quantity: 1,
     sex: "F",
     date_recorded: "2026-09-20",
     diagnosis: "Foot and mouth disease (suspected)",
+    symptoms: "Fever and drooling",
     treatment: "Isolate and start supportive therapy",
     outcome: "ongoing",
+    follow_up_on: "2026-09-27",
+    follow_up_status: "overdue",
+    follow_up_completed_at: null,
+    has_photo: false,
+    photo_url: null,
   },
   {
     id: 2,
@@ -58,12 +74,21 @@ const RECORDS = [
     doctor: { id: 99, name: "Marites Cruz" },
     name_of_farmer: "Doyle Walter",
     address: "Dawis",
+    barangay: "Dawis",
+    rsbsa_number: null,
     animal_type: "Goat",
+    animal_quantity: 3,
     sex: "M",
     date_recorded: "2026-09-18",
     diagnosis: "Internal parasites",
+    symptoms: null,
     treatment: null,
     outcome: null,
+    follow_up_on: null,
+    follow_up_status: null,
+    follow_up_completed_at: null,
+    has_photo: false,
+    photo_url: null,
   },
 ];
 
@@ -86,6 +111,25 @@ describe("HealthRecordsPage", () => {
     vi.clearAllMocks();
     auth.user = { id: 10, name: "Dr. Maria Santos", role: "technician" };
     healthRecordsApi.list.mockResolvedValue({ data: RECORDS, meta: null });
+    healthRecordsApi.summary.mockResolvedValue({
+      total_health_records: 2,
+      healthy_animals: 0,
+      observation_animals: 2,
+      follow_up_required: 1,
+      follow_up_overdue: 1,
+      follow_up_upcoming: 0,
+      follow_up_completed: 0,
+    });
+    healthRecordsApi.get.mockImplementation(async (id) => ({
+      ...(RECORDS.find((record) => record.id === id) ?? RECORDS[0]),
+      history: RECORDS,
+    }));
+    healthRecordsApi.update.mockImplementation(async (id, payload) => ({
+      ...(RECORDS.find((record) => record.id === id) ?? RECORDS[0]),
+      ...payload,
+      follow_up_status: payload.follow_up_completed ? "completed" : "upcoming",
+    }));
+    healthRecordsApi.uploadPhoto.mockResolvedValue({});
     healthRecordsApi.options.mockResolvedValue({ outcomes: OUTCOMES });
     symptomRulesApi.active.mockResolvedValue([]);
     beneficiariesApi.list.mockResolvedValue([
@@ -98,8 +142,8 @@ describe("HealthRecordsPage", () => {
 
     expect(await screen.findByText("Aling Nena")).toBeInTheDocument();
     expect(screen.getByText("Foot and mouth disease (suspected)")).toBeInTheDocument();
-    expect(screen.getByText("Dr. Maria Santos")).toBeInTheDocument();
-    expect(screen.getByText("Marites Cruz")).toBeInTheDocument();
+    expect(screen.getByText(/Dr\. Maria Santos/)).toBeInTheDocument();
+    expect(screen.getByText(/Marites Cruz/)).toBeInTheDocument();
   });
 
   it("renders an open outcome as Open rather than a blank badge", async () => {
@@ -246,9 +290,17 @@ describe("HealthRecordsPage", () => {
     renderPage();
     await screen.findByText("Aling Nena");
 
-    // Two records, but only record 1 belongs to the signed-in technician.
-    expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(1);
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Actions for Aling Nena" }));
+    });
+    expect(screen.getByRole("menuitem", { name: "Edit record for Aling Nena" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete record for Aling Nena" })).toBeInTheDocument();
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Actions for Doyle Walter" }));
+    });
+    expect(screen.queryByRole("menuitem", { name: "Edit record for Doyle Walter" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Delete record for Doyle Walter" })).not.toBeInTheDocument();
   });
 
   it("lets an administrator correct a colleague's record", async () => {
@@ -259,7 +311,16 @@ describe("HealthRecordsPage", () => {
 
     // Admin is not a technician, so no authoring control, but both rows are editable.
     expect(screen.queryByRole("button", { name: "New record" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(2);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Actions for Aling Nena" }));
+    });
+    expect(screen.getByRole("menuitem", { name: "Edit record for Aling Nena" })).toBeInTheDocument();
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Actions for Doyle Walter" }));
+    });
+    expect(screen.getByRole("menuitem", { name: "Edit record for Doyle Walter" })).toBeInTheDocument();
   });
 
   it("does not fetch the beneficiary picker when the user cannot author", async () => {
@@ -307,7 +368,10 @@ describe("HealthRecordsPage", () => {
     await screen.findByText("Aling Nena");
 
     await act(async () => {
-      await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+      await userEvent.click(screen.getByRole("button", { name: "Actions for Aling Nena" }));
+    });
+    await act(async () => {
+      await userEvent.click(screen.getByRole("menuitem", { name: "Delete record for Aling Nena" }));
     });
     await act(async () => {
       await userEvent.click(screen.getByRole("button", { name: "Delete record" }));
@@ -316,6 +380,53 @@ describe("HealthRecordsPage", () => {
     await waitFor(() => {
       expect(healthRecordsApi.remove).toHaveBeenCalledWith(1);
     });
+  });
+
+  it("filters the table from the overview card", async () => {
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: /Healthy animals/ }));
+    });
+
+    await waitFor(() =>
+      expect(healthRecordsApi.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: "healthy" }),
+      ),
+    );
+  });
+
+  it("opens a detail drawer with this animal's earlier examinations", async () => {
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Aling Nena" }));
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "Health record details" });
+    await waitFor(() => expect(healthRecordsApi.get).toHaveBeenCalledWith(1));
+    expect(within(dialog).getByText("Health history")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Fever and drooling").length).toBeGreaterThan(0);
+    expect(within(dialog).getByText("This record")).toBeInTheDocument();
+  });
+
+  it("marks a scheduled follow-up complete from the row menu", async () => {
+    renderPage();
+    await screen.findByText("Aling Nena");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Actions for Aling Nena" }));
+    });
+    await act(async () => {
+      await userEvent.click(screen.getByRole("menuitem", { name: "Mark follow-up complete" }));
+    });
+
+    await waitFor(() =>
+      expect(healthRecordsApi.update).toHaveBeenCalledWith(1, { follow_up_completed: true }),
+    );
+    expect(await screen.findByText("Follow-up marked complete.")).toBeInTheDocument();
   });
 
   it("surfaces an API failure", async () => {

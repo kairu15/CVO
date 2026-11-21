@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
-use Database\Factories\BeneficiaryFactory;
 use App\Models\Concerns\Auditable;
+use Database\Factories\BeneficiaryFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Beneficiary extends Model
@@ -157,11 +158,35 @@ class Beneficiary extends Model
         return $this->hasMany(HealthRecord::class);
     }
 
+    /** Completed vaccination history, newest first at read time. */
+    public function vaccinations(): HasMany
+    {
+        return $this->hasMany(Vaccination::class);
+    }
+
+    /** The latest completed vaccination, used by the schedule row. */
+    public function latestVaccination(): HasOne
+    {
+        return $this->hasOne(Vaccination::class)->latestOfMany('administered_on');
+    }
+
+    /** Explicit reschedule/next-dose override for the current cycle. */
+    public function vaccinationScheduleOverride(): HasOne
+    {
+        return $this->hasOne(VaccinationScheduleOverride::class);
+    }
+
     /**
      * Freeform veterinary notes about this beneficiary's animal.
      */
     public function caseNotes(): HasMany
     {
         return $this->hasMany(CaseNote::class);
+    }
+
+    /** Latest case, for the table's compact related-case hint. */
+    public function latestCaseNote(): HasOne
+    {
+        return $this->hasOne(CaseNote::class)->latestOfMany('date_noted');
     }
 }

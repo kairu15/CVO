@@ -31,12 +31,11 @@ use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SiteController;
-use App\Http\Controllers\SyncConflictController;
 use App\Http\Controllers\SymptomRuleController;
+use App\Http\Controllers\SyncConflictController;
 use App\Http\Controllers\TechnicianDashboardController;
 use App\Http\Controllers\TechnicianDirectoryController;
 use App\Http\Controllers\VaccinationScheduleController;
-use App\Http\Middleware\EnsureUserIsAdmin;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -252,14 +251,34 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
     // "options" as a record id and fail to bind.
     Route::get('health-records/options', [HealthRecordController::class, 'options'])
         ->name('api.health-records.options');
+    Route::get('health-records/summary', [HealthRecordController::class, 'summary'])
+        ->name('api.health-records.summary');
     Route::apiResource('health-records', HealthRecordController::class);
     Route::post('health-records/bulk-delete', [HealthRecordController::class, 'bulkDestroy'])
         ->name('api.health-records.bulk-delete');
 
-    // Freeform veterinary case notes (veterinarian-authored).
+    // One private supporting photo per examination. Declared after the
+    // apiResource so the explicit paths win over {health_record} binding.
+    Route::post('health-records/{id}/photo', [HealthRecordController::class, 'storePhoto'])
+        ->whereNumber('id')
+        ->name('api.health-records.photo.store');
+
+    // Veterinary cases — the case record, its append-only timeline and the
+    // related clinical/visit links. Summary/options are declared before the
+    // apiResource so `{case_note}` cannot swallow them as record ids.
+    Route::get('case-notes/summary', [CaseNoteController::class, 'summary'])
+        ->name('api.case-notes.summary');
+    Route::get('case-notes/options', [CaseNoteController::class, 'options'])
+        ->name('api.case-notes.options');
     Route::apiResource('case-notes', CaseNoteController::class);
     Route::post('case-notes/bulk-delete', [CaseNoteController::class, 'bulkDestroy'])
         ->name('api.case-notes.bulk-delete');
+    Route::post('case-notes/{id}/updates', [CaseNoteController::class, 'storeUpdate'])
+        ->whereNumber('id')
+        ->name('api.case-notes.updates.store');
+    Route::post('case-notes/{id}/photo', [CaseNoteController::class, 'storePhoto'])
+        ->whereNumber('id')
+        ->name('api.case-notes.photo.store');
 
     // Rule-Based Health Concern Hints — the active rule table the case-note /
     // health-record forms match against, CLIENT-side. Read-only here; the
@@ -331,9 +350,28 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         ->whereNumber('id')
         ->name('api.beneficiaries.set-location');
 
-    // Vaccination schedule — derived, read-only, role-scoped.
+    // Vaccination schedule — role-scoped current cycle, history and quick
+    // recording. Summary/options are declared first so a future dynamic path
+    // can never swallow them.
+    Route::get('vaccination-schedule/summary', [VaccinationScheduleController::class, 'summary'])
+        ->name('api.vaccination-schedule.summary');
+    Route::get('vaccination-schedule/options', [VaccinationScheduleController::class, 'options'])
+        ->name('api.vaccination-schedule.options');
     Route::get('vaccination-schedule', [VaccinationScheduleController::class, 'index'])
         ->name('api.vaccination-schedule');
+    Route::patch('vaccination-schedule/{beneficiary}/reschedule', [VaccinationScheduleController::class, 'reschedule'])
+        ->whereNumber('beneficiary')
+        ->name('api.vaccination-schedule.reschedule');
+
+    // Completed vaccination records — the history a schedule row rolls up.
+    Route::post('vaccinations', [VaccinationScheduleController::class, 'store'])
+        ->name('api.vaccinations.store');
+    Route::post('vaccinations/{id}/photo', [VaccinationScheduleController::class, 'storePhoto'])
+        ->whereNumber('id')
+        ->name('api.vaccinations.photo.store');
+    Route::get('beneficiaries/{beneficiary}/vaccinations', [VaccinationScheduleController::class, 'history'])
+        ->whereNumber('beneficiary')
+        ->name('api.beneficiaries.vaccinations');
 
     // Animal health rollup — derived, read-only, role-scoped.
     Route::get('animal-health', [AnimalHealthController::class, 'index'])

@@ -229,31 +229,67 @@
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateX(1.5rem);
+    transform: translateY(-0.85rem) scale(0.985);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0) scale(1);
   }
 }
 
 @keyframes toast-out {
   from {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0) scale(1);
   }
   to {
     opacity: 0;
-    transform: translateX(1.5rem);
+    transform: translateY(-0.65rem) scale(0.985);
+  }
+}
+
+@keyframes toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
   }
 }
 
 .toast-enter {
-  animation: toast-in 200ms var(--ease-panel) both;
+  animation: toast-in 220ms var(--ease-panel) both;
 }
 
 .toast-exit {
   animation: toast-out 200ms var(--ease-panel) both;
+}
+
+/* The fill shrinks over the same lifetime as the JS timer. Hover/focus pause
+   both together, so the bar always reflects the remaining display time. */
+.toast-progress {
+  transform: scaleX(1);
+  animation: toast-progress var(--toast-duration, 3s) linear forwards;
+}
+
+.toast-card:hover .toast-progress,
+.toast-card:focus-within .toast-progress {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-enter,
+  .toast-exit {
+    animation: none;
+  }
+
+  /* A shrinking bar is still motion. Keep the accent line but stop animating
+     it for readers who asked for reduced motion. */
+  .toast-progress {
+    animation: none;
+    transform: none;
+    opacity: 0.55;
+  }
 }
 
 /* ---------------------------------------------------------------------------

@@ -142,9 +142,11 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  *   INSIDE its polygon (the pole of inaccessibility), so every boundary is
  *   named at a glance — no hover needed. Labels follow the map through zoom
  *   and resize because they are anchored to geography, not pixels.
- * @param {boolean} [props.labelShowCounts] under each name, the barangay's
- *   dispersal count from the joined row (`row.pins` — the animals currently
- *   dispersed there). Pages without a joined row simply show names.
+ * @param {boolean} [props.labelShowCounts] under each name, the metric count
+ *   from the joined row (`row.pins`). Pages without a joined row simply show
+ *   names.
+ * @param {string} [props.labelCountLabel] wording before that count (default
+ *   "Total Dispersed"; Animal Health passes "Animals monitored").
  * @param {boolean} [props.cooperativeGestures] scroll-guard for maps embedded
  *   in a scrolling PAGE: a plain wheel scroll no longer zooms the map — it
  *   shows the "Use Ctrl + scroll to zoom the map" hint instead and lets the
@@ -187,6 +189,7 @@ function BarangayMapImpl({
   fitToBoundaries = true,
   showLabels = false,
   labelShowCounts = false,
+  labelCountLabel = "Total Dispersed",
   cooperativeGestures = false,
   interactive = true,
   markerLayerIds = [],
@@ -923,7 +926,7 @@ function BarangayMapImpl({
       for (const entry of labelMarkersRef.current) {
         const count = countByName.get(entry.name);
         if (typeof count === "number" && Number.isFinite(count)) {
-          entry.countLine.textContent = `Total Dispersed: ${count}`;
+          entry.countLine.textContent = `${labelCountLabel}: ${count}`;
           entry.countLine.hidden = false;
         } else {
           entry.countLine.textContent = "";
@@ -931,7 +934,7 @@ function BarangayMapImpl({
         }
       }
     }
-  }, [ready, withBoundaries, labelsOn, labelShowCounts, choropleth]);
+  }, [ready, withBoundaries, labelsOn, labelShowCounts, labelCountLabel, choropleth]);
 
   // Labels switched off (or the component unmounting): take the markers down
   // and unbind their visibility handler.

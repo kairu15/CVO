@@ -169,6 +169,12 @@ const ICONS = {
       <path d="M12 7.2v5.6M12 16.4h.01" />
     </>
   ),
+  "alert-triangle": (
+    <>
+      <path d="M10.3 3.7 2.4 17.2A2 2 0 0 0 4.1 20h15.8a2 2 0 0 0 1.7-2.8L13.7 3.7a2 2 0 0 0-3.4 0Z" />
+      <path d="M12 9v4.2M12 17h.01" />
+    </>
+  ),
   "locate-fixed": (
     <>
       <circle cx="12" cy="12" r="3.2" />

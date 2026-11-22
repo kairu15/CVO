@@ -31,7 +31,7 @@ const OFFLINE_MESSAGE =
   "You are in offline mode. All changes will be synced when online.";
 const ONLINE_MESSAGE = "You are connected online.";
 
-/** The prompt asks for ~3–4s; the toast system's success default is 4.5s. */
+/** Keep the reconnect message up slightly longer than the 3s success default. */
 const ONLINE_TOAST_MS = 4_000;
 
 export function ConnectivityStatus() {

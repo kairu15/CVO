@@ -373,9 +373,20 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
         ->whereNumber('beneficiary')
         ->name('api.beneficiaries.vaccinations');
 
-    // Animal health rollup — derived, read-only, role-scoped.
+    // Animal health rollup — derived, read-only, role-scoped. The aggregate
+    // endpoints are declared before the dynamic one so they can never be
+    // swallowed by a beneficiary id.
+    Route::get('animal-health/summary', [AnimalHealthController::class, 'summary'])
+        ->name('api.animal-health.summary');
+    Route::get('animal-health/map', [AnimalHealthController::class, 'map'])
+        ->name('api.animal-health.map');
+    Route::get('animal-health/trends', [AnimalHealthController::class, 'trends'])
+        ->name('api.animal-health.trends');
     Route::get('animal-health', [AnimalHealthController::class, 'index'])
         ->name('api.animal-health');
+    Route::get('animal-health/{beneficiary}', [AnimalHealthController::class, 'show'])
+        ->whereNumber('beneficiary')
+        ->name('api.animal-health.show');
 
     // Notification feed — derived alerts + the caller's stored event
     // notifications, always their own. unread-count backs the bell badge

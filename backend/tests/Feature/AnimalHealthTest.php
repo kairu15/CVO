@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\Beneficiary;
 use App\Models\CaseNote;
+use App\Models\FieldVisit;
 use App\Models\HealthRecord;
 use App\Models\MonitoringRecord;
 use App\Models\User;
+use App\Models\Vaccination;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -249,5 +251,224 @@ class AnimalHealthTest extends TestCase
     public function test_guests_are_rejected(): void
     {
         $this->getJson('/api/v1/animal-health')->assertUnauthorized();
+    }
+
+    public function test_the_overview_reports_healthy_observation_attention_and_unrecorded_statuses(): void
+    {
+        $healthy = $this->animal();
+        MonitoringRecord::factory()->for($healthy, 'beneficiary')->create([
+            'vaccination_date' => now()->subDays(5)->toDateString(),
+        ]);
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($healthy)->create([
+            'date_recorded' => now()->subDays(3)->toDateString(),
+            'outcome' => 'recovered',
+        ]);
+
+        $observation = $this->animal();
+        MonitoringRecord::factory()->for($observation, 'beneficiary')->create([
+            'vaccination_date' => now()->subDays(5)->toDateString(),
+        ]);
+        CaseNote::factory()->by($this->technician)->forBeneficiary($observation)->create([
+            'date_noted' => now()->toDateString(),
+            'status' => CaseNote::STATUS_OBSERVATION,
+            'follow_up_on' => now()->addWeek()->toDateString(),
+        ]);
+
+        $attention = $this->animal();
+        MonitoringRecord::factory()->for($attention, 'beneficiary')->create([
+            'vaccination_date' => now()->subDays(5)->toDateString(),
+        ]);
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($attention)->create([
+            'date_recorded' => now()->subDay()->toDateString(),
+            'outcome' => 'ongoing',
+        ]);
+
+        $unrecorded = $this->animal();
+        MonitoringRecord::factory()->for($unrecorded, 'beneficiary')->create([
+            'vaccination_date' => now()->subDays(5)->toDateString(),
+        ]);
+
+        $response = $this->actingAs($this->technician)
+            ->getJson('/api/v1/animal-health/summary')
+            ->assertOk()
+            ->assertJsonPath('data.total_animals', 4)
+            ->assertJsonPath('data.healthy_animals', 1)
+            ->assertJsonPath('data.observation_animals', 1)
+            ->assertJsonPath('data.attention_animals', 1)
+            ->assertJsonPath('data.unrecorded_animals', 1)
+            ->assertJsonPath('data.open_concerns', 1);
+
+        // The row statuses are derived from the same rule as the cards.
+        $statuses = collect($this->actingAs($this->technician)
+            ->getJson('/api/v1/animal-health')
+            ->json('data'))
+            ->pluck('health_status', 'id')
+            ->all();
+
+        $this->assertSame('healthy', $statuses[$healthy->id]);
+        $this->assertSame('observation', $statuses[$observation->id]);
+        $this->assertSame('attention', $statuses[$attention->id]);
+        $this->assertSame('unrecorded', $statuses[$unrecorded->id]);
+    }
+
+    public function test_search_status_barangay_sort_and_pagination_run_before_the_response(): void
+    {
+        $alpha = Beneficiary::factory()->create([
+            'name_of_farmer' => 'Alpha Farmer',
+            'address' => 'Dawis',
+            'animal_type' => 'Carabao',
+        ]);
+        MonitoringRecord::factory()->for($alpha, 'beneficiary')->create([
+            'vaccination_date' => now()->subDays(5)->toDateString(),
+        ]);
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($alpha)->create([
+            'date_recorded' => now()->subDays(3)->toDateString(),
+            'diagnosis' => 'Hoof rot',
+            'outcome' => 'recovered',
+        ]);
+
+        $beta = Beneficiary::factory()->create([
+            'name_of_farmer' => 'Beta Farmer',
+            'address' => 'Banaybanay',
+            'animal_type' => 'Goat',
+        ]);
+        MonitoringRecord::factory()->for($beta, 'beneficiary')->create([
+            'vaccination_date' => now()->subDays(5)->toDateString(),
+        ]);
+
+        Beneficiary::factory()->create([
+            'name_of_farmer' => 'Gamma Farmer',
+            'address' => 'Dawis',
+            'animal_type' => 'Swine',
+        ]);
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/animal-health?search=Alpha')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $alpha->id);
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/animal-health?barangay=Dawis')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/animal-health?status=healthy')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $alpha->id);
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/animal-health?sort=name&direction=asc&per_page=1&page=2')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $beta->id)
+            ->assertJsonPath('meta.current_page', 2);
+    }
+
+    public function test_the_map_endpoint_returns_barangay_counts_and_geotagged_locations(): void
+    {
+        $animal = Beneficiary::factory()->create([
+            'name_of_farmer' => 'Map Farmer',
+            'address' => 'Dawis',
+            'latitude' => 9.55,
+            'longitude' => 122.93,
+        ]);
+        MonitoringRecord::factory()->for($animal, 'beneficiary')->create([
+            'vaccination_date' => now()->subDays(5)->toDateString(),
+        ]);
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($animal)->create([
+            'outcome' => 'recovered',
+        ]);
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/animal-health/map')
+            ->assertOk()
+            ->assertJsonPath('data.barangays.0.name', 'Dawis')
+            ->assertJsonPath('data.barangays.0.animals', 1)
+            ->assertJsonPath('data.barangays.0.healthy', 1)
+            ->assertJsonPath('data.locations.0.beneficiary_id', $animal->id)
+            ->assertJsonPath('data.locations.0.latitude', 9.55);
+    }
+
+    public function test_trends_distinguish_examinations_from_distinct_animals_and_honor_the_date_filter(): void
+    {
+        $first = $this->animal();
+        $second = $this->animal();
+        $month = now()->startOfMonth()->subMonth();
+
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($first)->create([
+            'date_recorded' => $month->toDateString(),
+        ]);
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($first)->create([
+            'date_recorded' => $month->copy()->addDay()->toDateString(),
+        ]);
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($second)->create([
+            'date_recorded' => $month->copy()->addDays(2)->toDateString(),
+        ]);
+        HealthRecord::factory()->by($this->technician)->forBeneficiary($second)->create([
+            'date_recorded' => now()->subMonths(8)->toDateString(),
+        ]);
+
+        $response = $this->actingAs($this->technician)
+            ->getJson('/api/v1/animal-health/trends?from='.$month->toDateString().'&to='.now()->toDateString())
+            ->assertOk();
+
+        $point = collect($response->json('data.points'))->firstWhere('period', $month->format('Y-m'));
+        $this->assertSame(3, $point['examinations']);
+        $this->assertSame(2, $point['animals']);
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/animal-health/trends?from='.now()->toDateString().'&to='.$month->toDateString())
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['to']);
+    }
+
+    public function test_the_detail_drawer_returns_every_owning_module_without_copying_diagnoses_into_observations(): void
+    {
+        $animal = $this->animal();
+        $health = HealthRecord::factory()->by($this->technician)->forBeneficiary($animal)->create([
+            'date_recorded' => now()->subDays(2)->toDateString(),
+            'diagnosis' => 'Mastitis',
+            'symptoms' => 'Swollen quarter and reduced milk.',
+            'outcome' => 'ongoing',
+            'follow_up_on' => now()->subDay()->toDateString(),
+        ]);
+        $note = CaseNote::factory()->by($this->technician)->forBeneficiary($animal)->create([
+            'date_noted' => now()->subDay()->toDateString(),
+            'status' => CaseNote::STATUS_OBSERVATION,
+            'body' => 'The animal is eating less than usual.',
+        ]);
+        $vaccination = Vaccination::factory()->by($this->technician)->forBeneficiary($animal)->create([
+            'administered_on' => now()->subDays(5)->toDateString(),
+        ]);
+        $visit = FieldVisit::factory()->by($this->technician)->forBeneficiary($animal)->create([
+            'visited_on' => now()->subDays(4)->toDateString(),
+            'notes' => 'Observed the herd and left advice.',
+        ]);
+        MonitoringRecord::factory()->for($animal, 'beneficiary')->create([
+            'date_monitored' => now()->subDays(3)->toDateString(),
+        ]);
+
+        $this->actingAs($this->technician)
+            ->getJson("/api/v1/animal-health/{$animal->id}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $animal->id)
+            ->assertJsonPath('data.health_status', 'attention')
+            ->assertJsonPath('data.latest_examination.diagnosis', 'Mastitis')
+            ->assertJsonPath('data.health_records.0.id', $health->id)
+            ->assertJsonPath('data.case_notes.0.id', $note->id)
+            ->assertJsonPath('data.case_notes.0.body', 'The animal is eating less than usual.')
+            ->assertJsonPath('data.vaccination_history.0.id', $vaccination->id)
+            ->assertJsonPath('data.field_visits.0.id', $visit->id)
+            ->assertJsonPath('data.related_concerns.0.type', 'health_record')
+            ->assertJsonPath('data.related_concerns.0.is_diagnosis', true)
+            ->assertJsonPath('data.related_concerns.1.type', 'case_observation')
+            ->assertJsonPath('data.related_concerns.1.is_diagnosis', false);
+
+        $this->actingAs($this->technician)
+            ->getJson('/api/v1/animal-health/999999')
+            ->assertNotFound();
     }
 }

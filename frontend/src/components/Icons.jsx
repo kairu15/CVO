@@ -97,6 +97,12 @@ const ICONS = {
     </>
   ),
   moon: <path d="M20.2 14.2A8.3 8.3 0 0 1 9.8 3.8a8.3 8.3 0 1 0 10.4 10.4Z" />,
+  monitor: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="12" rx="2" />
+      <path d="M8 20.5h8M12 16.5v4" />
+    </>
+  ),
   grid: (
     <>
       <rect x="3.5" y="3.5" width="7" height="7" rx="1.8" />

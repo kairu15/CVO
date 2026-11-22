@@ -11,9 +11,8 @@ import {
  * Light/dark theme, system-wide.
  *
  * The choice persists in localStorage so a reload (and a second tab) keeps
- * it. With nothing stored, the first visit follows the OS via
- * `prefers-color-scheme`; the first manual toggle writes to storage and wins
- * from then on — the OS is only ever the *default*, never a live override.
+ * it. `system` is the default until the user explicitly chooses light or dark;
+ * choosing System again clears the stored value and follows the OS live.
  *
  * Application is class-strategy: a `dark` class on `<html>`, which Tailwind's
  * `@custom-variant dark` (index.css) turns into the `dark:` variant, so every
@@ -29,7 +28,7 @@ const THEME_STORAGE_KEY = "cvo.theme";
 
 const ThemeContext = createContext(null);
 
-/** Stored preference, or undefined when the user has never chosen. */
+/** Stored preference, or undefined when the user follows the OS. */
 function readStoredTheme() {
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
@@ -39,59 +38,74 @@ function readStoredTheme() {
   }
 }
 
-/** The OS preference at first load; the manual toggle overrides it after. */
+/** The OS preference at initial load and while System is selected. */
 function osPrefersDark() {
   return (
     typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-color-scheme: dark)").matches
+    Boolean(window.matchMedia?.("(prefers-color-scheme: dark)").matches)
   );
 }
 
 export function ThemeProvider({ children }) {
-  // undefined = "no stored choice yet" — follow the OS, don't write anything.
-  const [theme, setTheme] = useState(readStoredTheme);
+  // undefined = "follow the OS"; light/dark = an explicit saved choice.
+  const [preference, setPreference] = useState(readStoredTheme);
+  const [systemDark, setSystemDark] = useState(osPrefersDark);
 
+  const theme = preference ?? (systemDark ? "dark" : "light");
+
+  // Apply the effective theme to the document for every consumer.
   useEffect(() => {
-    const root = document.documentElement;
-    const effective = theme ?? (osPrefersDark() ? "dark" : "light");
-    root.classList.toggle("dark", effective === "dark");
+    document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
-  // Keep the no-choice case in sync with the OS until the user decides.
+  // While System is selected, follow OS changes live. A manual choice stops
+  // this listener until the reader picks System again.
   useEffect(() => {
-    if (theme !== undefined) return undefined;
+    if (preference !== undefined) return undefined;
 
     const media = window.matchMedia("(prefers-color-scheme: dark)");
 
     function onChange(event) {
-      document.documentElement.classList.toggle("dark", event.matches);
+      setSystemDark(event.matches);
     }
 
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
-  }, [theme]);
+  }, [preference]);
 
-  const toggleTheme = useCallback(() => {
-    setTheme((prev) => {
-      const next = (prev ?? (osPrefersDark() ? "dark" : "light")) === "dark" ? "light" : "dark";
+  const persist = useCallback((next) => {
+    setPreference(next);
 
-      try {
-        localStorage.setItem(THEME_STORAGE_KEY, next);
-      } catch {
-        // Persisting is best-effort; the flip still applies for this session.
-      }
-
-      return next;
-    });
+    try {
+      if (next === undefined) localStorage.removeItem(THEME_STORAGE_KEY);
+      else localStorage.setItem(THEME_STORAGE_KEY, next);
+    } catch {
+      // Persisting is best-effort; the choice still applies this session.
+    }
   }, []);
+
+  const setThemeMode = useCallback(
+    (mode) => {
+      if (mode === "system") persist(undefined);
+      else if (mode === "light" || mode === "dark") persist(mode);
+    },
+    [persist],
+  );
+
+  // Kept for callers that only need the familiar two-state flip.
+  const toggleTheme = useCallback(() => {
+    setThemeMode(theme === "dark" ? "light" : "dark");
+  }, [setThemeMode, theme]);
 
   const value = useMemo(
     () => ({
-      theme: theme ?? (osPrefersDark() ? "dark" : "light"),
-      hasChosen: theme !== undefined,
+      theme,
+      mode: preference ?? "system",
+      hasChosen: preference !== undefined,
       toggleTheme,
+      setThemeMode,
     }),
-    [theme, toggleTheme],
+    [theme, preference, toggleTheme, setThemeMode],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

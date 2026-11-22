@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -61,7 +61,13 @@ const ALERTS = [
   },
 ];
 
-const USER = { id: 1, name: "Dr. Maria Santos", role: "technician" };
+const USER = {
+  id: 1,
+  name: "Dr. Maria Santos",
+  email: "maria.santos@cvo.gov.ph",
+  role: "technician",
+  avatar_url: "/storage/avatars/maria-santos.jpg",
+};
 
 function renderHeader() {
   // Fresh client per render: polling state must not leak between tests.
@@ -116,6 +122,15 @@ function renderHeaderAt(entries, index) {
 describe("DashboardHeader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    document.documentElement.classList.remove("dark");
+    Object.assign(USER, {
+      id: 1,
+      name: "Dr. Maria Santos",
+      email: "maria.santos@cvo.gov.ph",
+      role: "technician",
+      avatar_url: "/storage/avatars/maria-santos.jpg",
+    });
     notificationsApi.list.mockResolvedValue({
       alerts: ALERTS,
       counts: { total: 1, urgent: 1, unread_events: 2 },
@@ -269,6 +284,111 @@ describe("DashboardHeader", () => {
     expect(notificationsApi.markAllRead).not.toHaveBeenCalled();
   });
 
+  it("shows the signed-in identity, role, avatar and account settings links", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    const menu = document.getElementById("account-menu-panel");
+
+    expect(menu).toBeInTheDocument();
+    expect(within(menu).getByText("Dr. Maria Santos")).toBeInTheDocument();
+    expect(within(menu).getByText("maria.santos@cvo.gov.ph")).toBeInTheDocument();
+    expect(within(menu).getByText("Field Technician")).toBeInTheDocument();
+    expect(
+      menu.querySelector('img[src="/storage/avatars/maria-santos.jpg"]'),
+    ).toBeInTheDocument();
+
+    expect(screen.getByRole("link", { name: "My Profile" })).toHaveAttribute(
+      "href",
+      "/dashboard/profile",
+    );
+    expect(
+      within(menu).getByRole("link", { name: /Personal information/ }),
+    ).toHaveAttribute("href", "/dashboard/profile#personal-information");
+    expect(
+      within(menu).getByRole("link", { name: /Password & security/ }),
+    ).toHaveAttribute("href", "/dashboard/profile#security");
+    expect(
+      within(menu).getByRole("link", { name: /Notification preferences/ }),
+    ).toHaveAttribute("href", "/dashboard/profile#preferences");
+  });
+
+  it("renders an administrator account with the correct role and initials fallback", async () => {
+    Object.assign(USER, {
+      name: "Alex Rivera",
+      email: "alex.rivera@cvo.gov.ph",
+      role: "admin",
+      avatar_url: null,
+    });
+
+    const user = userEvent.setup();
+    renderHeader();
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+
+    const menu = document.getElementById("account-menu-panel");
+    expect(within(menu).getByText("Alex Rivera")).toBeInTheDocument();
+    expect(within(menu).getByText("alex.rivera@cvo.gov.ph")).toBeInTheDocument();
+    expect(within(menu).getByText("Administrator")).toBeInTheDocument();
+    expect(within(menu).getByText("AR")).toBeInTheDocument();
+    expect(menu.querySelector("img")).toBeNull();
+  });
+
+  it("applies and persists light, dark and system appearance choices", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+
+    const menu = document.getElementById("account-menu-panel");
+    expect(within(menu).getByRole("button", { name: "System" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(within(menu).getByRole("button", { name: "Dark" }));
+    await vi.waitFor(() => expect(document.documentElement).toHaveClass("dark"));
+    expect(localStorage.getItem("cvo.theme")).toBe("dark");
+    expect(within(menu).getByRole("button", { name: "Dark" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(within(menu).getByRole("button", { name: "Light" }));
+    await vi.waitFor(() =>
+      expect(document.documentElement).not.toHaveClass("dark"),
+    );
+    expect(localStorage.getItem("cvo.theme")).toBe("light");
+
+    await user.click(within(menu).getByRole("button", { name: "System" }));
+    await vi.waitFor(() =>
+      expect(
+        within(menu).getByRole("button", { name: "System" }),
+      ).toHaveAttribute("aria-pressed", "true"),
+    );
+    expect(localStorage.getItem("cvo.theme")).toBeNull();
+  });
+
+  it("supports keyboard navigation and Escape dismissal", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+
+    await user.click(trigger);
+    const profile = screen.getByRole("link", { name: "My Profile" });
+    await vi.waitFor(() => expect(profile).toHaveFocus());
+
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("button", { name: "Light" })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    await vi.waitFor(() =>
+      expect(
+        screen.queryByRole("link", { name: "My Profile" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(trigger).toHaveFocus();
+  });
+
   it("confirms before logging out from the account menu", async () => {
     const user = userEvent.setup();
     auth.logout.mockResolvedValue();
@@ -317,6 +437,10 @@ describe("DashboardHeader", () => {
     // strip. A document-level listener covers the rest of the page.
     await user.click(document.body);
 
-    expect(screen.queryByRole("link", { name: /My Profile/ })).not.toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(
+        screen.queryByRole("link", { name: /My Profile/ }),
+      ).not.toBeInTheDocument(),
+    );
   });
 });

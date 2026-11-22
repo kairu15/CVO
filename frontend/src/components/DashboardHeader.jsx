@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
-import { useTheme } from "../context/ThemeContext";
-import { dashboardPathFor, roleLabel } from "../config/roles";
+import { dashboardPathFor } from "../config/roles";
 import { notificationsApi } from "../api/notificationsApi";
 import {
   useInvalidate,
@@ -17,18 +15,7 @@ import { Icon } from "./Icons";
 import { ConnectivityStatus } from "./ConnectivityStatus";
 import { SyncStatusBadge } from "./SyncStatusBadge";
 import { SkeletonList } from "./Skeleton";
-import { LogoutConfirmDialog } from "./LogoutConfirmDialog";
-
-/** Up to two initials for the avatar chip. */
-function initialsOf(name) {
-  if (!name) return "?";
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0].toUpperCase())
-    .join("");
-}
+import { AccountMenu } from "./AccountMenu";
 
 const SEARCH_GROUP_ICONS = {
   beneficiary: "map-pin",
@@ -75,9 +62,8 @@ function formatDate(value) {
 
 export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
   const { user } = useAuth();
-  const [panel, setPanel] = useState(null); // "search" | "notifications" | "profile" | null
+  const [panel, setPanel] = useState(null); // "search" | "notifications" | null
   const [query, setQuery] = useState("");
-  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   const close = () => setPanel(null);
 
@@ -211,151 +197,14 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
         </div>
 
         {/* Profile */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setPanel(panel === "profile" ? null : "profile")}
-            aria-expanded={panel === "profile"}
-            aria-label="Account menu"
-            className="flex items-center gap-2 rounded-pill border border-slate-200 py-1.5 pr-2.5 pl-1.5 transition hover:border-brand-300 hover:bg-brand-50 dark:border-slate-200/70 dark:hover:border-brand-200/60 dark:hover:bg-brand-100/60"
-          >
-            {user?.avatar_url ? (
-              <img
-                src={user.avatar_url}
-                alt=""
-                className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-200/40"
-              />
-            ) : (
-              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-100 text-[11px] font-bold text-brand-800">
-                {initialsOf(user?.name)}
-              </span>
-            )}
-            <span className="hidden text-left sm:block">
-              <span className="block text-xs leading-tight font-semibold text-slate-800">
-                {user?.name}
-              </span>
-              <span className="block text-[11px] leading-tight text-slate-500">
-                {roleLabel(user?.role)}
-              </span>
-            </span>
-            <Icon name="chevron-down" className="h-4 w-4 shrink-0 text-slate-400" />
-          </button>
-
-          {panel === "profile" && (
-            <>
-              <button
-                type="button"
-                aria-label="Close account menu"
-                onClick={close}
-                className="fixed inset-0 z-10 cursor-default"
-              />
-              <div className="card absolute right-0 z-20 mt-2 w-64 p-4">
-                {/* Theme toggle — the first thing in the panel, per spec, so
-                    switching is reachable without scrolling past identity. */}
-                <ThemeToggleRow />
-
-                <div className="mt-3 h-px bg-slate-100" />
-
-                <div className="mt-3 flex items-center gap-3">
-                  {user?.avatar_url ? (
-                  <img
-                    src={user.avatar_url}
-                    alt=""
-                    className="h-10 w-10 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-200/40"
-                  />
-                ) : (
-                  <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-100 text-xs font-bold text-brand-800">
-                    {initialsOf(user?.name)}
-                  </span>
-                )}
-                <div>
-                  <p className="truncate font-display text-sm font-semibold text-slate-900">
-                    {user?.name}
-                  </p>
-                  <p className="truncate text-xs text-slate-500">{user?.email}</p>
-                </div>
-                </div>
-                <p className="mt-2 inline-flex items-center gap-1.5 rounded-pill bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-800">
-                  <Icon name="shield" className="h-3.5 w-3.5" />
-                  {roleLabel(user?.role)}
-                </p>
-                <Link
-                  to="/dashboard/profile"
-                  onClick={close}
-                  className="mt-3 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 dark:border-slate-200/70 dark:hover:border-brand-200/60 dark:hover:bg-brand-100/60 dark:hover:text-brand-700"
-                >
-                  <Icon name="user" className="h-4 w-4" />
-                  My Profile
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => {
-                    close();
-                    setConfirmingLogout(true);
-                  }}
-                  className="mt-2 flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-200/70 dark:hover:border-red-200/60 dark:hover:bg-red-100 dark:hover:text-red-700"
-                >
-                  <Icon name="logout" className="h-4 w-4" />
-                  Log out
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+        <AccountMenu user={user} onOpen={close} />
       </div>
 
       {/* Connectivity: a persistent, full-width offline bar (visible for the
           whole time the device is offline) plus a reconnect toast when the
           connection returns. Sits below the row, inside the sticky header. */}
       <ConnectivityStatus />
-
-      <LogoutConfirmDialog
-        open={confirmingLogout}
-        onClose={() => setConfirmingLogout(false)}
-      />
     </header>
-  );
-}
-
-/**
- * "Dark mode" switch — the first row of the profile panel.
- *
- * A real switch (role="switch", aria-checked) with a text label, so the
- * control is understandable without the icon; the sun/moon glyph tracks the
- * CURRENT theme, giving sighted users a second cue. Flips apply instantly via
- * the `<html>` class + the body's 200ms transition-colors.
- */
-function ThemeToggleRow() {
-  const { theme, toggleTheme } = useTheme();
-  const isDark = theme === "dark";
-
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={isDark}
-      onClick={toggleTheme}
-      className="flex w-full items-center gap-3 rounded-xl px-1 py-1.5 text-left text-sm font-semibold text-slate-600 transition hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-    >
-      <Icon
-        name={isDark ? "moon" : "sun"}
-        className="h-5 w-5 shrink-0 text-amber-500 dark:text-brand-300"
-      />
-      Dark mode
-
-      <span
-        aria-hidden="true"
-        className={`ml-auto relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${
-          isDark ? "bg-brand-500" : "bg-slate-300"
-        }`}
-      >
-        <span
-          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200 ${
-            isDark ? "translate-x-[1.375rem]" : "translate-x-0.5"
-          }`}
-        />
-      </span>
-    </button>
   );
 }
 

@@ -31,7 +31,7 @@ ARG PHP_VERSION=8.4
 # -----------------------------------------------------------------------------
 # Stage 1 — shared runtime (extensions, composer, non-root user)
 # -----------------------------------------------------------------------------
-FROM php:${PHP_VERSION}-fpm-alpine AS base
+FROM php:${PHP_VERSION}-fpm-alpine3.23 AS base
 
 # Runtime libraries the compiled extensions link against are listed FIRST and
 # installed explicitly. Without that, `apk del` would treat them as dependencies

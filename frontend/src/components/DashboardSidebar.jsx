@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { dashboardsFor, getRole, roleLabel, visibleNav } from "../config/roles";
 import { useUnreadNotificationsCount } from "../api/queries";
@@ -35,6 +35,7 @@ export function DashboardSidebar({
   onClose,
 }) {
   const [confirming, setConfirming] = useState(false);
+  const logoutButtonRef = useRef(null);
 
   const config = getRole(activeRole);
   const switchable = dashboardsFor(userRole);
@@ -193,6 +194,7 @@ export function DashboardSidebar({
 
       <div className="shrink-0 border-t border-slate-100 p-3">
         <button
+          ref={logoutButtonRef}
           type="button"
           onClick={() => setConfirming(true)}
           className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 dark:hover:bg-red-100 dark:hover:text-red-700"
@@ -202,7 +204,11 @@ export function DashboardSidebar({
         </button>
       </div>
 
-      <LogoutConfirmDialog open={confirming} onClose={() => setConfirming(false)} />
+      <LogoutConfirmDialog
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        returnFocusRef={logoutButtonRef}
+      />
     </div>
   );
 }

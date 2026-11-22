@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -7,15 +8,26 @@ import { setForbiddenHandler, setUnauthorizedHandler } from "../api/client";
 
 function Probe() {
   const { user, isAuthenticated, login, logout } = useAuth();
+  const [logoutOutcome, setLogoutOutcome] = useState("idle");
+
+  async function handleLogout() {
+    const result = await logout();
+    setLogoutOutcome(
+      result?.ok
+        ? "ok"
+        : `failed:${result?.serverError?.message ?? "unknown"}`,
+    );
+  }
 
   return (
     <div>
       <span data-testid="user">{user ? user.name : "none"}</span>
       <span data-testid="authed">{String(isAuthenticated)}</span>
+      <span data-testid="logout-outcome">{logoutOutcome}</span>
       <button type="button" onClick={() => login("admin@example.com", "password", true)}>
         login
       </button>
-      <button type="button" onClick={() => logout()}>logout</button>
+      <button type="button" onClick={handleLogout}>logout</button>
     </div>
   );
 }
@@ -231,7 +243,7 @@ describe("AuthContext", () => {
     expect(sessionStorage.getItem("cvo.auth.notice")).toBeNull();
   });
 
-  it("logout clears the user even if the API call fails", async () => {
+  it("logout clears the user but reports a failed server revocation", async () => {
     authApi.authApi.fetchUser.mockResolvedValue({ id: 1, name: "CVO Administrator" });
     // Reject on call (not eagerly) so the rejection is always handled by
     // the context's try/finally and never floats as an unhandled rejection.
@@ -253,5 +265,8 @@ describe("AuthContext", () => {
 
     await waitFor(() => expect(screen.getByTestId("user")).toHaveTextContent("none"));
     expect(screen.getByTestId("authed")).toHaveTextContent("false");
+    expect(screen.getByTestId("logout-outcome")).toHaveTextContent(
+      "failed:network down",
+    );
   });
 });

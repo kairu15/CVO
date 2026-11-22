@@ -405,12 +405,21 @@ describe("DashboardHeader", () => {
 
     // Cancelling keeps the session and closes the dialog.
     await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByText(/Are you sure you want to log out\?/)).not.toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(
+        screen.queryByText(/Are you sure you want to log out\?/),
+      ).not.toBeInTheDocument(),
+    );
 
     // Confirming is what actually signs the user out.
     await user.click(screen.getByRole("button", { name: "Account menu" }));
     await user.click(screen.getByRole("button", { name: "Log out" }));
-    await user.click(screen.getByRole("button", { name: "Yes, log out" }));
+    await user.click(
+      within(screen.getByRole("dialog", { name: "Log out" })).getByRole(
+        "button",
+        { name: "Log out" },
+      ),
+    );
     await vi.waitFor(() => expect(auth.logout).toHaveBeenCalledTimes(1));
   });
 

@@ -293,6 +293,75 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Optional modal motion (component: Modal.jsx, opt-in via `animated`)
+   --------------------------------------------------------------------------- */
+
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-backdrop-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes modal-panel-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(0.3rem) scale(0.98);
+  }
+}
+
+.modal-backdrop-enter {
+  animation: modal-backdrop-in 160ms ease both;
+}
+
+.modal-backdrop-exit {
+  animation: modal-backdrop-out 140ms ease both;
+}
+
+.modal-panel-enter {
+  animation: modal-panel-in 180ms var(--ease-panel) both;
+}
+
+.modal-panel-exit {
+  animation: modal-panel-out 140ms var(--ease-panel) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop-enter,
+  .modal-backdrop-exit,
+  .modal-panel-enter,
+  .modal-panel-exit {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Account menu (component: AccountMenu.jsx)
    --------------------------------------------------------------------------- */
 

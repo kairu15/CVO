@@ -354,6 +354,7 @@ export function AccountMenu({ user, onOpen }) {
       <LogoutConfirmDialog
         open={confirmingLogout}
         onClose={() => setConfirmingLogout(false)}
+        returnFocusRef={triggerRef}
       />
     </div>
   );

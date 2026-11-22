@@ -199,17 +199,28 @@ export function AuthProvider({ children }) {
     return () => setForbiddenHandler(null);
   }, [refreshUser]);
 
+  /**
+   * Sign out. The local session is cleared no matter what the server says — a
+   * failed revocation call must never trap the user on a dead page. The result
+   * lets the confirmation dialog distinguish a fully confirmed logout from a
+   * local-only one without pretending the server call succeeded.
+   *
+   * @returns {Promise<{ok: boolean, serverError: Error|null}>}
+   */
   const logout = useCallback(async () => {
-    // The local session is cleared no matter what the server says — a
-    // failed revocation call must never trap the user on a dead page
-    // (callers navigate away right after this resolves).
+    let serverError = null;
+
     try {
       await authApi.logout();
-    } catch {
-      // ignored — session is cleared below regardless
+    } catch (error) {
+      // A 401 means the server session was already gone; that is a completed
+      // logout, not a revocation failure worth alarming the reader about.
+      if (error?.response?.status !== 401) serverError = error;
     } finally {
       clearSession(setUser);
     }
+
+    return { ok: !serverError, serverError };
   }, []);
 
   /**

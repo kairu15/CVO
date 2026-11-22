@@ -26,7 +26,7 @@ class CaseNoteIndexRequest extends FormRequest
             'follow_up' => ['nullable', Rule::in(['upcoming', 'overdue', 'completed'])],
             'sort' => ['nullable', Rule::in(['date', 'farmer', 'status', 'reference'])],
             'direction' => ['nullable', Rule::in(['asc', 'desc'])],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'per_page' => ['nullable', 'integer', 'min:1'],
         ];
     }
 }

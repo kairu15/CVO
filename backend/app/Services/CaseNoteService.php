@@ -173,13 +173,19 @@ class CaseNoteService
 
         $oldStatus = $note->status;
         $oldCompleted = $note->follow_up_completed_at !== null;
+        $oldFollowUp = $note->follow_up_on?->toDateString();
         $statusChanged = array_key_exists('status', $data) && $data['status'] !== $oldStatus;
+        $followUpChanged = array_key_exists('follow_up_on', $data)
+            && $data['follow_up_on'] !== $oldFollowUp;
 
         if ($statusChanged) {
             $data['resolved_at'] = $data['status'] === CaseNote::STATUS_RESOLVED ? now() : null;
         }
 
-        if (array_key_exists('follow_up_on', $data) && $data['follow_up_on'] === null) {
+        if (array_key_exists('follow_up_on', $data)
+            && ($data['follow_up_on'] === null
+                || $data['follow_up_on'] !== $note->follow_up_on?->toDateString())) {
+            // A new schedule, or clearing it, reopens the follow-up.
             $data['follow_up_completed_at'] = null;
         }
 
@@ -189,7 +195,7 @@ class CaseNoteService
             $data['follow_up_completed_at'] = null;
         }
 
-        DB::transaction(function () use ($note, $data, $actor, $statusChanged, $oldStatus, $completed, $oldCompleted): void {
+        DB::transaction(function () use ($note, $data, $actor, $statusChanged, $oldStatus, $completed, $oldCompleted, $followUpChanged): void {
             $note->update($data);
 
             if ($statusChanged) {
@@ -202,6 +208,14 @@ class CaseNoteService
                 $this->appendTimeline($note, $actor, [
                     'happened_on' => today()->toDateString(),
                     'observations' => $completed ? 'Follow-up marked complete.' : 'Follow-up reopened.',
+                ]);
+            } elseif ($followUpChanged) {
+                $this->appendTimeline($note, $actor, [
+                    'happened_on' => today()->toDateString(),
+                    'observations' => $note->follow_up_on
+                        ? 'Follow-up rescheduled to '.$note->follow_up_on->toDateString().'.'
+                        : 'Follow-up schedule cleared.',
+                    'follow_up_on' => $note->follow_up_on?->toDateString(),
                 ]);
             }
         });

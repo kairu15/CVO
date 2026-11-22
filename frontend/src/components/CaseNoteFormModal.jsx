@@ -18,7 +18,6 @@ import {
   CASE_STATUS_LABELS,
   caseCategoryLabel,
   caseStatusLabel,
-  formatCaseDate,
 } from "../lib/caseLabels";
 
 const DEFAULT_CATEGORIES = [

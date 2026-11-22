@@ -316,6 +316,22 @@ class CaseNoteManagementTest extends TestCase
             'case_note_id' => $note->id,
             'observations' => 'Follow-up reopened.',
         ]);
+
+        // Rescheduling a completed follow-up reopens it and records the date
+        // change instead of silently replacing the old schedule.
+        $nextWeek = now()->addWeek()->toDateString();
+
+        $this->actingAs($this->technician)
+            ->patchJson("/api/v1/case-notes/{$note->id}", ['follow_up_on' => $nextWeek])
+            ->assertOk()
+            ->assertJsonPath('data.follow_up_on', $nextWeek)
+            ->assertJsonPath('data.follow_up_status', 'upcoming');
+
+        $this->assertDatabaseHas('case_note_updates', [
+            'case_note_id' => $note->id,
+            'observations' => 'Follow-up rescheduled to '.$nextWeek.'.',
+            'follow_up_on' => $nextWeek,
+        ]);
     }
 
     public function test_linked_records_must_belong_to_the_same_household(): void

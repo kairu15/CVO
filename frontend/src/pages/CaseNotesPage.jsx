@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { caseNotesApi } from "../api/caseNotesApi";
 import { beneficiariesApi } from "../api/beneficiariesApi";
@@ -119,6 +120,63 @@ function timelineFor(detail) {
   });
 }
 
+function CaseDetailDrawer({ open, onClose, children }) {
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function onKey(event) {
+      if (event.key === "Escape") onClose();
+    }
+
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-50">
+      <div
+        aria-hidden="true"
+        onClick={onClose}
+        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm dark:bg-black/60"
+      />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Case details"
+        className="absolute inset-y-0 right-0 flex w-full max-w-3xl flex-col bg-white shadow-2xl"
+      >
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 sm:px-6">
+          <div>
+            <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">
+              Case management
+            </p>
+            <h3 className="mt-0.5 font-display text-lg font-bold text-slate-900">
+              Case details
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close case details"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700"
+          >
+            <Icon name="close" />
+          </button>
+        </header>
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6">{children}</div>
+      </aside>
+    </div>,
+    document.body,
+  );
+}
+
 function CaseDetailModal({
   detail,
   loading,
@@ -137,12 +195,7 @@ function CaseDetailModal({
   const relatedVisits = detail?.related_field_visits ?? [];
 
   return (
-    <Modal
-      open={detail !== null}
-      title="Case details"
-      onClose={onClose}
-      contentClassName="max-w-4xl"
-    >
+    <CaseDetailDrawer open={detail !== null} onClose={onClose}>
       {detail && (
         <div className="space-y-5 text-sm">
           {loading && <p className="text-xs text-slate-500">Loading case history…</p>}
@@ -461,7 +514,7 @@ function CaseDetailModal({
           </div>
         </div>
       )}
-    </Modal>
+    </CaseDetailDrawer>
   );
 }
 
@@ -641,11 +694,25 @@ export default function CaseNotesPage({ roleKey = "technician" }) {
   }
 
   function setStatusFromCard(status) {
-    updateParams({ status, follow_up: null });
+    setSearchInput("");
+    updateParams({
+      search: null,
+      status,
+      follow_up: null,
+      category: null,
+      barangay: null,
+    });
   }
 
   function setFollowUpFromCard(value) {
-    updateParams({ follow_up: value, status: null });
+    setSearchInput("");
+    updateParams({
+      search: null,
+      follow_up: value,
+      status: null,
+      category: null,
+      barangay: null,
+    });
   }
 
   function openCreate() {
@@ -802,8 +869,7 @@ export default function CaseNotesPage({ roleKey = "technician" }) {
       value: summary.total_cases,
       hint: "all documented cases",
       active: !hasFilters,
-      onClick: () =>
-        updateParams({ status: null, follow_up: null, category: null, barangay: null }),
+      onClick: clearFilters,
     },
     {
       key: "open",

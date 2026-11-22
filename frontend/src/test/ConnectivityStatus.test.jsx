@@ -112,8 +112,9 @@ describe("ConnectivityStatus", () => {
 
     const toast = screen.getByRole("status");
     expect(toast).toHaveTextContent(ONLINE);
-    // Success variant — the green left accent, distinct from the amber bar.
-    expect(toast.className).toContain("border-l-brand-600");
+    // Success variant — the green progress line, distinct from the amber bar.
+    expect(toast).toHaveAttribute("data-toast-variant", "success");
+    expect(toast.querySelector(".toast-progress").className).toContain("bg-brand-600");
   });
 
   it("auto-dismisses the online toast after a few seconds", () => {

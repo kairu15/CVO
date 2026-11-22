@@ -6,6 +6,10 @@
  * cannot cover the page. `z-[60]` sits above modals (`z-50`) so feedback stays
  * visible.
  *
+ * Each card follows the CVO reference layout: a colored icon, a bold type
+ * heading (Success / Information / Warning / Error), the message, a close
+ * button, and a bottom progress line.
+ *
  * Behavior: auto-dismiss after the variant's duration, paused while hovered or
  * focused; slide down + fade in from the top, and slide up + fade out on exit.
  * A progress bar shows the remaining lifetime. Persistent messages omit the
@@ -21,30 +25,30 @@ import { Icon } from "./Icons";
 /** Icon, accent and progress styling per variant, from the shared palette. */
 const VARIANTS = {
   success: {
+    label: "Success",
     role: "status",
     icon: "check",
-    accent: "border-l-brand-600",
     iconWrap: "bg-brand-50 text-brand-700 dark:bg-brand-100 dark:text-brand-800",
     progress: "bg-brand-600",
   },
   error: {
+    label: "Error",
     role: "alert",
     icon: "alert-circle",
-    accent: "border-l-red-600",
     iconWrap: "bg-red-50 text-red-700 dark:bg-red-100 dark:text-red-700",
     progress: "bg-red-600",
   },
   warning: {
+    label: "Warning",
     role: "alert",
     icon: "alert-triangle",
-    accent: "border-l-amber-500",
     iconWrap: "bg-amber-50 text-amber-700 dark:bg-amber-100 dark:text-amber-800",
     progress: "bg-amber-500",
   },
   info: {
+    label: "Information",
     role: "status",
     icon: "info",
-    accent: "border-l-sky-500",
     iconWrap: "bg-sky-50 text-sky-700 dark:bg-sky-50 dark:text-sky-800",
     progress: "bg-sky-500",
   },
@@ -129,20 +133,25 @@ function ToastCard({ toast, onDismiss }) {
       onMouseLeave={resumeForPointer}
       onFocusCapture={pauseForFocus}
       onBlurCapture={resumeForFocus}
-      className={`toast-card pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-2xl border border-slate-200/80 border-l-4 bg-white py-3 pr-2.5 pl-3.5 shadow-panel dark:border-slate-200/60 ${variant.accent} ${
+      className={`toast-card pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-2xl border border-slate-200/80 bg-white py-3.5 pr-2.5 pl-3.5 shadow-panel dark:border-slate-200/60 ${
         toast.leaving ? "toast-exit" : "toast-enter"
       }`}
     >
       <span
         aria-hidden="true"
-        className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${variant.iconWrap}`}
+        className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${variant.iconWrap}`}
       >
-        <Icon name={variant.icon} className="h-4.5 w-4.5" />
+        <Icon name={variant.icon} className="h-5 w-5" />
       </span>
 
-      <p className="flex-1 pt-1.5 text-sm leading-snug font-medium text-slate-800 dark:text-slate-600">
-        {toast.message}
-      </p>
+      <div className="min-w-0 flex-1 pt-0.5">
+        <p className="text-sm font-semibold text-slate-900">
+          {variant.label}
+        </p>
+        <p className="mt-0.5 text-sm leading-snug text-slate-600">
+          {toast.message}
+        </p>
+      </div>
 
       <button
         type="button"

@@ -62,13 +62,17 @@ describe("ToastProvider", () => {
     const information = screen.getByText("Your changes have been saved.").closest("[data-toast-variant]");
 
     expect(success).toHaveAttribute("role", "status");
-    expect(success.className).toContain("border-l-brand-600");
+    expect(within(success).getByText("Success")).toBeInTheDocument();
+    expect(success.querySelector(".toast-progress").className).toContain("bg-brand-600");
     expect(warning).toHaveAttribute("role", "alert");
-    expect(warning.className).toContain("border-l-amber-500");
+    expect(within(warning).getByText("Warning")).toBeInTheDocument();
+    expect(warning.querySelector(".toast-progress").className).toContain("bg-amber-500");
     expect(error).toHaveAttribute("role", "alert");
-    expect(error.className).toContain("border-l-red-600");
+    expect(within(error).getByText("Error")).toBeInTheDocument();
+    expect(error.querySelector(".toast-progress").className).toContain("bg-red-600");
     expect(information).toHaveAttribute("role", "status");
-    expect(information.className).toContain("border-l-sky-500");
+    expect(within(information).getByText("Information")).toBeInTheDocument();
+    expect(information.querySelector(".toast-progress").className).toContain("bg-sky-500");
   });
 
   it("uses the top-center viewport and stacks the newest notification first", () => {

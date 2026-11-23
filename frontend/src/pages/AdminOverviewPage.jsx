@@ -347,7 +347,8 @@ export default function AdminOverviewPage() {
                 </h4>
                 <p className="text-xs text-slate-500">Top {topBarangays.length} of {num(per_barangay?.length ?? 0)}</p>
               </div>
-              <table className="w-full text-left text-xs">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[34rem] text-left text-xs">
                 <thead className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
                   <tr>
                     <th className="px-4 py-2.5">Barangay</th>
@@ -369,6 +370,7 @@ export default function AdminOverviewPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
         ) : null}
@@ -501,7 +503,8 @@ export default function AdminOverviewPage() {
                       </p>
                     )}
                   </div>
-                  <table className="w-full text-left text-xs">
+                  <div className="overflow-x-auto">
+                  <table className="w-full min-w-[34rem] text-left text-xs">
                     <thead className="border-b border-slate-200 text-[10px] tracking-wider text-slate-500 uppercase">
                       <tr>
                         <th className="px-4 py-2.5">Technician</th>
@@ -530,6 +533,7 @@ export default function AdminOverviewPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
 
                 <ChartCard

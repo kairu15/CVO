@@ -42,12 +42,12 @@ export function PaginationFooter({
   const label = total === 1 ? noun : (plural ?? `${noun}s`);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-600 dark:border-slate-200/60 dark:text-slate-400">
-      <span>
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-600 dark:border-slate-200/60 dark:text-slate-400">
+      <span className="min-w-0">
         Showing {shown} of {total} {label}
       </span>
 
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
         {pageSizeOptions?.length > 0 && onPageSizeChange && (
           <label className="flex items-center gap-1.5">
             <span className="sr-only">Rows per page</span>

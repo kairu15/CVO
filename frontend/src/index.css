@@ -175,7 +175,7 @@
 
 /* Text input / select / textarea. */
 @utility field {
-  @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm
+  @apply min-h-10 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm
     text-slate-900 outline-none transition
     placeholder:text-slate-400
     focus:border-brand-400 focus:ring-4 focus:ring-brand-400/25
@@ -220,6 +220,591 @@
 /* Small uppercase section label. */
 @utility eyebrow {
   @apply text-xs font-semibold tracking-[0.18em] text-brand-700 uppercase;
+}
+
+/* ---------------------------------------------------------------------------
+   Filter toolbar layout (components/FilterToolbar.jsx, SearchField.jsx)
+   ---------------------------------------------------------------------------
+   One responsive grid for every filter panel in the app.
+
+   - auto-fill columns of at least 11rem let fields wrap naturally instead of
+     overflowing fixed widths;
+   - `min-width: 0` on the grid and its children is what stops a long option
+     label or placeholder from forcing the page to scroll sideways;
+   - a single column on phones (the min() keeps 100% as the lower bound);
+   - actions always take their own full-width row, so a button can never sit
+     on top of a search field.
+
+   The media queries are written out rather than composed from Tailwind
+   variants so a field can span two columns only when two columns exist.
+   --------------------------------------------------------------------------- */
+@layer components {
+  .filter-toolbar {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
+    align-items: end;
+    gap: 0.75rem;
+    width: 100%;
+    min-width: 0;
+  }
+
+  @media (min-width: 40rem) {
+    .filter-toolbar {
+      grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+    }
+  }
+
+  .filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    min-width: 0;
+  }
+
+  /* Flex and grid children default to min-width: auto, which is exactly how a
+     native <select> with a long option pushes past its cell. */
+  .filter-field > * {
+    min-width: 0;
+  }
+
+  .filter-field--wide {
+    grid-column: span 1;
+  }
+
+  @media (min-width: 40rem) {
+    .filter-field--wide {
+      grid-column: span 2;
+    }
+  }
+
+  .filter-field--full {
+    grid-column: 1 / -1;
+  }
+
+  /* Search + module actions share the first row on desktop and become two
+     full-width rows on a phone. The search keeps a readable minimum width
+     instead of being squeezed by the action group. */
+  .filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+    min-width: 0;
+  }
+
+  .filter-search-row {
+    flex: 1 1 20rem;
+    min-width: 0;
+    max-width: 40rem;
+  }
+
+  .filter-bar__controls {
+    display: flex;
+    min-width: 0;
+    align-items: flex-end;
+    gap: 0.5rem;
+    margin-left: auto;
+    max-width: 100%;
+  }
+
+  .filter-actions-row {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Active filter chips: a visible answer to "why is this list short?". */
+  .filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem;
+    margin-bottom: 0.75rem;
+    min-width: 0;
+  }
+
+  .filter-chips__label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-slate-500);
+  }
+
+  .filter-chip {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: 0.125rem;
+    border: 1px solid var(--color-brand-200);
+    border-radius: var(--radius-pill);
+    background: var(--color-brand-50);
+    padding: 0.125rem 0.125rem 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-brand-900);
+  }
+
+  .filter-chip__text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .filter-chip__remove {
+    display: inline-flex;
+    height: 1.375rem;
+    width: 1.375rem;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    color: var(--color-brand-800);
+    transition: background-color 150ms ease;
+  }
+
+  .filter-chip__remove:hover {
+    background: var(--color-brand-200);
+  }
+
+  .filter-chip__remove:focus-visible {
+    outline: 2px solid var(--color-brand-700);
+    outline-offset: 1px;
+  }
+
+  .filter-chips__clear {
+    height: 1.75rem;
+    border-radius: var(--radius-pill);
+    padding: 0 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--color-slate-600);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .filter-chips__clear:hover {
+    color: var(--color-brand-800);
+  }
+
+  /* Mobile-only trigger for the filter bottom sheet. */
+  .filter-toggle {
+    display: flex;
+    width: 100%;
+    height: 2.5rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 0;
+    border: 1px solid var(--color-slate-300);
+    border-radius: var(--radius-pill);
+    background: var(--color-white);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-slate-700);
+  }
+
+  .filter-toggle:focus-visible {
+    outline: 2px solid var(--color-brand-700);
+    outline-offset: 2px;
+  }
+
+  .filter-toggle__count,
+  .filter-advanced__count {
+    display: inline-flex;
+    min-width: 1.125rem;
+    height: 1.125rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: var(--color-brand-700);
+    padding: 0 0.3125rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: white;
+  }
+
+  @media (min-width: 40rem) {
+    .filter-toggle {
+      display: none;
+    }
+  }
+
+  /* Bottom sheet (phones only). Above 640px the same markup is an ordinary
+     block, so the filters are always expanded on desktop and tablet. */
+  .filter-sheet__backdrop,
+  .filter-sheet__head,
+  .filter-sheet__foot {
+    display: none;
+  }
+
+  @media (max-width: 39.999rem) {
+    /* Only panels that opt into the mobile sheet become an overlay. Other
+       toolbars keep rendering inline at every width. */
+    .filter-sheet--sheet {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .filter-sheet--sheet.is-open {
+      visibility: visible;
+    }
+
+    .filter-sheet__backdrop {
+      display: block;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: rgb(15 23 42 / 0.5);
+      pointer-events: auto;
+      -webkit-backdrop-filter: blur(1px);
+      backdrop-filter: blur(1px);
+    }
+
+    .filter-sheet__panel {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      display: flex;
+      max-height: 88vh;
+      max-height: 88dvh;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: 1rem 1rem 0 0;
+      background: var(--color-white);
+      box-shadow: 0 -12px 40px rgb(15 23 42 / 0.28);
+      padding-bottom: env(safe-area-inset-bottom);
+      pointer-events: auto;
+      transform: translateY(100%);
+      transition: transform 220ms ease;
+    }
+
+    .filter-sheet--sheet.is-open .filter-sheet__panel {
+      transform: translateY(0);
+    }
+
+    .filter-sheet__head {
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      padding: 0.875rem 1rem 0.75rem;
+    }
+
+    .filter-sheet__title {
+      font-family: var(--font-display, inherit);
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: var(--color-slate-900);
+    }
+
+    .filter-sheet__hint {
+      margin-top: 0.125rem;
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    .filter-sheet__close {
+      display: inline-flex;
+      height: 2.25rem;
+      width: 2.25rem;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9999px;
+      color: var(--color-slate-600);
+    }
+
+    .filter-sheet__close:hover {
+      background: var(--color-slate-100);
+    }
+
+    .filter-sheet__close:focus-visible {
+      outline: 2px solid var(--color-brand-700);
+      outline-offset: 2px;
+    }
+
+    .filter-sheet__panel > .filter-toolbar {
+      grid-template-columns: 1fr;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 0.875rem 1rem 1rem;
+    }
+
+    .filter-sheet__foot {
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      border-top: 1px solid var(--color-slate-200);
+      padding: 0.75rem 1rem;
+    }
+
+    .filter-sheet__foot > * {
+      flex: 1 1 0;
+      justify-content: center;
+    }
+
+    /* Search keeps its own row; Filters and Actions then share one row. */
+    .filter-bar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .filter-search-row {
+      width: 100%;
+      flex: none;
+      max-width: none;
+    }
+
+    .filter-bar__controls {
+      width: 100%;
+      margin-left: 0;
+      align-items: stretch;
+    }
+
+    .filter-bar__controls > * {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    .filter-actions-row {
+      margin-left: 0;
+    }
+  }
+
+  /* Desktop: the controls sit inline beside the search field. */
+  .responsive-actions {
+    min-width: 0;
+  }
+
+  .responsive-actions__body {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  @media (min-width: 40rem) {
+    .responsive-actions__trigger {
+      display: none;
+    }
+  }
+
+  /* Phone: one compact Actions menu instead of a row of export/view buttons. */
+  @media (max-width: 39.999rem) {
+    .responsive-actions {
+      position: relative;
+      display: flex;
+      min-width: 0;
+    }
+
+    .responsive-actions__trigger {
+      flex: 1 1 0;
+    }
+
+    .responsive-actions__body {
+      display: none;
+    }
+
+    .responsive-actions__body.is-open {
+      position: absolute;
+      top: calc(100% + 0.5rem);
+      right: 0;
+      z-index: 55;
+      display: flex;
+      width: min(20rem, calc(100vw - 2rem));
+      max-height: 70vh;
+      flex-direction: column;
+      align-items: stretch;
+      overflow-y: auto;
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.75rem;
+      background: var(--color-white);
+      padding: 0.75rem;
+      box-shadow: 0 12px 30px rgb(15 23 42 / 0.18);
+    }
+
+    .responsive-actions__body .filter-footer,
+    .responsive-actions__body .filter-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .responsive-actions__body .filter-footer > *,
+    .responsive-actions__body .filter-actions > * {
+      width: 100%;
+    }
+  }
+
+  /* Advanced filters disclosure: spans the grid, then uses a nested grid. */
+  .filter-advanced {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .filter-advanced__summary {
+    display: inline-flex;
+    min-height: 2rem;
+    cursor: pointer;
+    list-style: none;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: var(--radius-pill);
+    padding: 0 0.5rem 0 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-slate-600);
+  }
+
+  .filter-advanced__summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .filter-advanced__summary:hover {
+    background: var(--color-brand-50);
+    color: var(--color-brand-800);
+  }
+
+  .filter-advanced__summary:focus-visible {
+    outline: 2px solid var(--color-brand-700);
+    outline-offset: 2px;
+  }
+
+  .filter-advanced__chevron {
+    transition: transform 150ms ease;
+  }
+
+  .filter-advanced[open] .filter-advanced__chevron {
+    transform: rotate(180deg);
+  }
+
+  .filter-toolbar--nested {
+    margin-top: 0.75rem;
+    border-radius: 0.75rem;
+    background: var(--color-slate-50);
+    padding: 0.75rem;
+  }
+
+  .filter-label {
+    display: block;
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    color: var(--color-slate-700);
+  }
+
+  .filter-actions,
+  .filter-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .filter-actions {
+    justify-content: flex-end;
+  }
+
+  .filter-footer {
+    justify-content: space-between;
+    padding-top: 0.125rem;
+  }
+
+  /* Reset / view-action button: same 40px height as the fields and the primary
+     buttons beside it, so an action row reads as one line. */
+  .filter-reset {
+    display: inline-flex;
+    height: 2.5rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    border-radius: var(--radius-pill);
+    padding: 0 0.875rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-slate-600);
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+
+  .filter-reset:hover {
+    background: var(--color-brand-50);
+    color: var(--color-brand-800);
+  }
+
+  .filter-reset:focus-visible {
+    outline: 2px solid var(--color-brand-700);
+    outline-offset: 2px;
+  }
+
+  /* Segmented view switcher (group by type / barangay, list / calendar). */
+  .segment-group {
+    display: inline-flex;
+    height: 2.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+    border: 1px solid var(--color-slate-200);
+    border-radius: var(--radius-pill);
+    background: var(--color-white);
+    /* A tight inset keeps each segment a 36px touch target inside the 40px
+       control height, instead of shrinking it to 30px. */
+    padding: 0.0625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .segment-button {
+    display: inline-flex;
+    height: 100%;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: var(--radius-pill);
+    padding: 0 0.75rem;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+
+  .segment-button:focus-visible {
+    outline: 2px solid var(--color-brand-700);
+    outline-offset: 2px;
+  }
+
+  /* Touch screens get a 40px hit area inside the segmented control, not the
+     30px the compact desktop chrome uses. */
+  @media (pointer: coarse) {
+    .segment-group {
+      height: 3rem;
+      padding: 0.25rem;
+    }
+
+    .segment-button {
+      min-height: 2.5rem;
+    }
+  }
+
+  @media (max-width: 39.999rem) {
+    .filter-actions,
+    .filter-footer {
+      justify-content: stretch;
+    }
+
+    .filter-actions > *,
+    .filter-footer > * {
+      flex: 1 1 auto;
+    }
+  }
 }
 
 /* ---------------------------------------------------------------------------

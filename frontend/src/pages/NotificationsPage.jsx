@@ -8,6 +8,11 @@ import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { PaginationFooter } from "../components/PaginationFooter";
 import { Icon } from "../components/Icons";
+import {
+  FilterField,
+  FilterToolbar,
+} from "../components/FilterToolbar";
+import { SearchField } from "../components/SearchField";
 import { useFlashHighlight } from "../hooks/useFlashHighlight";
 import { getRole } from "../config/roles";
 
@@ -407,30 +412,68 @@ export default function NotificationsPage({ roleKey = "admin" }) {
       )}
 
       <section className="card p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="relative block md:col-span-2">
-            <span className="sr-only">Search notifications</span>
-            <Icon
-              name="search"
-              className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              type="search"
+        <FilterToolbar
+          collapsible
+          search={
+            <SearchField
+              id="notification-search"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              aria-label="Search notifications"
+              onChange={setSearch}
               placeholder="Search title, message, farmer, RSBSA or ear tag"
-              className="field pl-10"
+              ariaLabel="Search notifications"
             />
-          </label>
-
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold text-slate-600">Status</span>
+          }
+          activeFilters={[
+            status !== "all"
+              ? {
+                  key: "status",
+                  label: `Status: ${
+                    STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status
+                  }`,
+                  onClear: () => setStatus("all"),
+                }
+              : null,
+            priority
+              ? {
+                  key: "priority",
+                  label: `Priority: ${PRIORITY_LABELS[priority] ?? priority}`,
+                  onClear: () => setPriority(""),
+                }
+              : null,
+            category
+              ? {
+                  key: "category",
+                  label: `Category: ${
+                    CATEGORY_OPTIONS.find((option) => option.key === category)?.label ?? category
+                  }`,
+                  onClear: () => setCategory(""),
+                }
+              : null,
+            from
+              ? {
+                  key: "from",
+                  label: `From: ${from}`,
+                  onClear: () => setFrom(""),
+                }
+              : null,
+            to
+              ? {
+                  key: "to",
+                  label: `To: ${to}`,
+                  onClear: () => setTo(""),
+                }
+              : null,
+          ].filter(Boolean)}
+          onClearAll={clearFilters}
+          onReset={clearFilters}
+        >
+          <FilterField label="Status" htmlFor="notification-status">
             <select
+              id="notification-status"
               value={status}
               onChange={(event) => setStatus(event.target.value)}
               aria-label="Filter by status"
-              className="field py-2 text-xs"
+              className="field"
             >
               {STATUS_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -440,15 +483,15 @@ export default function NotificationsPage({ roleKey = "admin" }) {
                 </option>
               ))}
             </select>
-          </label>
+          </FilterField>
 
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold text-slate-600">Priority</span>
+          <FilterField label="Priority" htmlFor="notification-priority">
             <select
+              id="notification-priority"
               value={priority}
               onChange={(event) => setPriority(event.target.value)}
               aria-label="Filter by priority"
-              className="field py-2 text-xs"
+              className="field"
             >
               <option value="">All priorities</option>
               {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
@@ -457,30 +500,30 @@ export default function NotificationsPage({ roleKey = "admin" }) {
                 </option>
               ))}
             </select>
-          </label>
+          </FilterField>
 
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold text-slate-600">From</span>
+          <FilterField label="From" htmlFor="notification-from">
             <input
+              id="notification-from"
               type="date"
               value={from}
               onChange={(event) => setFrom(event.target.value)}
               aria-label="Filter from date"
-              className="field py-2 text-xs"
+              className="field"
             />
-          </label>
+          </FilterField>
 
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold text-slate-600">To</span>
+          <FilterField label="To" htmlFor="notification-to">
             <input
+              id="notification-to"
               type="date"
               value={to}
               onChange={(event) => setTo(event.target.value)}
               aria-label="Filter to date"
-              className="field py-2 text-xs"
+              className="field"
             />
-          </label>
-        </div>
+          </FilterField>
+        </FilterToolbar>
 
         <div className="mt-4 flex gap-2 overflow-x-auto pb-0.5">
           <CategoryChip

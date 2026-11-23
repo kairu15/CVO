@@ -12,6 +12,12 @@ import { Modal } from "../components/Modal";
 import { ButtonSpinner } from "../components/LoadingSpinner";
 import { VaccinationRecordModal } from "../components/VaccinationRecordModal";
 import { Icon } from "../components/Icons";
+import {
+  FilterActions,
+  FilterField,
+  FilterToolbar,
+} from "../components/FilterToolbar";
+import { SearchField } from "../components/SearchField";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useBarangays } from "../hooks/useBarangays";
 import { useAuth } from "../context/AuthContext";
@@ -726,34 +732,52 @@ export default function VaccinationSchedulePage({ roleKey = "technician" }) {
       )}
 
       <section className="card px-4 py-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-full sm:w-64">
-            <label htmlFor="vaccine-search" className="block text-sm font-medium text-slate-700">
-              Search
-            </label>
-            <div className="relative mt-1.5">
-              <Icon
-                name="search"
-                className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400"
-              />
-              <input
-                id="vaccine-search"
-                type="search"
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Farmer, RSBSA #, vaccine, batch…"
-                className="field pl-9"
-              />
-            </div>
-          </div>
-
-          <div className="w-full sm:w-44">
-            <label htmlFor="vaccine-status" className="block text-sm font-medium text-slate-700">
-              Status
-            </label>
+        <FilterToolbar
+          collapsible
+          search={
+            <SearchField
+              id="vaccine-search"
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder="Farmer, RSBSA #, vaccine, batch…"
+              ariaLabel="Search vaccination schedules"
+            />
+          }
+          actions={
+            hasFilters ? (
+              <FilterActions>
+                <button type="button" onClick={clearFilters} className="filter-reset">
+                  <Icon name="close" className="h-3.5 w-3.5" />
+                  Clear filters
+                </button>
+              </FilterActions>
+            ) : null
+          }
+          activeFilters={[
+            statusFilter !== "all"
+              ? {
+                  key: "status",
+                  label: `Status: ${
+                    STATUSES.find((status) => status.value === statusFilter)?.label ?? statusFilter
+                  }`,
+                  onClear: () => updateParams({ status: null }),
+                }
+              : null,
+            barangayFilter
+              ? {
+                  key: "barangay",
+                  label: `Barangay: ${barangayFilter}`,
+                  onClear: () => updateParams({ barangay: null }),
+                }
+              : null,
+          ].filter(Boolean)}
+          onClearAll={clearFilters}
+          onReset={clearFilters}
+        >
+          <FilterField label="Status" htmlFor="vaccine-status">
             <select
               id="vaccine-status"
-              className="field mt-1.5"
+              className="field"
               value={statusFilter}
               onChange={(event) =>
                 updateParams({ status: event.target.value === "all" ? null : event.target.value })
@@ -766,15 +790,12 @@ export default function VaccinationSchedulePage({ roleKey = "technician" }) {
                 </option>
               ))}
             </select>
-          </div>
+          </FilterField>
 
-          <div className="w-full sm:w-44">
-            <label htmlFor="vaccine-barangay" className="block text-sm font-medium text-slate-700">
-              Barangay
-            </label>
+          <FilterField label="Barangay" htmlFor="vaccine-barangay">
             <select
               id="vaccine-barangay"
-              className="field mt-1.5"
+              className="field"
               value={barangayFilter}
               onChange={(event) => updateParams({ barangay: event.target.value || null })}
             >
@@ -785,15 +806,12 @@ export default function VaccinationSchedulePage({ roleKey = "technician" }) {
                 </option>
               ))}
             </select>
-          </div>
+          </FilterField>
 
-          <div className="w-full sm:w-48">
-            <label htmlFor="vaccine-sort" className="block text-sm font-medium text-slate-700">
-              Sort
-            </label>
+          <FilterField label="Sort" htmlFor="vaccine-sort">
             <select
               id="vaccine-sort"
-              className="field mt-1.5"
+              className="field"
               value={`${sort}:${direction}`}
               onChange={(event) => {
                 const [nextSort, nextDirection] = event.target.value.split(":");
@@ -807,18 +825,9 @@ export default function VaccinationSchedulePage({ roleKey = "technician" }) {
               <option value="last_vaccination:desc">Recently vaccinated</option>
               <option value="barangay:asc">Barangay A–Z</option>
             </select>
-          </div>
+          </FilterField>
 
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="rounded-pill px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
+        </FilterToolbar>
       </section>
 
       {view === "calendar" ? (

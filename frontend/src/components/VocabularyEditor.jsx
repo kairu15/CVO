@@ -72,7 +72,7 @@ export function VocabularyEditor({
         )}
       </div>
 
-      <form onSubmit={onSave} className="mt-4 flex flex-wrap items-end gap-3">
+      <form onSubmit={onSave} className="filter-toolbar mt-4">
         <div>
           <label htmlFor={inputId} className="block text-xs font-semibold text-slate-600">
             {addLabel}
@@ -89,7 +89,7 @@ export function VocabularyEditor({
                 onAdd();
               }
             }}
-            className="field mt-1 w-48 text-sm"
+            className="field mt-1 text-sm"
           />
           <span className="mt-1 block text-[11px] text-slate-500">{error ?? addHint}</span>
         </div>

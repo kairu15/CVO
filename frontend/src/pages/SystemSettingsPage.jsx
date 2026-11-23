@@ -5,6 +5,7 @@ import { getErrorMessage, getFieldErrors } from "../api/client";
 import { InlineAlert } from "../components/InlineAlert";
 import { SkeletonList } from "../components/Skeleton";
 import { Icon } from "../components/Icons";
+import { SearchField } from "../components/SearchField";
 import { SymptomRulesEditor } from "../components/SymptomRulesEditor";
 import { AnimalTypeManager } from "../components/AnimalTypeManager";
 import { VocabularyEditor } from "../components/VocabularyEditor";
@@ -850,7 +851,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
                   "Animal types saved. New registrations offer the updated list.",
                 );
               }}
-              className="mt-4 flex flex-wrap items-end gap-3"
+              className="filter-toolbar mt-4"
             >
               <Field
                 id="new-animal-type"
@@ -874,7 +875,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
                       setNewAnimalType("");
                     }
                   }}
-                  className="field mt-1 w-48 text-sm"
+                  className="field mt-1 text-sm"
                 />
               </Field>
               <button
@@ -994,20 +995,15 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
             </p>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <div className="relative">
-                <Icon
-                  name="search"
-                  className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400"
-                />
-                <input
-                  type="search"
-                  value={referenceSearch}
-                  onChange={(event) => setReferenceSearch(event.target.value)}
-                  placeholder="Search a barangay or purok…"
-                  className="field w-64 pl-9 text-xs"
-                  aria-label="Search barangays or puroks"
-                />
-              </div>
+              <SearchField
+                id="reference-search"
+                value={referenceSearch}
+                onChange={setReferenceSearch}
+                label={null}
+                placeholder="Search a barangay or purok…"
+                ariaLabel="Search barangays or puroks"
+                className="w-full sm:w-72"
+              />
               <span className="text-[11px] text-slate-500">
                 {filteredBarangays.length} of {data.barangays.length} barangays
               </span>

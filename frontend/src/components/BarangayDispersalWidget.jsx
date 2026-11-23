@@ -77,7 +77,7 @@ export function BarangayDispersalWidget({ roleKey }) {
         <select
           value={metric}
           onChange={(event) => setMetric(event.target.value)}
-          className="field !w-auto !px-2 !py-1 text-xs"
+          className="field !w-auto text-xs"
           aria-label="Metric for the barangay dispersal widget"
         >
           {METRICS.map((option) => (

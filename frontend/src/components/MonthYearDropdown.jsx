@@ -197,10 +197,9 @@ export function MonthYearDropdown({
   return (
     <div
       ref={containerRef}
-      // Full width on mobile; a fixed desktop basis so the Excel buttons sit
-      // beside it in the filter row instead of wrapping below (w-full as a
-      // flex item would claim the whole line).
-      className="relative w-full sm:w-72"
+      // Fills its filter cell at every breakpoint. The toolbar decides the
+      // column width, so a fixed desktop basis here would overflow the grid.
+      className="relative w-full min-w-0"
       onKeyDown={open ? onListKeyDown : undefined}
     >
       {/* Trigger — the `field` input recipe, with the same calendar icon the

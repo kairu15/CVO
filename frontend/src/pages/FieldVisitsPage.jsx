@@ -12,6 +12,13 @@ import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { QrScanner } from "../components/QrScanner";
 import { Icon } from "../components/Icons";
+import {
+  AdvancedFilters,
+  FilterActions,
+  FilterField,
+  FilterToolbar,
+} from "../components/FilterToolbar";
+import { SearchField } from "../components/SearchField";
 import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
 import { BulkActionBar } from "../components/BulkActionBar";
 import { PaginationFooter } from "../components/PaginationFooter";
@@ -549,35 +556,82 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
 
       {/* Filters — all applied before pagination. */}
       <section className="card px-4 py-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-full sm:w-60">
-            <label htmlFor="visit-search" className="block text-sm font-medium text-slate-700">
-              Search
-            </label>
-            <div className="relative mt-1.5">
-              <Icon
-                name="search"
-                className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400"
-              />
-              <input
-                id="visit-search"
-                type="search"
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Farmer, RSBSA #, ear tag, technician…"
-                className="field pl-9"
-                aria-label="Search field visits"
-              />
-            </div>
-          </div>
-
-          <div className="w-full sm:w-44">
-            <label htmlFor="visit-verification-filter" className="block text-sm font-medium text-slate-700">
-              Verification
-            </label>
+        <FilterToolbar
+          collapsible
+          search={
+            <SearchField
+              id="visit-search"
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder="Farmer, RSBSA #, ear tag, technician…"
+              ariaLabel="Search field visits"
+            />
+          }
+          actions={
+            hasFilters ? (
+              <FilterActions>
+                <button type="button" onClick={clearFilters} className="filter-reset">
+                  <Icon name="close" className="h-3.5 w-3.5" />
+                  Clear filters
+                </button>
+              </FilterActions>
+            ) : null
+          }
+          activeFilters={[
+            verificationFilter && verificationFilter !== "all"
+              ? {
+                  key: "verification",
+                  label: `Verification: ${verificationFilter.replace(/_/g, " ")}`,
+                  onClear: () => updateParams({ verification: null }),
+                }
+              : null,
+            purposeFilter
+              ? {
+                  key: "purpose",
+                  label: `Purpose: ${purposeLabel(purposeFilter)}`,
+                  onClear: () => updateParams({ purpose: null }),
+                }
+              : null,
+            fromFilter
+              ? {
+                  key: "from",
+                  label: `From: ${fromFilter}`,
+                  onClear: () => updateParams({ from: null }),
+                }
+              : null,
+            toFilter
+              ? {
+                  key: "to",
+                  label: `To: ${toFilter}`,
+                  onClear: () => updateParams({ to: null }),
+                }
+              : null,
+            technicianFilter
+              ? {
+                  key: "technician",
+                  label: `Technician: ${
+                    technicians.find(
+                      (technician) => String(technician.id) === String(technicianFilter),
+                    )?.name ?? technicianFilter
+                  }`,
+                  onClear: () => updateParams({ technician: null }),
+                }
+              : null,
+            barangayFilter
+              ? {
+                  key: "barangay",
+                  label: `Barangay: ${barangayFilter}`,
+                  onClear: () => updateParams({ barangay: null }),
+                }
+              : null,
+          ].filter(Boolean)}
+          onClearAll={clearFilters}
+          onReset={clearFilters}
+        >
+          <FilterField label="Verification" htmlFor="visit-verification-filter">
             <select
               id="visit-verification-filter"
-              className="field mt-1.5"
+              className="field"
               value={verificationFilter}
               onChange={(event) => updateParams({ verification: event.target.value === "all" ? null : event.target.value })}
               aria-label="Filter by verification"
@@ -590,15 +644,12 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
               <option value="no_reference_location">No registered pin</option>
               <option value="no_gps">No GPS</option>
             </select>
-          </div>
+          </FilterField>
 
-          <div className="w-full sm:w-44">
-            <label htmlFor="visit-purpose-filter" className="block text-sm font-medium text-slate-700">
-              Visit purpose
-            </label>
+          <FilterField label="Visit purpose" htmlFor="visit-purpose-filter">
             <select
               id="visit-purpose-filter"
-              className="field mt-1.5"
+              className="field"
               value={purposeFilter}
               onChange={(event) => updateParams({ purpose: event.target.value || null })}
               aria-label="Filter by purpose"
@@ -610,45 +661,41 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
                 </option>
               ))}
             </select>
-          </div>
+          </FilterField>
 
-          <div className="w-full sm:w-40">
-            <label htmlFor="visit-from" className="block text-sm font-medium text-slate-700">
-              From
-            </label>
-            <input
-              id="visit-from"
-              type="date"
-              className="field mt-1.5"
-              value={fromFilter}
-              onChange={(event) => updateParams({ from: event.target.value || null })}
-              aria-label="Visits from date"
-            />
-          </div>
+          <AdvancedFilters
+            count={(fromFilter ? 1 : 0) + (toFilter ? 1 : 0)}
+            label="Date range"
+          >
+            <FilterField label="From" htmlFor="visit-from">
+              <input
+                id="visit-from"
+                type="date"
+                className="field"
+                value={fromFilter}
+                onChange={(event) => updateParams({ from: event.target.value || null })}
+                aria-label="Visits from date"
+              />
+            </FilterField>
 
-          <div className="w-full sm:w-40">
-            <label htmlFor="visit-to" className="block text-sm font-medium text-slate-700">
-              To
-            </label>
-            <input
-              id="visit-to"
-              type="date"
-              className="field mt-1.5"
-              value={toFilter}
-              onChange={(event) => updateParams({ to: event.target.value || null })}
-              aria-label="Visits to date"
-            />
-          </div>
+            <FilterField label="To" htmlFor="visit-to">
+              <input
+                id="visit-to"
+                type="date"
+                className="field"
+                value={toFilter}
+                onChange={(event) => updateParams({ to: event.target.value || null })}
+                aria-label="Visits to date"
+              />
+            </FilterField>
+          </AdvancedFilters>
 
           {user?.role === "admin" && (
             <>
-              <div className="w-full sm:w-48">
-                <label htmlFor="visit-technician-filter" className="block text-sm font-medium text-slate-700">
-                  Technician
-                </label>
+              <FilterField label="Technician" htmlFor="visit-technician-filter">
                 <select
                   id="visit-technician-filter"
-                  className="field mt-1.5"
+                  className="field"
                   value={technicianFilter}
                   onChange={(event) => updateParams({ technician: event.target.value || null })}
                   aria-label="Filter by technician"
@@ -660,15 +707,12 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
                     </option>
                   ))}
                 </select>
-              </div>
+              </FilterField>
 
-              <div className="w-full sm:w-48">
-                <label htmlFor="visit-barangay-filter" className="block text-sm font-medium text-slate-700">
-                  Barangay
-                </label>
+              <FilterField label="Barangay" htmlFor="visit-barangay-filter">
                 <select
                   id="visit-barangay-filter"
-                  className="field mt-1.5"
+                  className="field"
                   value={barangayFilter}
                   onChange={(event) => updateParams({ barangay: event.target.value || null })}
                   aria-label="Filter by barangay"
@@ -680,20 +724,11 @@ export default function FieldVisitsPage({ roleKey = "technician" }) {
                     </option>
                   ))}
                 </select>
-              </div>
+              </FilterField>
             </>
           )}
 
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="rounded-pill px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
+        </FilterToolbar>
       </section>
 
       {/* Derived worklist: assigned households with no contact in 60 days. */}

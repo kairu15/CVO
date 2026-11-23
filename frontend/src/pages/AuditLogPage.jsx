@@ -5,6 +5,11 @@ import { getErrorMessage } from "../api/client";
 import { AuditDetailDrawer } from "../components/AuditDetailDrawer";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icons";
+import {
+  FilterActions,
+  FilterToolbar,
+} from "../components/FilterToolbar";
+import { SearchField } from "../components/SearchField";
 import { InlineAlert } from "../components/InlineAlert";
 import { PaginationFooter } from "../components/PaginationFooter";
 import { SkeletonList } from "../components/Skeleton";
@@ -389,24 +394,19 @@ export default function AuditLogPage() {
 
         {/* Search + quick windows */}
         <div className="mt-5 flex flex-wrap items-center gap-2">
-          <div className="relative min-w-56 flex-1 sm:max-w-sm">
-            <Icon
-              name="search"
-              className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400"
-            />
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setPage(1);
-                setSelectedId(null);
-              }}
-              placeholder="Search user, action, entity or IP…"
-              className="field w-full pl-9 text-xs"
-              aria-label="Search audit trail"
-            />
-          </div>
+          <SearchField
+            id="audit-search"
+            value={search}
+            onChange={(value) => {
+              setSearch(value);
+              setPage(1);
+              setSelectedId(null);
+            }}
+            label={null}
+            ariaLabel="Search audit trail"
+            placeholder="Search user, action, entity or IP…"
+            className="min-w-0 flex-1 sm:max-w-sm"
+          />
 
           <div
             className="inline-flex flex-wrap rounded-pill border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/60"
@@ -440,7 +440,7 @@ export default function AuditLogPage() {
         </div>
 
         {/* Server-side filters — each control maps to one query parameter. */}
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <FilterToolbar className="mt-3" collapsible onReset={clearAll} title="Filters">
           <Filter label="User">
             <select
               className="field w-full"
@@ -574,14 +574,14 @@ export default function AuditLogPage() {
               min={filters.date_from || undefined}
             />
           </Filter>
-        </div>
+        </FilterToolbar>
 
         {hasFilters && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <FilterActions className="mt-3 justify-start">
             <button
               type="button"
               onClick={clearAll}
-              className="inline-flex items-center gap-1.5 rounded-pill border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="filter-reset"
             >
               <Icon name="close" className="h-3.5 w-3.5" />
               Clear filters
@@ -591,7 +591,7 @@ export default function AuditLogPage() {
                 Updated {formatTime(lastUpdated)}
               </span>
             )}
-          </div>
+          </FilterActions>
         )}
       </section>
 
@@ -701,10 +701,8 @@ function StatCard({ label, value, tone }) {
 
 function Filter({ label, children }) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-        {label}
-      </span>
+    <label className="filter-field">
+      <span className="filter-label">{label}</span>
       {children}
     </label>
   );

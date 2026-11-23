@@ -102,17 +102,14 @@ export function AnimalTypeClassificationSelect({
 
   return (
     <div className={className}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label
-            htmlFor={typeId}
-            className="block text-sm font-medium text-slate-700"
-          >
+      <div className="grid grid-cols-1 gap-3 min-[26rem]:grid-cols-2">
+        <div className="filter-field min-w-0">
+          <label htmlFor={typeId} className="filter-label">
             {typeLabel}
           </label>
           <select
             id={typeId}
-            className="field mt-1.5"
+            className="field"
             value={typeValue}
             onChange={chooseType}
             disabled={disabled || !hasAnyType}
@@ -147,16 +144,13 @@ export function AnimalTypeClassificationSelect({
           )}
         </div>
 
-        <div>
-          <label
-            htmlFor={classificationId}
-            className="block text-sm font-medium text-slate-700"
-          >
+        <div className="filter-field min-w-0">
+          <label htmlFor={classificationId} className="filter-label">
             {classificationLabel}
           </label>
           <select
             id={classificationId}
-            className="field mt-1.5"
+            className="field"
             value={classificationValue}
             onChange={chooseClassification}
             disabled={disabled || !selectedType || classifications.length === 0}

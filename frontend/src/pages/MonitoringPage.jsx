@@ -17,6 +17,14 @@ import { useToast } from "../context/ToastContext";
 import { MONITORING_COLUMNS, MonitoringTable } from "../components/MonitoringTable";
 import { MonitoringColumnMenu } from "../components/MonitoringColumnMenu";
 import { MonitoringExcelToolbar } from "../components/MonitoringExcelToolbar";
+import {
+  AdvancedFilters,
+  FilterField,
+  FilterFooter,
+  FilterToolbar,
+  ResponsiveActionGroup,
+} from "../components/FilterToolbar";
+import { SearchField } from "../components/SearchField";
 import { MonthYearDropdown } from "../components/MonthYearDropdown";
 import { AnimalTypeClassificationSelect } from "../components/AnimalTypeClassificationSelect";
 import { VisitFormModal } from "../components/VisitFormModal";
@@ -303,6 +311,67 @@ export default function MonitoringPage({ roleKey }) {
     [updateParams],
   );
 
+  const clearAllFilters = useCallback(() => {
+    setSearch("");
+    updateParams({
+      month: null,
+      search: null,
+      animal_type: null,
+      classification_id: null,
+      barangay: null,
+      attention: null,
+    });
+  }, [updateParams]);
+
+  const classificationLabel = useMemo(
+    () =>
+      animalTypeGroups
+        .flatMap((group) => group.animal_types ?? [])
+        .flatMap((type) => type.classifications ?? [])
+        .find((entry) => String(entry.id) === String(classificationId))?.name,
+    [animalTypeGroups, classificationId],
+  );
+
+  const activeFilterChips = [
+    selectedMonth
+      ? {
+          key: "month",
+          label: `Month: ${selectedMonth}`,
+          onClear: () => selectMonth(null),
+        }
+      : null,
+    animalType
+      ? {
+          key: "animal_type",
+          label: `Type: ${animalType}`,
+          onClear: () => selectAnimalType(null),
+        }
+      : null,
+    classificationId
+      ? {
+          key: "classification",
+          label: `Classification: ${classificationLabel ?? classificationId}`,
+          onClear: () => updateParams({ classification_id: null }),
+        }
+      : null,
+    barangay
+      ? {
+          key: "barangay",
+          label: `Barangay: ${barangay}`,
+          onClear: () => updateParams({ barangay: null }),
+        }
+      : null,
+    attention
+      ? {
+          key: "attention",
+          label:
+            ATTENTION_OPTIONS.find((option) => option.value === attention)?.label ??
+            `Attention: ${attention}`,
+          onClear: () => updateParams({ attention: null }),
+        }
+      : null,
+  ].filter(Boolean);
+
   function openCreate() {
     setEditingRecord(null);
     setFormOpen(true);
@@ -486,18 +555,82 @@ export default function MonitoringPage({ roleKey }) {
           selection shows the WHOLE matching set rather than a page slice. */}
       {(months.length > 0 || animalTypes.length > 0 || isAdmin) && !loading && (
         <section className="card px-4 py-3">
-          <div className="flex flex-wrap items-end gap-3">
+          <FilterToolbar
+            collapsible
+            search={
+              <SearchField
+                id="monitoring-search"
+                value={search}
+                onChange={setSearch}
+                placeholder="Name, RSBSA #, ear tag, technician…"
+                ariaLabel="Search monitoring records by farmer name, RSBSA number, ear tag or technician"
+              />
+            }
+            activeFilters={activeFilterChips}
+            onClearAll={clearAllFilters}
+            onReset={clearAllFilters}
+            actions={
+              <ResponsiveActionGroup>
+                <FilterFooter>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div
+                      className="segment-group"
+                      role="group"
+                      aria-label="Group records by"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => updateParams({ group: null })}
+                        aria-pressed={groupBy === "animal_type"}
+                        className={`segment-button transition ${
+                          groupBy === "animal_type"
+                            ? "bg-brand-700 text-white"
+                            : "text-slate-600 hover:bg-brand-50 dark:text-slate-400"
+                        }`}
+                      >
+                        Group by type
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateParams({ group: "address" })}
+                        aria-pressed={groupBy === "address"}
+                        className={`segment-button transition ${
+                          groupBy === "address"
+                            ? "bg-brand-700 text-white"
+                            : "text-slate-600 hover:bg-brand-50 dark:text-slate-400"
+                        }`}
+                      >
+                        Group by barangay
+                      </button>
+                    </div>
+
+                    <MonitoringColumnMenu
+                      columns={MONITORING_COLUMNS}
+                      visible={visibleColumns}
+                      onChange={persistColumns}
+                      compact={COMPACT_COLUMNS}
+                    />
+                  </div>
+
+                  {isAdmin && (
+                    <MonitoringExcelToolbar
+                      month={selectedMonth}
+                      animalType={animalType}
+                      classificationId={classificationId}
+                    />
+                  )}
+                </FilterFooter>
+              </ResponsiveActionGroup>
+            }
+          >
             {months.length > 0 && (
-              <div className="flex w-full flex-col gap-1.5 sm:w-56">
-                <span className="block text-sm font-medium text-slate-700">
-                  Month
-                </span>
+              <FilterField label="Month">
                 <MonthYearDropdown
                   months={months}
                   selected={selectedMonth}
                   onSelect={selectMonth}
                 />
-              </div>
+              </FilterField>
             )}
 
             <AnimalTypeClassificationSelect
@@ -515,46 +648,13 @@ export default function MonitoringPage({ roleKey }) {
               classificationAriaLabel="Filter by classification"
               typeId="monitoring-animal-type"
               classificationId="monitoring-classification"
-              className="w-full sm:w-80"
+              className="filter-field--wide min-w-0"
             />
 
-            {/* Search as you type: the field updates immediately, the 300ms
-                debounce decides when the request fires, and the page resets so
-                results always start on page 1. */}
-            <div className="w-full sm:w-64">
-              <label
-                htmlFor="monitoring-search"
-                className="block text-sm font-medium text-slate-700"
-              >
-                Search
-              </label>
-              <div className="relative mt-1.5">
-                <Icon
-                  name="search"
-                  className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400"
-                />
-                <input
-                  id="monitoring-search"
-                  type="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Name, RSBSA #, ear tag, technician…"
-                  className="field pl-9"
-                  aria-label="Search monitoring records by farmer name, RSBSA number, ear tag or technician"
-                />
-              </div>
-            </div>
-
-            <div className="w-full sm:w-44">
-              <label
-                htmlFor="monitoring-barangay"
-                className="block text-sm font-medium text-slate-700"
-              >
-                Barangay
-              </label>
+            <FilterField label="Barangay" htmlFor="monitoring-barangay">
               <select
                 id="monitoring-barangay"
-                className="field mt-1.5"
+                className="field"
                 value={barangay ?? ""}
                 onChange={(event) =>
                   updateParams({ barangay: event.target.value || null })
@@ -568,74 +668,29 @@ export default function MonitoringPage({ roleKey }) {
                   </option>
                 ))}
               </select>
-            </div>
+            </FilterField>
 
-            <div className="w-full sm:w-48">
-              <label
-                htmlFor="monitoring-attention"
-                className="block text-sm font-medium text-slate-700"
-              >
-                Needs attention
-              </label>
-              <select
-                id="monitoring-attention"
-                className="field mt-1.5"
-                value={attention}
-                onChange={(event) =>
-                  updateParams({ attention: event.target.value || null })
-                }
-                aria-label="Filter monitoring records by attention"
-              >
-                {ATTENTION_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <AdvancedFilters count={attention ? 1 : 0}>
+              <FilterField label="Needs attention" htmlFor="monitoring-attention">
+                <select
+                  id="monitoring-attention"
+                  className="field"
+                  value={attention}
+                  onChange={(event) =>
+                    updateParams({ attention: event.target.value || null })
+                  }
+                  aria-label="Filter monitoring records by attention"
+                >
+                  {ATTENTION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </FilterField>
+            </AdvancedFilters>
 
-            <div className="flex items-center gap-1 rounded-pill border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-slate-300/40 dark:bg-transparent">
-              <button
-                type="button"
-                onClick={() => updateParams({ group: null })}
-                aria-pressed={groupBy === "animal_type"}
-                className={`rounded-pill px-3 py-1 transition ${
-                  groupBy === "animal_type"
-                    ? "bg-brand-700 text-white"
-                    : "text-slate-600 hover:bg-brand-50 dark:text-slate-400"
-                }`}
-              >
-                Group by type
-              </button>
-              <button
-                type="button"
-                onClick={() => updateParams({ group: "address" })}
-                aria-pressed={groupBy === "address"}
-                className={`rounded-pill px-3 py-1 transition ${
-                  groupBy === "address"
-                    ? "bg-brand-700 text-white"
-                    : "text-slate-600 hover:bg-brand-50 dark:text-slate-400"
-                }`}
-              >
-                Group by barangay
-              </button>
-            </div>
-
-            <MonitoringColumnMenu
-              columns={MONITORING_COLUMNS}
-              visible={visibleColumns}
-              onChange={persistColumns}
-              compact={COMPACT_COLUMNS}
-            />
-
-            {isAdmin && (
-              <MonitoringExcelToolbar
-                month={selectedMonth}
-                animalType={animalType}
-                classificationId={classificationId}
-              />
-            )}
-          </div>
+          </FilterToolbar>
         </section>
       )}
 

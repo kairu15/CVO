@@ -23,6 +23,12 @@ import { PaginationFooter } from "../components/PaginationFooter";
 import { ActionMenu } from "../components/ActionMenu";
 import { Icon } from "../components/Icons";
 import {
+  FilterActions,
+  FilterField,
+  FilterToolbar,
+} from "../components/FilterToolbar";
+import { SearchField } from "../components/SearchField";
+import {
   buildChoropleth,
   normalizeBarangayName,
 } from "../lib/barangayBoundaries";
@@ -1214,130 +1220,141 @@ export default function AnimalHealthPage({ roleKey = "technician" }) {
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
 
       <section className="card overflow-hidden">
-        <div className="flex flex-wrap items-end gap-2 border-b border-slate-100 p-4">
-          <div className="min-w-[220px] flex-1">
-            <label htmlFor="animal-health-search" className="sr-only">
-              Search animal health
-            </label>
-            <div className="relative">
-              <Icon
-                name="search"
-                className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400"
-              />
-              <input
+        <div className="border-b border-slate-100 p-4">
+          <FilterToolbar
+            collapsible
+            search={
+              <SearchField
                 id="animal-health-search"
-                type="search"
-                className="field !pl-9"
-                placeholder="Search farmer, RSBSA, ear tag, barangay, diagnosis…"
                 value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
+                onChange={setSearchInput}
+                placeholder="Search farmer, RSBSA, ear tag, barangay, diagnosis…"
+                ariaLabel="Search animal health"
               />
-            </div>
-          </div>
+            }
+            actions={
+              hasFilters ? (
+                <FilterActions>
+                  <button type="button" onClick={clearFilters} className="filter-reset">
+                    <Icon name="close" className="h-3.5 w-3.5" />
+                    Clear filters
+                  </button>
+                </FilterActions>
+              ) : null
+            }
+            activeFilters={[
+              statusFilter !== "all"
+                ? {
+                    key: "status",
+                    label: `Status: ${HEALTH_STATUS[statusFilter]?.label ?? statusFilter}`,
+                    onClear: () => updateParams({ status: null }),
+                  }
+                : null,
+              barangayFilter
+                ? {
+                    key: "barangay",
+                    label: `Barangay: ${barangayFilter}`,
+                    onClear: () => chooseBarangay(""),
+                  }
+                : null,
+              fromFilter
+                ? {
+                    key: "from",
+                    label: `Examination from: ${fromFilter}`,
+                    onClear: () => updateParams({ from: null }),
+                  }
+                : null,
+              toFilter
+                ? {
+                    key: "to",
+                    label: `Examination to: ${toFilter}`,
+                    onClear: () => updateParams({ to: null }),
+                  }
+                : null,
+            ].filter(Boolean)}
+            onClearAll={clearFilters}
+            onReset={clearFilters}
+          >
+            <FilterField label="Health status" htmlFor="animal-health-status">
+              <select
+                id="animal-health-status"
+                className="field"
+                value={statusFilter}
+                onChange={(event) =>
+                  updateParams({
+                    status: event.target.value === "all" ? null : event.target.value,
+                  })
+                }
+              >
+                <option value="all">All health statuses</option>
+                <option value="attention">Needs attention</option>
+                <option value="observation">Under observation</option>
+                <option value="healthy">Healthy</option>
+                <option value="unrecorded">No examination</option>
+              </select>
+            </FilterField>
 
-          <div>
-            <label htmlFor="animal-health-status" className="sr-only">
-              Health status
-            </label>
-            <select
-              id="animal-health-status"
-              className="field !w-auto"
-              value={statusFilter}
-              onChange={(event) =>
-                updateParams({
-                  status: event.target.value === "all" ? null : event.target.value,
-                })
-              }
-            >
-              <option value="all">All health statuses</option>
-              <option value="attention">Needs attention</option>
-              <option value="observation">Under observation</option>
-              <option value="healthy">Healthy</option>
-              <option value="unrecorded">No examination</option>
-            </select>
-          </div>
+            <FilterField label="Barangay" htmlFor="animal-health-barangay">
+              <select
+                id="animal-health-barangay"
+                className="field"
+                value={barangayFilter}
+                onChange={(event) => chooseBarangay(event.target.value)}
+              >
+                <option value="">All barangays</option>
+                {barangays.map((barangay) => (
+                  <option key={barangay.name} value={barangay.name}>
+                    {barangay.name}
+                  </option>
+                ))}
+              </select>
+            </FilterField>
 
-          <div>
-            <label htmlFor="animal-health-barangay" className="sr-only">
-              Barangay
-            </label>
-            <select
-              id="animal-health-barangay"
-              className="field !w-auto"
-              value={barangayFilter}
-              onChange={(event) => chooseBarangay(event.target.value)}
-            >
-              <option value="">All barangays</option>
-              {barangays.map((barangay) => (
-                <option key={barangay.name} value={barangay.name}>
-                  {barangay.name}
-                </option>
-              ))}
-            </select>
-          </div>
+            <FilterField label="Examination from" htmlFor="animal-health-from">
+              <input
+                id="animal-health-from"
+                type="date"
+                className="field"
+                value={fromFilter}
+                max={toFilter || todayIso()}
+                onChange={(event) => updateParams({ from: event.target.value || null })}
+                aria-label="Examination from"
+              />
+            </FilterField>
 
-          <div>
-            <label htmlFor="animal-health-from" className="sr-only">
-              Examination from
-            </label>
-            <input
-              id="animal-health-from"
-              type="date"
-              className="field !w-auto"
-              value={fromFilter}
-              max={toFilter || todayIso()}
-              onChange={(event) => updateParams({ from: event.target.value || null })}
-              aria-label="Examination from"
-            />
-          </div>
+            <FilterField label="Examination to" htmlFor="animal-health-to">
+              <input
+                id="animal-health-to"
+                type="date"
+                className="field"
+                value={toFilter}
+                min={fromFilter || undefined}
+                max={todayIso()}
+                onChange={(event) => updateParams({ to: event.target.value || null })}
+                aria-label="Examination to"
+              />
+            </FilterField>
 
-          <div>
-            <label htmlFor="animal-health-to" className="sr-only">
-              Examination to
-            </label>
-            <input
-              id="animal-health-to"
-              type="date"
-              className="field !w-auto"
-              value={toFilter}
-              min={fromFilter || undefined}
-              max={todayIso()}
-              onChange={(event) => updateParams({ to: event.target.value || null })}
-              aria-label="Examination to"
-            />
-          </div>
+            <FilterField label="Sort" htmlFor="animal-health-sort">
+              <select
+                id="animal-health-sort"
+                className="field"
+                value={`${sort}:${direction}`}
+                onChange={(event) => {
+                  const [nextSort, nextDirection] = event.target.value.split(":");
+                  updateParams({ sort: nextSort, direction: nextDirection });
+                }}
+              >
+                <option value="urgency:asc">Most urgent first</option>
+                <option value="name:asc">Farmer A–Z</option>
+                <option value="barangay:asc">Barangay A–Z</option>
+                <option value="examination:desc">Newest examination</option>
+                <option value="examination:asc">Oldest examination</option>
+                <option value="status:asc">Health status</option>
+              </select>
+            </FilterField>
 
-          <div>
-            <label htmlFor="animal-health-sort" className="sr-only">
-              Sort
-            </label>
-            <select
-              id="animal-health-sort"
-              className="field !w-auto"
-              value={`${sort}:${direction}`}
-              onChange={(event) => {
-                const [nextSort, nextDirection] = event.target.value.split(":");
-                updateParams({ sort: nextSort, direction: nextDirection });
-              }}
-            >
-              <option value="urgency:asc">Most urgent first</option>
-              <option value="name:asc">Farmer A–Z</option>
-              <option value="barangay:asc">Barangay A–Z</option>
-              <option value="examination:desc">Newest examination</option>
-              <option value="examination:asc">Oldest examination</option>
-              <option value="status:asc">Health status</option>
-            </select>
-          </div>
-
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="rounded-pill px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
-            >
-              Clear
-            </button>
-          )}
+          </FilterToolbar>
         </div>
 
         {loading ? (

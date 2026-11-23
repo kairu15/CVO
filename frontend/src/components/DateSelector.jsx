@@ -168,7 +168,7 @@ export function DateSelector({
           type="date"
           value={selectedDate ?? ""}
           onChange={(event) => onSelectDate(event.target.value)}
-          className="field !w-auto !py-1.5 text-xs"
+          className="field !w-auto text-xs"
           aria-label="Pick any date"
         />
       </label>

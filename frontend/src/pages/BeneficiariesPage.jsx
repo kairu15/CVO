@@ -17,6 +17,13 @@ import { BulkActionBar } from "../components/BulkActionBar";
 import { PaginationFooter } from "../components/PaginationFooter";
 import { ActionMenu } from "../components/ActionMenu";
 import { AnimalTypeClassificationSelect } from "../components/AnimalTypeClassificationSelect";
+import {
+  AdvancedFilters,
+  FilterActions,
+  FilterField,
+  FilterToolbar,
+} from "../components/FilterToolbar";
+import { SearchField } from "../components/SearchField";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useBarangays } from "../hooks/useBarangays";
@@ -617,41 +624,99 @@ export default function BeneficiariesPage() {
 
       {/* Filters. Every control narrows the WHOLE directory server-side. */}
       <section className="card px-4 py-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-full sm:w-64">
-            <label
-              htmlFor="directory-search"
-              className="block text-sm font-medium text-slate-700"
-            >
-              Search
-            </label>
-            <div className="relative mt-1.5">
-              <Icon
-                name="search"
-                className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400"
-              />
-              <input
-                id="directory-search"
-                type="search"
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Name, RSBSA #, ear tag, technician…"
-                className="field pl-9"
-                aria-label="Search beneficiaries"
-              />
-            </div>
-          </div>
-
-          <div className="w-full sm:w-48">
-            <label
-              htmlFor="directory-barangay"
-              className="block text-sm font-medium text-slate-700"
-            >
-              Barangay
-            </label>
+        <FilterToolbar
+          collapsible
+          search={
+            <SearchField
+              id="directory-search"
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder="Name, RSBSA #, ear tag, technician…"
+              ariaLabel="Search beneficiaries"
+            />
+          }
+          actions={
+            hasFilters ? (
+              <FilterActions>
+                <button type="button" onClick={clearFilters} className="filter-reset">
+                  <Icon name="close" className="h-3.5 w-3.5" />
+                  Clear filters
+                </button>
+              </FilterActions>
+            ) : null
+          }
+          activeFilters={[
+            barangayFilter
+              ? {
+                  key: "barangay",
+                  label: `Barangay: ${barangayFilter}`,
+                  onClear: () => updateParams({ barangay: null }),
+                }
+              : null,
+            animalTypeFilter
+              ? {
+                  key: "animal_type",
+                  label: `Type: ${animalTypeFilter}`,
+                  onClear: () => updateParams({ animal_type: null, classification_id: null }),
+                }
+              : null,
+            classificationFilter
+              ? {
+                  key: "classification",
+                  label: `Classification: ${
+                    animalTypeGroups
+                      .flatMap((group) => group.animal_types ?? [])
+                      .flatMap((type) => type.classifications ?? [])
+                      .find((entry) => String(entry.id) === String(classificationFilter))?.name ??
+                    classificationFilter
+                  }`,
+                  onClear: () => updateParams({ classification_id: null }),
+                }
+              : null,
+            assignmentFilter
+              ? {
+                  key: "assignment",
+                  label:
+                    assignmentFilter === "unassigned"
+                      ? "Unassigned households"
+                      : `Technician: ${
+                          technicians.find(
+                            (technician) => String(technician.id) === String(assignmentFilter),
+                          )?.name ?? assignmentFilter
+                        }`,
+                  onClear: () => updateParams({ assignment: null }),
+                }
+              : null,
+            monitoringFilter
+              ? {
+                  key: "monitoring",
+                  label:
+                    monitoringFilter === "never"
+                      ? "Never visited"
+                      : `Overdue ${summary?.overdue_days ?? 60}+ days`,
+                  onClear: () => updateParams({ monitoring: null }),
+                }
+              : null,
+            missingFilter
+              ? {
+                  key: "missing",
+                  label:
+                    {
+                      rsbsa: "Missing RSBSA number",
+                      ear_tag: "Missing ear tag",
+                      location: "Missing map pin",
+                    }[missingFilter] ?? `Missing: ${missingFilter}`,
+                  onClear: () => updateParams({ missing: null }),
+                }
+              : null,
+          ].filter(Boolean)}
+          onClearAll={clearFilters}
+          onReset={clearFilters}
+        >
+          <FilterField label="Barangay" htmlFor="directory-barangay">
             <select
               id="directory-barangay"
-              className="field mt-1.5"
+              className="field"
               value={barangayFilter}
               onChange={(event) =>
                 updateParams({ barangay: event.target.value || null })
@@ -665,7 +730,7 @@ export default function BeneficiariesPage() {
                 </option>
               ))}
             </select>
-          </div>
+          </FilterField>
 
           <AnimalTypeClassificationSelect
             groups={animalTypeGroups}
@@ -682,19 +747,18 @@ export default function BeneficiariesPage() {
             classificationAriaLabel="Filter by classification"
             typeId="directory-animal-type"
             classificationId="directory-classification"
-            className="w-full sm:w-80"
+            className="filter-field--wide min-w-0"
           />
 
-          <div className="w-full sm:w-48">
-            <label
-              htmlFor="directory-assignment"
-              className="block text-sm font-medium text-slate-700"
-            >
-              Technician
-            </label>
+          <AdvancedFilters
+            count={
+              (assignmentFilter ? 1 : 0) + (monitoringFilter ? 1 : 0) + (missingFilter ? 1 : 0)
+            }
+          >
+          <FilterField label="Technician" htmlFor="directory-assignment">
             <select
               id="directory-assignment"
-              className="field mt-1.5"
+              className="field"
               value={assignmentFilter}
               onChange={(event) =>
                 updateParams({ assignment: event.target.value || null })
@@ -709,18 +773,12 @@ export default function BeneficiariesPage() {
                 </option>
               ))}
             </select>
-          </div>
+          </FilterField>
 
-          <div className="w-full sm:w-44">
-            <label
-              htmlFor="directory-monitoring"
-              className="block text-sm font-medium text-slate-700"
-            >
-              Monitoring
-            </label>
+          <FilterField label="Monitoring" htmlFor="directory-monitoring">
             <select
               id="directory-monitoring"
-              className="field mt-1.5"
+              className="field"
               value={monitoringFilter}
               onChange={(event) =>
                 updateParams({ monitoring: event.target.value || null })
@@ -733,18 +791,12 @@ export default function BeneficiariesPage() {
                 Overdue ({summary?.overdue_days ?? 60}+ days)
               </option>
             </select>
-          </div>
+          </FilterField>
 
-          <div className="w-full sm:w-44">
-            <label
-              htmlFor="directory-missing"
-              className="block text-sm font-medium text-slate-700"
-            >
-              Data gaps
-            </label>
+          <FilterField label="Data gaps" htmlFor="directory-missing">
             <select
               id="directory-missing"
-              className="field mt-1.5"
+              className="field"
               value={missingFilter}
               onChange={(event) =>
                 updateParams({ missing: event.target.value || null })
@@ -756,18 +808,10 @@ export default function BeneficiariesPage() {
               <option value="ear_tag">No ear tag</option>
               <option value="location">No map pin</option>
             </select>
-          </div>
+          </FilterField>
 
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="rounded-pill px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
+          </AdvancedFilters>
+        </FilterToolbar>
       </section>
 
       <BulkActionBar

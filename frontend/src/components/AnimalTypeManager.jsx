@@ -472,7 +472,7 @@ export function AnimalTypeManager() {
               It appears at the end of its category in every dropdown.
             </p>
 
-            <div className="mt-3 flex flex-wrap items-end gap-3">
+            <div className="filter-toolbar mt-3">
               <div>
                 <label
                   htmlFor="new-animal-type-category"
@@ -486,7 +486,7 @@ export function AnimalTypeManager() {
                   onChange={(event) =>
                     setDraft((prev) => ({ ...prev, main_category: event.target.value }))
                   }
-                  className="field mt-1 w-48 text-sm"
+                  className="field mt-1 text-sm"
                 >
                   {CATEGORIES.map((category) => (
                     <option key={category.value} value={category.value}>
@@ -512,7 +512,7 @@ export function AnimalTypeManager() {
                   onChange={(event) =>
                     setDraft((prev) => ({ ...prev, name: event.target.value }))
                   }
-                  className="field mt-1 w-56 text-sm"
+                  className="field mt-1 text-sm"
                 />
               </div>
 

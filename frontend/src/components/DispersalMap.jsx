@@ -1976,7 +1976,7 @@ export function DispersalMap({
               <label className="flex items-center gap-2">
                 <span className="sr-only">Filter by animal type</span>
                 <select
-                  className="field !w-auto !py-1.5 text-xs"
+                  className="field !w-auto text-xs"
                   value={animalFilter}
                   onChange={(event) => {
                     setAnimalFilter(event.target.value);

@@ -4,6 +4,12 @@ import { adminApi } from "../api/adminApi";
 import { getErrorMessage } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icons";
+import {
+  FilterActions,
+  FilterField,
+  FilterToolbar,
+} from "../components/FilterToolbar";
+import { SearchField } from "../components/SearchField";
 import { InlineAlert } from "../components/InlineAlert";
 import { Modal } from "../components/Modal";
 import { SkeletonList } from "../components/Skeleton";
@@ -475,67 +481,99 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
           {/* One sticky, filterable matrix */}
           <section className="card overflow-hidden">
             <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative min-w-56 flex-1 sm:max-w-sm">
-                  <Icon
-                    name="search"
-                    className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400"
-                  />
-                  <input
-                    type="search"
+              <FilterToolbar
+                search={
+                  <SearchField
+                    id="capability-search"
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={setSearch}
+                    label={null}
                     placeholder="Search by name, key or description…"
-                    className="field w-full pl-9 text-xs"
-                    aria-label="Search capabilities"
+                    ariaLabel="Search capabilities"
                   />
-                </div>
+                }
+                actions={
+                  <FilterActions className="justify-start">
+                    <span className="text-[11px] text-slate-500">
+                      {shownCount} of {totalPermissions} capabilities
+                    </span>
 
-                <select
-                  className="field w-auto text-xs"
-                  value={groupFilter}
-                  onChange={(event) => setGroupFilter(event.target.value)}
-                  aria-label="Filter by permission group"
-                >
-                  <option value="all">All groups</option>
-                  {groups.map((group) => (
-                    <option key={group.group} value={group.group}>
-                      {group.group}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  className="field w-auto text-xs"
-                  value={grantFilter}
-                  onChange={(event) => setGrantFilter(event.target.value)}
-                  aria-label="Filter by grant state"
-                >
-                  <option value="all">All grants</option>
-                  <option value="granted">Granted somewhere</option>
-                  <option value="missing">Missing somewhere</option>
-                  <option value="different">Role differences</option>
-                </select>
-
-                <span className="text-[11px] text-slate-500">
-                  {shownCount} of {totalPermissions} capabilities
-                </span>
-
-                {(search || groupFilter !== "all" || grantFilter !== "all") && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearch("");
-                      setGroupFilter("all");
-                      setGrantFilter("all");
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-pill border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                    {(search || groupFilter !== "all" || grantFilter !== "all") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearch("");
+                          setGroupFilter("all");
+                          setGrantFilter("all");
+                        }}
+                        className="filter-reset"
+                      >
+                        <Icon name="close" className="h-3.5 w-3.5" />
+                        Clear
+                      </button>
+                    )}
+                  </FilterActions>
+                }
+                activeFilters={[
+                  groupFilter !== "all"
+                    ? {
+                        key: "group",
+                        label: `Group: ${groupFilter}`,
+                        onClear: () => setGroupFilter("all"),
+                      }
+                    : null,
+                  grantFilter !== "all"
+                    ? {
+                        key: "grant",
+                        label: `Grant: ${grantFilter}`,
+                        onClear: () => setGrantFilter("all"),
+                      }
+                    : null,
+                ].filter(Boolean)}
+                onClearAll={() => {
+                  setSearch("");
+                  setGroupFilter("all");
+                  setGrantFilter("all");
+                }}
+                onReset={() => {
+                  setSearch("");
+                  setGroupFilter("all");
+                  setGrantFilter("all");
+                }}
+              >
+                <FilterField label="Permission group" htmlFor="capability-group">
+                  <select
+                    id="capability-group"
+                    className="field"
+                    value={groupFilter}
+                    onChange={(event) => setGroupFilter(event.target.value)}
+                    aria-label="Filter by permission group"
                   >
-                    <Icon name="close" className="h-3.5 w-3.5" />
-                    Clear
-                  </button>
-                )}
-              </div>
+                    <option value="all">All groups</option>
+                    {groups.map((group) => (
+                      <option key={group.group} value={group.group}>
+                        {group.group}
+                      </option>
+                    ))}
+                  </select>
+                </FilterField>
+
+                <FilterField label="Grant state" htmlFor="capability-grant">
+                  <select
+                    id="capability-grant"
+                    className="field"
+                    value={grantFilter}
+                    onChange={(event) => setGrantFilter(event.target.value)}
+                    aria-label="Filter by grant state"
+                  >
+                    <option value="all">All grants</option>
+                    <option value="granted">Granted somewhere</option>
+                    <option value="missing">Missing somewhere</option>
+                    <option value="different">Role differences</option>
+                  </select>
+                </FilterField>
+
+              </FilterToolbar>
             </div>
 
             {filteredGroups.length === 0 ? (

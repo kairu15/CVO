@@ -18,6 +18,11 @@ import { BarangayRecordsPanel } from "../components/BarangayRecordsPanel";
 import { DispersalDialog } from "../components/DispersalDialog";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icons";
+import {
+  FilterField,
+  FilterFooter,
+  FilterToolbar,
+} from "../components/FilterToolbar";
 import { InlineAlert } from "../components/InlineAlert";
 import { Modal } from "../components/Modal";
 import { SkeletonList } from "../components/Skeleton";
@@ -573,13 +578,11 @@ export default function DispersalMapPage({ roleKey }) {
           </p>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-end gap-2.5">
-          <label className="flex min-w-[11rem] flex-col gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Animal type
-            </span>
+        <FilterToolbar className="mt-4">
+          <FilterField label="Animal type" htmlFor="map-animal-type">
             <select
-              className="field !py-2 text-xs"
+              id="map-animal-type"
+              className="field"
               value={animalType}
               onChange={(event) => updateParams({ animal_type: event.target.value })}
               aria-label="Filter map by animal type"
@@ -591,13 +594,14 @@ export default function DispersalMapPage({ roleKey }) {
                 </option>
               ))}
             </select>
-          </label>
+          </FilterField>
 
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Pin view
-            </span>
-            <div className="inline-flex h-10 overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <FilterField label="Pin view">
+            <div
+              className="segment-group w-fit"
+              role="group"
+              aria-label="Pin view"
+            >
               {[
                 ["households", "Households"],
                 ["animals", "Animals"],
@@ -607,7 +611,7 @@ export default function DispersalMapPage({ roleKey }) {
                   type="button"
                   onClick={() => updateParams({ pins: key === "households" ? "" : key })}
                   aria-pressed={pinView === key}
-                  className={`px-3 text-xs font-semibold transition ${
+                  className={`segment-button transition ${
                     pinView === key
                       ? "bg-brand-700 text-white"
                       : "text-slate-600 hover:bg-brand-50"
@@ -617,37 +621,42 @@ export default function DispersalMapPage({ roleKey }) {
                 </button>
               ))}
             </div>
-          </div>
+          </FilterField>
 
-          <button
-            type="button"
-            onClick={() => updateParams({ movements: movementsOn ? "" : "1" })}
-            aria-pressed={movementsOn}
-            className={`inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${
-              movementsOn
-                ? "border-amber-500 bg-amber-50 text-amber-900"
-                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-            }`}
-          >
-            <Icon name="route" className="h-3.5 w-3.5" />
-            Movements
-          </button>
+          <FilterField label="Overlays">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => updateParams({ movements: movementsOn ? "" : "1" })}
+                aria-pressed={movementsOn}
+                className={`inline-flex h-10 items-center gap-1.5 rounded-pill border px-3 text-xs font-semibold transition ${
+                  movementsOn
+                    ? "border-amber-500 bg-amber-50 text-amber-900"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <Icon name="route" className="h-3.5 w-3.5" />
+                Movements
+              </button>
 
-          <button
-            type="button"
-            onClick={() => updateParams({ quality: qualityOn ? "" : "1" })}
-            aria-pressed={qualityOn}
-            className={`inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${
-              qualityOn
-                ? "border-amber-500 bg-amber-50 text-amber-900"
-                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-            }`}
-          >
-            <Icon name="sliders" className="h-3.5 w-3.5" />
-            Data quality
-          </button>
+              <button
+                type="button"
+                onClick={() => updateParams({ quality: qualityOn ? "" : "1" })}
+                aria-pressed={qualityOn}
+                className={`inline-flex h-10 items-center gap-1.5 rounded-pill border px-3 text-xs font-semibold transition ${
+                  qualityOn
+                    ? "border-amber-500 bg-amber-50 text-amber-900"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <Icon name="sliders" className="h-3.5 w-3.5" />
+                Data quality
+              </button>
+            </div>
+          </FilterField>
 
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <FilterFooter>
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
             <button
               type="button"
               onClick={copyViewLink}
@@ -672,8 +681,9 @@ export default function DispersalMapPage({ roleKey }) {
               <Icon name="clipboard" className="h-3.5 w-3.5" />
               Export CSV
             </button>
-          </div>
-        </div>
+            </div>
+          </FilterFooter>
+        </FilterToolbar>
 
         <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-3 lg:grid-cols-6">
           <Metric label="Animals" value={stats.animals} hint="in this view" />

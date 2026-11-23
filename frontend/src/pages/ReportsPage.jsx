@@ -27,6 +27,8 @@ import { AnimalTypeDropdown } from "../components/AnimalTypeDropdown";
 import { ReportExportPanel } from "../components/ReportExportPanel";
 import { Modal } from "../components/Modal";
 import { Icon } from "../components/Icons";
+import { FilterField, FilterToolbar } from "../components/FilterToolbar";
+import { SearchField } from "../components/SearchField";
 import { getRole } from "../config/roles";
 import { CHART_COLORS, PIE_COLORS, AXIS_STYLE } from "../lib/charts";
 import { useChart } from "../hooks/useChart";
@@ -414,7 +416,7 @@ export default function ReportsPage({ roleKey = "admin" }) {
   return (
     <div className="space-y-6">
       <section className="card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <p className="eyebrow">{config?.label ?? "Administrator"}</p>
             <h2 className="mt-2 font-display text-xl font-bold text-slate-900 sm:text-2xl">
@@ -427,19 +429,35 @@ export default function ReportsPage({ roleKey = "admin" }) {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <label
-                htmlFor="reports-barangay"
-                className="block text-xs font-semibold text-slate-600"
-              >
-                Barangay
-              </label>
+          <FilterToolbar
+            className="w-full min-w-0 xl:max-w-4xl"
+            collapsible
+            search={
+              <SearchField
+                id="reports-beneficiary"
+                value={beneficiary}
+                onChange={setBeneficiary}
+                label="Beneficiary"
+                placeholder="Name or RSBSA #"
+              />
+            }
+            onReset={() => {
+              setBarangay("");
+              setBeneficiary("");
+              setCategory("");
+              setDispersalType("");
+              setFrom("");
+              setTo("");
+              setAnimalType("");
+              setMonth(null);
+            }}
+          >
+            <FilterField label="Barangay" htmlFor="reports-barangay">
               <select
                 id="reports-barangay"
                 value={barangay}
                 onChange={(event) => setBarangay(event.target.value)}
-                className="field mt-1 w-44 text-xs"
+                className="field"
               >
                 <option value="">All barangays</option>
                 {barangays.map((b) => (
@@ -448,37 +466,14 @@ export default function ReportsPage({ roleKey = "admin" }) {
                   </option>
                 ))}
               </select>
-            </div>
+            </FilterField>
 
-            <div>
-              <label
-                htmlFor="reports-beneficiary"
-                className="block text-xs font-semibold text-slate-600"
-              >
-                Beneficiary
-              </label>
-              <input
-                id="reports-beneficiary"
-                type="search"
-                value={beneficiary}
-                onChange={(event) => setBeneficiary(event.target.value)}
-                placeholder="Name or RSBSA #"
-                className="field mt-1 w-48 text-xs"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="reports-category"
-                className="block text-xs font-semibold text-slate-600"
-              >
-                Animal category
-              </label>
+            <FilterField label="Animal category" htmlFor="reports-category">
               <select
                 id="reports-category"
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
-                className="field mt-1 w-44 text-xs"
+                className="field"
               >
                 {CATEGORY_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -486,20 +481,14 @@ export default function ReportsPage({ roleKey = "admin" }) {
                   </option>
                 ))}
               </select>
-            </div>
+            </FilterField>
 
-            <div>
-              <label
-                htmlFor="reports-status"
-                className="block text-xs font-semibold text-slate-600"
-              >
-                Dispersal status
-              </label>
+            <FilterField label="Dispersal status" htmlFor="reports-status">
               <select
                 id="reports-status"
                 value={dispersalType}
                 onChange={(event) => setDispersalType(event.target.value)}
-                className="field mt-1 w-44 text-xs"
+                className="field"
               >
                 {DISPERSAL_STATUS_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -507,53 +496,46 @@ export default function ReportsPage({ roleKey = "admin" }) {
                   </option>
                 ))}
               </select>
-            </div>
+            </FilterField>
 
-            <div>
-              <label
-                htmlFor="reports-from"
-                className="block text-xs font-semibold text-slate-600"
-              >
-                Dispersals from
-              </label>
+            <FilterField label="Dispersals from" htmlFor="reports-from">
               <input
                 id="reports-from"
                 type="date"
                 value={from}
                 onChange={(event) => setFrom(event.target.value)}
-                className="field mt-1 w-40 text-xs"
+                className="field"
               />
-            </div>
+            </FilterField>
 
-            <div>
-              <label
-                htmlFor="reports-to"
-                className="block text-xs font-semibold text-slate-600"
-              >
-                To
-              </label>
+            <FilterField label="To" htmlFor="reports-to">
               <input
                 id="reports-to"
                 type="date"
                 value={to}
                 min={from || undefined}
                 onChange={(event) => setTo(event.target.value)}
-                className="field mt-1 w-40 text-xs"
+                className="field"
               />
-            </div>
+            </FilterField>
 
             {/* The Monitoring Records filters, where they apply. */}
-            <AnimalTypeDropdown
-              types={typeOptions}
-              selected={animalType}
-              onSelect={setAnimalType}
-            />
-            <MonthYearDropdown
-              months={monthOptions}
-              selected={month}
-              onSelect={setMonth}
-            />
-          </div>
+            <FilterField label="Animal type" htmlFor="reports-animal-type">
+              <AnimalTypeDropdown
+                id="reports-animal-type"
+                types={typeOptions}
+                selected={animalType}
+                onSelect={setAnimalType}
+              />
+            </FilterField>
+            <FilterField label="Month">
+              <MonthYearDropdown
+                months={monthOptions}
+                selected={month}
+                onSelect={setMonth}
+              />
+            </FilterField>
+          </FilterToolbar>
         </div>
 
         <nav aria-label="Report categories" className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">

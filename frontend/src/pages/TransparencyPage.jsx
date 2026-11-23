@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Icon } from "../components/Icons";
+import { SearchField } from "../components/SearchField";
 import { PublicLayout } from "../components/PublicLayout";
 import { Skeleton } from "../components/Skeleton";
 import { site } from "../config/site";
@@ -187,7 +188,8 @@ function ReachChart({ series, loading }) {
             : "Not enough months with recorded dispersals to draw a trend yet — the counts below are the record so far."}
         </p>
       ) : showTable ? (
-        <table className="mt-6 w-full text-left text-sm">
+        <div className="mt-6 overflow-x-auto">
+        <table className="w-full min-w-[22rem] text-left text-sm">
           <caption className="sr-only">
             Animals dispersed per month over the last 12 months
           </caption>
@@ -208,6 +210,7 @@ function ReachChart({ series, loading }) {
             ))}
           </tbody>
         </table>
+        </div>
       ) : (
         <div
           className="mt-6 flex h-40 items-end gap-1.5"
@@ -346,23 +349,22 @@ function PublicDocuments() {
           </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2 text-xs text-slate-500">
-            <span className="sr-only">Search documents</span>
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search documents…"
-              className="field !w-auto !py-1.5 text-xs"
-            />
-          </label>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <SearchField
+            id="public-document-search"
+            value={search}
+            onChange={setSearch}
+            label={null}
+            placeholder="Search documents…"
+            ariaLabel="Search documents"
+            className="w-full sm:w-56"
+          />
           <label className="flex items-center gap-2 text-xs text-slate-500">
             <span className="sr-only">Filter by category</span>
             <select
               value={category}
               onChange={(event) => setCategory(event.target.value)}
-              className="field !w-auto !py-1.5 text-xs"
+              className="field w-full sm:w-auto"
             >
               <option value="all">All categories</option>
               {categories.map((item) => (
@@ -481,16 +483,15 @@ function PerBarangay({ rows, loading }) {
             Dispersals per barangay
           </h2>
         </div>
-        <label className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="sr-only">Search barangays</span>
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search barangay…"
-            className="field !w-auto !py-1.5 text-xs"
-          />
-        </label>
+        <SearchField
+          id="public-barangay-search"
+          value={search}
+          onChange={setSearch}
+          label={null}
+          placeholder="Search barangay…"
+          ariaLabel="Search barangays"
+          className="w-full sm:w-56"
+        />
       </div>
 
       {loading ? (

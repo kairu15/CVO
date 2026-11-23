@@ -11,6 +11,12 @@ import { EmptyState } from "../components/EmptyState";
 import { SkeletonList } from "../components/Skeleton";
 import { InlineAlert } from "../components/InlineAlert";
 import { Icon } from "../components/Icons";
+import {
+  FilterActions,
+  FilterField,
+  FilterToolbar,
+} from "../components/FilterToolbar";
+import { SearchField } from "../components/SearchField";
 import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
 import { BulkActionBar } from "../components/BulkActionBar";
 import { PaginationFooter } from "../components/PaginationFooter";
@@ -785,34 +791,64 @@ export default function HealthRecordsPage({ roleKey = "technician" }) {
       </section>
 
       <section className="card px-4 py-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-full sm:w-60">
-            <label htmlFor="health-search" className="block text-sm font-medium text-slate-700">
-              Search
-            </label>
-            <div className="relative mt-1.5">
-              <Icon
-                name="search"
-                className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400"
-              />
-              <input
-                id="health-search"
-                type="search"
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Farmer, RSBSA #, ear tag, diagnosis…"
-                className="field pl-9"
-              />
-            </div>
-          </div>
-
-          <div className="w-full sm:w-44">
-            <label htmlFor="health-status" className="block text-sm font-medium text-slate-700">
-              Health status
-            </label>
+        <FilterToolbar
+          collapsible
+          search={
+            <SearchField
+              id="health-search"
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder="Farmer, RSBSA #, ear tag, diagnosis…"
+              ariaLabel="Search health records"
+            />
+          }
+          actions={
+            hasFilters ? (
+              <FilterActions>
+                <button type="button" onClick={clearFilters} className="filter-reset">
+                  <Icon name="close" className="h-3.5 w-3.5" />
+                  Clear filters
+                </button>
+              </FilterActions>
+            ) : null
+          }
+          activeFilters={[
+            statusFilter !== "all"
+              ? {
+                  key: "status",
+                  label: `Status: ${statusFilter.replace(/_/g, " ")}`,
+                  onClear: () => updateParams({ status: null }),
+                }
+              : null,
+            barangayFilter
+              ? {
+                  key: "barangay",
+                  label: `Barangay: ${barangayFilter}`,
+                  onClear: () => updateParams({ barangay: null }),
+                }
+              : null,
+            fromFilter
+              ? {
+                  key: "from",
+                  label: `From: ${fromFilter}`,
+                  onClear: () => updateParams({ from: null }),
+                }
+              : null,
+            toFilter
+              ? {
+                  key: "to",
+                  label: `To: ${toFilter}`,
+                  onClear: () => updateParams({ to: null }),
+                }
+              : null,
+          ].filter(Boolean)}
+          onClearAll={clearFilters}
+          onReset={clearFilters}
+        >
+          <FilterField label="Health status" htmlFor="health-status">
             <select
               id="health-status"
-              className="field mt-1.5"
+              className="field"
               value={statusFilter}
               onChange={(event) =>
                 updateParams({ status: event.target.value === "all" ? null : event.target.value })
@@ -826,15 +862,12 @@ export default function HealthRecordsPage({ roleKey = "technician" }) {
               <option value="upcoming">Follow-up upcoming</option>
               <option value="completed">Follow-up completed</option>
             </select>
-          </div>
+          </FilterField>
 
-          <div className="w-full sm:w-44">
-            <label htmlFor="health-barangay" className="block text-sm font-medium text-slate-700">
-              Barangay
-            </label>
+          <FilterField label="Barangay" htmlFor="health-barangay">
             <select
               id="health-barangay"
-              className="field mt-1.5"
+              className="field"
               value={barangayFilter}
               onChange={(event) => updateParams({ barangay: event.target.value || null })}
             >
@@ -845,41 +878,32 @@ export default function HealthRecordsPage({ roleKey = "technician" }) {
                 </option>
               ))}
             </select>
-          </div>
+          </FilterField>
 
-          <div className="w-full sm:w-36">
-            <label htmlFor="health-from" className="block text-sm font-medium text-slate-700">
-              From
-            </label>
+          <FilterField label="From" htmlFor="health-from">
             <input
               id="health-from"
               type="date"
-              className="field mt-1.5"
+              className="field"
               value={fromFilter}
               onChange={(event) => updateParams({ from: event.target.value || null })}
             />
-          </div>
+          </FilterField>
 
-          <div className="w-full sm:w-36">
-            <label htmlFor="health-to" className="block text-sm font-medium text-slate-700">
-              To
-            </label>
+          <FilterField label="To" htmlFor="health-to">
             <input
               id="health-to"
               type="date"
-              className="field mt-1.5"
+              className="field"
               value={toFilter}
               onChange={(event) => updateParams({ to: event.target.value || null })}
             />
-          </div>
+          </FilterField>
 
-          <div className="w-full sm:w-44">
-            <label htmlFor="health-sort" className="block text-sm font-medium text-slate-700">
-              Sort
-            </label>
+          <FilterField label="Sort" htmlFor="health-sort">
             <select
               id="health-sort"
-              className="field mt-1.5"
+              className="field"
               value={`${sort}:${direction}`}
               onChange={(event) => {
                 const [nextSort, nextDirection] = event.target.value.split(":");
@@ -891,18 +915,9 @@ export default function HealthRecordsPage({ roleKey = "technician" }) {
               <option value="farmer:asc">Farmer A–Z</option>
               <option value="farmer:desc">Farmer Z–A</option>
             </select>
-          </div>
+          </FilterField>
 
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="rounded-pill px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
+        </FilterToolbar>
       </section>
 
       <section className="card overflow-hidden">

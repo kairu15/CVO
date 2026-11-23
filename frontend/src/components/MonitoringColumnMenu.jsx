@@ -1,3 +1,5 @@
+import { Icon } from "./Icons";
+
 /**
  * Column visibility for the monitoring sheet.
  *
@@ -24,11 +26,12 @@ export function MonitoringColumnMenu({ columns, visible, onChange, compact }) {
 
   return (
     <details className="relative">
-      <summary className="cursor-pointer list-none rounded-pill border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+      <summary className="inline-flex h-10 cursor-pointer list-none items-center justify-center gap-1.5 rounded-pill border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 [&::-webkit-details-marker]:hidden dark:border-slate-300/70 dark:bg-slate-950/40 dark:text-slate-300">
+        <Icon name="sliders" className="h-3.5 w-3.5" />
         Columns
       </summary>
 
-      <div className="absolute right-0 z-30 mt-1 w-60 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+      <div className="absolute right-0 z-30 mt-1 w-60 max-w-[min(15rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
         <div className="flex items-center gap-1 border-b border-slate-100 pb-2">
           <button
             type="button"

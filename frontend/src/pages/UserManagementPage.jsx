@@ -13,6 +13,7 @@ import { PaginationFooter } from "../components/PaginationFooter";
 import { SelectAllCheckbox } from "../components/SelectAllCheckbox";
 import { BulkActionBar } from "../components/BulkActionBar";
 import { Icon } from "../components/Icons";
+import { SearchField } from "../components/SearchField";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useRowSelection } from "../hooks/useRowSelection";
 import { useAuth } from "../context/AuthContext";
@@ -564,24 +565,19 @@ export default function UserManagementPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Icon
-                name="search"
-                className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400"
-              />
-              <input
-                type="search"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setPage(1);
-                }}
-                placeholder="Search name, username or email…"
-                className="field w-64 pl-9"
-                aria-label="Search accounts"
-              />
-            </div>
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
+            <SearchField
+              id="account-search"
+              value={search}
+              onChange={(value) => {
+                setSearch(value);
+                setPage(1);
+              }}
+              label={null}
+              placeholder="Search name, username or email…"
+              ariaLabel="Search accounts"
+              className="w-full sm:w-72"
+            />
 
             <a
               href={adminApi.exportUsersUrl({

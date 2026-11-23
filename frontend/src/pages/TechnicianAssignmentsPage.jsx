@@ -15,6 +15,12 @@ import { StatCard } from "../components/StatCard";
 import { WorkloadBadge } from "../components/WorkloadBadge";
 import { TechnicianProfileDrawer } from "../components/TechnicianProfileDrawer";
 import { Icon } from "../components/Icons";
+import {
+  FilterActions,
+  FilterField,
+  FilterToolbar,
+} from "../components/FilterToolbar";
+import { SearchField } from "../components/SearchField";
 
 const PAGE_SIZE = 20;
 
@@ -337,38 +343,73 @@ export default function TechnicianAssignmentsPage() {
       {error && <InlineAlert message={error} onDismiss={() => setError(null)} />}
 
       <section className="card px-4 py-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-full sm:w-64">
-            <label htmlFor="technician-search" className="block text-sm font-medium text-slate-700">
-              Search
-            </label>
-            <div className="relative mt-1.5">
-              <Icon
-                name="search"
-                className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400"
-              />
-              <input
-                id="technician-search"
-                type="search"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setPage(1);
-                }}
-                placeholder="Name or email…"
-                className="field pl-9"
-                aria-label="Search technicians"
-              />
-            </div>
-          </div>
-
-          <div className="w-full sm:w-44">
-            <label htmlFor="technician-status" className="block text-sm font-medium text-slate-700">
-              Status
-            </label>
+        <FilterToolbar
+          collapsible
+          search={
+            <SearchField
+              id="technician-search"
+              value={search}
+              onChange={(value) => {
+                setSearch(value);
+                setPage(1);
+              }}
+              placeholder="Name or email…"
+              ariaLabel="Search technicians"
+            />
+          }
+          actions={
+            hasFilters ? (
+              <FilterActions>
+                <button type="button" onClick={clearFilters} className="filter-reset">
+                  <Icon name="close" className="h-3.5 w-3.5" />
+                  Clear filters
+                </button>
+              </FilterActions>
+            ) : null
+          }
+          activeFilters={[
+            status !== "all"
+              ? {
+                  key: "status",
+                  label: `Status: ${
+                    STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status
+                  }`,
+                  onClear: () => {
+                    setStatus("all");
+                    setPage(1);
+                  },
+                }
+              : null,
+            barangay
+              ? {
+                  key: "barangay",
+                  label: `Barangay: ${barangay}`,
+                  onClear: () => {
+                    setBarangay("");
+                    setPage(1);
+                  },
+                }
+              : null,
+            workload
+              ? {
+                  key: "workload",
+                  label: `Workload: ${
+                    WORKLOAD_OPTIONS.find((option) => option.value === workload)?.label ?? workload
+                  }`,
+                  onClear: () => {
+                    setWorkload("");
+                    setPage(1);
+                  },
+                }
+              : null,
+          ].filter(Boolean)}
+          onClearAll={clearFilters}
+          onReset={clearFilters}
+        >
+          <FilterField label="Status" htmlFor="technician-status">
             <select
               id="technician-status"
-              className="field mt-1.5"
+              className="field"
               value={status}
               onChange={(event) => {
                 setStatus(event.target.value);
@@ -382,15 +423,12 @@ export default function TechnicianAssignmentsPage() {
                 </option>
               ))}
             </select>
-          </div>
+          </FilterField>
 
-          <div className="w-full sm:w-48">
-            <label htmlFor="technician-barangay" className="block text-sm font-medium text-slate-700">
-              Barangay
-            </label>
+          <FilterField label="Barangay" htmlFor="technician-barangay">
             <select
               id="technician-barangay"
-              className="field mt-1.5"
+              className="field"
               value={barangay}
               onChange={(event) => {
                 setBarangay(event.target.value);
@@ -405,15 +443,12 @@ export default function TechnicianAssignmentsPage() {
                 </option>
               ))}
             </select>
-          </div>
+          </FilterField>
 
-          <div className="w-full sm:w-44">
-            <label htmlFor="technician-workload" className="block text-sm font-medium text-slate-700">
-              Workload
-            </label>
+          <FilterField label="Workload" htmlFor="technician-workload">
             <select
               id="technician-workload"
-              className="field mt-1.5"
+              className="field"
               value={workload}
               onChange={(event) => {
                 setWorkload(event.target.value);
@@ -427,18 +462,9 @@ export default function TechnicianAssignmentsPage() {
                 </option>
               ))}
             </select>
-          </div>
+          </FilterField>
 
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="rounded-pill px-3 py-2 text-xs font-semibold text-brand-700 transition hover:bg-brand-50"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
+        </FilterToolbar>
       </section>
 
       <section className="card overflow-hidden">

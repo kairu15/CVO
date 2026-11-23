@@ -69,7 +69,7 @@ export function MonitoringExcelToolbar({
     // direct children of the filter row: buttons sit beside the month
     // dropdown, and any import feedback wraps full width beneath the row.
     <div className="contents">
-      <div className="flex flex-wrap items-center gap-3 sm:ml-auto">
+      <div className="flex flex-wrap items-center gap-2">
         <input
           ref={fileInputRef}
           type="file"

@@ -165,7 +165,7 @@ export function FlowMatrix({ barangays = [], flows = [] }) {
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value)}
-              className="field !w-auto !px-2 !py-1 text-xs"
+              className="field !w-auto text-xs"
               aria-label="Sort the flows table"
             >
               {SORT_KEYS.map((key) => (

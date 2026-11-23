@@ -6,6 +6,7 @@ import { getErrorMessage } from "../api/client";
 import { useAutoRefresh } from "../api/queries";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icons";
+import { FilterField, FilterToolbar } from "../components/FilterToolbar";
 import { InlineAlert } from "../components/InlineAlert";
 import { SkeletonList } from "../components/Skeleton";
 import { FlowMatrix } from "../components/FlowMatrix";
@@ -509,42 +510,33 @@ export default function BarangayDispersalPage({ roleKey = "admin" }) {
         </div>
 
         {/* Filters — mirrored into the URL so a view can be shared. */}
-        <div className="mt-4 flex flex-wrap items-end gap-3">
-          <div>
-            <label htmlFor="bd-from" className="block text-xs font-semibold text-slate-600">
-              From
-            </label>
+        <FilterToolbar className="mt-4">
+          <FilterField label="From" htmlFor="bd-from">
             <input
               id="bd-from"
               type="date"
               value={from}
               onChange={(event) => updateParams({ from: event.target.value })}
-              className="field mt-1 w-36 text-xs"
+              className="field"
             />
-          </div>
-          <div>
-            <label htmlFor="bd-to" className="block text-xs font-semibold text-slate-600">
-              To
-            </label>
+          </FilterField>
+          <FilterField label="To" htmlFor="bd-to">
             <input
               id="bd-to"
               type="date"
               value={to}
               onChange={(event) => updateParams({ to: event.target.value })}
-              className="field mt-1 w-36 text-xs"
+              className="field"
             />
-          </div>
-          <div>
-            <label htmlFor="bd-type" className="block text-xs font-semibold text-slate-600">
-              Animal type
-            </label>
+          </FilterField>
+          <FilterField label="Animal type" htmlFor="bd-type">
             <select
               id="bd-type"
               value={animalTypeId}
               onChange={(event) => {
                 updateParams({ animal_type: event.target.value, classification: "" });
               }}
-              className="field mt-1 w-40 text-xs"
+              className="field"
             >
               <option value="">All types</option>
               {typeOptions.map((type) => (
@@ -553,17 +545,14 @@ export default function BarangayDispersalPage({ roleKey = "admin" }) {
                 </option>
               ))}
             </select>
-          </div>
+          </FilterField>
           {classificationOptions.length > 0 && (
-            <div>
-              <label htmlFor="bd-classification" className="block text-xs font-semibold text-slate-600">
-                Classification
-              </label>
+            <FilterField label="Classification" htmlFor="bd-classification">
               <select
                 id="bd-classification"
                 value={classificationId}
                 onChange={(event) => updateParams({ classification: event.target.value })}
-                className="field mt-1 w-40 text-xs"
+                className="field"
               >
                 <option value="">All classifications</option>
                 {classificationOptions.map((classification) => (
@@ -572,33 +561,37 @@ export default function BarangayDispersalPage({ roleKey = "admin" }) {
                   </option>
                 ))}
               </select>
-            </div>
+            </FilterField>
           )}
-          <fieldset className="flex flex-wrap items-center gap-3">
-            <legend className="text-xs font-semibold text-slate-600">Event types</legend>
-            {EVENT_TYPES.map((type) => (
-              <label key={type.key} className="flex items-center gap-1.5 text-xs text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={eventTypes.includes(type.key)}
-                  onChange={(event) => {
-                    const next = event.target.checked
-                      ? [...new Set([...eventTypes, type.key])]
-                      : eventTypes.filter((t) => t !== type.key);
-                    updateParams({
-                      // An empty selection means "everything" server-side; do
-                      // not let the URL imply a filter that is not there.
-                      event_types:
-                        next.length === EVENT_TYPES.length ? "" : next.sort().join(","),
-                    });
-                  }}
-                />
-                {type.label}
-              </label>
-            ))}
+
+          <fieldset className="filter-field filter-field--full">
+            <legend className="filter-label">Event types</legend>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-0.5">
+              {EVENT_TYPES.map((type) => (
+                <label key={type.key} className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={eventTypes.includes(type.key)}
+                    onChange={(event) => {
+                      const next = event.target.checked
+                        ? [...new Set([...eventTypes, type.key])]
+                        : eventTypes.filter((t) => t !== type.key);
+                      updateParams({
+                        // An empty selection means "everything" server-side; do
+                        // not let the URL imply a filter that is not there.
+                        event_types:
+                          next.length === EVENT_TYPES.length ? "" : next.sort().join(","),
+                      });
+                    }}
+                  />
+                  {type.label}
+                </label>
+              ))}
+            </div>
           </fieldset>
+
           <label
-            className="flex items-center gap-1.5 text-xs text-slate-600"
+            className="filter-field flex-row items-center gap-2 text-xs text-slate-600 dark:text-slate-300"
             title={anyPopulation ? undefined : "Add barangay populations in System Settings first"}
           >
             <input
@@ -609,7 +602,7 @@ export default function BarangayDispersalPage({ roleKey = "admin" }) {
             />
             Per 1,000 residents
           </label>
-        </div>
+        </FilterToolbar>
 
         {(from || to || animalTypeId || classificationId || eventTypesParam !== "") && (
           <p className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-pill bg-brand-50 px-3.5 py-1.5 text-xs font-semibold text-brand-800">

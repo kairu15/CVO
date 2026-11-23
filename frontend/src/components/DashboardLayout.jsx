@@ -84,7 +84,7 @@ export function DashboardLayout() {
           subtitle={subtitle}
           onOpenSidebar={() => setDrawerPath(location.pathname)}
         />
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <OfflineBanner />
           {/* Signs the user out after a quiet period, with a countdown first
               (see IdleSessionGuard). Mounted in the authenticated shell only. */}

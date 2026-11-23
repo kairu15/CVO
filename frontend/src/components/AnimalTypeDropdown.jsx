@@ -16,24 +16,28 @@
  * @param {(type: string|null) => void} props.onSelect
  * @param {boolean} [props.disabled] render inert while the list is loading
  */
-export function AnimalTypeDropdown({ types = [], selected = null, onSelect, disabled = false }) {
+export function AnimalTypeDropdown({
+  types = [],
+  selected = null,
+  onSelect,
+  disabled = false,
+  id = "animal-type-filter",
+}) {
   return (
-    <label className="flex items-center">
-      <span className="sr-only">Filter by animal type</span>
-      <select
-        className="field w-full sm:w-44"
-        value={selected ?? ""}
-        onChange={(event) => onSelect(event.target.value || null)}
-        disabled={disabled}
-        aria-label="Filter by animal type"
-      >
-        <option value="">All animal types</option>
-        {types.map((type) => (
-          <option key={type} value={type}>
-            {type}
-          </option>
-        ))}
-      </select>
-    </label>
+    <select
+      id={id}
+      className="field"
+      value={selected ?? ""}
+      onChange={(event) => onSelect(event.target.value || null)}
+      disabled={disabled}
+      aria-label="Filter by animal type"
+    >
+      <option value="">All animal types</option>
+      {types.map((type) => (
+        <option key={type} value={type}>
+          {type}
+        </option>
+      ))}
+    </select>
   );
 }

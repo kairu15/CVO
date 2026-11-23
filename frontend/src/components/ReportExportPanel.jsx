@@ -122,7 +122,7 @@ export function ReportExportPanel({
 
   return (
     <form onSubmit={handleSubmit} className="mt-5 border-t border-slate-100 pt-4">
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="filter-toolbar">
         {REPORT_TEMPLATES.length > 1 && (
           <div>
             <label htmlFor="report-template" className="block text-xs font-semibold text-slate-600">
@@ -132,7 +132,7 @@ export function ReportExportPanel({
               id="report-template"
               value={template}
               onChange={(event) => setTemplate(event.target.value)}
-              className="field mt-1 w-56 text-xs"
+              className="field mt-1 text-xs"
             >
               {REPORT_TEMPLATES.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -143,7 +143,7 @@ export function ReportExportPanel({
           </div>
         )}
 
-        <div className="min-w-64 flex-1">
+        <div className="filter-field--wide min-w-0">
           <label htmlFor="report-name" className="block text-xs font-semibold text-slate-600">
             Report name
           </label>

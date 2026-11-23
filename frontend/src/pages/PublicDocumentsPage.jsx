@@ -5,6 +5,7 @@ import { publicDocumentsApi } from "../api/publicDocumentsApi";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icons";
+import { SearchField } from "../components/SearchField";
 import { InlineAlert } from "../components/InlineAlert";
 import { Modal } from "../components/Modal";
 import { SkeletonList } from "../components/Skeleton";
@@ -257,25 +258,20 @@ export default function PublicDocumentsPage() {
         </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Icon
-              name="search"
-              className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400"
-            />
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search title, description or file…"
-              className="field w-64 pl-9 text-xs"
-              aria-label="Search documents"
-            />
-          </div>
+          <SearchField
+            id="document-search"
+            value={search}
+            onChange={setSearch}
+            label={null}
+            placeholder="Search title, description or file…"
+            ariaLabel="Search documents"
+            className="w-full sm:w-72"
+          />
 
           <select
             value={category}
             onChange={(event) => setCategory(event.target.value)}
-            className="field w-44 text-xs"
+            className="field w-full sm:w-44"
             aria-label="Filter by category"
           >
             <option value="all">All categories</option>

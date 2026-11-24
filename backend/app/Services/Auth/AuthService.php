@@ -83,9 +83,14 @@ class AuthService
         $this->lockout->clear($user);
 
         // The fact the User Management table shows per account ("last
-        // login"). saveQuietly: this is bookkeeping, not a model event the
-        // rest of the system should react to.
-        $user->forceFill(['last_login_at' => now()])->saveQuietly();
+        // login"), plus the presence stamp: signing in IS activity, so the
+        // account reads Online immediately (see App\Support\Presence).
+        // saveQuietly: this is bookkeeping, not a model event the rest of the
+        // system should react to.
+        $user->forceFill([
+            'last_login_at' => now(),
+            'last_seen_at' => now(),
+        ])->saveQuietly();
 
         $this->audit->log($user, 'login', User::class);
 
@@ -118,6 +123,8 @@ class AuthService
      */
     public function logout(User $user, bool $hasSession): void
     {
+        $this->markSignedOut($user);
+
         if ($user->currentAccessToken() instanceof PersonalAccessToken) {
             $user->currentAccessToken()->delete();
 
@@ -146,6 +153,10 @@ class AuthService
      */
     public function logoutEverywhere(User $user): int
     {
+        // Presence: sign-out is immediate, not "when the 5-minute window
+        // lapses". See markSignedOut().
+        $this->markSignedOut($user);
+
         $revoked = $user->tokens()->delete();
 
         // Cookie sessions: the database session driver stores rows keyed by
@@ -155,6 +166,22 @@ class AuthService
             ->delete();
 
         return (int) $revoked;
+    }
+
+    /**
+     * Stamp the account as signed out.
+     *
+     * `last_seen_at` is deliberately NOT cleared: the table still wants to
+     * say "Last seen 2 d ago" after a sign-out. Presence treats
+     * `last_logout_at >= last_seen_at` as offline, so the split timestamps
+     * carry both facts with one comparison (App\Support\Presence).
+     *
+     * saveQuietly: this is presence bookkeeping, not an account edit, so it
+     * must not write an audit row or fire model events.
+     */
+    private function markSignedOut(User $user): void
+    {
+        $user->forceFill(['last_logout_at' => now()])->saveQuietly();
     }
 
     /**

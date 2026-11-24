@@ -9,6 +9,7 @@ import { OfflineBanner } from "./OfflineBanner";
 import { Icon } from "./Icons";
 import { SkeletonList } from "./Skeleton";
 import { useSiteConfig } from "../hooks/useSiteConfig";
+import { usePresenceHeartbeat } from "../hooks/usePresenceHeartbeat";
 
 /**
  * Shared shell for every role dashboard: role-conditional sidebar, top header
@@ -28,6 +29,11 @@ export function DashboardLayout() {
   // shipped default — passing undefined, not null, is what selects that
   // default.
   const { idleMinutes } = useSiteConfig();
+
+  // "Still here" heartbeat for the admin's Online badge. Mounted in the
+  // authenticated shell, so it starts after sign-in and stops on sign-out
+  // (`user` becomes null) without any other wiring.
+  usePresenceHeartbeat(Boolean(user));
 
   // The drawer is only "open" for the route it was opened on, so navigating
   // (including with the browser back button) closes it without an effect.

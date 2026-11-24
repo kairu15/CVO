@@ -12,11 +12,19 @@ export const adminApi = {
   listUsers: async (params = {}) => unwrap.list(await api.get("/api/v1/admin/users", { params })),
 
   /**
-   * The same user list, paginated: resolves to `{ data, meta }` so the table
-   * can render its page footer (see `unwrap.page`).
+   * The same user list, paginated: resolves to `{ data, meta, summary }` so
+   * the table can render its page footer (see `unwrap.page`) and its
+   * "N online" strip. `summary` is a sibling of the paginator (the server
+   * attaches it that way), not part of the unpaginated resource.
    */
-  listUsersPage: async (params = {}) =>
-    unwrap.page(await api.get("/api/v1/admin/users", { params })),
+  listUsersPage: async (params = {}) => {
+    const response = await api.get("/api/v1/admin/users", { params });
+
+    return {
+      ...unwrap.page(response),
+      summary: response.data?.summary ?? null,
+    };
+  },
 
   /**
    * The Technicians screen: one filtered page plus the page-independent KPI

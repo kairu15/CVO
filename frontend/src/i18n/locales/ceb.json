@@ -38,6 +38,24 @@
     "expired": "Ni-expire na ang imong session — palihog pag-sign in pag-usab.",
     "inactivity": "Gi-sign out ka tungod sa walay kalihokan."
   },
+  "userManagement": {
+    "presence": {
+      "label": "Presensya",
+      "all": "Tanan",
+      "online": "Online",
+      "offline": "Offline",
+      "deactivated": "Gi-deactivate",
+      "onlineAria": "Online — naka-sign in ug aktibo karon",
+      "offlineAria": "Offline — wala karon naka-sign in",
+      "deactivatedAria": "Gi-deactivate — dili maka-sign in kining account",
+      "onlineCount": "{{n}} online",
+      "onlineCountHint": "Naka-sign in sulod sa miaging pipila ka minuto. Wala maapektuhan sa presence filter.",
+      "lastSeen": "Kataposang nakita {{time}}",
+      "neverSeen": "Wala pa makita",
+      "lastSeenLabel": "Kataposang nakita",
+      "notYet": "Wala pa"
+    }
+  },
   "resetPassword": {
     "eyebrow": "Pagbawi sa account",
     "title": "Pagpili og bag-ong password",

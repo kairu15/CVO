@@ -54,6 +54,25 @@ return [
 
     /*
     |----------------------------------------------------------------------
+    | Presence window (minutes)
+    |----------------------------------------------------------------------
+    |
+    | How recently an account must have been seen for User Management to
+    | call it Online. The full rule lives in App\Support\Presence:
+    |
+    |   online = account not deactivated
+    |            AND last_seen_at within this window
+    |            AND no sign-out since last_seen_at
+    |            AND a live session or bearer token still exists
+    |
+    | Deliberately much shorter than session_idle: it answers "is someone at
+    | the keyboard NOW", not "may this session still be used".
+    |
+    */
+    'presence_window' => (int) env('SECURITY_PRESENCE_WINDOW', 5),
+
+    /*
+    |----------------------------------------------------------------------
     | Account lockout (item 2)
     |----------------------------------------------------------------------
     |

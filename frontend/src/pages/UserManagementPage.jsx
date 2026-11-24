@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { adminApi } from "../api/adminApi";
 import { useAutoRefresh } from "../api/queries";
 import { getErrorMessage, getFieldErrors } from "../api/client";
@@ -145,12 +146,17 @@ const ACTIVITY_LABELS = {
 
 export default function UserManagementPage() {
   const toast = useToast();
+  const { t } = useTranslation();
   const { user: currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedRole = searchParams.get("role");
+  const requestedPresence = searchParams.get("presence");
 
   const [users, setUsers] = useState([]);
   const [meta, setMeta] = useState(null);
+  // Server-computed page-independent figures ("N online") — the count follows
+  // the other filters but never the presence filter itself.
+  const [summary, setSummary] = useState(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -160,6 +166,9 @@ export default function UserManagementPage() {
     requestedRole && ROLE_KEYS.includes(requestedRole) ? requestedRole : "all",
   );
   const [statusFilter, setStatusFilter] = useState("all");
+  const [presenceFilter, setPresenceFilter] = useState(() =>
+    requestedPresence === "online" || requestedPresence === "offline" ? requestedPresence : "all",
+  );
   const [neverSignedIn, setNeverSignedIn] = useState(false);
   const [sort, setSort] = useState({ key: "name", dir: "asc" });
   const [perPage, setPerPage] = useState(50);
@@ -217,18 +226,21 @@ export default function UserManagementPage() {
         // back; the API's own default is `active` for the picker endpoints.
         status: statusFilter,
         never_signed_in: neverSignedIn || undefined,
+        // Presence is its own axis; `all` is expressed by omitting it.
+        presence: presenceFilter === "all" ? undefined : presenceFilter,
         sort: sort.key,
         dir: sort.dir,
       });
 
       setUsers(rows?.data ?? []);
       setMeta(rows?.meta ?? null);
+      setSummary(rows?.summary ?? null);
     } catch (err) {
       if (!quiet) setError(getErrorMessage(err));
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [roleFilter, statusFilter, debouncedSearch, page, neverSignedIn, perPage, sort]);
+  }, [roleFilter, statusFilter, presenceFilter, debouncedSearch, page, neverSignedIn, perPage, sort]);
 
   useEffect(() => {
     load();
@@ -243,13 +255,21 @@ export default function UserManagementPage() {
     if (roleFilter === "all") next.delete("role");
     else next.set("role", roleFilter);
 
+    if (presenceFilter === "all") next.delete("presence");
+    else next.set("presence", presenceFilter);
+
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [roleFilter, searchParams, setSearchParams]);
+  }, [roleFilter, presenceFilter, searchParams, setSearchParams]);
 
   // Quietly re-fetch so accounts registered or changed elsewhere appear live.
-  useAutoRefresh(load);
+  // Paused while one account's activity drawer is open: a background refresh
+  // must not swap the rows under the drawer the admin is reading.
+  useAutoRefresh(load, { enabled: activity === null });
+
+  /** Accounts currently signed in, per the server (0 until the first load). */
+  const onlineCount = summary?.online ?? 0;
 
   const counts = useMemo(() => {
     const tally = Object.fromEntries(ROLE_KEYS.map((key) => [key, 0]));
@@ -686,6 +706,34 @@ export default function UserManagementPage() {
             Never signed in
           </button>
 
+        </div>
+
+        {/* Presence filter — "who is signed in right now". A separate axis
+            from Status (whether the account is enabled), kept in the URL like
+            the role filter so the view survives a reload. */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+            {t("userManagement.presence.label")}
+          </span>
+          {["all", "online", "offline"].map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => {
+                setPresenceFilter(key);
+                setPage(1);
+              }}
+              aria-pressed={presenceFilter === key}
+              className={`rounded-pill px-3 py-1.5 text-xs font-semibold transition ${
+                presenceFilter === key
+                  ? "bg-brand-700 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-brand-50 hover:text-brand-800"
+              }`}
+            >
+              {t(`userManagement.presence.${key}`)}
+            </button>
+          ))}
+
           <label className="ml-auto flex items-center gap-1.5 text-[11px] text-slate-500">
             Rows
             <select
@@ -726,6 +774,20 @@ export default function UserManagementPage() {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5 text-[11px] text-slate-500">
               <span className="font-semibold text-slate-700">
                 {meta?.total ?? users.length} {(meta?.total ?? users.length) === 1 ? "account" : "accounts"}
+              </span>
+              {/* The live figure, deliberately unaffected by the presence
+                  filter so switching to "Offline" still says how many are on. */}
+              <span
+                className="inline-flex items-center gap-1.5 font-medium text-emerald-700"
+                title={t("userManagement.presence.onlineCountHint")}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    onlineCount > 0 ? "animate-pulse bg-emerald-500 motion-reduce:animate-none" : "bg-slate-300"
+                  }`}
+                />
+                {t("userManagement.presence.onlineCount", { n: onlineCount })}
               </span>
               {ROLE_KEYS.some((key) => counts[key] > 0) && (
                 <span className="text-slate-400">On this page:</span>
@@ -818,6 +880,9 @@ export default function UserManagementPage() {
                   {users.map((row) => {
                     const isSelf = row.id === currentUser?.id;
                     const deactivated = row.status === "deactivated";
+                    // Presence is the server's answer, primed per page; a
+                    // deactivated account is never online regardless.
+                    const online = !deactivated && row.presence === "online";
 
                     return (
                       <tr
@@ -863,21 +928,44 @@ export default function UserManagementPage() {
                           </span>
                         </td>
                         <td className="px-4 py-2.5 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[10px] font-semibold tracking-wide uppercase ${
-                              deactivated
-                                ? "bg-rose-50 text-rose-700"
-                                : "bg-emerald-50 text-emerald-700"
-                            }`}
-                          >
+                          {deactivated ? (
                             <span
-                              aria-hidden="true"
-                              className={`h-1.5 w-1.5 rounded-full ${
-                                deactivated ? "bg-rose-500" : "bg-emerald-500"
-                              }`}
-                            />
-                            {deactivated ? "Deactivated" : "Active"}
-                          </span>
+                              aria-label={t("userManagement.presence.deactivatedAria")}
+                              className="inline-flex items-center gap-1.5 rounded-pill bg-rose-50 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-rose-700 uppercase"
+                            >
+                              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                              {t("userManagement.presence.deactivated")}
+                            </span>
+                          ) : online ? (
+                            <span
+                              aria-label={t("userManagement.presence.onlineAria")}
+                              className="inline-flex items-center gap-1.5 rounded-pill bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-emerald-700 uppercase"
+                            >
+                              {/* Soft pulse, stilled for reduced-motion users. */}
+                              <span
+                                aria-hidden="true"
+                                className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500 motion-reduce:animate-none"
+                              />
+                              {t("userManagement.presence.online")}
+                            </span>
+                          ) : (
+                            <span
+                              aria-label={t("userManagement.presence.offlineAria")}
+                              className="inline-flex items-center gap-1.5 rounded-pill bg-slate-100 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-slate-600 uppercase"
+                            >
+                              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                              {t("userManagement.presence.offline")}
+                            </span>
+                          )}
+                          {!deactivated && !online && (
+                            <span className="mt-1 block text-[10px] text-slate-400">
+                              {row.last_seen_at
+                                ? t("userManagement.presence.lastSeen", {
+                                    time: relativeTime(row.last_seen_at),
+                                  })
+                                : t("userManagement.presence.neverSeen")}
+                            </span>
+                          )}
                           {deactivated && row.deactivated_at && (
                             <span className="mt-1 block text-[10px] text-slate-400">
                               {formatDate(row.deactivated_at)}
@@ -1303,6 +1391,16 @@ export default function UserManagementPage() {
                 </dt>
                 <dd className="mt-1 text-sm text-slate-800">
                   {formatDateTime(activity.user.last_login_at)}
+                </dd>
+              </div>
+              <div className="rounded-xl border border-slate-200 px-3 py-2.5">
+                <dt className="font-semibold tracking-wide text-slate-500 uppercase">
+                  {t("userManagement.presence.lastSeenLabel")}
+                </dt>
+                <dd className="mt-1 text-sm text-slate-800">
+                  {activity.user.last_seen_at
+                    ? formatDateTime(activity.user.last_seen_at)
+                    : t("userManagement.presence.notYet")}
                 </dd>
               </div>
               <div className="rounded-xl border border-slate-200 px-3 py-2.5">

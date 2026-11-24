@@ -27,6 +27,7 @@ use App\Services\UserAccountService;
 use App\Services\UserRoleService;
 use App\Support\Like;
 use App\Support\Pagination;
+use App\Support\Presence;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
@@ -64,7 +65,21 @@ class AdminController extends Controller
         $users = $this->userQuery($validated)
             ->paginate(Pagination::perPage($validated['per_page'] ?? null));
 
-        return UserResource::collection($users);
+        // Presence for the whole page in two queries — the resource then reads
+        // the primed answer instead of checking each row's credentials.
+        Presence::prime($users->getCollection());
+
+        // "N online" follows every filter EXCEPT presence itself, so the
+        // number stays meaningful while looking at "Offline only".
+        $withoutPresence = $validated;
+        unset($withoutPresence['presence']);
+
+        return UserResource::collection($users)->additional([
+            'summary' => [
+                'total' => $users->total(),
+                'online' => $this->userQuery($withoutPresence)->online()->count(),
+            ],
+        ]);
     }
 
     /**
@@ -496,6 +511,11 @@ class AdminController extends Controller
                 });
             })
             ->when($validated['never_signed_in'] ?? false, fn ($q) => $q->whereNull('last_login_at'))
+            // Presence is a separate axis from `status`: this narrows to
+            // accounts that are (or are not) signed in right now, using the
+            // one shared rule in App\Support\Presence.
+            ->when(($validated['presence'] ?? null) === 'online', fn ($q) => $q->online())
+            ->when(($validated['presence'] ?? null) === 'offline', fn ($q) => $q->offline())
             ->orderBy($sort, $dir)
             ->orderBy('id');
     }

@@ -89,6 +89,13 @@ class User extends Authenticatable
     public const STAFF_ROLES = ['admin', 'technician'];
 
     /**
+     * Presence resolved for this instance ahead of time (a whole page is
+     * primed in two queries by App\Support\Presence::prime). Transient: null
+     * means "not resolved yet, ask the rule".
+     */
+    public ?bool $presenceCache = null;
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -98,9 +105,42 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'last_seen_at' => 'datetime',
+            'last_logout_at' => 'datetime',
             'notification_preferences' => 'array',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Is this account signed in and active right now?
+     *
+     * The rule itself lives in App\Support\Presence — this is only the
+     * model-side door to it, so no caller can invent a second definition.
+     * Account status (active/deactivated) is separate: a deactivated account
+     * is never online.
+     */
+    public function isOnline(): bool
+    {
+        return $this->presenceCache ?? \App\Support\Presence::isOnline($this);
+    }
+
+    /**
+     * Accounts that are online right now (the SQL half of the same rule).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<User>  $query
+     */
+    public function scopeOnline(\Illuminate\Database\Eloquent\Builder $query): void
+    {
+        \App\Support\Presence::onlineConstraints($query);
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<User>  $query
+     */
+    public function scopeOffline(\Illuminate\Database\Eloquent\Builder $query): void
+    {
+        \App\Support\Presence::offlineConstraints($query);
     }
 
     /**

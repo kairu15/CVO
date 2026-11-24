@@ -38,6 +38,24 @@
     "expired": "Nag-expire ang iyong session — mangyaring mag-sign in muli.",
     "inactivity": "Ini-sign out ka dahil sa kawalan ng aktibidad."
   },
+  "userManagement": {
+    "presence": {
+      "label": "Presensya",
+      "all": "Lahat",
+      "online": "Online",
+      "offline": "Offline",
+      "deactivated": "Naka-deactivate",
+      "onlineAria": "Online — naka-sign in at aktibo ngayon",
+      "offlineAria": "Offline — hindi kasalukuyang naka-sign in",
+      "deactivatedAria": "Naka-deactivate — hindi makakapag-sign in ang account na ito",
+      "onlineCount": "{{n}} online",
+      "onlineCountHint": "Naka-sign in sa nakalipas na ilang minuto. Hindi naaapektuhan ng presence filter.",
+      "lastSeen": "Huling nakita {{time}}",
+      "neverSeen": "Hindi pa nakikita",
+      "lastSeenLabel": "Huling nakita",
+      "notYet": "Wala pa"
+    }
+  },
   "resetPassword": {
     "eyebrow": "Pagbawi ng account",
     "title": "Pumili ng bagong password",

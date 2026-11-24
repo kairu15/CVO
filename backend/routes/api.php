@@ -20,6 +20,7 @@ use App\Http\Controllers\HealthRecordController;
 use App\Http\Controllers\MonitoringRecordController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordResetController;
+use App\Http\Controllers\PresenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\PublicContactController;
@@ -36,6 +37,7 @@ use App\Http\Controllers\SyncConflictController;
 use App\Http\Controllers\TechnicianDashboardController;
 use App\Http\Controllers\TechnicianDirectoryController;
 use App\Http\Controllers\VaccinationScheduleController;
+use App\Http\Middleware\TrackUserActivity;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -169,11 +171,24 @@ Route::prefix('v1')->group(function (): void {
         ->name('api.public.contact');
 });
 
-// Authenticated routes
-Route::prefix('v1')->middleware('auth:sanctum')->group(function (): void {
+// Authenticated routes.
+//
+// TrackUserActivity keeps `users.last_seen_at` fresh on every authenticated
+// request (throttled to once a minute) for BOTH cookie sessions and Sanctum
+// tokens — that column is what User Management's Online/Offline badge reads
+// (see App\Support\Presence).
+Route::prefix('v1')->middleware(['auth:sanctum', TrackUserActivity::class])->group(function (): void {
     Route::get('/user', [AuthController::class, 'user'])->name('api.user');
     Route::post('/logout', [AuthController::class, 'logout'])->name('api.logout');
     Route::post('/logout-all', [AuthController::class, 'logoutAll'])->name('api.logout-all');
+
+    // Presence heartbeat: the open tab stays Online while it is visible even
+    // if the person never clicks. Paused by the client when the tab is
+    // hidden, and never called while signed out. Generous throttle so a few
+    // open tabs cannot burn a budget, tight enough to stop a looping client.
+    Route::post('/presence/ping', [PresenceController::class, 'ping'])
+        ->middleware('throttle:120,1,presence')
+        ->name('api.presence.ping');
 
     // The authenticated user's own profile — no {id} anywhere: every route
     // is scoped to the caller by construction.

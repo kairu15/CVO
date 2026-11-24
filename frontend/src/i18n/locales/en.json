@@ -38,6 +38,24 @@
     "expired": "Your session expired — please sign in again.",
     "inactivity": "You were signed out due to inactivity."
   },
+  "userManagement": {
+    "presence": {
+      "label": "Presence",
+      "all": "All",
+      "online": "Online",
+      "offline": "Offline",
+      "deactivated": "Deactivated",
+      "onlineAria": "Online — signed in and active now",
+      "offlineAria": "Offline — not currently signed in",
+      "deactivatedAria": "Deactivated — this account cannot sign in",
+      "onlineCount": "{{n}} online",
+      "onlineCountHint": "Signed in within the last few minutes. Not affected by the presence filter.",
+      "lastSeen": "Last seen {{time}}",
+      "neverSeen": "Never seen",
+      "lastSeenLabel": "Last seen",
+      "notYet": "Not yet"
+    }
+  },
   "resetPassword": {
     "eyebrow": "Account recovery",
     "title": "Choose a new password",

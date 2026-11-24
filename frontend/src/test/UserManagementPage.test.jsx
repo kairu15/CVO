@@ -38,6 +38,9 @@ vi.mock("../context/AuthContext", () => ({
   }),
 }));
 
+/** An ISO timestamp `minutes` in the past, for the "Last seen" copy. */
+const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
+
 const ACCOUNTS = [
   {
     id: 1,
@@ -46,6 +49,8 @@ const ACCOUNTS = [
     email: "admin@example.com",
     role: "admin",
     status: "active",
+    presence: "online",
+    last_seen_at: minutesAgo(0),
     created_at: "2026-09-22T07:15:53+00:00",
   },
   {
@@ -55,6 +60,8 @@ const ACCOUNTS = [
     email: "technician@example.com",
     role: "technician",
     status: "active",
+    presence: "online",
+    last_seen_at: minutesAgo(1),
     created_at: "2026-09-18T02:00:00+00:00",
   },
   {
@@ -64,6 +71,8 @@ const ACCOUNTS = [
     email: "farmer@example.com",
     role: "farmer",
     status: "active",
+    presence: "offline",
+    last_seen_at: minutesAgo(180),
     created_at: "2026-09-19T02:00:00+00:00",
   },
   {
@@ -73,6 +82,8 @@ const ACCOUNTS = [
     email: "lito@example.com",
     role: "technician",
     status: "deactivated",
+    presence: "offline",
+    last_seen_at: minutesAgo(1440),
     created_at: "2026-09-15T02:00:00+00:00",
   },
 ];
@@ -95,7 +106,11 @@ function renderPage(path = "/dashboard/admin/users") {
 describe("UserManagementPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    adminApi.listUsersPage.mockResolvedValue({ data: ACCOUNTS, meta: null });
+    adminApi.listUsersPage.mockResolvedValue({
+      data: ACCOUNTS,
+      meta: null,
+      summary: { total: ACCOUNTS.length, online: 2 },
+    });
     adminApi.exportUsersUrl.mockReturnValue("/api/v1/admin/users/export");
     adminApi.resendSetupLink.mockResolvedValue("http://localhost:5173/reset-password?token=abc");
     adminApi.sendPasswordReset.mockResolvedValue({
@@ -114,7 +129,47 @@ describe("UserManagementPage", () => {
 
     // The deactivated account is still listed, flagged as such.
     expect(within(rowFor("Lito Former")).getByText("Deactivated")).toBeInTheDocument();
-    expect(within(rowFor("Jun Technician")).getByText("Active")).toBeInTheDocument();
+
+    // Signed-in accounts read Online; the rest say when they were last seen.
+    expect(within(rowFor("Jun Technician")).getByText("Online")).toBeInTheDocument();
+    const offlineRow = within(rowFor("Nena Farmer"));
+    expect(offlineRow.getByText("Offline")).toBeInTheDocument();
+    expect(offlineRow.getByText(/Last seen/)).toBeInTheDocument();
+  });
+
+  it("shows how many accounts are online", async () => {
+    renderPage();
+    await screen.findByText("Jun Technician");
+
+    expect(screen.getByTitle(/Not affected by the presence filter/i)).toHaveTextContent("2 online");
+  });
+
+  it("re-queries the API when a presence filter is chosen", async () => {
+    renderPage();
+    await screen.findByText("Jun Technician");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Online" }));
+    });
+
+    await waitFor(() => {
+      const calls = adminApi.listUsersPage.mock.calls;
+      expect(calls[calls.length - 1]?.[0]?.presence).toBe("online");
+    });
+  });
+
+  it("restores a presence filter from the URL", async () => {
+    renderPage("/dashboard/admin/users?presence=offline");
+    await screen.findByText("Jun Technician");
+
+    await waitFor(() => {
+      const calls = adminApi.listUsersPage.mock.calls;
+      expect(calls[calls.length - 1]?.[0]?.presence).toBe("offline");
+    });
+    expect(screen.getByRole("button", { name: "Offline" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("marks the signed-in administrator's own account", async () => {

@@ -214,12 +214,15 @@ describe("AuthContext", () => {
     });
 
     const handler = setForbiddenHandler.mock.calls.at(-1)[0];
+    // The handler returns the refresh promise, so await the state update rather
+    // than assuming it lands within the default waitFor window under load.
     await act(async () => {
-      handler();
+      await handler();
     });
 
-    await waitFor(() =>
-      expect(screen.getByTestId("user")).toHaveTextContent("Updated Administrator"),
+    await waitFor(
+      () => expect(screen.getByTestId("user")).toHaveTextContent("Updated Administrator"),
+      { timeout: 3000 },
     );
   });
 

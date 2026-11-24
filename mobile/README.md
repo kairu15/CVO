@@ -32,10 +32,11 @@ npm run android    # Android emulator
 npm run ios        # iOS simulator (macOS only)
 ```
 
-## Demo login (after `php artisan migrate --seed`)
+## Seeded staff login (after `php artisan migrate --seed`)
 
-- technician@example.com / password (the GeoTag screen is technician-facing)
-- member@example.com / password
+- `technician` / samplekylleuser@gmail.com — password from `SEED_ACCOUNT_PASSWORD`, local fallback `password` (the GeoTag screen is technician-facing).
+
+There are no farmer or member login accounts.
 
 ## Field geo-tagging
 

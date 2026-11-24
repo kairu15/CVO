@@ -19,7 +19,7 @@ import fs from "node:fs";
 const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const BASE = (process.argv[2] ?? "").replace(/\/$/, "");
 const PASSWORD = process.argv[3] ?? "password";
-const EMAIL = "admin@example.com";
+const EMAIL = "kylleacibron@gmail.com";
 
 if (!BASE.startsWith("https://")) {
   console.error("Usage: node tunnel.mjs https://<public-host> [password]");

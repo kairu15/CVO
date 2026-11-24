@@ -150,7 +150,9 @@ describe("LogoutConfirmDialog", () => {
     expect(
       await screen.findByText(/server could not confirm it/i),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("path")).toHaveTextContent("/login");
+    // The toast and the redirect are committed in the same async completion;
+    // wait for the route rather than reading it in the same paint as the toast.
+    await waitFor(() => expect(screen.getByTestId("path")).toHaveTextContent("/login"));
   });
 
   it("keeps the dialog open and reports an unexpected logout failure", async () => {

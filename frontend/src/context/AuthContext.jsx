@@ -190,10 +190,13 @@ export function AuthProvider({ children }) {
     let lastRefresh = 0;
 
     setForbiddenHandler(() => {
-      if (!userRef.current) return;
-      if (Date.now() - lastRefresh < 30_000) return;
+      if (!userRef.current) return undefined;
+      if (Date.now() - lastRefresh < 30_000) return undefined;
       lastRefresh = Date.now();
-      refreshUser();
+      // Returning the promise keeps the handler awaitable (tests, and any
+      // future caller that wants to sequence work after the refresh). The
+      // HTTP interceptor ignores the return value.
+      return refreshUser();
     });
 
     return () => setForbiddenHandler(null);

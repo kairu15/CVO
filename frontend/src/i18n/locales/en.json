@@ -20,12 +20,12 @@
     "forgot": "Forgot password?",
     "remember": "Remember me on this device",
     "resetTitle": "Reset your password",
-    "resetIntro": "Enter your account email and we'll send you a reset link.",
+    "resetIntro": "Enter your account email and we'll send you a 6-digit reset code.",
     "resetEmailLabel": "Email address",
     "resetEmailRequired": "Enter your email address.",
-    "resetSubmit": "Send reset link",
+    "resetSubmit": "Send reset code",
     "resetSubmitting": "Sending…",
-    "resetSent": "If that email address is in our records, a reset link has been sent. Check your inbox.",
+    "resetSent": "If that email address is in our records, a 6-digit reset code has been sent.",
     "resetCancel": "Cancel",
     "submitting": "Signing in…",
     "success": "Signed in successfully.",
@@ -51,10 +51,24 @@
     "errors": {
       "passwordRequired": "Enter a new password.",
       "passwordWeak": "Use at least 8 characters with upper and lower case, a number and a symbol.",
-      "passwordMismatch": "Passwords do not match."
+      "passwordMismatch": "Passwords do not match.",
+      "emailRequired": "Enter your email address.",
+      "codeRequired": "Enter the 6-digit code from the email."
     },
     "invalidLinkTitle": "This reset link can't be used",
-    "invalidLinkBody": "The link is missing its token or it has expired. Request a new reset link from the sign-in page.",
-    "backToLogin": "Back to sign in"
+    "invalidLinkBody": "The link is missing its email or token, or it has expired. Request a new reset code from the sign-in page.",
+    "backToLogin": "Back to sign in",
+    "otpIntro": "Enter the 6-digit code sent to {{email}} and choose a new password.",
+    "emailLabel": "Email address",
+    "otpLabel": "6-digit code",
+    "otpHint": "The code expires in 10 minutes.",
+    "otpPlaceholder": "123456",
+    "resend": "Resend code",
+    "resendIn": "Resend code in {{seconds}}s",
+    "resending": "Sending…",
+    "codeSent": "If that email address is in our records, a 6-digit reset code has been sent.",
+    "tokenEmailHint": "This setup link was issued for {{email}}.",
+    "emailRequired": "Enter your email address.",
+    "codeRequired": "Enter the 6-digit code from the email."
   }
 }

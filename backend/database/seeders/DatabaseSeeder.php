@@ -4,35 +4,83 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
+use RuntimeException;
 
 class DatabaseSeeder extends Seeder
 {
     /**
      * Seed the application's database.
      *
-     * Only the two staff demonstration accounts (one per role) and the
-     * reference data the app needs to function — the official barangay
-     * coverage and the starter health-concern hint rules. There is no farmer
-     * account: beneficiaries are records the admin manages, not logins. No
-     * demo beneficiaries, monitoring history, dispersal chains, clinical
-     * records or projects are created; those are added through the UI.
+     * Only the two staff accounts (one per role) and the reference data the
+     * app needs to function. Accounts are keyed on `username`, so re-seeding
+     * an existing database updates the old demo address in place instead of
+     * creating a second row (and never violates the unique email index).
      *
-     * The accounts use updateOrCreate, so re-seeding an existing database
-     * resets them instead of failing on the unique email constraint.
-     * Password for every account is "password".
+     * Password: SEED_ACCOUNT_PASSWORD when set; otherwise "password" in
+     * local/testing and a random value in production. A generated production
+     * password is printed once here — copy it, then use the OTP reset flow to
+     * choose permanent passwords.
      */
     public function run(): void
     {
+        $password = trim((string) env('SEED_ACCOUNT_PASSWORD', ''));
+        $generatedPassword = false;
+
+        if ($password === '') {
+            if (app()->environment(['local', 'testing'])) {
+                $password = 'password';
+            } else {
+                $password = Str::password(24);
+                $generatedPassword = true;
+            }
+        }
+
         $accounts = [
-            ['name' => 'CVO Administrator', 'username' => 'admin', 'email' => 'admin@example.com', 'role' => 'admin'],
-            ['name' => 'Jun Technician', 'username' => 'technician', 'email' => 'technician@example.com', 'role' => 'technician'],
+            [
+                'name' => 'CVO Administrator',
+                'username' => 'admin',
+                'email' => 'kylleacibron@gmail.com',
+                'role' => 'admin',
+            ],
+            [
+                'name' => 'Jun Technician',
+                'username' => 'technician',
+                'email' => 'samplekylleuser@gmail.com',
+                'role' => 'technician',
+            ],
         ];
 
         foreach ($accounts as $account) {
-            User::updateOrCreate(
-                ['email' => $account['email']],
-                [...$account, 'password' => bcrypt('password')],
+            $conflict = User::withTrashed()
+                ->where('email', $account['email'])
+                ->where('username', '!=', $account['username'])
+                ->first();
+
+            if ($conflict) {
+                throw new RuntimeException(
+                    "Cannot seed {$account['username']}: {$account['email']} already belongs to another account.",
+                );
+            }
+
+            $user = User::withTrashed()->updateOrCreate(
+                ['username' => $account['username']],
+                [
+                    'name' => $account['name'],
+                    'email' => $account['email'],
+                    'role' => $account['role'],
+                    'password' => $password,
+                ],
             );
+
+            if ($user->trashed()) {
+                $user->restore();
+            }
+        }
+
+        if ($generatedPassword) {
+            $this->command?->warn("Generated seed-account password (shown once): {$password}");
+            $this->command?->warn('Use "Forgot password?" with each Gmail address to replace it.');
         }
 
         $this->call([

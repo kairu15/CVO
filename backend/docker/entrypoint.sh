@@ -85,7 +85,7 @@ run_as_app php artisan migrate --force
 # -----------------------------------------------------------------------------
 # 6. Seeders — opt-in only
 #
-# Seeding creates demo accounts with a known password, so it must never run by
+# Seeding creates staff accounts with a known local-only password, so it must never run by
 # default outside development. RUN_SEEDERS=true opts in (safe to repeat: the
 # seeders use updateOrCreate).
 # -----------------------------------------------------------------------------

@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Security;
 
+use App\Mail\PasswordResetOtpMail;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Tests\TestCase;
@@ -13,27 +15,29 @@ use Tests\TestCase;
 /**
  * Item 3 — password reset / recovery.
  *
- * Happy path: a reset link request creates a token and the reset completes,
- * revoking existing sessions. Abuse cases: an expired token is refused, a
- * token is single-use, and the endpoint NEVER reveals whether an email
- * exists.
+ * Happy path: a request creates a hashed six-digit code and the invite-token
+ * path still completes, revoking existing sessions. Abuse cases: an expired
+ * token is refused, a token is single-use, and the endpoint NEVER reveals
+ * whether an email exists.
  */
 class PasswordResetTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_a_reset_link_can_be_requested_and_used(): void
+    public function test_a_reset_code_can_be_requested_and_an_invite_token_used(): void
     {
         $user = User::factory()->create(['password' => Hash::make('Old-Pass-1!')]);
+        Mail::fake();
 
         $this->postJson('/api/v1/forgot-password', ['email' => $user->email])
             ->assertOk()
-            ->assertJsonPath('message', 'If that email address is in our records, a password reset link has been sent.');
+            ->assertJsonPath('message', 'If that email address is in our records, a 6-digit reset code has been sent.');
 
-        // The broker stored a hashed token.
-        $this->assertDatabaseHas('password_reset_tokens', ['email' => $user->email]);
+        // The OTP path stores only a hash; it no longer mints a broker token.
+        $this->assertDatabaseHas('password_reset_otps', ['email' => $user->email]);
+        Mail::assertSent(PasswordResetOtpMail::class, 1);
 
-        // Complete the reset with the token the notification carried.
+        // The administrator invite/token path is still available.
         $token = $this->brokerToken($user);
 
         $this->postJson('/api/v1/reset-password', [
@@ -160,23 +164,23 @@ class PasswordResetTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('password');
     }
 
-    public function test_reset_requests_are_throttled(): void
+    public function test_a_second_code_request_inside_the_resend_window_is_throttled(): void
     {
         $user = User::factory()->create();
+        Mail::fake();
 
-        // The broker's own per-address throttle (auth.passwords.users.throttle,
-        // 60s): after the first request, a second within the window is
-        // refused with the uniform response — no token is minted.
+        // The OTP path's per-address 60s resend guard: the second request gets
+        // the same uniform response but replaces nothing and sends no mail.
         $this->postJson('/api/v1/forgot-password', ['email' => $user->email])->assertOk();
 
-        $first = DB::table('password_reset_tokens')->where('email', $user->email)->first();
+        $first = DB::table('password_reset_otps')->where('email', $user->email)->first();
 
         $this->postJson('/api/v1/forgot-password', ['email' => $user->email])->assertOk();
 
-        $second = DB::table('password_reset_tokens')->where('email', $user->email)->first();
+        $second = DB::table('password_reset_otps')->where('email', $user->email)->first();
 
-        // The record is unchanged — RESET_THROTTLED, no new token.
-        $this->assertSame($first->token, $second->token);
+        $this->assertSame($first->code_hash, $second->code_hash);
+        Mail::assertSent(PasswordResetOtpMail::class, 1);
     }
 
     /**

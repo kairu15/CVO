@@ -97,6 +97,8 @@ cp .env.production.example .env.production
 
 ### Required variables
 
+Password resets additionally require the Gmail SMTP block in the template below; without it Laravel still boots but cannot deliver reset codes.
+
 The compose file refuses to start (`${VAR:?...}`) without these:
 
 | Variable | Example | Notes |
@@ -118,6 +120,8 @@ The compose file refuses to start (`${VAR:?...}`) without these:
 | `SESSION_SECURE_COOKIE` | `false` | Set `true` once you serve over **HTTPS** |
 | `CORS_ALLOWED_ORIGINS` | *(empty)* | Only if something genuinely calls the API cross-origin |
 | `RUN_SEEDERS` | `false` | `true` for a one-off seeding run, then set back |
+| `SEED_ACCOUNT_PASSWORD` | *(empty)* | Fixed password for the two seeded accounts. Empty generates and prints one random password in production; local/testing fall back to `password` |
+| `MAIL_*` | Gmail SMTP | Required for password-reset email; see the template below |
 | `VITE_API_URL` | *(empty)* | **Build-time.** Leave empty for single-origin; absolute API URL only for a split-origin deploy |
 
 ### `.env.production` template
@@ -141,8 +145,22 @@ SESSION_DOMAIN=
 SESSION_SECURE_COOKIE=false   # set true once served over HTTPS
 CORS_ALLOWED_ORIGINS=
 
+# --- Mail: Gmail SMTP for password-reset codes ---
+# MAIL_PASSWORD is a 16-character Google App password, not the Gmail login
+# password. Keep it in this untracked file or a secret manager.
+MAIL_MAILER=smtp
+MAIL_SCHEME=null
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=kylleacibron@gmail.com
+MAIL_PASSWORD=
+MAIL_FROM_ADDRESS=kylleacibron@gmail.com
+MAIL_FROM_NAME="CVO"
+
 # --- Seeding (keep false in production) ---
 RUN_SEEDERS=false
+# Optional; empty generates a one-time password in the seed output.
+SEED_ACCOUNT_PASSWORD=
 
 # --- Public port / build args ---
 WEB_PORT=8080
@@ -219,14 +237,21 @@ docker compose --env-file .env.production -f docker-compose.prod.yml exec backen
 
 ### One-off seeding
 
-Demo accounts are **never** created unless you ask:
+The two staff accounts are **never** created unless you ask:
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml \
   exec backend php artisan db:seed --force
 ```
 
-Then keep `RUN_SEEDERS=false`. The seeders use `updateOrCreate`, so repeating a seed is safe.
+Then keep `RUN_SEEDERS=false`. The seeders use `updateOrCreate`, so repeating a seed is safe and updates the existing `admin` / `technician` rows in place (their IDs and related records are preserved).
+
+Seed passwords come from `SEED_ACCOUNT_PASSWORD`. When it is empty, production generates a random password and prints it once in the seed output; replace it with **Forgot password?** (which needs the Gmail SMTP block below). Existing databases can be switched to the two Gmail addresses without a fresh migration:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml \
+  exec backend php artisan db:seed --class=DatabaseSeeder --force
+```
 
 ### Putting TLS in front
 
@@ -286,6 +311,9 @@ Set these in the Render dashboard — the blueprint deliberately leaves every ho
 | `cvo-backend` | `APP_URL` | the **frontend** origin, e.g. `https://cvo-frontend.onrender.com` |
 | `cvo-backend` | `SANCTUM_STATEFUL_DOMAINS` | the frontend **host**, no scheme: `cvo-frontend.onrender.com` |
 | `cvo-backend` | `FRONTEND_URL` | the frontend origin (password-reset / account-setup links) |
+| `cvo-backend` | `MAIL_MAILER`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_FROM_ADDRESS` | Gmail SMTP values: `smtp`, `smtp.gmail.com`, `587`, `kylleacibron@gmail.com`, `kylleacibron@gmail.com` |
+| `cvo-backend` | `MAIL_PASSWORD` | the 16-character Google App password (secret) |
+| `cvo-backend` | `SEED_ACCOUNT_PASSWORD` | optional fixed password for the two seeded staff accounts |
 | `cvo-frontend` | `BACKEND_UPSTREAM` | the backend's public origin, e.g. `https://cvo-backend.onrender.com` |
 
 Use the hostnames Render actually assigned your two services (the dashboard shows them) — the `cvo-frontend`/`cvo-backend` names above are only the blueprint's defaults. `APP_URL`, `SANCTUM_STATEFUL_DOMAINS` and `FRONTEND_URL` must all name the **frontend**; only `BACKEND_UPSTREAM` names the backend, because the proxy is what calls it.
@@ -296,7 +324,7 @@ Everything else is already set in the blueprint: `APP_ENV=production`, `APP_DEBU
 
 1. Push to the repo (both services use `autoDeployTrigger: commit`), or click **Manual Deploy**.
 2. Open the **frontend** URL — that is the app. The backend's own URL answers Laravel's welcome page on `/`; it is the API, not the UI.
-3. First run: set `RUN_SEEDERS=true` on `cvo-backend`, redeploy (or trigger a restart) to create demo logins, then set it back to `false`.
+3. First run: set `RUN_SEEDERS=true` on `cvo-backend`, redeploy (or trigger a restart) to create the two staff logins, then set it back to `false`. Keep `MAIL_PASSWORD` set or password-reset emails cannot be delivered.
 
 ### Render notes
 
@@ -415,7 +443,8 @@ Because migrations run in the entrypoint with `--force`, a bad migration fails f
 | Port already in use | Host port conflict | Change `WEB_PORT` in `.env.production` and restart |
 | Migrations not applied | Entrypoint failed before step 4 | `docker compose ... logs backend` — the entrypoint exits non-zero (`set -eu`) |
 | Backend healthcheck failing | PHP-FPM/nginx not up | `docker compose ... logs backend`, check supervisord output |
-| Demo accounts exist in production | `RUN_SEEDERS=true` left on | Set it back to `false`; disable/delete the demo users |
+| Reset email never arrives | Gmail App password missing/invalid, or mail blocked | Set `MAIL_PASSWORD` to the 16-character App password, check `docker compose ... logs backend`, and look in the Gmail spam folder |
+| Seeded staff accounts exist unexpectedly | `RUN_SEEDERS=true` left on | Set it back to `false`; disable/delete the unneeded users |
 
 ---
 
@@ -424,7 +453,8 @@ Because migrations run in the entrypoint with `--force`, a bad migration fails f
 - [ ] `.env.production` is **not** committed (gitignored; only `*.example` in git).
 - [ ] `APP_KEY`, `DB_PASSWORD`, `DB_ROOT_PASSWORD` are strong and stored in a secret manager.
 - [ ] `APP_DEBUG=false` and `APP_ENV=production` (set by the compose file / blueprint).
-- [ ] `RUN_SEEDERS=false` outside the one-off seeding run; demo accounts removed.
+- [ ] `RUN_SEEDERS=false` outside the one-off seeding run; unneeded seeded accounts removed.
+- [ ] `MAIL_PASSWORD` is a Gmail **App password** stored only in the untracked environment/secret manager — never committed, logged or placed in `.env.example`.
 - [ ] TLS enabled end-to-end; `SESSION_SECURE_COOKIE=true`.
 - [ ] Only the frontend port published; DB and API stay on the internal network.
 - [ ] MySQL root password never used by the application (the app uses `DB_USERNAME`).

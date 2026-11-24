@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { DashboardHeader } from "../components/DashboardHeader";
@@ -80,39 +80,6 @@ function renderHeader() {
       <ThemeProvider>
         <MemoryRouter>
           <DashboardHeader title="Technician Dashboard" onOpenSidebar={vi.fn()} />
-        </MemoryRouter>
-      </ThemeProvider>
-    </QueryClientProvider>,
-  );
-}
-
-/** Shows the active path so navigation can be asserted. */
-function LocationProbe() {
-  const location = useLocation();
-  return <p data-testid="path">{location.pathname}</p>;
-}
-
-/** Renders the header inside a router with a real history stack. */
-function renderHeaderAt(entries, index) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0 } },
-  });
-
-  return render(
-    <QueryClientProvider client={client}>
-      <ThemeProvider>
-        <MemoryRouter initialEntries={entries} initialIndex={index}>
-          <Routes>
-            <Route
-              path="*"
-              element={
-                <>
-                  <DashboardHeader title="Technician Dashboard" onOpenSidebar={vi.fn()} />
-                  <LocationProbe />
-                </>
-              }
-            />
-          </Routes>
         </MemoryRouter>
       </ThemeProvider>
     </QueryClientProvider>,
@@ -227,31 +194,15 @@ describe("DashboardHeader", () => {
     expect(screen.queryByText("Vaccination overdue")).not.toBeInTheDocument();
   });
 
-  it("returns to the page you came from with the in-app back button", async () => {
-    const user = userEvent.setup();
-    renderHeaderAt(["/dashboard/technician", "/dashboard/technician/monitoring"], 1);
+  it("renders no in-app back button for an authenticated user", async () => {
+    renderHeader();
 
     await screen.findByRole("button", { name: "Notifications" });
-    expect(screen.getByTestId("path").textContent).toBe("/dashboard/technician/monitoring");
 
-    await user.click(screen.getByRole("button", { name: "Go back" }));
-
-    await vi.waitFor(() =>
-      expect(screen.getByTestId("path").textContent).toBe("/dashboard/technician"),
-    );
-  });
-
-  it("falls back to the role dashboard on a deep link with no history", async () => {
-    const user = userEvent.setup();
-    // A single entry is the session's first — there is no in-app page behind it.
-    renderHeaderAt(["/dashboard/technician/monitoring"], 0);
-
-    await screen.findByRole("button", { name: "Notifications" });
-    await user.click(screen.getByRole("button", { name: "Go back" }));
-
-    await vi.waitFor(() =>
-      expect(screen.getByTestId("path").textContent).toBe("/dashboard/technician"),
-    );
+    // The shared header only renders inside the authenticated shell; a back
+    // control here would lead toward the sign-in flow after login or refresh.
+    expect(screen.queryByRole("button", { name: "Go back" })).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Go back")).not.toBeInTheDocument();
   });
 
   it("marks only the notification the user opens, not the derived alerts", async () => {

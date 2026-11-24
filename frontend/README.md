@@ -80,9 +80,9 @@ src/
 └── test/         # Vitest setup + unit tests
 ```
 
-## Demo login (after `php artisan migrate --seed`)
+## Seeded staff accounts (after `php artisan migrate --seed`)
 
-- admin@example.com / password (all access)
-- doctor@example.com / password
-- technician@example.com / password
-- farmer@example.com / password
+- `admin` / kylleacibron@gmail.com — all access (password from `SEED_ACCOUNT_PASSWORD`, local fallback `password`)
+- `technician` / samplekylleuser@gmail.com — field technician
+
+There are no farmer login accounts. Use **Forgot password?** to set a real password; reset codes are emailed through the backend's Gmail SMTP settings.

@@ -20,12 +20,12 @@
     "forgot": "Nakalimutan ang password?",
     "remember": "Tandaan ako sa device na ito",
     "resetTitle": "I-reset ang iyong password",
-    "resetIntro": "Ilagay ang email ng iyong account at padadalhan ka namin ng reset link.",
+    "resetIntro": "Ilagay ang email ng iyong account at padadalhan ka namin ng 6-digit reset code.",
     "resetEmailLabel": "Email address",
     "resetEmailRequired": "Ilagay ang iyong email address.",
-    "resetSubmit": "Ipadala ang reset link",
+    "resetSubmit": "Ipadala ang reset code",
     "resetSubmitting": "Nagpapadala…",
-    "resetSent": "Kung nasa aming records ang email na iyon, may naipadalang reset link. Tingnan ang iyong inbox.",
+    "resetSent": "Kung nasa aming records ang email na iyon, may naipadalang 6-digit reset code.",
     "resetCancel": "Kanselahin",
     "submitting": "Nag-sign in…",
     "success": "Matagumpay na nakapasok.",
@@ -51,10 +51,24 @@
     "errors": {
       "passwordRequired": "Ilagay ang bagong password.",
       "passwordWeak": "Gumamit ng hindi bababa sa 8 karakter na may malaki at maliit na titik, numero at simbolo.",
-      "passwordMismatch": "Hindi tugma ang mga password."
+      "passwordMismatch": "Hindi tugma ang mga password.",
+      "emailRequired": "Ilagay ang iyong email address.",
+      "codeRequired": "Ilagay ang 6-digit code mula sa email."
     },
     "invalidLinkTitle": "Hindi magagamit ang reset link",
-    "invalidLinkBody": "Kulang ang token ng link o nag-expire na ito. Humiling ng bagong reset link mula sa sign-in page.",
-    "backToLogin": "Bumalik sa sign in"
+    "invalidLinkBody": "Kulang ang email o token ng link, o nag-expire na ito. Humiling ng bagong reset code mula sa sign-in page.",
+    "backToLogin": "Bumalik sa sign in",
+    "otpIntro": "Ilagay ang 6-digit code na ipinadala sa {{email}} at pumili ng bagong password.",
+    "emailLabel": "Email address",
+    "otpLabel": "6-digit code",
+    "otpHint": "Mag-e-expire ang code sa loob ng 10 minuto.",
+    "otpPlaceholder": "123456",
+    "resend": "Ipadala muli ang code",
+    "resendIn": "Ipadala muli sa {{seconds}}s",
+    "resending": "Nagpapadala…",
+    "codeSent": "Kung nasa aming records ang email na iyon, may naipadalang 6-digit reset code.",
+    "tokenEmailHint": "Ang setup link na ito ay para sa {{email}}.",
+    "emailRequired": "Ilagay ang iyong email address.",
+    "codeRequired": "Ilagay ang 6-digit code mula sa email."
   }
 }

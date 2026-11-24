@@ -5,7 +5,7 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
- * POST /api/v1/forgot-password — request a password reset link.
+ * POST /api/v1/forgot-password — request a six-digit password reset code.
  *
  * The rule list is intentionally minimal: revealing stricter validation
  * (e.g. "must be a covered address") would itself leak information about

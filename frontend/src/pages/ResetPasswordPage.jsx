@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icons";
@@ -12,16 +12,15 @@ import { site } from "../config/site";
 import { useSiteConfig } from "../hooks/useSiteConfig";
 
 /**
- * Password reset — the page the emailed link opens.
+ * Password reset — two paths share this public screen:
  *
- * The backend (PasswordResetController) emails a URL of the shape
- *   {FRONTEND_URL}/reset-password?token=…&email=…
- * so this screen is public and reads the token/email straight from the query
- * string. The token is single-use and time-limited (auth.passwords.users
- * .expire); a replayed or expired one comes back as a 422 on submit.
+ *   - /reset-password?email=... : the normal six-digit email OTP flow.
+ *   - /reset-password?token=...&email=... : an administrator's one-time
+ *     account-setup invite, completed through Laravel's password broker.
  *
- * A successful reset signs the account out everywhere server-side, so the only
- * sensible next step is back to the sign-in form.
+ * The OTP is never stored in the URL. It is typed (or pasted) into a numeric
+ * field, sent once, and the server stores only its hash. A successful reset
+ * signs the account out everywhere and redirects to sign in.
  */
 export default function ResetPasswordPage() {
   const { t } = useTranslation();
@@ -29,18 +28,31 @@ export default function ResetPasswordPage() {
   // note quotes the number the office actually answers.
   const { contact } = useSiteConfig();
   const navigate = useNavigate();
+  const location = useLocation();
   const [params] = useSearchParams();
 
   const token = params.get("token") ?? "";
-  const email = params.get("email") ?? "";
-  const linkUsable = Boolean(token && email);
+  const emailParam = params.get("email") ?? "";
+  const tokenMode = Boolean(token && emailParam);
+  const pageUsable = tokenMode || Boolean(emailParam);
 
+  const [email, setEmail] = useState(emailParam);
+  const [otp, setOtp] = useState("");
   const [form, setForm] = useState({ password: "", password_confirmation: "" });
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const [show, setShow] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+
+  // The login screen hands off with this state after sending the first code;
+  // a direct visit simply starts with no confirmation banner.
+  const [codeSent, setCodeSent] = useState(Boolean(location.state?.resetSent));
+  // Arriving from the login hand-off, the server's 60-second resend guard has
+  // just started. A direct OTP visit starts the countdown too, which avoids
+  // hammering the endpoint before the first code can have arrived.
+  const [countdown, setCountdown] = useState(tokenMode ? 0 : 60);
+  const [resending, setResending] = useState(false);
 
   // Leave the success message visible for a beat before the redirect.
   useEffect(() => {
@@ -50,6 +62,14 @@ export default function ResetPasswordPage() {
 
     return () => clearTimeout(timer);
   }, [done, navigate]);
+
+  useEffect(() => {
+    if (countdown <= 0) return undefined;
+
+    const timer = setTimeout(() => setCountdown((seconds) => Math.max(0, seconds - 1)), 1000);
+
+    return () => clearTimeout(timer);
+  }, [countdown]);
 
   function update(field) {
     return (event) => {
@@ -62,6 +82,12 @@ export default function ResetPasswordPage() {
   /** Mirrors the server's Password::defaults() policy before spending a call. */
   function validate() {
     const next = {};
+
+    if (!email.trim()) next.email = t("resetPassword.errors.emailRequired");
+
+    if (!tokenMode && !/^\d{6}$/.test(otp)) {
+      next.otp = t("resetPassword.errors.codeRequired");
+    }
 
     if (!form.password) next.password = t("resetPassword.errors.passwordRequired");
     else if (
@@ -90,18 +116,50 @@ export default function ResetPasswordPage() {
 
     setSubmitting(true);
     try {
-      await authApi.resetPassword({ token, email, ...form });
+      const payload = {
+        email: email.trim(),
+        password: form.password,
+        password_confirmation: form.password_confirmation,
+      };
+
+      if (tokenMode) payload.token = token;
+      else payload.otp = otp;
+
+      await authApi.resetPassword(payload);
       setDone(true);
     } catch (error) {
       const fields = getFieldErrors(error);
 
-      // The broker reports a bad/expired token as a `token` error, which has
-      // no field on screen — surface it as a form-level message instead.
+      // A bad/expired invite token has no input on screen; surface it above
+      // the form. A bad/expired OTP belongs on the code field.
       if (fields?.token) setFormError(fields.token);
       else if (fields) setErrors(fields);
       else setFormError(getErrorMessage(error));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleResend() {
+    if (tokenMode || countdown > 0 || resending) return;
+
+    const target = email.trim();
+    if (!target) {
+      setErrors((prev) => ({ ...prev, email: t("resetPassword.errors.emailRequired") }));
+      return;
+    }
+
+    setResending(true);
+    setFormError(null);
+
+    try {
+      await authApi.forgotPassword(target);
+      setCodeSent(true);
+      setCountdown(60);
+    } catch (error) {
+      setFormError(getErrorMessage(error));
+    } finally {
+      setResending(false);
     }
   }
 
@@ -142,7 +200,7 @@ export default function ResetPasswordPage() {
               {t("resetPassword.title")}
             </h1>
 
-            {!linkUsable ? (
+            {!pageUsable ? (
               <div className="mt-4 space-y-4">
                 <InlineAlert tone="error" message={t("resetPassword.invalidLinkTitle")} />
                 <p className="text-sm text-slate-600">
@@ -159,22 +217,73 @@ export default function ResetPasswordPage() {
                 </Link>
               </div>
             ) : done ? (
-              <div className="mt-4">
+              <div className="mt-4" aria-live="polite">
                 <InlineAlert tone="success" message={t("resetPassword.success")} />
               </div>
             ) : (
               <form onSubmit={handleSubmit} noValidate className="mt-4">
                 <p className="text-sm text-slate-500">
-                  {t("resetPassword.intro", { email })}
+                  {tokenMode
+                    ? t("resetPassword.intro", { email })
+                    : t("resetPassword.otpIntro", { email })}
                 </p>
 
+                {codeSent && (
+                  <div className="mt-4" aria-live="polite">
+                    <InlineAlert tone="info" message={t("resetPassword.codeSent")} />
+                  </div>
+                )}
+
                 {formError && (
-                  <div className="mt-4">
+                  <div className="mt-4" aria-live="assertive">
                     <InlineAlert tone="error" message={formError} />
                   </div>
                 )}
 
                 <div className="mt-5 space-y-4">
+                  <TextField
+                    id="reset-email"
+                    label={t("resetPassword.emailLabel")}
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(event) => {
+                      setEmail(event.target.value);
+                      setErrors((prev) => ({ ...prev, email: undefined }));
+                      setFormError(null);
+                    }}
+                    error={errors.email}
+                    readOnly={tokenMode}
+                    hint={
+                      tokenMode
+                        ? t("resetPassword.tokenEmailHint", { email: emailParam })
+                        : undefined
+                    }
+                  />
+
+                  {!tokenMode && (
+                    <TextField
+                      id="reset-otp"
+                      label={t("resetPassword.otpLabel")}
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      placeholder={t("resetPassword.otpPlaceholder")}
+                      value={otp}
+                      onChange={(event) => {
+                        // Paste-friendly and digits-only: strip separators and
+                        // cap at the server's six digits.
+                        setOtp(event.target.value.replace(/\D/g, "").slice(0, 6));
+                        setErrors((prev) => ({ ...prev, otp: undefined }));
+                        setFormError(null);
+                      }}
+                      error={errors.otp}
+                      hint={t("resetPassword.otpHint")}
+                    />
+                  )}
+
                   <TextField
                     id="reset-password"
                     label={t("resetPassword.passwordLabel")}
@@ -199,6 +308,31 @@ export default function ResetPasswordPage() {
                     error={errors.password_confirmation}
                   />
                 </div>
+
+                {!tokenMode && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleResend}
+                      disabled={countdown > 0 || resending}
+                      className="btn-secondary !px-3.5 !py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {resending ? (
+                        <>
+                          <ButtonSpinner />
+                          {t("resetPassword.resending")}
+                        </>
+                      ) : countdown > 0 ? (
+                        t("resetPassword.resendIn", { seconds: countdown })
+                      ) : (
+                        <>
+                          <Icon name="refresh" className="h-3.5 w-3.5" />
+                          {t("resetPassword.resend")}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
 
                 <button
                   type="submit"

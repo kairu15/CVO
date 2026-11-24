@@ -20,12 +20,12 @@
     "forgot": "Nakalimtan ang password?",
     "remember": "Hinumdumi ako niini nga device",
     "resetTitle": "I-reset ang imong password",
-    "resetIntro": "Isulod ang email sa imong account ug padalhan ka namo og reset link.",
+    "resetIntro": "Isulod ang email sa imong account ug padalhan ka namo og 6-digit reset code.",
     "resetEmailLabel": "Email address",
     "resetEmailRequired": "Isulod ang imong email address.",
-    "resetSubmit": "Ipadala ang reset link",
+    "resetSubmit": "Ipadala ang reset code",
     "resetSubmitting": "Nagpadala…",
-    "resetSent": "Kung naa sa among records ang maong email, naay gipadalang reset link. Tan-awa ang imong inbox.",
+    "resetSent": "Kung naa sa among records ang maong email, naay gipadalang 6-digit reset code.",
     "resetCancel": "Kanselahon",
     "submitting": "Nag-sign in…",
     "success": "Malampuson nga naka-sign in.",
@@ -51,10 +51,24 @@
     "errors": {
       "passwordRequired": "Isulod ang bag-ong password.",
       "passwordWeak": "Gamita og labing menos 8 ka karakter nga adunay dako ug gamay nga letra, numero ug simbolo.",
-      "passwordMismatch": "Wala magtugma ang mga password."
+      "passwordMismatch": "Wala magtugma ang mga password.",
+      "emailRequired": "Isulod ang imong email address.",
+      "codeRequired": "Isulod ang 6-digit code gikan sa email."
     },
     "invalidLinkTitle": "Dili magamit ang reset link",
-    "invalidLinkBody": "Kuwang ang token sa link o na-expire na kini. Pangayo og bag-ong reset link gikan sa sign-in page.",
-    "backToLogin": "Balik sa sign in"
+    "invalidLinkBody": "Kuwang ang email o token sa link, o na-expire na kini. Pangayo og bag-ong reset code gikan sa sign-in page.",
+    "backToLogin": "Balik sa sign in",
+    "otpIntro": "Isulod ang 6-digit code nga gipadala sa {{email}} ug pagpili og bag-ong password.",
+    "emailLabel": "Email address",
+    "otpLabel": "6-digit code",
+    "otpHint": "Mo-expire ang code sulod sa 10 minutos.",
+    "otpPlaceholder": "123456",
+    "resend": "Ipadala pag-usab ang code",
+    "resendIn": "Ipadala pag-usab sa {{seconds}}s",
+    "resending": "Nagpadala…",
+    "codeSent": "Kung naa sa among records ang maong email, naay gipadalang 6-digit reset code.",
+    "tokenEmailHint": "Kini nga setup link alang sa {{email}}.",
+    "emailRequired": "Isulod ang imong email address.",
+    "codeRequired": "Isulod ang 6-digit code gikan sa email."
   }
 }

@@ -119,8 +119,8 @@ services:
       - key: FRONTEND_URL
         sync: false
 
-      # Never seed demo accounts by default. Set to "true" for the first deploy
-      # to create the demo logins, then set back to "false".
+      # Never seed staff accounts by default. Set to "true" for the first deploy
+      # to create the two staff logins, then set back to "false".
       - key: RUN_SEEDERS
         value: "false"
 

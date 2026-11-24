@@ -193,9 +193,10 @@ describe("ReportsPage", () => {
   it("renders the per-barangay table with one row per barangay", async () => {
     renderPage();
 
-    await screen.findByText("Barangay comparison");
-
-    const table = screen.getByRole("table");
+    // "Barangay comparison" also labels the nav link above the report, so that
+    // text is present before the report payload lands. Wait for the table
+    // itself instead of racing the fetch.
+    const table = await screen.findByRole("table");
     const rows = within(table).getAllByRole("row");
 
     // Header + two barangay rows.

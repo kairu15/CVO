@@ -46,8 +46,8 @@ let currentRole = "admin";
 /** Accounts the stubbed /admin/users endpoint reports. Row 3 is not the
  *  signed-in user, so its role control is enabled. */
 const ACCOUNTS = [
-  { id: 1, name: "CVO Administrator", username: "admin", email: "admin@example.com", role: "admin" },
-  { id: 2, name: "Jun Technician", username: "technician", email: "technician@example.com", role: "technician" },
+  { id: 1, name: "CVO Administrator", username: "admin", email: "kylleacibron@gmail.com", role: "admin" },
+  { id: 2, name: "Jun Technician", username: "technician", email: "samplekylleuser@gmail.com", role: "technician" },
   { id: 3, name: "Maria Santos", username: "maria", email: "maria@example.com", role: "technician" },
 ];
 

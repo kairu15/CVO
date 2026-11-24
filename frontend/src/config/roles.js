@@ -34,8 +34,8 @@ export const STAFF_ROLE_KEYS = ["admin", "technician"];
  *
  * The CVO administrator oversees both workspaces, so it is the "all
  * access" account — a single login can review the clinical and field views
- * without signing in and out. This is what makes admin@example.com an all
- * access account after seeding.
+ * without signing in and out. This is what makes the seeded `admin` account
+ * all access after seeding.
  *
  * NOTE: this only guards routing in the SPA. The same rules are enforced
  * server-side per endpoint (the role_permissions matrix + Policies) — a

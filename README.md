@@ -89,15 +89,18 @@ Then open **http://localhost:5173**. The API is on **http://localhost:8005**.
 
 On first boot the backend container waits for MySQL and runs `php artisan migrate --force`. Startup seeding is **off** (`RUN_SEEDERS=false`), so no demo beneficiaries, users or sample data are recreated on restart. To seed once, set `RUN_SEEDERS=true` in `.env` or run `docker compose exec backend php artisan db:seed --force`.
 
-**Demo accounts** (password: `password`):
+**Switching an existing database to the Gmail accounts:** re-run the seeder. It is keyed on `username`, so `php artisan db:seed --class=DatabaseSeeder` (or `docker compose exec backend php artisan db:seed --class=DatabaseSeeder --force`) updates the two existing rows in place, preserving their IDs and related records. It fails loudly rather than violating the unique email index if one of the Gmail addresses already belongs to a different username.
 
-| Email                    | Role       |
-|--------------------------|------------|
-| admin@example.com        | admin      |
-| doctor@example.com       | doctor     |
-| technician@example.com   | technician |
+**Seeded staff accounts** (password from `SEED_ACCOUNT_PASSWORD`, local/testing fallback `password`):
 
-There is deliberately no `farmer@example.com` account — beneficiaries are records the admin manages, never logins (see the migration `2026_10_14_000000_remove_farmer_accounts_and_registration_lifecycle`).
+| Username     | Email                     | Role       |
+|--------------|---------------------------|------------|
+| `admin`      | kylleacibron@gmail.com    | admin      |
+| `technician` | samplekylleuser@gmail.com | technician |
+
+These are the only two accounts the seeder creates. In production an unset `SEED_ACCOUNT_PASSWORD` generates a random password and prints it once in the seed output; replace it through **Forgot password?**.
+
+There is deliberately no farmer login account — beneficiaries are records the admin manages, never logins (see the migration `2026_10_14_000000_remove_farmer_accounts_and_registration_lifecycle`).
 
 ### How it works
 
@@ -158,6 +161,23 @@ docker compose exec backend php artisan test
 
 Tests run against an **in-memory SQLite** database and never touch the compose MySQL. `backend/phpunit.xml` forces `DB_CONNECTION`/`DB_DATABASE` (and friends) in both `$_ENV` and `$_SERVER`, because the dev container exports the MySQL ones and Laravel resolves `$_SERVER` first.
 
+### Gmail SMTP (password-reset codes)
+
+The reset flow emails a six-digit code through Gmail. Set these in the backend's untracked `.env`; the 16-character Google App password goes in `MAIL_PASSWORD` and nowhere in the repository:
+
+```env
+MAIL_MAILER=smtp
+MAIL_SCHEME=null
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=kylleacibron@gmail.com
+MAIL_PASSWORD=
+MAIL_FROM_ADDRESS=kylleacibron@gmail.com
+MAIL_FROM_NAME="${APP_NAME}"
+```
+
+Create the App password under **Google Account → Security → 2-Step Verification → App passwords**. It is not the Gmail login password. For development without Gmail, `MAIL_MAILER=log` writes the message to the Laravel log instead of sending it. Production containers receive the same variables through `.env.production`; see [`READMEProduction.md`](READMEProduction.md#3-configuration-envproduction).
+
 ### Environment variables
 
 | File                          | Purpose                                                        |
@@ -186,7 +206,7 @@ The frontend is then served on **http://localhost:8080** (or `WEB_PORT`).
 Production differences:
 
 - The backend runs **nginx + php-fpm** under supervisord, not `php artisan serve`.
-- `RUN_SEEDERS` defaults to **false** — the demo accounts are never created unless you ask. To seed once: `docker compose --env-file .env.production -f docker-compose.prod.yml exec backend php artisan db:seed --force`.
+- `RUN_SEEDERS` defaults to **false** — the staff accounts are never created unless you ask. To seed once: `docker compose --env-file .env.production -f docker-compose.prod.yml exec backend php artisan db:seed --force`.
 - Config, routes and views are cached by the entrypoint (`APP_ENV=production`).
 - The API and database are not published; only the frontend port is.
 - Put TLS in front of the frontend port for a real deployment and set `SESSION_SECURE_COOKIE=true`.

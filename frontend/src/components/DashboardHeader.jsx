@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { dashboardPathFor } from "../config/roles";
 import { notificationsApi } from "../api/notificationsApi";
 import {
   useInvalidate,
@@ -103,9 +102,10 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
       {/* The header row. Kept as its own flex row so the connectivity bar
           below spans the full width without squeezing the search, sync badge,
           bell or profile controls off the right edge. */}
+      {/* The shell is authenticated-only, so there is no in-app back button:
+          after sign-in or a refresh it would offer a route back into the
+          sign-in flow. The browser's own back control still works. */}
       <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
-        <BackButton />
-
         <button
           type="button"
           onClick={onOpenSidebar}
@@ -127,7 +127,7 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
         {/* Search — queries the same role-scoped records the list pages show.
             Nothing outside the user's own scope can come back, because the
             scoping happens server-side, not here. */}
-        <div className="relative hidden md:block">
+        <div className="relative hidden xl:block">
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -205,46 +205,6 @@ export function DashboardHeader({ title, subtitle, onOpenSidebar }) {
           connection returns. Sits below the row, inside the sticky header. */}
       <ConnectivityStatus />
     </header>
-  );
-}
-
-/**
- * In-app back button — returns to the page you came from, so navigating the
- * SPA does not depend on the browser's own back control.
- *
- * React Router keys the first entry of a session "default": there is nothing
- * behind it, so the button falls back to the role's dashboard rather than
- * leaving the app (or doing nothing after a refresh on a deep link). It is
- * hidden on the dashboard root only, where both routes lead to the same page.
- */
-function BackButton() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { user } = useAuth();
-
-  const dashboardPath = dashboardPathFor(user?.role);
-  const hasHistory = location.key !== "default";
-
-  if (!hasHistory && location.pathname === dashboardPath) return null;
-
-  function goBack() {
-    if (hasHistory) {
-      navigate(-1);
-    } else if (dashboardPath) {
-      navigate(dashboardPath);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={goBack}
-      aria-label="Go back"
-      title="Go back"
-      className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-slate-500 transition hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-100 dark:hover:text-brand-700"
-    >
-      <Icon name="arrow-left" />
-    </button>
   );
 }
 

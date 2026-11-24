@@ -270,8 +270,8 @@ export default function AuthPage() {
             dead branch, so the credentials cannot ship in the bundle. */}
         {import.meta.env.DEV && (
           <p className="mt-4 shrink-0 text-center text-xs text-slate-400">
-            Demonstration accounts: admin@example.com, technician@example.com —
-            password: password
+            Seeded staff accounts: admin, technician — use the password from
+            backend/.env or run the seed command for the current one.
           </p>
         )}
       </div>

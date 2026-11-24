@@ -4,7 +4,7 @@
  * Requires the full stack to be running:
  *   backend   php artisan serve          -> http://localhost:8005
  *   frontend  npm run dev                -> http://localhost:5173
- *   database  php artisan migrate --seed  (provides the demo accounts below)
+ *   database  php artisan migrate --seed  (provides the two staff accounts below)
  *
  *   node e2e.mjs
  *
@@ -19,14 +19,14 @@ import fs from "node:fs";
 const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const BASE = "http://localhost:5173";
 
-const PASSWORD = "password"; // seeded demo accounts all use "password"
+const PASSWORD = "password"; // seeded staff accounts use "password"
 const stamp = Date.now();
 const USERNAME = `e2e${stamp}`;
 
 /** Seeded accounts — see backend/database/seeders/DatabaseSeeder.php */
 const DEMO = [
-  { role: "admin", email: "admin@example.com", title: "Admin Dashboard", module: "User Management" },
-  { role: "technician", email: "technician@example.com", title: "Technician Dashboard", module: "Health Records" },
+  { role: "admin", email: "kylleacibron@gmail.com", title: "Admin Dashboard", module: "User Management" },
+  { role: "technician", email: "samplekylleuser@gmail.com", title: "Technician Dashboard", module: "Health Records" },
 ];
 
 const shots = "screenshots";
@@ -264,7 +264,7 @@ try {
 
   // RBAC against the admin workspace with a non-all-access role.
   await freshPage();
-  await signIn(page, "technician@example.com");
+  await signIn(page, "samplekylleuser@gmail.com");
   await goto(page, "/dashboard/admin/beneficiaries");
   // The guard only decides after the session probe resolves, which on this
   // stack is seconds — wait for the redirect instead of guessing at a beat.

@@ -26,7 +26,7 @@ function check(name, ok, detail) {
 }
 
 const login = await api("POST", "/api/v1/token-login", {
-  body: { email: "admin@example.com", password: "password", device_name: "barangay-smoke" },
+  body: { email: "kylleacibron@gmail.com", password: "password", device_name: "barangay-smoke" },
 });
 const token = login.json?.token ?? login.json?.data?.token;
 check("admin login", Boolean(token), login.status);

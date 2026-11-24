@@ -68,7 +68,7 @@ export function LoginForm({ idPrefix = "login" }) {
   const [focusRequest, setFocusRequest] = useState(0);
   const formRef = useRef(null);
 
-  // "Forgot password?" — request a reset link by email.
+  // "Forgot password?" — request a six-digit reset code by email.
   const [resetOpen, setResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [resetStatus, setResetStatus] = useState("idle"); // idle | sending | sent
@@ -131,6 +131,11 @@ export function LoginForm({ idPrefix = "login" }) {
     try {
       await authApi.forgotPassword(email);
       setResetStatus("sent");
+      // The code is in the inbox, not in this panel. Continue on the dedicated
+      // screen, which owns the code/password fields and the resend countdown.
+      navigate(`/reset-password?email=${encodeURIComponent(email)}`, {
+        state: { resetSent: true },
+      });
     } catch (error) {
       setResetStatus("idle");
       setResetError(getErrorMessage(error));

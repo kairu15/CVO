@@ -65,7 +65,7 @@ try {
           id: 1,
           name: "CVO Administrator",
           username: "admin",
-          email: "admin@example.com",
+          email: "kylleacibron@gmail.com",
           role: "admin",
         },
       });

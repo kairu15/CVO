@@ -1065,7 +1065,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
                     {barangay.puroks.map((purok) => (
                       <li key={purok.id} className="flex items-center justify-between gap-3 py-2">
                         {renamingPurokId === purok.id ? (
-                          <span className="flex items-center gap-2">
+                          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                             <input
                               type="text"
                               value={renamePurokValue}
@@ -1076,7 +1076,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
                                   renamePurok(purok);
                                 }
                               }}
-                              className="field w-48 text-sm"
+                              className="field w-full min-w-0 text-sm sm:w-48"
                               aria-label="Purok name"
                             />
                             <button
@@ -1156,7 +1156,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
                     )}
                   </ul>
 
-                  <div className="flex items-end gap-2 px-4 py-3">
+                  <div className="flex flex-wrap items-end gap-2 px-4 py-3">
                     <input
                       type="text"
                       value={newPurokByBarangay[barangay.id] ?? ""}
@@ -1173,7 +1173,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
                         }
                       }}
                       placeholder="New purok / sitio name"
-                      className="field w-56 text-sm"
+                      className="field w-full min-w-0 flex-1 text-sm sm:w-56 sm:flex-none"
                       aria-label={`New purok in ${barangay.name}`}
                     />
                     <button

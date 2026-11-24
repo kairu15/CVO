@@ -811,7 +811,7 @@ export default function BarangayDispersalPage({ roleKey = "admin" }) {
                 </summary>
                 <div className="mt-4 flex flex-wrap gap-3">
                   {[0, 1, 2].map((index) => (
-                    <div key={index}>
+                    <div key={index} className="w-full sm:w-auto">
                       <label
                         htmlFor={`bd-compare-${index}`}
                         className="block text-xs font-semibold text-slate-600"
@@ -822,7 +822,7 @@ export default function BarangayDispersalPage({ roleKey = "admin" }) {
                         id={`bd-compare-${index}`}
                         value={compareIds[index]}
                         onChange={(event) => setCompareAt(index, event.target.value)}
-                        className="field mt-1 w-48 text-xs"
+                        className="field mt-1 w-full text-xs sm:w-48"
                       >
                         <option value="">None</option>
                         {barangays.map((row) => (

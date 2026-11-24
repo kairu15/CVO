@@ -211,7 +211,7 @@ export function AnimalTypeManager() {
                               }
                             }}
                             aria-label={`Rename ${type.name}`}
-                            className="field w-56 text-sm"
+                            className="field w-full min-w-0 text-sm sm:w-56"
                           />
                           <button
                             type="button"
@@ -320,7 +320,7 @@ export function AnimalTypeManager() {
                                   }
                                 }}
                                 aria-label={`Rename ${classification.name}`}
-                                className="field w-40 py-0.5 text-xs"
+                                className="field w-32 min-w-0 py-0.5 text-xs sm:w-40"
                               />
                               <button
                                 type="button"
@@ -420,7 +420,7 @@ export function AnimalTypeManager() {
                             }}
                             placeholder="New classification"
                             aria-label={`New classification for ${type.name}`}
-                            className="field w-40 py-1 text-xs"
+                            className="field w-32 min-w-0 py-1 text-xs sm:w-40"
                           />
                           <button
                             type="button"

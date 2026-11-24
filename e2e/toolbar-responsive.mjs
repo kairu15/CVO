@@ -763,7 +763,7 @@ try {
         const body = document.querySelector(".responsive-actions__body");
         return {
           visible: getComputedStyle(body).display !== "none",
-          buttons: [...body.querySelectorAll("button")]
+          buttons: [...body.querySelectorAll("button, summary")]
             .filter((el) => typeof el.checkVisibility !== "function" || el.checkVisibility({ checkVisibilityCSS: true }))
             .map((el) => Math.round(el.getBoundingClientRect().height))
             .filter((height) => height > 0),
@@ -772,7 +772,7 @@ try {
       check(`${device.label}: view/export controls are inline`, inline.visible);
       check(
         `${device.label}: inline controls meet touch height`,
-        inline.buttons.length > 0 && inline.buttons.every((height) => height >= 36),
+        inline.buttons.length > 0 && inline.buttons.every((height) => height >= 40),
         JSON.stringify(inline.buttons),
       );
     }

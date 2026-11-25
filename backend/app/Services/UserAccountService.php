@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\User;
 use App\Notifications\AccountSetup;
 use App\Services\Auth\AuthService;
+use App\Services\Auth\EmailVerificationService;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
@@ -12,14 +14,16 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Account lifecycle for the admin User Management screen: create a staff
- * account, edit its profile, deactivate it, bring it back.
+ * account, edit its profile, deactivate it, bring it back, and permanently
+ * delete an account that never accumulated records.
  *
- * Deactivation is the soft delete the rest of the system already uses — there
- * is deliberately no hard-delete path for accounts, because rows across the
- * database reference `users.id` (beneficiaries' technicians, authored health
- * records, audit log actors). A hard delete would either orphan or destroy
- * that history; a soft delete keeps the account resolvable while making it
- * unable to sign in.
+ * Deactivation is the soft delete the rest of the system already uses, and it
+ * is the answer for any account that has worked: rows across the database
+ * reference `users.id` (a beneficiary's technician, authored health and case
+ * records, the audit trail), so a hard delete would either orphan or destroy
+ * that history. Permanent deletion therefore exists only for accounts with no
+ * such records — a mistyped invite or an abandoned test account — and refuses
+ * everything else with a pointer to deactivate instead.
  *
  * Two guards live here rather than only in the SPA, for the same reason
  * UserRoleService's self-change guard does: they are the difference between a
@@ -35,6 +39,7 @@ class UserAccountService
         private readonly UserRoleService $roles,
         private readonly AuthService $auth,
         private readonly AuditLogger $audit,
+        private readonly EmailVerificationService $verifications,
     ) {}
 
     /**
@@ -44,16 +49,19 @@ class UserAccountService
      * beneficiaries are program records the admin enters on the
      * Beneficiaries screen, not login accounts.
      *
+     * EVERY new account starts unverified: `email_verified_at` stays null
+     * until the owner opens the emailed link, and login refuses an unverified
+     * account (AuthService). That is true whether the administrator typed a
+     * password or not.
+     *
      * INVITES: `password` is optional. When the admin does not type one, the
-     * account starts with an unguessable random value it cannot sign in with
-     * and receives a one-time setup link (the Laravel password broker —
-     * hashed, single-use, time-limited) so the new staff member sets their
-     * OWN password. The link is returned to the actor as well as emailed:
-     * delivery depends on the configured mailer, and "no SMTP yet" must not
-     * block onboarding — the admin can hand the link over directly.
+     * account starts with an unguessable random value it cannot sign in with.
+     * After the owner verifies their address, the verification response
+     * carries a one-time setup link (the Laravel password broker — hashed,
+     * single-use, time-limited) so they choose their OWN password.
      *
      * @param  array{name: string, email: string, password?: string|null, role: string}  $attributes
-     * @return array{user: User, setup_url: string|null}
+     * @return array{user: User, setup_url: string|null, verification: array{email_sent: bool, expires_at: string, expires_in_hours: int}}
      */
     public function create(User $actor, array $attributes): array
     {
@@ -82,11 +90,58 @@ class UserAccountService
             return $user;
         });
 
-        if (! $invited) {
-            return ['user' => $user, 'setup_url' => null];
+        // The verification email is the onboarding message for BOTH modes.
+        // Sending is best effort: the account exists and can be re-sent from
+        // the Users table, so a transport hiccup must not fail the create.
+        $verification = $this->verifications->issue($user, $invited);
+
+        return [
+            // Loaded so UserResource can report the pending state without an
+            // extra query (it only reports verification when eager-loaded).
+            'user' => $user->load('emailVerificationToken'),
+            'setup_url' => null,
+            'verification' => [
+                'email_sent' => $verification['sent'],
+                'expires_at' => $verification['expires_at']->toIso8601String(),
+                'expires_in_hours' => EmailVerificationService::expiryHours(),
+            ],
+        ];
+    }
+
+    /**
+     * Re-issue the email verification link for a pending account. A new token
+     * replaces the old row, so the previous link stops working immediately.
+     *
+     * @return array{email: string, email_sent: bool, expires_at: string, expires_in_hours: int}
+     *
+     * @throws ValidationException when the account is disabled or already verified.
+     */
+    public function resendVerificationEmail(User $actor, User $target): array
+    {
+        if ($target->trashed()) {
+            throw ValidationException::withMessages([
+                'user' => 'Reactivate the account before resending the verification email.',
+            ]);
         }
 
-        return ['user' => $user, 'setup_url' => $this->issueSetupUrl($user)];
+        if ($target->email_verified_at !== null) {
+            throw ValidationException::withMessages([
+                'user' => 'This email address is already verified. There is nothing to resend.',
+            ]);
+        }
+
+        $result = $this->verifications->issue($target, $target->last_login_at === null);
+
+        $this->audit->log($actor, 'verification_email_sent', $target, [
+            'delivered' => $result['sent'],
+        ]);
+
+        return [
+            'email' => $target->email,
+            'email_sent' => $result['sent'],
+            'expires_at' => $result['expires_at']->toIso8601String(),
+            'expires_in_hours' => EmailVerificationService::expiryHours(),
+        ];
     }
 
     /**
@@ -168,6 +223,14 @@ class UserAccountService
             ]);
         }
 
+        // Recovery is a verified-account capability: an unverified mailbox has
+        // not proven ownership, so its reset link would be a takeover path.
+        if ($target->email_verified_at === null) {
+            throw ValidationException::withMessages([
+                'user' => 'This email address has not been verified yet. Resend the verification email first.',
+            ]);
+        }
+
         $status = Password::sendResetLink(['email' => $target->email]);
 
         if ($status === Password::RESET_LINK_SENT) {
@@ -222,14 +285,22 @@ class UserAccountService
      */
     public function update(User $actor, User $target, array $attributes): User
     {
+        $emailChanged = $attributes['email'] !== $target->email;
+
         // Transactional because the role change can be refused (self-change)
         // AFTER the profile fields are written: without this, a refused edit
         // would still land the new name/email while the response said 422.
-        DB::transaction(function () use ($actor, $target, $attributes): void {
-            $target->update([
+        DB::transaction(function () use ($actor, $target, $attributes, $emailChanged): void {
+            // Repointing an account at a different mailbox clears its
+            // verification in the SAME write. Otherwise an administrator (or
+            // a stolen admin session) could move a verified account to an
+            // address nobody has proven they can read — exactly the bypass
+            // the verification gate exists to prevent.
+            $target->forceFill([
                 'name' => $attributes['name'],
                 'email' => $attributes['email'],
-            ]);
+                'email_verified_at' => $emailChanged ? null : $target->email_verified_at,
+            ])->save();
 
             $role = $attributes['role'] ?? null;
 
@@ -240,7 +311,18 @@ class UserAccountService
             // written by the User model inside this transaction.
         });
 
-        return $target->refresh();
+        if ($emailChanged) {
+            // A new address gets a new link; the old token is replaced, so a
+            // link sent to the previous mailbox can never verify the new one.
+            $result = $this->verifications->issue($target, $target->last_login_at === null);
+
+            $this->audit->log($actor, 'verification_email_sent', $target, [
+                'reason' => 'email_changed',
+                'delivered' => $result['sent'],
+            ]);
+        }
+
+        return $target->refresh()->load('emailVerificationToken');
     }
 
     /**
@@ -321,6 +403,120 @@ class UserAccountService
         }
 
         return ['updated' => $updated, 'failed_ids' => $failed];
+    }
+
+    /**
+     * Permanently delete an account — the irreversible counterpart to
+     * deactivate(), for rows that never accumulated records.
+     *
+     * Refused when the account authored anything the program must keep: a
+     * field visit, monitoring or clinical record, a vaccination, a plan, a
+     * household it monitors, an assignment it made or received, a sync
+     * conflict or a project. Those rows name the person who wrote them,
+     * and no account deletion should be able to erase or orphan them — the
+     * admin is told to deactivate instead.
+     *
+     * What is removed with a deletable account is only its own residue:
+     * sessions, API tokens, pending reset codes and notifications. An audit
+     * row survives the account: the actor snapshot on existing rows is what
+     * keeps the trail readable after the person is gone.
+     *
+     * @return array{name: string, email: string}
+     *
+     * @throws ValidationException when the actor targets their own account or
+     *                             the account still holds records.
+     */
+    public function purge(User $actor, User $target): array
+    {
+        if ($actor->is($target)) {
+            throw ValidationException::withMessages([
+                'user' => 'You cannot permanently delete your own account. Ask another administrator to do it.',
+            ]);
+        }
+
+        $held = $this->recordsHeldBy($target);
+
+        if ($held !== []) {
+            $summary = collect($held)
+                ->map(fn (int $count, string $label): string => $count.' '.$label)
+                ->implode(', ');
+
+            throw ValidationException::withMessages([
+                'user' => 'This account still holds records ('.$summary.'), so it cannot be permanently deleted. Deactivate it instead — those records name the person who made them.',
+            ]);
+        }
+
+        try {
+            DB::transaction(function () use ($actor, $target): void {
+                $this->auth->logoutEverywhere($target);
+
+                // The account's own residue. None of it is shared, and leaving
+                // it behind would keep a dead account's email reserved in the
+                // reset tables.
+                DB::table('sessions')->where('user_id', $target->id)->delete();
+                DB::table('password_reset_tokens')->where('email', $target->email)->delete();
+                DB::table('password_reset_otps')->where('email', $target->email)->delete();
+                DB::table('user_notifications')->where('user_id', $target->id)->delete();
+
+                // The Auditable trait labels any delete `user_deactivated`.
+                // A force delete is not that: suppress the trait's row and
+                // write the accurate one below, inside the same transaction.
+                $target->skipNextAudit()->forceDelete();
+
+                $this->audit->log($actor, 'user_deleted', $target, [
+                    'email' => $target->email,
+                    'role' => $target->role,
+                ]);
+            });
+        } catch (QueryException $e) {
+            // A foreign key the pre-check does not name (a table added later)
+            // must still answer 422, not 500 — and the transaction has rolled
+            // the whole delete back, so nothing is half-removed.
+            report($e);
+
+            throw ValidationException::withMessages([
+                'user' => 'This account still has records linked to it, so it cannot be permanently deleted. Deactivate it instead.',
+            ]);
+        }
+
+        return ['name' => $target->name, 'email' => $target->email];
+    }
+
+    /**
+     * Rows that would block a permanent delete, with how many of each — read
+     * before the delete so the refusal can say what is holding the account.
+     *
+     * @return array<string, int>
+     */
+    private function recordsHeldBy(User $target): array
+    {
+        $checks = [
+            'field visit(s)' => ['field_visits', 'technician_id'],
+            'monitoring record(s)' => ['monitoring_records', 'technician_id'],
+            'health record(s)' => ['health_records', 'doctor_id'],
+            'case note(s)' => ['case_notes', 'doctor_id'],
+            'vaccination record(s)' => ['vaccinations', 'technician_id'],
+            'visit plan(s)' => ['field_visit_plans', 'technician_id'],
+            'visit photo(s)' => ['field_visit_photos', 'technician_id'],
+            'household(s) they currently monitor' => ['beneficiaries', 'technician_id'],
+            'assignment(s) they made' => ['technician_assignments', 'assigned_by'],
+            'assignment history row(s)' => ['technician_assignments', 'technician_id'],
+            'previous-assignment reference(s)' => ['technician_assignments', 'previous_technician_id'],
+            'sync conflict(s)' => ['sync_conflicts', 'user_id'],
+            'project(s)' => ['projects', 'user_id'],
+        ];
+
+        $held = [];
+
+        foreach ($checks as $label => [$table, $column]) {
+            $count = DB::table($table)->where($column, $target->id)->count();
+
+            if ($count > 0) {
+                $held[$label] = $count;
+            }
+        }
+
+        return $held;
     }
 
     /**

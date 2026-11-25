@@ -38,6 +38,27 @@ class UserResource extends JsonResource
             // rather than a second, drift-prone boolean column.
             'status' => $this->deleted_at === null ? 'active' : 'deactivated',
             'deactivated_at' => $this->deleted_at?->toIso8601String(),
+            // Email verification is a separate axis from enabled/disabled:
+            // `verified` | `pending` (link still valid) | `expired`. It is
+            // what the Users table reads for Pending Verification / Active /
+            // Verification Expired. Reported only to user managers and only
+            // when the token was eager-loaded, so nested technician payloads
+            // (a beneficiary's assignee, a record's author) do not turn into
+            // an N+1 query or leak account state.
+            'email_verified_at' => $this->when(
+                $canSeePresence,
+                fn () => $this->email_verified_at?->toIso8601String(),
+            ),
+            'verification_status' => $this->when(
+                $canSeePresence && $this->relationLoaded('emailVerificationToken'),
+                fn () => $this->verificationStatus(),
+            ),
+            'verification_expires_at' => $this->when(
+                $canSeePresence
+                    && $this->email_verified_at === null
+                    && $this->relationLoaded('emailVerificationToken'),
+                fn () => $this->emailVerificationToken?->expires_at?->toIso8601String(),
+            ),
             // Account metadata for the management screen: the stamp every
             // successful sign-in rewrites, and the administrator who created
             // the account (null for seeded accounts, which have no creator).

@@ -82,6 +82,20 @@ class AuthService
 
         $this->lockout->clear($user);
 
+        // Email verification is a hard gate, checked AFTER the password so a
+        // wrong password still reports the password. An unverified account
+        // was created by an administrator but its owner has not proven they
+        // can receive mail at the registered address — it may not sign in.
+        if ($user->email_verified_at === null) {
+            $this->audit->log($user, 'failed_login', User::class, [
+                'reason' => 'email_unverified',
+            ]);
+
+            throw ValidationException::withMessages([
+                'identifier' => __('Verify your email address before signing in. Check your inbox for the verification link, or ask a CVO administrator to resend it.'),
+            ]);
+        }
+
         // The fact the User Management table shows per account ("last
         // login"), plus the presence stamp: signing in IS activity, so the
         // account reads Online immediately (see App\Support\Presence).

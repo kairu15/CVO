@@ -6,6 +6,7 @@ import ResetPasswordPage from "../pages/ResetPasswordPage";
 
 const api = vi.hoisted(() => ({
   resetPassword: vi.fn(),
+  verifyResetCode: vi.fn(),
   forgotPassword: vi.fn(),
 }));
 
@@ -17,6 +18,12 @@ function renderAt(query) {
       <ResetPasswordPage />
     </MemoryRouter>,
   );
+}
+
+function typeCode(code) {
+  fireEvent.change(screen.getByLabelText("Digit 1 of 6"), {
+    target: { value: code },
+  });
 }
 
 function fillPasswords() {
@@ -32,24 +39,45 @@ describe("ResetPasswordPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.resetPassword.mockResolvedValue({});
+    api.verifyResetCode.mockResolvedValue({ reset_token: "ticket-123" });
     api.forgotPassword.mockResolvedValue({});
   });
 
-  it("resets with the emailed six-digit code", async () => {
+  it("renders six separate code boxes", () => {
     renderAt("?email=juan%40example.com");
 
-    expect(screen.getByText(/juan@example.com/)).toBeInTheDocument();
+    for (let n = 1; n <= 6; n++) {
+      expect(screen.getByLabelText(`Digit ${n} of 6`)).toBeInTheDocument();
+    }
 
-    fireEvent.change(screen.getByLabelText("6-digit code"), {
-      target: { value: "123456" },
-    });
+    expect(screen.getByText(/juan@example.com/)).toBeInTheDocument();
+    expect(screen.getByText(/Code expires in 10:00/)).toBeInTheDocument();
+  });
+
+  it("verifies the code, then resets with the issued ticket", async () => {
+    renderAt("?email=juan%40example.com");
+
+    typeCode("123456");
+    fireEvent.click(screen.getByRole("button", { name: "Verify code" }));
+
+    await waitFor(() =>
+      expect(api.verifyResetCode).toHaveBeenCalledWith({
+        email: "juan@example.com",
+        otp: "123456",
+      }),
+    );
+
+    // Verification alone changes nothing: the password form appears.
+    expect(api.resetPassword).not.toHaveBeenCalled();
+    expect(await screen.findByLabelText("New password")).toBeInTheDocument();
+
     fillPasswords();
-    fireEvent.click(screen.getByRole("button", { name: "Reset password" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update password" }));
 
     await waitFor(() =>
       expect(api.resetPassword).toHaveBeenCalledWith({
         email: "juan@example.com",
-        otp: "123456",
+        reset_token: "ticket-123",
         password: "New-Pass-2!",
         password_confirmation: "New-Pass-2!",
       }),
@@ -58,20 +86,19 @@ describe("ResetPasswordPage", () => {
     expect(await screen.findByText(/password has been reset/i)).toBeInTheDocument();
   });
 
-  it("accepts digits only and caps the code at six characters", () => {
+  it("accepts a pasted code and spreads it across the boxes", () => {
     renderAt("?email=juan%40example.com");
 
-    const code = screen.getByLabelText("6-digit code");
-    fireEvent.change(code, { target: { value: "12ab34-567" } });
+    fireEvent.paste(screen.getByLabelText("Digit 1 of 6"), {
+      clipboardData: { getData: () => "654321" },
+    });
 
-    expect(code).toHaveValue("123456");
-    expect(code).toHaveAttribute("inputmode", "numeric");
-    expect(code).toHaveAttribute("autocomplete", "one-time-code");
-    expect(code).toHaveAttribute("maxlength", "6");
+    expect(screen.getByLabelText("Digit 1 of 6")).toHaveValue("6");
+    expect(screen.getByLabelText("Digit 6 of 6")).toHaveValue("1");
   });
 
   it("puts an invalid code on the code field", async () => {
-    api.resetPassword.mockRejectedValue({
+    api.verifyResetCode.mockRejectedValue({
       response: {
         status: 422,
         data: {
@@ -82,34 +109,30 @@ describe("ResetPasswordPage", () => {
     });
 
     renderAt("?email=juan%40example.com");
-    fireEvent.change(screen.getByLabelText("6-digit code"), {
-      target: { value: "000000" },
-    });
-    fillPasswords();
-    fireEvent.click(screen.getByRole("button", { name: "Reset password" }));
+    typeCode("000000");
+    fireEvent.click(screen.getByRole("button", { name: "Verify code" }));
 
     expect(
       await screen.findByText("That code is invalid or has expired. Request a new one."),
     ).toBeInTheDocument();
+    // Still on the code step — the password form stays locked.
+    expect(screen.queryByLabelText("New password")).not.toBeInTheDocument();
   });
 
   it("starts the resend button on a 60-second countdown", () => {
     renderAt("?email=juan%40example.com");
 
-    expect(
-      screen.getByRole("button", { name: "Resend code in 60s" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Resend in 60s" })).toBeDisabled();
   });
 
-  it("keeps the invite-token mode and hides the code controls", async () => {
+  it("keeps the invite-token mode and skips the code step", async () => {
     renderAt("?token=tok123&email=juan%40example.com");
 
-    expect(screen.queryByLabelText("6-digit code")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Resend code/ })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Email address")).toHaveAttribute("readonly");
+    expect(screen.queryByLabelText("Digit 1 of 6")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Resend/ })).not.toBeInTheDocument();
 
     fillPasswords();
-    fireEvent.click(screen.getByRole("button", { name: "Reset password" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update password" }));
 
     await waitFor(() =>
       expect(api.resetPassword).toHaveBeenCalledWith({
@@ -130,10 +153,44 @@ describe("ResetPasswordPage", () => {
     fireEvent.change(screen.getByLabelText("Confirm new password"), {
       target: { value: "weak" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Reset password" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update password" }));
 
-    expect(await screen.findByText(/at least 8 characters/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Use at least 8 characters/i)).toBeInTheDocument();
     expect(api.resetPassword).not.toHaveBeenCalled();
+  });
+
+  it("shows a live strength indicator for the new password", () => {
+    renderAt("?token=tok123&email=juan%40example.com");
+
+    expect(screen.getByText("Weak")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("New password"), {
+      target: { value: "New-Pass-2!" },
+    });
+
+    expect(screen.getByText("Strong")).toBeInTheDocument();
+  });
+
+  it("sends the user back to the code step when the ticket expired", async () => {
+    api.resetPassword.mockRejectedValue({
+      response: {
+        status: 422,
+        data: {
+          message: "Your verification has expired. Start the password reset again.",
+          errors: {
+            reset_token: ["Your verification has expired. Start the password reset again."],
+          },
+        },
+      },
+    });
+
+    renderAt("?token=tok123&email=juan%40example.com");
+    fillPasswords();
+    fireEvent.click(screen.getByRole("button", { name: "Update password" }));
+
+    expect(
+      await screen.findByText("Your verification has expired. Start the password reset again."),
+    ).toBeInTheDocument();
   });
 
   it("surfaces an expired or used invite token as a form error", async () => {
@@ -149,7 +206,7 @@ describe("ResetPasswordPage", () => {
 
     renderAt("?token=stale&email=juan%40example.com");
     fillPasswords();
-    fireEvent.click(screen.getByRole("button", { name: "Reset password" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update password" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "This password reset token is invalid.",
@@ -161,7 +218,7 @@ describe("ResetPasswordPage", () => {
 
     expect(screen.getByText("This reset link can't be used")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Reset password" }),
+      screen.queryByRole("button", { name: "Update password" }),
     ).not.toBeInTheDocument();
   });
 });

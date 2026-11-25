@@ -119,6 +119,34 @@ services:
       - key: FRONTEND_URL
         sync: false
 
+      # --- Mail (password-reset codes, account-setup links, contact form) ---
+      #
+      # These keys MUST be declared here. Without them Laravel falls back to
+      # MAIL_MAILER=log: nothing is delivered, the API still answers "a code has
+      # been sent", and the only trace is an error in the service log.
+      #
+      # NOTE: free Render web services cannot open outbound connections on
+      # ports 25, 465 or 587, so Gmail SMTP cannot deliver from this plan even
+      # with a correct App password. Use a paid instance type, or an HTTPS mail
+      # API (Postmark / Resend) — see READMEProduction.md §11.
+      - key: MAIL_MAILER
+        value: smtp
+      - key: MAIL_SCHEME
+        value: "null"
+      - key: MAIL_HOST
+        value: smtp.gmail.com
+      - key: MAIL_PORT
+        value: "587"
+      - key: MAIL_USERNAME
+        sync: false
+      # The 16-character Google App password (secret), not the Gmail login.
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_FROM_ADDRESS
+        sync: false
+      - key: MAIL_FROM_NAME
+        value: CVO
+
       # Never seed staff accounts by default. Set to "true" for the first deploy
       # to create the two staff logins, then set back to "false".
       - key: RUN_SEEDERS

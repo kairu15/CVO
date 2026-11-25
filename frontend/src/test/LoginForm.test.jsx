@@ -131,37 +131,13 @@ describe("LoginForm", () => {
     );
   });
 
-  it("requests a reset code and hands off to the reset page", async () => {
+  it("links the Forgot password option to the recovery page", () => {
     renderForm();
 
-    fireEvent.click(screen.getByRole("button", { name: "Forgot password?" }));
-    fireEvent.change(screen.getByLabelText("Email address"), {
-      target: { value: "juan@example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Send reset code" }));
-
-    await waitFor(() =>
-      expect(api.forgotPassword).toHaveBeenCalledWith("juan@example.com"),
+    expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveAttribute(
+      "href",
+      "/forgot-password",
     );
-    expect(
-      await screen.findByText(/6-digit reset code has been sent/i),
-    ).toBeInTheDocument();
-  });
-
-  it("surfaces a reset-code failure", async () => {
-    api.forgotPassword.mockRejectedValue(new Error("Can't reach the server."));
-
-    renderForm();
-
-    fireEvent.click(screen.getByRole("button", { name: "Forgot password?" }));
-    fireEvent.change(screen.getByLabelText("Email address"), {
-      target: { value: "juan@example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Send reset code" }));
-
-    // Shown against the email field, same as any other field error.
-    expect(await screen.findByText("Can't reach the server.")).toBeInTheDocument();
-    expect(api.forgotPassword).toHaveBeenCalledTimes(1);
   });
 
   it("explains why the last session ended, once", () => {

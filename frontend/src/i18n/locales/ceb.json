@@ -34,6 +34,22 @@
       "password": "Isulod ang imong password."
     }
   },
+  "forgotPassword": {
+    "eyebrow": "Pagbawi sa account",
+    "title": "Nakalimtan ang password?",
+    "subtitle": "Isulod ang email address nga narehistro sa imong account. Kung motugma kini sa among records, magpadala kami og 6-digit verification code.",
+    "emailLabel": "Narehistrong email address",
+    "emailPlaceholder": "ikaw@example.com",
+    "emailHint": "Gamita ang Gmail o email nga naa sa imong CVO account.",
+    "submit": "Ipadala ang verification code",
+    "submitting": "Nagpadala…",
+    "backToLogin": "Balik sa sign in",
+    "noEmailNote": "Alang sa seguridad, dili namo isulti kung narehistro ang usa ka address. Susiha ang inbox ug spam folder human makapadala.",
+    "errors": {
+      "emailRequired": "Isulod ang imong email address.",
+      "emailInvalid": "Isulod ang balido nga email address."
+    }
+  },
   "session": {
     "expired": "Ni-expire na ang imong session — palihog pag-sign in pag-usab.",
     "inactivity": "Gi-sign out ka tungod sa walay kalihokan."
@@ -58,35 +74,51 @@
   },
   "resetPassword": {
     "eyebrow": "Pagbawi sa account",
+    "verifyTitle": "Isulod ang verification code",
+    "verifyIntro": "Nagpadala kami og 6-digit code sa {{email}}. Isulod kini sa ubos aron makapadayon.",
+    "otpLabel": "6-digit verification code",
+    "digitLabel": "Digit {{n}} sa 6",
+    "codeSent": "Kung naa sa among records ang maong email, naay gipadalang 6-digit code. Mahimong molungtad og usa ka minuto ayha moabot.",
+    "expiryIn": "Mo-expire ang code sa {{time}}",
+    "codeExpired": "Ni-expire na kini nga code. Pangayo og bag-o.",
+    "verifySubmit": "I-verify ang code",
+    "verifying": "Nag-verify…",
+    "resend": "Ipadala pag-usab ang code",
+    "resendIn": "Ipadala pag-usab sa {{seconds}}s",
+    "resending": "Nagpadala…",
+    "differentEmail": "Gamita ang lain nga email",
+    "requestNewCode": "Pangayo og bag-ong code",
     "title": "Pagpili og bag-ong password",
     "intro": "Pagbutang og bag-ong password para sa {{email}}. Gamiton nimo kini sa mosunod nga pag-sign in.",
+    "verifiedIntro": "Na-verify na ang imong code. Pagbutang og bag-ong password para sa {{email}}.",
+    "doneTitle": "Na-update ang password",
     "passwordLabel": "Bag-ong password",
     "confirmLabel": "Kumpirmaha ang bag-ong password",
-    "submit": "I-reset ang password",
-    "submitting": "Nag-reset…",
+    "submit": "I-update ang password",
+    "submitting": "Nag-update…",
     "success": "Na-reset na ang imong password. Dad-on ka sa sign in…",
     "passwordHint": "Labing menos 8 ka karakter nga adunay dako ug gamay nga letra, numero ug simbolo.",
+    "strengthLabel": "Kalig-on sa password",
+    "strength": {
+      "weak": "Huyang",
+      "fair": "Katamtaman",
+      "good": "Maayo",
+      "strong": "Kusgan"
+    },
+    "requirementLength": "Labing menos 8 ka karakter",
+    "requirementLower": "Usa ka gamay nga letra",
+    "requirementUpper": "Usa ka dako nga letra",
+    "requirementNumber": "Usa ka numero",
+    "requirementSymbol": "Usa ka simbolo",
     "errors": {
       "passwordRequired": "Isulod ang bag-ong password.",
       "passwordWeak": "Gamita og labing menos 8 ka karakter nga adunay dako ug gamay nga letra, numero ug simbolo.",
       "passwordMismatch": "Wala magtugma ang mga password.",
       "emailRequired": "Isulod ang imong email address.",
-      "codeRequired": "Isulod ang 6-digit code gikan sa email."
+      "codeRequired": "Isulod ang kompletong 6-digit code."
     },
     "invalidLinkTitle": "Dili magamit ang reset link",
-    "invalidLinkBody": "Kuwang ang email o token sa link, o na-expire na kini. Pangayo og bag-ong reset code gikan sa sign-in page.",
-    "backToLogin": "Balik sa sign in",
-    "otpIntro": "Isulod ang 6-digit code nga gipadala sa {{email}} ug pagpili og bag-ong password.",
-    "emailLabel": "Email address",
-    "otpLabel": "6-digit code",
-    "otpHint": "Mo-expire ang code sulod sa 10 minutos.",
-    "otpPlaceholder": "123456",
-    "resend": "Ipadala pag-usab ang code",
-    "resendIn": "Ipadala pag-usab sa {{seconds}}s",
-    "resending": "Nagpadala…",
-    "codeSent": "Kung naa sa among records ang maong email, naay gipadalang 6-digit reset code.",
-    "tokenEmailHint": "Kini nga setup link alang sa {{email}}.",
-    "emailRequired": "Isulod ang imong email address.",
-    "codeRequired": "Isulod ang 6-digit code gikan sa email."
+    "invalidLinkBody": "Kuwang ang email o token sa link, o na-expire na kini. Pangayo og bag-ong verification code.",
+    "backToLogin": "Balik sa sign in"
   }
 }

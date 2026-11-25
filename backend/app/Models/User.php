@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -152,6 +153,32 @@ class User extends Authenticatable
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by')->withTrashed();
+    }
+
+    /**
+     * The single live email-verification token, if one has been issued.
+     * Eager-loadable so the Users table does not run one query per row.
+     */
+    public function emailVerificationToken(): HasOne
+    {
+        return $this->hasOne(EmailVerificationToken::class);
+    }
+
+    /**
+     * verified / pending / expired — derived from the verification stamp and
+     * the live token, never a second status column that could drift.
+     */
+    public function verificationStatus(): string
+    {
+        if ($this->email_verified_at !== null) {
+            return 'verified';
+        }
+
+        $token = $this->relationLoaded('emailVerificationToken')
+            ? $this->emailVerificationToken
+            : $this->emailVerificationToken()->first();
+
+        return $token !== null && $token->expires_at->isFuture() ? 'pending' : 'expired';
     }
 
     public function projects(): HasMany

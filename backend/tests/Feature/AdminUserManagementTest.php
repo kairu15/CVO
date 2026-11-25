@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Mail\StaffEmailVerificationMail;
 use App\Models\User;
 use App\Notifications\AccountSetup;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
@@ -56,6 +58,10 @@ class AdminUserManagementTest extends TestCase
             ->postJson("/api/v1/admin/users/{$target->id}/reactivate")
             ->assertForbidden();
 
+        $this->actingAs($user)
+            ->deleteJson("/api/v1/admin/users/{$target->id}/permanent")
+            ->assertForbidden();
+
         // Nothing was touched by the rejected calls.
         $this->assertDatabaseHas('users', [
             'id' => $target->id,
@@ -79,6 +85,10 @@ class AdminUserManagementTest extends TestCase
         $response->assertCreated()
             ->assertJsonPath('data.role', 'technician')
             ->assertJsonPath('data.status', 'active')
+            // Every new account starts pending email verification.
+            ->assertJsonPath('data.verification_status', 'pending')
+            ->assertJsonPath('verification.email_sent', true)
+            ->assertJsonPath('setup_url', null)
             // Email is normalised, so the account signs in with one spelling.
             ->assertJsonPath('data.email', 'tech.reyes@example.com');
 
@@ -86,6 +96,7 @@ class AdminUserManagementTest extends TestCase
 
         $this->assertNotSame('Str0ng!Pass', $created->password);
         $this->assertTrue(Hash::check('Str0ng!Pass', $created->password));
+        $this->assertNull($created->email_verified_at);
 
         $this->assertDatabaseHas('activity_logs', [
             'actor_id' => $admin->id,
@@ -94,7 +105,7 @@ class AdminUserManagementTest extends TestCase
         ]);
     }
 
-    public function test_a_created_staff_account_can_sign_in(): void
+    public function test_a_created_staff_account_can_sign_in_only_after_verifying_its_email(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
 
@@ -105,6 +116,24 @@ class AdminUserManagementTest extends TestCase
             'password' => 'Str0ng!Pass',
             'password_confirmation' => 'Str0ng!Pass',
         ])->assertCreated();
+
+        // The password is correct, but an unverified account is refused.
+        $this->postJson('/api/v1/login', [
+            'identifier' => 'tech.santos@example.com',
+            'password' => 'Str0ng!Pass',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['identifier'])
+            ->assertJsonPath(
+                'errors.identifier.0',
+                'Verify your email address before signing in. Check your inbox for the verification link, or ask a CVO administrator to resend it.',
+            );
+
+        // Opening the emailed link is what unlocks sign-in (the full flow is
+        // covered in EmailVerificationTest).
+        User::where('email', 'tech.santos@example.com')
+            ->firstOrFail()
+            ->forceFill(['email_verified_at' => now()])
+            ->save();
 
         $this->postJson('/api/v1/login', [
             'identifier' => 'tech.santos@example.com',
@@ -164,12 +193,22 @@ class AdminUserManagementTest extends TestCase
             ])
             ->assertOk()
             ->assertJsonPath('data.name', 'Jun Santos')
-            ->assertJsonPath('data.email', 'jun.santos@example.com');
+            ->assertJsonPath('data.email', 'jun.santos@example.com')
+            // Moving the account to a new mailbox clears its verification:
+            // the new address has not proven anything yet.
+            ->assertJsonPath('data.verification_status', 'pending');
 
         $this->assertDatabaseHas('users', [
             'id' => $target->id,
             'name' => 'Jun Santos',
             'email' => 'jun.santos@example.com',
+            'email_verified_at' => null,
+        ]);
+
+        $this->assertDatabaseHas('activity_logs', [
+            'actor_id' => $admin->id,
+            'action' => 'verification_email_sent',
+            'target_id' => $target->id,
         ]);
     }
 
@@ -473,6 +512,10 @@ class AdminUserManagementTest extends TestCase
 
         $technician = User::where('email', 'trail.tech@example.com')->first();
 
+        // New accounts are unverified; this test is about the trail, so mark
+        // the address verified rather than replaying the email flow.
+        $technician->forceFill(['email_verified_at' => now()])->save();
+
         // Sign the technician in — stamps last_login_at and writes the login audit row.
         $this->postJson('/api/v1/login', ['identifier' => $technician->email, 'password' => 'Str0ng!Pass'])
             ->assertOk();
@@ -543,8 +586,10 @@ class AdminUserManagementTest extends TestCase
 
     // ── Invite flow (passwordless staff account) ────────────────────────────
 
-    public function test_creating_an_account_without_a_password_returns_a_setup_link(): void
+    public function test_creating_an_account_without_a_password_leaves_it_pending_verification(): void
     {
+        Mail::fake();
+
         $admin = User::factory()->create(['role' => 'admin']);
 
         $response = $this->actingAs($admin)
@@ -553,38 +598,70 @@ class AdminUserManagementTest extends TestCase
                 'email' => 'invited.aide@example.com',
                 'role' => 'technician',
             ])
-            ->assertStatus(201);
+            ->assertStatus(201)
+            ->assertJsonPath('data.verification_status', 'pending')
+            ->assertJsonPath('verification.email_sent', true);
 
-        $this->assertNotNull($response->json('setup_url'));
-        $this->assertStringContainsString('/reset-password?token=', $response->json('setup_url'));
+        // No setup link is handed over at create time: the verification email
+        // is the deliverable, and the setup link comes after verification.
+        $this->assertNull($response->json('setup_url'));
 
-        // The account cannot sign in yet — nobody knows its password.
+        Mail::assertSent(StaffEmailVerificationMail::class, function (StaffEmailVerificationMail $mail): bool {
+            return $mail->hasTo('invited.aide@example.com')
+                && $mail->recipientEmail === 'invited.aide@example.com'
+                && str_contains($mail->verificationUrl, '/verify-email?token=');
+        });
+
+        // ...and the account cannot sign in, whatever password is tried.
         $this->postJson('/api/v1/login', [
             'identifier' => 'invited.aide@example.com',
             'password' => 'whatever-comes-to-mind',
         ])->assertUnprocessable();
     }
 
-    public function test_the_invited_staff_member_sets_their_own_password(): void
+    public function test_the_invited_staff_member_verifies_then_sets_their_own_password(): void
     {
+        Mail::fake();
+
         $admin = User::factory()->create(['role' => 'admin']);
 
-        $setupUrl = $this->actingAs($admin)
+        $this->actingAs($admin)
             ->postJson('/api/v1/admin/users', [
                 'name' => 'Invited Tech',
                 'email' => 'invited.tech@example.com',
                 'role' => 'technician',
             ])
-            ->assertStatus(201)
-            ->json('setup_url');
+            ->assertStatus(201);
 
-        // Parse the token out of the SPA link the admin received.
-        parse_str((string) parse_url((string) $setupUrl, PHP_URL_QUERY), $query);
+        $verificationUrl = null;
+        Mail::assertSent(StaffEmailVerificationMail::class, function (StaffEmailVerificationMail $mail) use (&$verificationUrl): bool {
+            if (! $mail->hasTo('invited.tech@example.com')) {
+                return false;
+            }
+
+            $verificationUrl = $mail->verificationUrl;
+
+            return true;
+        });
+
+        parse_str((string) parse_url((string) $verificationUrl, PHP_URL_QUERY), $query);
         $this->assertArrayHasKey('token', $query);
+
+        // Verifying proves mailbox ownership, so the response carries the
+        // one-time setup link for the account with no password of its own.
+        $setupUrl = $this->postJson('/api/v1/email/verify', ['token' => $query['token']])
+            ->assertOk()
+            ->assertJsonPath('data.email', 'invited.tech@example.com')
+            ->json('data.setup_url');
+
+        $this->assertNotNull($setupUrl);
+        $this->assertStringContainsString('/reset-password?token=', $setupUrl);
+
+        parse_str((string) parse_url((string) $setupUrl, PHP_URL_QUERY), $setup);
 
         // The invitee completes the SAME endpoint the public reset flow uses.
         $this->postJson('/api/v1/reset-password', [
-            'token' => $query['token'],
+            'token' => $setup['token'],
             'email' => 'invited.tech@example.com',
             'password' => 'MyOwn!Pass1',
             'password_confirmation' => 'MyOwn!Pass1',
@@ -865,5 +942,74 @@ class AdminUserManagementTest extends TestCase
             ->assertJsonValidationErrors(['user']);
 
         $this->assertTrue(User::withTrashed()->findOrFail($farmer->id)->trashed());
+    }
+
+    public function test_admin_can_permanently_delete_an_account_with_no_records(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $target = User::factory()->create([
+            'role' => 'technician',
+            'email' => 'mistyped.invite@example.com',
+        ]);
+
+        $target->createToken('never-used');
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/v1/admin/users/{$target->id}/permanent")
+            ->assertOk()
+            ->assertJsonPath('data.email', 'mistyped.invite@example.com');
+
+        // Gone from the table entirely — this is NOT the soft delete.
+        $this->assertDatabaseMissing('users', ['id' => $target->id]);
+        $this->assertNull(User::withTrashed()->find($target->id));
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+
+        // The trail keeps the fact, attributed to the administrator who did it,
+        // and labels it a deletion rather than a deactivation.
+        $this->assertDatabaseHas('activity_logs', [
+            'actor_id' => $admin->id,
+            'action' => 'user_deleted',
+            'target_id' => $target->id,
+        ]);
+        $this->assertDatabaseMissing('activity_logs', [
+            'action' => 'user_deactivated',
+            'target_id' => $target->id,
+        ]);
+    }
+
+    public function test_permanent_delete_refuses_an_account_that_still_holds_records(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $target = User::factory()->create(['role' => 'technician']);
+
+        DB::table('projects')->insert([
+            'user_id' => $target->id,
+            'name' => 'Rabies vaccination drive',
+            'status' => 'planning',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Deactivation is the answer for an account that has worked: its rows
+        // name the person who made them and must not be erased or orphaned.
+        $this->actingAs($admin)
+            ->deleteJson("/api/v1/admin/users/{$target->id}/permanent")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['user']);
+
+        $this->assertDatabaseHas('users', ['id' => $target->id, 'deleted_at' => null]);
+        $this->assertDatabaseHas('projects', ['user_id' => $target->id]);
+    }
+
+    public function test_admin_cannot_permanently_delete_their_own_account(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/v1/admin/users/{$admin->id}/permanent")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['user']);
+
+        $this->assertDatabaseHas('users', ['id' => $admin->id]);
     }
 }

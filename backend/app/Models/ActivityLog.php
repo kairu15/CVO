@@ -67,7 +67,10 @@ class ActivityLog extends Model
         'user_updated',
         'user_deactivated',
         'user_reactivated',
+        'user_deleted',
         'setup_link_resent',
+        'verification_email_sent',
+        'email_verified',
         'sessions_revoked',
 
         // System administration

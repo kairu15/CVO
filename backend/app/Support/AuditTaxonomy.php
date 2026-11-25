@@ -48,7 +48,8 @@ class AuditTaxonomy
             'label' => 'Accounts',
             'actions' => [
                 'user_created', 'user_invited', 'user_updated', 'user_deactivated',
-                'user_reactivated', 'setup_link_resent', 'sessions_revoked',
+                'user_reactivated', 'user_deleted', 'setup_link_resent',
+                'verification_email_sent', 'email_verified', 'sessions_revoked',
             ],
             'target_types' => ['User'],
         ],
@@ -139,7 +140,7 @@ class AuditTaxonomy
     public const CRITICAL_ACTIONS = [
         'role_changed', 'permissions_updated', 'access_denied',
         'user_created', 'user_invited', 'user_deactivated', 'user_reactivated',
-        'sessions_revoked', 'settings_updated', 'reference_data_updated',
+        'user_deleted', 'sessions_revoked', 'settings_updated', 'reference_data_updated',
         'imported', 'exported', 'account_locked', 'dispersal_event_voided',
         'beneficiary_deleted', 'monitoring_deleted', 'health_record_deleted',
         'case_note_deleted', 'field_visit_deleted', 'animal_deleted',

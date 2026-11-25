@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ForgotPasswordRequest;
 use App\Http\Requests\ResetPasswordRequest;
+use App\Http\Requests\VerifyResetCodeRequest;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\Auth\AccountLockout;
@@ -19,8 +20,10 @@ use Illuminate\Support\Str;
  *
  * Public "Forgot password?" issues a six-digit, hashed, single-use OTP
  * (PasswordResetOtpService) and always answers with the same 200 body. The
+ * code is verified on its own endpoint, which returns a short-lived,
+ * single-use reset ticket; only that ticket can complete the reset. The
  * administrator invite flow still completes through Laravel's password broker
- * with a signed `token`, so both paths share this controller and endpoint.
+ * with a signed `token`, so both paths share the reset endpoint.
  *
  * A completed reset revokes every session/token, clears the brute-force
  * lockout, and writes the matching audit row. Codes and passwords are never
@@ -58,23 +61,49 @@ class PasswordResetController extends Controller
     }
 
     /**
-     * Complete the reset with either the emailed OTP or an invite token.
+     * Verify an emailed code. On success the code is consumed and a short-lived
+     * reset ticket is returned; no password change happens here.
+     */
+    public function verifyCode(VerifyResetCodeRequest $request): JsonResponse
+    {
+        $email = Str::lower(trim((string) $request->validated('email')));
+
+        $ticket = $this->otp->verify($email, (string) $request->validated('otp'));
+
+        if ($ticket === null) {
+            return $this->invalidOtpResponse();
+        }
+
+        return response()->json([
+            'message' => __('Your code has been verified. Choose a new password.'),
+            'reset_token' => $ticket,
+            'expires_in' => PasswordResetOtpService::TICKET_TTL_MINUTES * 60,
+        ]);
+    }
+
+    /**
+     * Complete the reset with either a verified reset ticket or an invite token.
      */
     public function reset(ResetPasswordRequest $request): JsonResponse
     {
-        if ($request->filled('otp')) {
-            return $this->resetWithOtp($request);
+        if ($request->filled('reset_token')) {
+            return $this->resetWithVerifiedCode($request);
         }
 
         return $this->resetWithToken($request);
     }
 
-    private function resetWithOtp(ResetPasswordRequest $request): JsonResponse
+    private function resetWithVerifiedCode(ResetPasswordRequest $request): JsonResponse
     {
         $email = Str::lower(trim((string) $request->validated('email')));
 
-        if (! $this->otp->consume($email, (string) $request->validated('otp'))) {
-            return $this->invalidOtpResponse();
+        if (! $this->otp->consumeTicket($email, (string) $request->validated('reset_token'))) {
+            $message = __('Your verification has expired. Start the password reset again.');
+
+            return response()->json([
+                'message' => $message,
+                'errors' => ['reset_token' => [$message]],
+            ], 422);
         }
 
         $user = User::query()->where('email', $email)->first();

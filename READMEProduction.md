@@ -97,7 +97,7 @@ cp .env.production.example .env.production
 
 ### Required variables
 
-Password resets additionally require the Gmail SMTP block in the template below; without it Laravel still boots but cannot deliver reset codes.
+Staff email verification and password resets additionally require the Gmail SMTP block in the template below; without it Laravel still boots but cannot deliver verification links or reset codes.
 
 The compose file refuses to start (`${VAR:?...}`) without these:
 
@@ -121,7 +121,8 @@ The compose file refuses to start (`${VAR:?...}`) without these:
 | `CORS_ALLOWED_ORIGINS` | *(empty)* | Only if something genuinely calls the API cross-origin |
 | `RUN_SEEDERS` | `false` | `true` for a one-off seeding run, then set back |
 | `SEED_ACCOUNT_PASSWORD` | *(empty)* | Fixed password for the two seeded accounts. Empty generates and prints one random password in production; local/testing fall back to `password` |
-| `MAIL_*` | Gmail SMTP | Required for password-reset email; see the template below |
+| `MAIL_*` | Gmail SMTP | Required for staff verification and password-reset email; see the template below |
+| `SECURITY_EMAIL_VERIFICATION_EXPIRY_HOURS` | `24` | How long an emailed staff-verification link stays valid |
 | `VITE_API_URL` | *(empty)* | **Build-time.** Leave empty for single-origin; absolute API URL only for a split-origin deploy |
 
 ### `.env.production` template
@@ -152,9 +153,9 @@ MAIL_MAILER=smtp
 MAIL_SCHEME=null
 MAIL_HOST=smtp.gmail.com
 MAIL_PORT=587
-MAIL_USERNAME=kylleacibron@gmail.com
+MAIL_USERNAME=samplekylleuser@gmail.com
 MAIL_PASSWORD=
-MAIL_FROM_ADDRESS=kylleacibron@gmail.com
+MAIL_FROM_ADDRESS=samplekylleuser@gmail.com
 MAIL_FROM_NAME="CVO"
 
 # --- Seeding (keep false in production) ---
@@ -186,6 +187,62 @@ make key
 ```
 
 Paste the whole `base64:...` value into `APP_KEY` in `.env.production`.
+
+### Password reset (email OTP) flow
+
+The reset feature is three public API calls, all rate-limited and all
+enumeration-safe:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/v1/forgot-password` | Issues a random 6-digit code by Gmail SMTP. Always answers 200 with the same body, whether or not the address exists. A second request within 60 seconds sends nothing. |
+| `POST /api/v1/verify-reset-code` | Verifies the code (max 5 wrong guesses), deletes it on success, and returns a short-lived single-use `reset_token`. The code is never returned. |
+| `POST /api/v1/reset-password` | Accepts `email`, `reset_token`, `password`, `password_confirmation`. Also still accepts the administrator invite `token` path. |
+
+Codes are stored only as a bcrypt hash, expire after 10 minutes, and are
+deleted on use, on expiry, or after five failures. The reset ticket lives in
+the cache for 15 minutes and is consumed on the password change; a password
+change revokes every session and API token for the account and clears its
+lockout. The user must then sign in with the new password — the reset never
+logs them in automatically.
+
+### Staff email verification flow
+
+A newly created staff account is **pending verification**: `users.email_verified_at`
+stays `null`, and sign-in is refused until the owner opens the emailed link.
+This applies whether the administrator typed a password or left the account
+passwordless. Existing accounts are backfilled as verified by the
+`2026_11_25_100000_create_email_verification_tokens_table` migration, so a
+deploy does not lock out current staff.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/v1/admin/users` | Creates the account and sends the branded verification email through Gmail SMTP. Response includes `verification.email_sent` and `verification.expires_in_hours`; the account exists even if the transport fails, so the admin can resend. |
+| `POST /api/v1/email/verify` | Public. Validates the emailed token server-side, stamps `email_verified_at`, deletes the token, and (for an account with no password) returns a one-time `setup_url`. |
+| `POST /api/v1/admin/users/{id}/verification-email` | Admin-only resend. Rotates the token, so the previous link stops working immediately. |
+| `POST /api/v1/forgot-password` | For a verified account, issues the usual 6-digit OTP. For an unverified account it sends a fresh verification email instead, and the response stays generic. |
+
+Tokens are 64 random characters, stored only as a SHA-256 hash, one live row
+per account. The emailed URL points at the SPA's `/verify-email?token=...`
+page, so it works from any device or browser; the page only posts the token —
+the backend decides the outcome. Links expire after
+`SECURITY_EMAIL_VERIFICATION_EXPIRY_HOURS` (default 24) and are single-use.
+
+In **User Management** the statuses are `Pending verification`,
+`Active / Verified`, `Verification expired`, and `Disabled`. Resending is
+available on pending/expired rows and in the account activity drawer.
+Disabling (`DELETE /api/v1/admin/users/{id}`) never verifies the address;
+reactivating an unverified account leaves it pending.
+
+Deploying a changed mail configuration requires recreating the backend
+container (environment variables are read at boot) and, in production, the
+entrypoint rebuilds the cached config:
+
+```bash
+make prod-up       # rebuild + recreate
+make prod-ps       # confirm healthy
+docker compose --env-file .env.production -f docker-compose.prod.yml logs backend
+```
 
 > Compose interpolates `${APP_KEY:?...}` for **every** command, so `backend` cannot start while `APP_KEY` is empty — including a `docker compose run` meant to generate it. If you want to use the image itself (`make prod-key`), put a throwaway value in `.env.production` first (`APP_KEY=base64:placeholder`), run the command, then replace it with the printed key.
 
@@ -311,7 +368,7 @@ Set these in the Render dashboard — the blueprint deliberately leaves every ho
 | `cvo-backend` | `APP_URL` | the **frontend** origin, e.g. `https://cvo-frontend.onrender.com` |
 | `cvo-backend` | `SANCTUM_STATEFUL_DOMAINS` | the frontend **host**, no scheme: `cvo-frontend.onrender.com` |
 | `cvo-backend` | `FRONTEND_URL` | the frontend origin (password-reset / account-setup links) |
-| `cvo-backend` | `MAIL_MAILER`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_FROM_ADDRESS` | Gmail SMTP values: `smtp`, `smtp.gmail.com`, `587`, `kylleacibron@gmail.com`, `kylleacibron@gmail.com` |
+| `cvo-backend` | `MAIL_MAILER`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_FROM_ADDRESS` | Gmail SMTP values: `smtp`, `smtp.gmail.com`, `587`, `samplekylleuser@gmail.com`, `samplekylleuser@gmail.com` |
 | `cvo-backend` | `MAIL_PASSWORD` | the 16-character Google App password (secret) |
 | `cvo-backend` | `SEED_ACCOUNT_PASSWORD` | optional fixed password for the two seeded staff accounts |
 | `cvo-frontend` | `BACKEND_UPSTREAM` | the backend's public origin, e.g. `https://cvo-backend.onrender.com` |
@@ -328,6 +385,7 @@ Everything else is already set in the blueprint: `APP_ENV=production`, `APP_DEBU
 
 ### Render notes
 
+- **Password-reset email does not work on the free plan.** Free Render web services cannot open outbound connections on ports `25`, `465` or `587`, so Gmail SMTP times out no matter how correct `MAIL_PASSWORD` is. Either move `cvo-backend` to any paid instance type, or send over an HTTPS mail API instead of SMTP (Postmark/Resend — Laravel has a transport for both; add `symfony/postmark-mailer` or `resend/resend-php` and set `MAIL_MAILER` plus that provider's key). The blueprint declares the `MAIL_*` keys, so a missing variable can no longer silently fall back to the `log` mailer.
 - The frontend nginx proxy reaches the backend over its **public** URL because free Render services cannot use private networking, so `proxy_ssl_server_name on` is already configured and `Host $proxy_host` avoids an edge routing loop.
 - `VITE_API_URL` is a **build-time** value on Render (passed as a Docker build arg). Changing it requires a rebuild, not a restart.
 - `CACHE_STORE=file` keeps cache hits off the network (the MySQL instance is external to Render); the cache is rebuilt after each deploy on this single-instance service.
@@ -443,7 +501,10 @@ Because migrations run in the entrypoint with `--force`, a bad migration fails f
 | Port already in use | Host port conflict | Change `WEB_PORT` in `.env.production` and restart |
 | Migrations not applied | Entrypoint failed before step 4 | `docker compose ... logs backend` — the entrypoint exits non-zero (`set -eu`) |
 | Backend healthcheck failing | PHP-FPM/nginx not up | `docker compose ... logs backend`, check supervisord output |
-| Reset email never arrives | Gmail App password missing/invalid, or mail blocked | Set `MAIL_PASSWORD` to the 16-character App password, check `docker compose ... logs backend`, and look in the Gmail spam folder |
+| Verification link never arrives / "Account created — email not sent" | Gmail App password missing/invalid, or mail blocked | Set `MAIL_PASSWORD` to the 16-character App password, then use **Resend verification** on the account row. Check `docker compose ... logs backend` for the transport message and the spam folder. |
+| Sign-in says "Verify your email address before signing in" | The account is pending verification (or the link expired) | Open the emailed link, or use **Resend verification** in User Management. Do not flip `email_verified_at` by hand. |
+| Reset email never arrives | Gmail App password missing/invalid, or mail blocked | Set `MAIL_PASSWORD` to the 16-character App password, check `docker compose ... logs backend` (the failure now logs the transport message), and look in the Gmail spam folder |
+| Reset request answers "a code has been sent" but the service log says `mail could not be sent` | Mailer is misconfigured or the host drops SMTP egress | Read the logged transport message: `535` = bad App password; a timeout on ports `25`/`465`/`587` = the host blocks SMTP (all free Render web services do) — use a paid instance or an HTTPS mail API |
 | Seeded staff accounts exist unexpectedly | `RUN_SEEDERS=true` left on | Set it back to `false`; disable/delete the unneeded users |
 
 ---

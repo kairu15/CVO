@@ -11,7 +11,9 @@ import AuthPage from "../pages/AuthPage";
 import LandingPage from "../pages/LandingPage";
 import PrivacyPage from "../pages/PrivacyPage";
 import TransparencyPage from "../pages/TransparencyPage";
+import ForgotPasswordPage from "../pages/ForgotPasswordPage";
 import ResetPasswordPage from "../pages/ResetPasswordPage";
+import VerifyEmailPage from "../pages/VerifyEmailPage";
 
 // Every authenticated screen is loaded on demand so the first paint does not
 // ship the whole system: the reports (Recharts), the forms (MapLibre via the
@@ -90,9 +92,17 @@ export default function AppRoutes() {
             }
           />
 
-          {/* Password reset — the page the emailed link opens. Public, and
-              guest-only like the auth panel: a signed-in user has no reason
-              to be here. */}
+          {/* Password recovery — the email step, then the code/password page.
+              Public, and guest-only like the auth panel: a signed-in user has
+              no reason to be here. */}
+          <Route
+            path="/forgot-password"
+            element={
+              <GuestRoute>
+                <ForgotPasswordPage />
+              </GuestRoute>
+            }
+          />
           <Route
             path="/reset-password"
             element={
@@ -101,6 +111,12 @@ export default function AppRoutes() {
               </GuestRoute>
             }
           />
+
+          {/* The emailed staff-verification link. Deliberately NOT guest-only:
+              someone may open it in a browser where another account is
+              signed in, and the token still belongs to the new staff member.
+              The server decides the outcome. */}
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
 
           {/* Authenticated shell shared by every role */}
           <Route

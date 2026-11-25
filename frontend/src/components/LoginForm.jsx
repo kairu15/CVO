@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { authApi } from "../api/authApi";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import { site } from "../config/site";
-import { useSiteConfig } from "../hooks/useSiteConfig";
 import { takeSessionNotice } from "../lib/sessionNotice";
 import {
   readRememberedIdentifier,
@@ -30,9 +28,6 @@ const NOTICE_KEYS = {
  */
 export function LoginForm({ idPrefix = "login" }) {
   const { t } = useTranslation();
-  // The office's own contact details (System Settings), so the reset note
-  // quotes the phone number the office actually answers.
-  const { contact } = useSiteConfig();
   const { login } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
@@ -68,12 +63,6 @@ export function LoginForm({ idPrefix = "login" }) {
   const [focusRequest, setFocusRequest] = useState(0);
   const formRef = useRef(null);
 
-  // "Forgot password?" — request a six-digit reset code by email.
-  const [resetOpen, setResetOpen] = useState(false);
-  const [resetEmail, setResetEmail] = useState("");
-  const [resetStatus, setResetStatus] = useState("idle"); // idle | sending | sent
-  const [resetError, setResetError] = useState(null);
-
   // Move focus to the first invalid field after validation or a 422, so a
   // keyboard/screen-reader user lands on the field that needs attention.
   useEffect(() => {
@@ -105,40 +94,6 @@ export function LoginForm({ idPrefix = "login" }) {
   function trackCapsLock(event) {
     if (typeof event.getModifierState === "function") {
       setCapsLock(event.getModifierState("CapsLock"));
-    }
-  }
-
-  function toggleReset() {
-    // Offer the identifier as the reset address when it already looks like one.
-    if (!resetOpen && !resetEmail && form.identifier.includes("@")) {
-      setResetEmail(form.identifier.trim());
-    }
-
-    setResetOpen((open) => !open);
-  }
-
-  async function handleResetRequest() {
-    const email = resetEmail.trim();
-
-    if (!email) {
-      setResetError(t("login.resetEmailRequired"));
-      return;
-    }
-
-    setResetStatus("sending");
-    setResetError(null);
-
-    try {
-      await authApi.forgotPassword(email);
-      setResetStatus("sent");
-      // The code is in the inbox, not in this panel. Continue on the dedicated
-      // screen, which owns the code/password fields and the resend countdown.
-      navigate(`/reset-password?email=${encodeURIComponent(email)}`, {
-        state: { resetSent: true },
-      });
-    } catch (error) {
-      setResetStatus("idle");
-      setResetError(getErrorMessage(error));
     }
   }
 
@@ -263,90 +218,13 @@ export function LoginForm({ idPrefix = "login" }) {
           {t("login.remember")}
         </label>
 
-        <button
-          type="button"
-          onClick={toggleReset}
-          aria-expanded={resetOpen}
+        <Link
+          to="/forgot-password"
           className="rounded text-sm font-semibold text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
         >
           {t("login.forgot")}
-        </button>
+        </Link>
       </div>
-
-      {resetOpen && (
-        <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3.5 dark:border-brand-200/60 dark:bg-brand-100">
-          {resetStatus === "sent" ? (
-            <InlineAlert tone="success" message={t("login.resetSent")} />
-          ) : (
-            <>
-              <p className="text-sm font-semibold text-brand-900">
-                {t("login.resetTitle")}
-              </p>
-              <p className="mt-1 text-xs leading-snug text-brand-900/80">
-                {t("login.resetIntro")}
-              </p>
-
-              <div className="mt-3">
-                <TextField
-                  id={`${idPrefix}-reset-email`}
-                  label={t("login.resetEmailLabel")}
-                  type="email"
-                  autoComplete="email"
-                  placeholder={t("login.identifierPlaceholder")}
-                  value={resetEmail}
-                  onChange={(event) => {
-                    setResetEmail(event.target.value);
-                    setResetError(null);
-                  }}
-                  // The reset panel sits inside the sign-in form, so Enter
-                  // must send THIS request, not submit the login form.
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      handleResetRequest();
-                    }
-                  }}
-                  error={resetError}
-                />
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleResetRequest}
-                  disabled={resetStatus === "sending"}
-                  className="btn-primary text-xs"
-                >
-                  {resetStatus === "sending" ? (
-                    <>
-                      <ButtonSpinner />
-                      {t("login.resetSubmitting")}
-                    </>
-                  ) : (
-                    t("login.resetSubmit")
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setResetOpen(false)}
-                  className="btn-secondary text-xs"
-                >
-                  {t("login.resetCancel")}
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* Kept as a fallback path for accounts whose email cannot
-              receive the link (office-managed resets). */}
-          <p className="mt-3 text-[11px] leading-snug text-brand-900/70">
-            {t("common.passwordResetPolicy", {
-              email: contact.email,
-              phone: contact.phone,
-            })}
-          </p>
-        </div>
-      )}
 
       {formError && (
         <div className="mt-4">

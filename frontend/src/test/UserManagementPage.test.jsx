@@ -14,11 +14,13 @@ vi.mock("../api/adminApi", () => ({
     createUser: vi.fn(),
     updateUser: vi.fn(),
     deactivateUser: vi.fn(),
+    permanentlyDeleteUser: vi.fn(),
     reactivateUser: vi.fn(),
     bulkDeactivateUsers: vi.fn(),
     bulkReactivateUsers: vi.fn(),
     userActivity: vi.fn(),
     resendSetupLink: vi.fn(),
+    resendVerificationEmail: vi.fn(),
     sendPasswordReset: vi.fn(),
     revokeSessions: vi.fn(),
     exportUsersUrl: vi.fn(() => "/api/v1/admin/users/export"),
@@ -49,6 +51,7 @@ const ACCOUNTS = [
     email: "admin@example.com",
     role: "admin",
     status: "active",
+    verification_status: "verified",
     presence: "online",
     last_seen_at: minutesAgo(0),
     created_at: "2026-09-22T07:15:53+00:00",
@@ -60,6 +63,7 @@ const ACCOUNTS = [
     email: "technician@example.com",
     role: "technician",
     status: "active",
+    verification_status: "verified",
     presence: "online",
     last_seen_at: minutesAgo(1),
     created_at: "2026-09-18T02:00:00+00:00",
@@ -71,6 +75,7 @@ const ACCOUNTS = [
     email: "farmer@example.com",
     role: "farmer",
     status: "active",
+    verification_status: "verified",
     presence: "offline",
     last_seen_at: minutesAgo(180),
     created_at: "2026-09-19T02:00:00+00:00",
@@ -82,6 +87,7 @@ const ACCOUNTS = [
     email: "lito@example.com",
     role: "technician",
     status: "deactivated",
+    verification_status: "verified",
     presence: "offline",
     last_seen_at: minutesAgo(1440),
     created_at: "2026-09-15T02:00:00+00:00",
@@ -113,6 +119,11 @@ describe("UserManagementPage", () => {
     });
     adminApi.exportUsersUrl.mockReturnValue("/api/v1/admin/users/export");
     adminApi.resendSetupLink.mockResolvedValue("http://localhost:5173/reset-password?token=abc");
+    adminApi.resendVerificationEmail.mockResolvedValue({
+      email: "technician@example.com",
+      email_sent: true,
+      expires_in_hours: 24,
+    });
     adminApi.sendPasswordReset.mockResolvedValue({
       message: "A password reset link has been sent.",
     });
@@ -128,7 +139,10 @@ describe("UserManagementPage", () => {
     expect(screen.getByText("technician@example.com")).toBeInTheDocument();
 
     // The deactivated account is still listed, flagged as such.
-    expect(within(rowFor("Lito Former")).getByText("Deactivated")).toBeInTheDocument();
+    expect(within(rowFor("Lito Former")).getByText("Disabled")).toBeInTheDocument();
+    expect(
+      within(rowFor("Jun Technician")).getByText("Active / Verified"),
+    ).toBeInTheDocument();
 
     // Signed-in accounts read Online; the rest say when they were last seen.
     expect(within(rowFor("Jun Technician")).getByText("Online")).toBeInTheDocument();
@@ -247,6 +261,8 @@ describe("UserManagementPage", () => {
       email: "doc.reyes@example.com",
       role: "technician",
       status: "active",
+      verification_status: "pending",
+      verification: { email_sent: true, expires_in_hours: 24 },
     });
 
     renderPage();
@@ -275,7 +291,9 @@ describe("UserManagementPage", () => {
       await userEvent.type(screen.getByLabelText("Confirm password"), "Str0ng!Pass");
     });
     await act(async () => {
-      await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "Create account & send verification email" }),
+      );
     });
 
     await waitFor(() => {
@@ -288,17 +306,21 @@ describe("UserManagementPage", () => {
       });
     });
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Doc Reyes can now sign in as Field Technician.",
-    );
+    // The account is not usable yet: the dialog says the verification email
+    // is on its way, and the table will show Pending verification.
+    const dialog = await screen.findByRole("dialog", { name: "Verification email sent" });
+    expect(dialog).toHaveTextContent(/doc\.reyes@example\.com/);
+    expect(dialog).toHaveTextContent(/expires in 24 hours/i);
   });
 
-  it("invites by default: no password is sent and the setup link is shown", { timeout: 10_000 }, async () => {
+  it("invites by default: no password is sent and a verification email is announced", { timeout: 10_000 }, async () => {
     adminApi.createUser.mockResolvedValue({
       id: 10,
       name: "Doc Reyes",
+      email: "doc.reyes@example.com",
       role: "technician",
-      setup_url: "http://localhost:5173/reset-password?token=abc123&email=doc.reyes%40example.com",
+      verification_status: "pending",
+      verification: { email_sent: true, expires_in_hours: 24 },
     });
 
     renderPage();
@@ -318,7 +340,7 @@ describe("UserManagementPage", () => {
     });
     await act(async () => {
       await userEvent.click(
-        screen.getByRole("button", { name: "Create account & send setup link" }),
+        screen.getByRole("button", { name: "Create account & send verification email" }),
       );
     });
 
@@ -330,9 +352,76 @@ describe("UserManagementPage", () => {
       });
     });
 
-    // The link is the deliverable — surfaced for copy/paste.
-    expect(await screen.findByText(/setup link ready/i)).toBeInTheDocument();
-    expect(screen.getByText(/reset-password\?token=abc123/)).toBeInTheDocument();
+    // No password was sent, and the admin is told the verification email is
+    // the next step — not handed a setup link that would skip that step.
+    const dialog = await screen.findByRole("dialog", { name: "Verification email sent" });
+    expect(dialog).toHaveTextContent(/Pending verification/);
+  });
+
+  it("rejects an incomplete email address before calling the API", { timeout: 10_000 }, async () => {
+    renderPage();
+    await screen.findByText("Jun Technician");
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: /new staff account/i }));
+    });
+    await act(async () => {
+      await userEvent.type(screen.getByLabelText("Full name"), "Doc Reyes");
+    });
+    await act(async () => {
+      await userEvent.type(screen.getByLabelText("Email"), "doc.reyes@example");
+    });
+    await act(async () => {
+      await userEvent.click(
+        screen.getByRole("button", { name: "Create account & send verification email" }),
+      );
+    });
+
+    expect(
+      await screen.findByText(/Enter a complete email address/i),
+    ).toBeInTheDocument();
+    expect(adminApi.createUser).not.toHaveBeenCalled();
+  });
+
+  it("shows Pending verification and resends the verification link", { timeout: 10_000 }, async () => {
+    adminApi.listUsersPage.mockResolvedValue({
+      data: [
+        ...ACCOUNTS,
+        {
+          id: 5,
+          name: "Pending Tech",
+          username: null,
+          email: "pending@example.com",
+          role: "technician",
+          status: "active",
+          verification_status: "pending",
+          verification_expires_at: "2026-11-26T10:00:00+00:00",
+          presence: "offline",
+          last_seen_at: null,
+          created_at: "2026-11-25T10:00:00+00:00",
+        },
+      ],
+      meta: null,
+      summary: { total: 5, online: 2 },
+    });
+
+    renderPage();
+    await screen.findByText("Pending Tech");
+
+    expect(
+      within(rowFor("Pending Tech")).getByText("Pending verification"),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      await userEvent.click(
+        within(rowFor("Pending Tech")).getByRole("button", { name: "Resend verification" }),
+      );
+    });
+
+    await waitFor(() => expect(adminApi.resendVerificationEmail).toHaveBeenCalledWith(5));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "A new verification email was sent to pending@example.com.",
+    );
   });
 
   it("bulk-deactivates the selected active accounts", async () => {
@@ -425,8 +514,14 @@ describe("UserManagementPage", () => {
       await userEvent.click(screen.getByRole("button", { name: /new staff account/i }));
     });
     await act(async () => {
+      await userEvent.type(screen.getByLabelText("Full name"), "Copy Cat");
+    });
+    await act(async () => {
+      await userEvent.type(screen.getByLabelText("Email"), "taken@example.com");
+    });
+    await act(async () => {
       await userEvent.click(
-        screen.getByRole("button", { name: "Create account & send setup link" }),
+        screen.getByRole("button", { name: "Create account & send verification email" }),
       );
     });
 
@@ -714,6 +809,79 @@ describe("UserManagementPage", () => {
 
     await waitFor(() => expect(adminApi.bulkReactivateUsers).toHaveBeenCalledWith([4]));
     expect(await screen.findByRole("status")).toHaveTextContent("1 account can sign in again.");
+  });
+
+  it("permanently deletes an account only after the email is retyped", async () => {
+    adminApi.permanentlyDeleteUser.mockResolvedValue({ message: "deleted" });
+
+    renderPage();
+    await screen.findByText("Lito Former");
+
+    await act(async () => {
+      await userEvent.click(
+        within(rowFor("Lito Former")).getByRole("button", { name: "Delete" }),
+      );
+    });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Permanently delete this account?",
+    });
+    const confirm = within(dialog).getByRole("button", { name: "Delete permanently" });
+
+    // Irreversible: the button stays locked until the exact email is typed.
+    expect(confirm).toBeDisabled();
+
+    await act(async () => {
+      await userEvent.type(
+        within(dialog).getByLabelText(/to confirm/),
+        "lito@example.com",
+      );
+    });
+
+    expect(confirm).toBeEnabled();
+
+    await act(async () => {
+      await userEvent.click(confirm);
+    });
+
+    await waitFor(() => expect(adminApi.permanentlyDeleteUser).toHaveBeenCalledWith(4));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Lito Former has been permanently deleted.",
+    );
+  });
+
+  it("shows the server's refusal when the account still holds records", async () => {
+    adminApi.permanentlyDeleteUser.mockRejectedValue(
+      new Error("This account still holds records (1 project(s)), so it cannot be permanently deleted."),
+    );
+
+    renderPage();
+    await screen.findByText("Lito Former");
+
+    await act(async () => {
+      await userEvent.click(
+        within(rowFor("Lito Former")).getByRole("button", { name: "Delete" }),
+      );
+    });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Permanently delete this account?",
+    });
+    await act(async () => {
+      await userEvent.type(
+        within(dialog).getByLabelText(/to confirm/),
+        "lito@example.com",
+      );
+    });
+    await act(async () => {
+      await userEvent.click(within(dialog).getByRole("button", { name: "Delete permanently" }));
+    });
+
+    // The refusal is shown inside the dialog, so the admin can choose
+    // deactivation instead without losing the account they were looking at.
+    expect(
+      await within(dialog).findByText(/still holds records/),
+    ).toBeInTheDocument();
   });
 
   it("surfaces an API failure on the list", async () => {

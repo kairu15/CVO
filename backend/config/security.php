@@ -119,6 +119,18 @@ return [
 
     /*
     |----------------------------------------------------------------------
+    | Staff email verification
+    |----------------------------------------------------------------------
+    |
+    | A newly created staff account stays unverified until the owner opens
+    | the emailed link. The token is hashed at rest, single-use, and expires
+    | after this many hours. A resend replaces it immediately.
+    |
+    */
+    'email_verification_expiry_hours' => (int) env('SECURITY_EMAIL_VERIFICATION_EXPIRY_HOURS', 24),
+
+    /*
+    |----------------------------------------------------------------------
     | Security headers (item 9)
     |----------------------------------------------------------------------
     |

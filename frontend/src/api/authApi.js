@@ -36,9 +36,31 @@ export const authApi = {
   },
 
   /**
-   * Complete a reset with a new password plus either the emailed 6-digit
-   * `otp` or an administrator invite `token` (with its `email`). A 422 here
-   * means the code or token is invalid, used, or expired.
+   * Verify the emailed 6-digit `otp`. A 422 means the code is invalid, used,
+   * or expired. On success the API returns `{ reset_token }` — a short-lived,
+   * single-use ticket that the reset request must present; the code itself is
+   * consumed and never returned.
+   */
+  verifyResetCode: async ({ email, otp }) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/verify-reset-code", { email, otp }));
+  },
+
+  /**
+   * Verify a staff account's email address with the token from the emailed
+   * link. Public: the recipient may not have signed in yet. On success the
+   * API marks the address verified and, for an account created without a
+   * password, returns a one-time `setup_url`.
+   */
+  verifyEmail: async (token) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post("/api/v1/email/verify", { token }));
+  },
+
+  /**
+   * Complete a reset with a new password plus either the verified
+   * `reset_token` or an administrator invite `token` (with its `email`). A 422
+   * here means the ticket or token is invalid, used, or expired.
    */
   resetPassword: async (payload) => {
     await ensureCsrfCookie();

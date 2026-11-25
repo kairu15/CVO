@@ -5,6 +5,7 @@ namespace App\Services\Auth;
 use App\Mail\PasswordResetOtpMail;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -18,9 +19,17 @@ use Illuminate\Support\Str;
  * database stores a bcrypt hash. Codes expire after ten minutes, are deleted
  * when used, and are deleted after five wrong guesses. A second request within
  * sixty seconds is refused so the endpoint cannot be used as a mail amplifier.
+ *
+ * Verifying a code does NOT change the password. It consumes the code and
+ * returns a random, single-use reset ticket that lives in the cache for a few
+ * minutes. Only a request holding that ticket may set a new password, which
+ * is what keeps the password form behind a server-side verification step
+ * instead of hiding it in the browser.
  */
 class PasswordResetOtpService
 {
+    public function __construct(private readonly EmailVerificationService $verifications) {}
+
     public const CODE_LENGTH = 6;
 
     public const EXPIRY_MINUTES = 10;
@@ -28,6 +37,9 @@ class PasswordResetOtpService
     public const RESEND_SECONDS = 60;
 
     public const MAX_ATTEMPTS = 5;
+
+    /** How long a verified ticket may be exchanged for a password change. */
+    public const TICKET_TTL_MINUTES = 15;
 
     /**
      * Issue a new code and email it. Returns false for an unknown address or a
@@ -39,6 +51,22 @@ class PasswordResetOtpService
         $user = User::query()->where('email', $email)->first();
 
         if (! $user) {
+            return false;
+        }
+
+        // Only a verified mailbox may complete email-based recovery. An
+        // unverified account gets a fresh verification link instead; the API
+        // response stays generic, so neither branch reveals the account.
+        if ($user->email_verified_at === null) {
+            try {
+                $this->verifications->issue($user, $user->last_login_at === null);
+            } catch (\Throwable $e) {
+                // The public endpoint must answer the same 200 whatever
+                // happens here; a delivery failure is already logged by the
+                // verification service.
+                report($e);
+            }
+
             return false;
         }
 
@@ -83,15 +111,59 @@ class PasswordResetOtpService
             // response is unchanged.
             Mail::to($user->email)->send(new PasswordResetOtpMail($user->name, $code));
         } catch (\Throwable $e) {
-            // Keep the exception class for diagnosis but never log the body or
-            // the code. The uniform API response is unchanged.
+            // Keep the exception class AND its message for diagnosis (an SMTP
+            // refusal such as "535 5.7.8 Username and Password not accepted" or
+            // a blocked port is the whole reason the code never arrived) but
+            // never log the mail body or the code.
             Log::error('Password reset OTP email could not be sent.', [
                 'email' => $email,
                 'exception' => $e::class,
+                'error' => $e->getMessage(),
             ]);
         }
 
         return true;
+    }
+
+    /**
+     * Validate a code and, when it is correct, return a single-use reset
+     * ticket. The code is consumed here; it is never returned or logged.
+     */
+    public function verify(string $email, string $code): ?string
+    {
+        $email = Str::lower(trim($email));
+
+        if (! $this->consume($email, $code)) {
+            return null;
+        }
+
+        $ticket = Str::random(48);
+
+        Cache::put(
+            $this->ticketKey($ticket),
+            $email,
+            now()->addMinutes(self::TICKET_TTL_MINUTES),
+        );
+
+        return $ticket;
+    }
+
+    /**
+     * Exchange a verified ticket for the right to set a new password. The
+     * cache entry is pulled (deleted) in the same operation, so a ticket can
+     * never be replayed, and the email bound to it must match the request.
+     */
+    public function consumeTicket(string $email, string $ticket): bool
+    {
+        $email = Str::lower(trim($email));
+
+        if ($ticket === '') {
+            return false;
+        }
+
+        $stored = Cache::pull($this->ticketKey($ticket));
+
+        return is_string($stored) && hash_equals($stored, $email);
     }
 
     /**
@@ -135,5 +207,11 @@ class PasswordResetOtpService
 
             return false;
         });
+    }
+
+    /** Cache key for one ticket — only a hash of the value is stored. */
+    private function ticketKey(string $ticket): string
+    {
+        return 'security:password-reset-ticket:'.hash('sha256', $ticket);
     }
 }

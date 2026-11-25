@@ -37,7 +37,8 @@ import { ROLE_KEYS, STAFF_ROLE_KEYS, roleLabel } from "../config/roles";
  *   - an administrator cannot change their own role,
  *   - an administrator cannot deactivate their own account (its bulk
  *     checkbox is disabled too — the server skips it and reports the miss),
- *   - an invited account cannot sign in until its setup link is completed.
+ *   - a new account cannot sign in until its email address is verified; a
+ *     passwordless account then sets its own password from the one-time link.
  * In all cases the server is the authority; the disabled control only saves
  * the round trip.
  *
@@ -91,6 +92,22 @@ const EMPTY_CREATE = {
   role: "technician",
 };
 
+/** Mirrors the server's `email:rfc` rule closely enough to save a round trip. */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/**
+ * The account-state label the table and the activity modal show. Email
+ * verification is a separate axis from disabled/enabled, so a disabled
+ * account is "Disabled" regardless of whether its address was verified.
+ */
+function verificationLabel(row) {
+  if (!row) return "—";
+  if (row.status === "deactivated") return "Disabled";
+  if (row.verification_status === "pending") return "Pending verification";
+  if (row.verification_status === "expired") return "Verification expired";
+  return "Active / Verified";
+}
+
 function formatDate(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -140,7 +157,10 @@ const ACTIVITY_LABELS = {
   role_changed: "Role changed",
   user_deactivated: "Account deactivated",
   user_reactivated: "Account reactivated",
+  user_deleted: "Account permanently deleted",
   setup_link_resent: "Setup link re-sent",
+  verification_email_sent: "Verification email sent",
+  email_verified: "Email address verified",
   sessions_revoked: "Signed out of every device",
 };
 
@@ -186,10 +206,23 @@ export default function UserManagementPage() {
   // sets their own via a one-time link. Flipping to "password now" keeps the
   // old flow available for a shared-desk setup.
   const [inviteMode, setInviteMode] = useState(true);
-  const [created, setCreated] = useState(null); // {name, setup_url} after an invite
+  const [created, setCreated] = useState(null); // {name, setup_url} after a setup link
+  // The result of creating an account: the verification email is the
+  // deliverable now, so this replaces the old "setup link ready" dialog on
+  // the create path. `sent === false` means the account exists but Gmail
+  // refused the message; the admin can retry from here or from the row.
+  const [verificationNotice, setVerificationNotice] = useState(null);
 
   /** Account awaiting deactivation confirmation — null when no dialog is up. */
   const [confirming, setConfirming] = useState(null);
+
+  // Permanent deletion: the row awaiting confirmation, the email the admin
+  // must retype to unlock the button, and the server's refusal when the
+  // account still holds records.
+  const [deleting, setDeleting] = useState(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
 
   // Bulk selection over the CURRENT page's active accounts.
   const { selected, toggle, toggleAll, clear } = useRowSelection();
@@ -302,6 +335,12 @@ export default function UserManagementPage() {
   /** The account being edited is the signed-in administrator's own. */
   const editingSelf = editing !== null && editing.id === currentUser?.id;
 
+  /** Retyping the exact email is what unlocks the permanent-delete button. */
+  const deleteConfirmed =
+    deleting !== null &&
+    deleteConfirmText.trim().toLowerCase() ===
+      (deleting.email ?? "").trim().toLowerCase();
+
   /** True once the edit form holds something the account does not already. */
   const editDirty =
     editing !== null &&
@@ -382,10 +421,17 @@ export default function UserManagementPage() {
       await load();
 
       const roleChanged = updated?.role && updated.role !== editing.role;
+      // Changing the address clears verification and sends a fresh link; say
+      // so, otherwise "updated" hides why the account is pending again.
+      const emailChanged = updated?.email && updated.email !== editing.email;
+      const notes = [];
+
+      if (roleChanged) notes.push(`now ${roleLabel(updated.role)}`);
+      if (emailChanged) notes.push(`verification email sent to ${updated.email}`);
 
       toast.success(
-        roleChanged
-          ? `${updated.name} saved — now ${roleLabel(updated.role)}.`
+        notes.length > 0
+          ? `${updated?.name ?? editForm.name} saved — ${notes.join(", ")}.`
           : `${updated?.name ?? editForm.name} updated.`,
       );
     } catch (err) {
@@ -396,11 +442,28 @@ export default function UserManagementPage() {
   }
 
   async function saveCreate() {
+    const name = createForm.name.trim();
+    const email = createForm.email.trim();
+    const nextErrors = {};
+
+    // The same two rules the server enforces, checked first so the admin sees
+    // the problem against the field instead of as a 422 round trip.
+    if (!name) nextErrors.name = "Enter the staff member's full name.";
+    if (!email) nextErrors.email = "Enter the staff member's email address.";
+    else if (!EMAIL_PATTERN.test(email)) {
+      nextErrors.email = "Enter a complete email address, for example name@gmail.com.";
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setCreateErrors(nextErrors);
+      return;
+    }
+
     setSaving(true);
     setCreateErrors({});
 
     try {
-      const payload = { ...createForm };
+      const payload = { ...createForm, name, email };
 
       if (inviteMode) {
         delete payload.password;
@@ -415,19 +478,52 @@ export default function UserManagementPage() {
       setCreating(false);
       await load();
 
-      if (result?.setup_url) {
-        // Invite: the link IS the deliverable — show it for copy/paste (a
-        // mailer may not be configured yet, so email alone is not enough).
-        setCreated({ name: result.name ?? createForm.name, setup_url: result.setup_url });
-      } else {
-        toast.success(
-          `${result?.name ?? createForm.name} can now sign in as ${roleLabel(result?.role ?? createForm.role)}.`,
-        );
-      }
+      // The account is pending verification in both modes. The notice says
+      // whether the mail actually left, because that is the one thing the
+      // admin needs to act on.
+      setVerificationNotice({
+        id: result?.id ?? null,
+        name: result?.name ?? name,
+        email: result?.email ?? email,
+        sent: result?.verification?.email_sent !== false,
+        expiresInHours: result?.verification?.expires_in_hours ?? 24,
+      });
     } catch (err) {
       reportFailure(err, setCreateErrors);
     } finally {
       setSaving(false);
+    }
+  }
+
+  /**
+   * Re-issue a pending account's verification link. The server rotates the
+   * token, so the email that was already sent stops working — the admin never
+   * ends up with two valid links.
+   */
+  async function resendVerification(row) {
+    setSecurityBusy(`verification-${row.id}`);
+
+    try {
+      const result = await adminApi.resendVerificationEmail(row.id);
+      const sent = result?.email_sent !== false;
+
+      await load();
+
+      setVerificationNotice((current) =>
+        current && current.id === row.id
+          ? { ...current, sent, expiresInHours: result?.expires_in_hours ?? current.expiresInHours }
+          : current,
+      );
+
+      if (sent) {
+        toast.success(`A new verification email was sent to ${row.email}.`);
+      } else {
+        toast.error("The verification email could not be sent. Check the mail configuration and try again.");
+      }
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setSecurityBusy(null);
     }
   }
 
@@ -557,6 +653,40 @@ export default function UserManagementPage() {
       toast.error(getErrorMessage(err));
     } finally {
       setSecurityBusy(null);
+    }
+  }
+
+  function openDelete(row) {
+    setDeleting(row);
+    setDeleteConfirmText("");
+    setDeleteError(null);
+  }
+
+  /**
+   * Irreversible: remove the account outright. The server is the guard — it
+   * refuses an account that still holds records — so a refusal is shown in
+   * the dialog rather than assumed impossible here.
+   */
+  async function purgeAccount() {
+    if (!deleting || !deleteConfirmed) return;
+
+    setDeleteBusy(true);
+    setDeleteError(null);
+
+    try {
+      const name = deleting.name;
+
+      await adminApi.permanentlyDeleteUser(deleting.id);
+
+      setDeleting(null);
+      clear();
+      await load();
+
+      toast.success(`${name} has been permanently deleted.`);
+    } catch (err) {
+      setDeleteError(getErrorMessage(err));
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -883,6 +1013,11 @@ export default function UserManagementPage() {
                     // Presence is the server's answer, primed per page; a
                     // deactivated account is never online regardless.
                     const online = !deactivated && row.presence === "online";
+                    // Older payloads (and fixtures) predate the field; treat
+                    // a missing value as verified rather than inventing a
+                    // pending state.
+                    const verification = row.verification_status ?? "verified";
+                    const verified = verification === "verified";
 
                     return (
                       <tr
@@ -934,41 +1069,65 @@ export default function UserManagementPage() {
                               className="inline-flex items-center gap-1.5 rounded-pill bg-rose-50 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-rose-700 uppercase"
                             >
                               <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-                              {t("userManagement.presence.deactivated")}
+                              Disabled
                             </span>
-                          ) : online ? (
+                          ) : verified ? (
                             <span
-                              aria-label={t("userManagement.presence.onlineAria")}
+                              aria-label="Active and verified"
                               className="inline-flex items-center gap-1.5 rounded-pill bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-emerald-700 uppercase"
                             >
-                              {/* Soft pulse, stilled for reduced-motion users. */}
-                              <span
-                                aria-hidden="true"
-                                className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500 motion-reduce:animate-none"
-                              />
-                              {t("userManagement.presence.online")}
+                              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                              Active / Verified
+                            </span>
+                          ) : verification === "pending" ? (
+                            <span
+                              aria-label="Pending email verification"
+                              className="inline-flex items-center gap-1.5 rounded-pill bg-amber-50 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-amber-800 uppercase"
+                            >
+                              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                              Pending verification
                             </span>
                           ) : (
                             <span
-                              aria-label={t("userManagement.presence.offlineAria")}
+                              aria-label="Email verification expired"
                               className="inline-flex items-center gap-1.5 rounded-pill bg-slate-100 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-slate-600 uppercase"
                             >
                               <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                              {t("userManagement.presence.offline")}
+                              Verification expired
                             </span>
                           )}
-                          {!deactivated && !online && (
+                          {deactivated ? (
+                            row.deactivated_at && (
+                              <span className="mt-1 block text-[10px] text-slate-400">
+                                {formatDate(row.deactivated_at)}
+                              </span>
+                            )
+                          ) : verified ? (
                             <span className="mt-1 block text-[10px] text-slate-400">
+                              <span
+                                aria-label={
+                                  online
+                                    ? t("userManagement.presence.onlineAria")
+                                    : t("userManagement.presence.offlineAria")
+                                }
+                                className={online ? "font-semibold text-emerald-700" : undefined}
+                              >
+                                {online
+                                  ? t("userManagement.presence.online")
+                                  : t("userManagement.presence.offline")}
+                              </span>
+                              {" · "}
                               {row.last_seen_at
                                 ? t("userManagement.presence.lastSeen", {
                                     time: relativeTime(row.last_seen_at),
                                   })
                                 : t("userManagement.presence.neverSeen")}
                             </span>
-                          )}
-                          {deactivated && row.deactivated_at && (
+                          ) : (
                             <span className="mt-1 block text-[10px] text-slate-400">
-                              {formatDate(row.deactivated_at)}
+                              {verification === "pending" && row.verification_expires_at
+                                ? `Link expires ${formatDateTime(row.verification_expires_at)}`
+                                : "Email not verified"}
                             </span>
                           )}
                         </td>
@@ -988,7 +1147,19 @@ export default function UserManagementPage() {
                           {formatDate(row.created_at)}
                         </td>
                         <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                          {!isSelf && !deactivated && !row.last_login_at && (
+                          {!isSelf && !deactivated && !verified && (
+                            <button
+                              type="button"
+                              onClick={() => resendVerification(row)}
+                              disabled={securityBusy === `verification-${row.id}`}
+                              className="mr-1 rounded-pill px-3 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-50 disabled:opacity-50"
+                            >
+                              {securityBusy === `verification-${row.id}`
+                                ? "Sending…"
+                                : "Resend verification"}
+                            </button>
+                          )}
+                          {!isSelf && !deactivated && verified && !row.last_login_at && (
                             <button
                               type="button"
                               onClick={() => sendSetupLink(row)}
@@ -1037,6 +1208,22 @@ export default function UserManagementPage() {
                               Deactivate
                             </button>
                           )}
+
+                          {/* Permanent deletion is refused by the server for
+                              any account that holds records; the button is
+                              hidden only for your own account, which the
+                              server also refuses. */}
+                          {!isSelf && (
+                            <button
+                              type="button"
+                              onClick={() => openDelete(row)}
+                              disabled={saving || deleteBusy}
+                              title="Permanently delete this account (cannot be undone)."
+                              className="ml-1 rounded-pill px-3 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -1062,19 +1249,16 @@ export default function UserManagementPage() {
         onClose={() => setCreating(false)}
         contentClassName="max-w-lg"
       >
-        {inviteMode ? (
-          <p className="text-xs text-slate-500">
-            The new staff member gets a one-time setup link at this email
-            address and sets their own password. More secure than typing one
-            for them — nobody else ever knows it.
-          </p>
-        ) : (
-          <p className="text-xs text-slate-500">
-            The new staff member signs in with this email and the password you
-            type. Share the password with them directly — the system does not
-            email it.
-          </p>
-        )}
+        <p className="text-xs text-slate-500">
+          The account starts as <span className="font-semibold text-slate-700">Pending verification</span>.
+          A branded verification email is sent to this address and must be opened
+          before the staff member can sign in.
+        </p>
+        <p className="mt-1.5 text-xs text-slate-500">
+          {inviteMode
+            ? "After verifying, they set their own password on a one-time link."
+            : "After verifying, they sign in with the password you type below — share it with them directly."}
+        </p>
 
         <form
           className="mt-4 space-y-3"
@@ -1108,9 +1292,21 @@ export default function UserManagementPage() {
               type="email"
               className="field mt-1 w-full text-sm"
               value={createForm.email}
-              onChange={(event) => setCreateForm({ ...createForm, email: event.target.value })}
-              autoComplete="off"
+              onChange={(event) => {
+                setCreateForm({ ...createForm, email: event.target.value });
+                setCreateErrors((current) => ({ ...current, email: undefined }));
+              }}
+              autoComplete="email"
+              inputMode="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              required
+              aria-invalid={createErrors.email ? true : undefined}
             />
+            <p className="mt-1 text-[11px] text-slate-500">
+              Use a real inbox the staff member can open — the verification link
+              and future password reset codes are sent here.
+            </p>
             {createErrors.email && (
               <p className="mt-1 text-[11px] text-rose-600">{createErrors.email}</p>
             )}
@@ -1154,8 +1350,8 @@ export default function UserManagementPage() {
                   className="mt-0.5 h-4 w-4 accent-brand-700"
                 />
                 <span>
-                  <span className="font-semibold">Email a setup link</span> — they
-                  choose their own password.
+                  <span className="font-semibold">Email a verification link</span> —
+                  they verify, then choose their own password.
                 </span>
               </label>
               <label className="flex items-start gap-2 text-xs text-slate-700">
@@ -1233,12 +1429,10 @@ export default function UserManagementPage() {
               {saving ? (
                 <>
                   <ButtonSpinner />
-                  {inviteMode ? "Creating & sending link…" : "Creating…"}
+                  Creating &amp; sending verification email…
                 </>
-              ) : inviteMode ? (
-                "Create account & send setup link"
               ) : (
-                "Create account"
+                "Create account & send verification email"
               )}
             </button>
           </div>
@@ -1290,6 +1484,69 @@ export default function UserManagementPage() {
             type="button"
             className="btn-primary rounded-pill px-4 py-2 text-sm font-semibold"
             onClick={() => setCreated(null)}
+          >
+            Done
+          </button>
+        </div>
+      </Modal>
+
+      {/* Account created — the verification email is the deliverable. The
+          account exists in both branches; only delivery differs, so the admin
+          knows immediately whether to retry. */}
+      <Modal
+        open={verificationNotice !== null}
+        title={
+          verificationNotice?.sent
+            ? "Verification email sent"
+            : "Account created — email not sent"
+        }
+        onClose={() => setVerificationNotice(null)}
+        contentClassName="max-w-lg"
+      >
+        <p className="text-sm text-slate-600">
+          <span className="font-semibold text-slate-900">{verificationNotice?.name}</span>{" "}
+          has been added as a staff account and is now{" "}
+          <span className="font-semibold text-amber-800">Pending verification</span>.
+        </p>
+
+        <div className="mt-3" aria-live="polite">
+          {verificationNotice?.sent ? (
+            <InlineAlert
+              tone="success"
+              message={`A verification email was sent to ${verificationNotice?.email}. The link expires in ${verificationNotice?.expiresInHours} hours and can only be used once.`}
+            />
+          ) : (
+            <InlineAlert
+              tone="error"
+              message={`The account was created, but the verification email to ${verificationNotice?.email} could not be sent. Check the mail configuration, then resend it from here or from the account row.`}
+            />
+          )}
+        </div>
+
+        <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+          Sign-in is refused until the staff member opens the link. After
+          verifying, they either sign in with the password you set or use the
+          one-time setup link shown on the verification page. Resending creates
+          a new link and cancels the previous one.
+        </p>
+
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          {verificationNotice?.id && (
+            <button
+              type="button"
+              className="btn-secondary rounded-pill px-4 py-2 text-sm font-semibold"
+              onClick={() => resendVerification(verificationNotice)}
+              disabled={securityBusy === `verification-${verificationNotice.id}`}
+            >
+              {securityBusy === `verification-${verificationNotice.id}`
+                ? "Sending…"
+                : "Resend email"}
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn-primary rounded-pill px-4 py-2 text-sm font-semibold"
+            onClick={() => setVerificationNotice(null)}
           >
             Done
           </button>
@@ -1417,8 +1674,16 @@ export default function UserManagementPage() {
               </div>
               <div className="rounded-xl border border-slate-200 px-3 py-2.5">
                 <dt className="font-semibold tracking-wide text-slate-500 uppercase">Status</dt>
-                <dd className="mt-1 text-sm text-slate-800 capitalize">
-                  {activity.user.status}
+                <dd className="mt-1 text-sm text-slate-800">
+                  {verificationLabel(activity.user)}
+                </dd>
+              </div>
+              <div className="rounded-xl border border-slate-200 px-3 py-2.5">
+                <dt className="font-semibold tracking-wide text-slate-500 uppercase">
+                  Email address
+                </dt>
+                <dd className="mt-1 truncate text-sm text-slate-800" title={activity.user.email}>
+                  {activity.user.email ?? "—"}
                 </dd>
               </div>
             </dl>
@@ -1447,7 +1712,13 @@ export default function UserManagementPage() {
                   onClick={() => sendPasswordReset(activity.user)}
                   disabled={
                     activity.user.status !== "active" ||
+                    (activity.user.verification_status ?? "verified") !== "verified" ||
                     securityBusy === `reset-${activity.user.id}`
+                  }
+                  title={
+                    (activity.user.verification_status ?? "verified") !== "verified"
+                      ? "Password recovery is available only after the email is verified."
+                      : undefined
                   }
                   className="rounded-pill border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
                 >
@@ -1456,7 +1727,23 @@ export default function UserManagementPage() {
                     : "Send password reset"}
                 </button>
 
-                {activity.user.status === "active" && !activity.user.last_login_at && (
+                {activity.user.status === "active" &&
+                  (activity.user.verification_status ?? "verified") !== "verified" && (
+                    <button
+                      type="button"
+                      onClick={() => resendVerification(activity.user)}
+                      disabled={securityBusy === `verification-${activity.user.id}`}
+                      className="rounded-pill border border-amber-200 px-3 py-1.5 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-50 disabled:opacity-50"
+                    >
+                      {securityBusy === `verification-${activity.user.id}`
+                        ? "Sending…"
+                        : "Resend verification email"}
+                    </button>
+                  )}
+
+                {activity.user.status === "active" &&
+                  (activity.user.verification_status ?? "verified") === "verified" &&
+                  !activity.user.last_login_at && (
                   <button
                     type="button"
                     onClick={() => sendSetupLink(activity.user)}
@@ -1484,9 +1771,11 @@ export default function UserManagementPage() {
               </div>
 
               <p className="mt-2 text-[11px] text-slate-500">
-                Password reset and setup links are emailed to the account owner;
-                you never see their password. Signing out revokes sessions and
-                API tokens without deactivating the account.
+                Password recovery and setup links are emailed to the account
+                owner; you never see their password. An unverified account must
+                open its verification link first — an administrator cannot skip
+                that step. Signing out revokes sessions and API tokens without
+                deactivating the account.
               </p>
             </div>
 
@@ -1691,6 +1980,75 @@ export default function UserManagementPage() {
         onConfirm={() => revokeSessions(activity.user)}
         onCancel={() => setConfirmRevoke(false)}
       />
+
+      {/* Permanent deletion — irreversible, so the email must be retyped */}
+      <Modal
+        open={deleting !== null}
+        title="Permanently delete this account?"
+        onClose={() => setDeleting(null)}
+        contentClassName="max-w-md"
+      >
+        <p className="text-sm text-slate-600">
+          <span className="font-semibold text-slate-900">{deleting?.name}</span>{" "}
+          ({deleting?.email}) and their sign-in credentials will be removed from
+          the database. This cannot be undone.
+        </p>
+
+        <p className="mt-3 rounded-xl bg-rose-50 px-3.5 py-3 text-xs text-rose-800">
+          Deactivation is reversible and keeps the account's history. Permanent
+          deletion is only for an account that has recorded nothing — the server
+          refuses one that authored visits, monitoring or clinical records.
+        </p>
+
+        <label
+          htmlFor="delete-confirm-email"
+          className="mt-4 block text-xs font-semibold text-slate-600"
+        >
+          Type{" "}
+          <span className="font-mono text-slate-900">{deleting?.email}</span> to
+          confirm
+        </label>
+        <input
+          id="delete-confirm-email"
+          className="field mt-1 w-full text-sm"
+          value={deleteConfirmText}
+          onChange={(event) => setDeleteConfirmText(event.target.value)}
+          autoComplete="off"
+          autoFocus
+        />
+
+        {deleteError && (
+          <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
+            {deleteError}
+          </p>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setDeleting(null)}
+            disabled={deleteBusy}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={purgeAccount}
+            disabled={deleteBusy || !deleteConfirmed}
+            className="inline-flex items-center gap-2 rounded-pill bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {deleteBusy ? (
+              <>
+                <ButtonSpinner />
+                Deleting…
+              </>
+            ) : (
+              "Delete permanently"
+            )}
+          </button>
+        </div>
+      </Modal>
 
       {/* Confirmation before deactivating anyone */}
       <Modal

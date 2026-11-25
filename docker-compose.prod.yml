@@ -89,9 +89,9 @@ services:
       MAIL_SCHEME: ${MAIL_SCHEME:-null}
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
-      MAIL_USERNAME: ${MAIL_USERNAME:-kylleacibron@gmail.com}
+      MAIL_USERNAME: ${MAIL_USERNAME:-samplekylleuser@gmail.com}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-kylleacibron@gmail.com}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-samplekylleuser@gmail.com}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-CVO}
       # Optional seed-account password. Empty lets the seeder generate one in
       # production and print it once.

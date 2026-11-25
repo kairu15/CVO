@@ -21,9 +21,9 @@ class PasswordResetTest extends TestCase
     {
         parent::setUp();
 
-        // The production route intentionally shares the 6/min auth throttle.
-        // Clear it here so the attempt-limit test can make its five guesses
-        // without the request limiter taking over the assertion.
+        // The production routes are throttled. Clear the limiter here so the
+        // attempt-limit test can make its five guesses without the request
+        // limiter taking over the assertion.
         $this->withoutMiddleware(ThrottleRequests::class);
     }
 
@@ -67,15 +67,20 @@ class PasswordResetTest extends TestCase
         Mail::assertSent(PasswordResetOtpMail::class, 1);
     }
 
-    public function test_the_right_code_resets_the_password_and_revokes_tokens(): void
+    public function test_a_verified_code_resets_the_password_and_revokes_tokens(): void
     {
         $user = User::factory()->create();
         $code = $this->requestCode($user);
         $user->createToken('phone');
 
+        $ticket = $this->verifyCode($user, $code);
+
+        // Verification alone must not change the password.
+        $this->assertTrue(Hash::check('password', $user->fresh()->password));
+
         $this->postJson('/api/v1/reset-password', [
             'email' => $user->email,
-            'otp' => $code,
+            'reset_token' => $ticket,
             'password' => 'New-Pass-2!',
             'password_confirmation' => 'New-Pass-2!',
         ])->assertOk();
@@ -89,6 +94,41 @@ class PasswordResetTest extends TestCase
         ]);
     }
 
+    public function test_a_bare_otp_cannot_set_a_password_without_verification(): void
+    {
+        $user = User::factory()->create();
+        $code = $this->requestCode($user);
+
+        $this->postJson('/api/v1/reset-password', [
+            'email' => $user->email,
+            'otp' => $code,
+            'password' => 'New-Pass-2!',
+            'password_confirmation' => 'New-Pass-2!',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['reset_token']);
+
+        // The password and the unused code are untouched.
+        $this->assertTrue(Hash::check('password', $user->fresh()->password));
+        $this->assertDatabaseHas('password_reset_otps', ['email' => $user->email]);
+    }
+
+    public function test_a_reset_ticket_is_single_use(): void
+    {
+        $user = User::factory()->create();
+        $ticket = $this->verifyCode($user, $this->requestCode($user));
+
+        $payload = [
+            'email' => $user->email,
+            'reset_token' => $ticket,
+            'password' => 'New-Pass-2!',
+            'password_confirmation' => 'New-Pass-2!',
+        ];
+
+        $this->postJson('/api/v1/reset-password', $payload)->assertOk();
+        $this->postJson('/api/v1/reset-password', $payload)->assertUnprocessable()
+            ->assertJsonValidationErrors(['reset_token']);
+    }
+
     public function test_a_wrong_code_is_rejected_and_the_fifth_deletes_the_code(): void
     {
         $user = User::factory()->create();
@@ -96,11 +136,9 @@ class PasswordResetTest extends TestCase
         $wrong = $code === '000000' ? '111111' : '000000';
 
         for ($attempt = 1; $attempt <= 4; $attempt++) {
-            $this->postJson('/api/v1/reset-password', [
+            $this->postJson('/api/v1/verify-reset-code', [
                 'email' => $user->email,
                 'otp' => $wrong,
-                'password' => 'New-Pass-2!',
-                'password_confirmation' => 'New-Pass-2!',
             ])->assertUnprocessable()
                 ->assertJsonPath('errors.otp.0', 'That code is invalid or has expired. Request a new one.');
 
@@ -110,11 +148,9 @@ class PasswordResetTest extends TestCase
             ]);
         }
 
-        $this->postJson('/api/v1/reset-password', [
+        $this->postJson('/api/v1/verify-reset-code', [
             'email' => $user->email,
             'otp' => $wrong,
-            'password' => 'New-Pass-2!',
-            'password_confirmation' => 'New-Pass-2!',
         ])->assertUnprocessable();
 
         $this->assertDatabaseMissing('password_reset_otps', ['email' => $user->email]);
@@ -129,11 +165,9 @@ class PasswordResetTest extends TestCase
             'expires_at' => now()->subMinute(),
         ]);
 
-        $this->postJson('/api/v1/reset-password', [
+        $this->postJson('/api/v1/verify-reset-code', [
             'email' => $user->email,
             'otp' => $code,
-            'password' => 'New-Pass-2!',
-            'password_confirmation' => 'New-Pass-2!',
         ])->assertUnprocessable();
 
         $this->assertDatabaseMissing('password_reset_otps', ['email' => $user->email]);
@@ -143,15 +177,13 @@ class PasswordResetTest extends TestCase
     {
         $user = User::factory()->create();
         $code = $this->requestCode($user);
-        $payload = [
+
+        $this->verifyCode($user, $code);
+
+        $this->postJson('/api/v1/verify-reset-code', [
             'email' => $user->email,
             'otp' => $code,
-            'password' => 'New-Pass-2!',
-            'password_confirmation' => 'New-Pass-2!',
-        ];
-
-        $this->postJson('/api/v1/reset-password', $payload)->assertOk();
-        $this->postJson('/api/v1/reset-password', $payload)->assertUnprocessable();
+        ])->assertUnprocessable();
     }
 
     public function test_a_malformed_code_gets_the_same_invalid_code_message(): void
@@ -159,40 +191,47 @@ class PasswordResetTest extends TestCase
         $user = User::factory()->create();
         $this->requestCode($user);
 
-        $this->postJson('/api/v1/reset-password', [
+        $this->postJson('/api/v1/verify-reset-code', [
             'email' => $user->email,
             'otp' => '12345',
-            'password' => 'New-Pass-2!',
-            'password_confirmation' => 'New-Pass-2!',
         ])->assertUnprocessable()
             ->assertJsonPath('errors.otp.0', 'That code is invalid or has expired. Request a new one.');
     }
 
-    public function test_the_email_is_plain_text_with_the_code_and_no_link(): void
+    public function test_the_email_is_branded_html_with_the_code_and_no_link(): void
     {
         $mail = new PasswordResetOtpMail('Jun Technician', '042913');
         $rendered = $mail->render();
 
         $this->assertSame('Your CVO password reset code', $mail->envelope()->subject);
+        $this->assertStringContainsString('CVO Management System', $rendered);
         $this->assertStringContainsString('042913', $rendered);
         $this->assertStringContainsString('10 minutes', $rendered);
+        $this->assertStringContainsString('Never share this code', $rendered);
+        $this->assertStringContainsString('ignore this email', $rendered);
         $this->assertStringNotContainsString('http', $rendered);
     }
 
     public function test_password_policy_failures_are_validation_errors(): void
     {
         $user = User::factory()->create();
-        $code = $this->requestCode($user);
+        $ticket = $this->verifyCode($user, $this->requestCode($user));
 
         $this->postJson('/api/v1/reset-password', [
             'email' => $user->email,
-            'otp' => $code,
+            'reset_token' => $ticket,
             'password' => 'weak',
             'password_confirmation' => 'weak',
         ])->assertUnprocessable()
             ->assertJsonValidationErrors(['password']);
 
-        $this->assertDatabaseHas('password_reset_otps', ['email' => $user->email]);
+        // Validation failed before the ticket was consumed, so it still works.
+        $this->postJson('/api/v1/reset-password', [
+            'email' => $user->email,
+            'reset_token' => $ticket,
+            'password' => 'New-Pass-2!',
+            'password_confirmation' => 'New-Pass-2!',
+        ])->assertOk();
     }
 
     public function test_the_invite_token_path_still_works(): void
@@ -248,5 +287,23 @@ class PasswordResetTest extends TestCase
         $this->assertNotNull($code);
 
         return $code;
+    }
+
+    /** Verify a code and return the one-time reset ticket the API issued. */
+    private function verifyCode(User $user, string $code): string
+    {
+        $response = $this->postJson('/api/v1/verify-reset-code', [
+            'email' => $user->email,
+            'otp' => $code,
+        ])->assertOk();
+
+        $ticket = $response->json('reset_token');
+
+        $this->assertIsString($ticket);
+        $this->assertNotEmpty($ticket);
+        // The code itself is never echoed back.
+        $this->assertNotSame($code, $ticket);
+
+        return $ticket;
     }
 }

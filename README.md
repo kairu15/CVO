@@ -170,9 +170,9 @@ MAIL_MAILER=smtp
 MAIL_SCHEME=null
 MAIL_HOST=smtp.gmail.com
 MAIL_PORT=587
-MAIL_USERNAME=kylleacibron@gmail.com
+MAIL_USERNAME=samplekylleuser@gmail.com
 MAIL_PASSWORD=
-MAIL_FROM_ADDRESS=kylleacibron@gmail.com
+MAIL_FROM_ADDRESS=samplekylleuser@gmail.com
 MAIL_FROM_NAME="${APP_NAME}"
 ```
 

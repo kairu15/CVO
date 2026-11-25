@@ -13,6 +13,7 @@ use App\Http\Controllers\BeneficiaryController;
 use App\Http\Controllers\CaseNoteController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DispersalEventController;
+use App\Http\Controllers\EmailVerificationController;
 use App\Http\Controllers\DispersalMapController;
 use App\Http\Controllers\FieldVisitController;
 use App\Http\Controllers\FieldVisitPlanController;
@@ -64,15 +65,32 @@ Route::prefix('v1')->middleware('throttle:6,1,auth')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login'])->name('api.login');
     Route::post('/token-login', [AuthController::class, 'tokenLogin'])->name('api.token-login');
 
-    // Password recovery (item 3). Token-based via Laravel's Password broker:
-    // signed, single-use, time-limited (config auth.passwords.users.expire).
-    // Always answers 200 regardless of whether the email exists — no account
-    // enumeration. Inside the same 6/min throttle as login so reset cannot be
-    // used to spam or to probe accounts faster than login allows.
+    // Password recovery (item 3). A request issues a six-digit code by email
+    // (verified separately below); the reset itself accepts only a verified
+    // ticket or the signed, single-use invite token from Laravel's password
+    // broker. Always answers 200 regardless of whether the email exists — no
+    // account enumeration. Inside the same 6/min throttle as login so reset
+    // cannot be used to spam or to probe accounts faster than login allows.
     Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink'])
         ->name('api.password.email');
     Route::post('/reset-password', [PasswordResetController::class, 'reset'])
         ->name('api.password.reset');
+});
+
+// Verify the emailed six-digit code. Its OWN throttle budget: five wrong
+// guesses per code plus a resend should not drain the shared login budget,
+// and a single IP can verify for at most ten attempts a minute.
+Route::prefix('v1')->middleware('throttle:10,1,password-verify')->group(function (): void {
+    Route::post('/verify-reset-code', [PasswordResetController::class, 'verifyCode'])
+        ->name('api.password.verify');
+});
+
+// Verify a staff account's email address. Public: the recipient clicks the
+// link before they have ever signed in. The token is the credential, and its
+// own throttle budget keeps a guessed-token loop away from the login budget.
+Route::prefix('v1')->middleware('throttle:10,1,email-verify')->group(function (): void {
+    Route::post('/email/verify', [EmailVerificationController::class, 'verify'])
+        ->name('api.email.verify');
 });
 
 /*
@@ -530,8 +548,16 @@ Route::prefix('v1')->middleware(['auth:sanctum', TrackUserActivity::class])->gro
         // audit trail). Reactivate is the way back.
         Route::delete('/users/{id}', [AdminController::class, 'deactivateUser'])
             ->middleware('permission:manage_users')->name('api.admin.users.deactivate');
+        // Permanent deletion is irreversible: only for accounts that hold no
+        // records (see UserAccountService::purge). Anything else is refused
+        // with a pointer to deactivate.
+        Route::delete('/users/{id}/permanent', [AdminController::class, 'permanentlyDeleteUser'])
+            ->middleware('permission:manage_users')->name('api.admin.users.permanent-delete');
         Route::post('/users/{id}/reactivate', [AdminController::class, 'reactivateUser'])
             ->middleware('permission:manage_users')->name('api.admin.users.reactivate');
+        Route::post('/users/{id}/verification-email', [AdminController::class, 'resendVerificationEmail'])
+            ->middleware(['permission:manage_users', 'throttle:6,1'])
+            ->name('api.admin.users.verification-email');
         Route::post('/users/{id}/setup-link', [AdminController::class, 'resendSetupLink'])
             ->middleware(['permission:manage_users', 'throttle:6,1'])
             ->name('api.admin.users.setup-link');

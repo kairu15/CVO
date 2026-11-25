@@ -34,6 +34,22 @@
       "password": "Enter your password."
     }
   },
+  "forgotPassword": {
+    "eyebrow": "Account recovery",
+    "title": "Forgot your password?",
+    "subtitle": "Enter the email address registered to your account. If it matches our records, we'll send a 6-digit verification code.",
+    "emailLabel": "Registered email address",
+    "emailPlaceholder": "you@example.com",
+    "emailHint": "Use the Gmail or email address on your CVO account.",
+    "submit": "Send verification code",
+    "submitting": "Sending…",
+    "backToLogin": "Back to sign in",
+    "noEmailNote": "For security, we don't confirm whether an address is registered. Check your inbox and spam folder after sending.",
+    "errors": {
+      "emailRequired": "Enter your email address.",
+      "emailInvalid": "Enter a valid email address."
+    }
+  },
   "session": {
     "expired": "Your session expired — please sign in again.",
     "inactivity": "You were signed out due to inactivity."
@@ -58,35 +74,51 @@
   },
   "resetPassword": {
     "eyebrow": "Account recovery",
+    "verifyTitle": "Enter your verification code",
+    "verifyIntro": "We sent a 6-digit code to {{email}}. Enter it below to continue.",
+    "otpLabel": "6-digit verification code",
+    "digitLabel": "Digit {{n}} of 6",
+    "codeSent": "If that email address is in our records, a 6-digit code has been sent. It may take a minute to arrive.",
+    "expiryIn": "Code expires in {{time}}",
+    "codeExpired": "This code has expired. Request a new one.",
+    "verifySubmit": "Verify code",
+    "verifying": "Verifying…",
+    "resend": "Resend code",
+    "resendIn": "Resend in {{seconds}}s",
+    "resending": "Sending…",
+    "differentEmail": "Use a different email",
+    "requestNewCode": "Request a new code",
     "title": "Choose a new password",
     "intro": "Set a new password for {{email}}. You'll sign in with it right after.",
+    "verifiedIntro": "Your code is verified. Set a new password for {{email}}.",
+    "doneTitle": "Password updated",
     "passwordLabel": "New password",
     "confirmLabel": "Confirm new password",
-    "submit": "Reset password",
-    "submitting": "Resetting…",
+    "submit": "Update password",
+    "submitting": "Updating…",
     "success": "Your password has been reset. Redirecting you to sign in…",
     "passwordHint": "At least 8 characters with upper and lower case, a number and a symbol.",
+    "strengthLabel": "Password strength",
+    "strength": {
+      "weak": "Weak",
+      "fair": "Fair",
+      "good": "Good",
+      "strong": "Strong"
+    },
+    "requirementLength": "At least 8 characters",
+    "requirementLower": "One lowercase letter",
+    "requirementUpper": "One uppercase letter",
+    "requirementNumber": "One number",
+    "requirementSymbol": "One symbol",
     "errors": {
       "passwordRequired": "Enter a new password.",
       "passwordWeak": "Use at least 8 characters with upper and lower case, a number and a symbol.",
       "passwordMismatch": "Passwords do not match.",
       "emailRequired": "Enter your email address.",
-      "codeRequired": "Enter the 6-digit code from the email."
+      "codeRequired": "Enter the complete 6-digit code."
     },
     "invalidLinkTitle": "This reset link can't be used",
-    "invalidLinkBody": "The link is missing its email or token, or it has expired. Request a new reset code from the sign-in page.",
-    "backToLogin": "Back to sign in",
-    "otpIntro": "Enter the 6-digit code sent to {{email}} and choose a new password.",
-    "emailLabel": "Email address",
-    "otpLabel": "6-digit code",
-    "otpHint": "The code expires in 10 minutes.",
-    "otpPlaceholder": "123456",
-    "resend": "Resend code",
-    "resendIn": "Resend code in {{seconds}}s",
-    "resending": "Sending…",
-    "codeSent": "If that email address is in our records, a 6-digit reset code has been sent.",
-    "tokenEmailHint": "This setup link was issued for {{email}}.",
-    "emailRequired": "Enter your email address.",
-    "codeRequired": "Enter the 6-digit code from the email."
+    "invalidLinkBody": "The link is missing its email or token, or it has expired. Request a new verification code.",
+    "backToLogin": "Back to sign in"
   }
 }

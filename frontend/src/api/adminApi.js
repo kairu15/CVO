@@ -110,6 +110,17 @@ export const adminApi = {
     return unwrap(await api.delete(`/api/v1/admin/users/${userId}`));
   },
 
+  /**
+   * Permanently delete an account — irreversible, and only possible for an
+   * account with no recorded work (a mistyped invite, an abandoned test
+   * account). The server refuses (422) an account that still holds records
+   * and points at deactivateUser instead.
+   */
+  permanentlyDeleteUser: async (userId) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.delete(`/api/v1/admin/users/${userId}/permanent`));
+  },
+
   /** Reactivate a deactivated account (restores the soft-deleted row). */
   reactivateUser: async (userId) => {
     await ensureCsrfCookie();
@@ -120,6 +131,16 @@ export const adminApi = {
   bulkReactivateUsers: async (ids) => {
     await ensureCsrfCookie();
     return unwrap(await api.post("/api/v1/admin/users/bulk-reactivate", { ids }));
+  },
+
+  /**
+   * Re-issue the email verification link for a pending account. The new
+   * token invalidates the previous link. Resolves to the server's message and
+   * `{ email_sent, expires_at, expires_in_hours }`.
+   */
+  resendVerificationEmail: async (userId) => {
+    await ensureCsrfCookie();
+    return unwrap(await api.post(`/api/v1/admin/users/${userId}/verification-email`));
   },
 
   /**

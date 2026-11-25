@@ -9,11 +9,14 @@ use Illuminate\Validation\Rules\Password;
  * POST /api/v1/reset-password — complete a password reset.
  *
  * Two entry paths share this endpoint:
- *   - a six-digit emailed OTP (the normal "Forgot password?" flow), and
+ *   - a verified reset ticket (the normal "Forgot password?" flow: the emailed
+ *     six-digit code is exchanged for `reset_token` at /verify-reset-code), and
  *   - the Laravel password-broker token from an administrator's account
  *     setup invite.
  *
- * Either `otp` or `token` is required, but not both together.
+ * Either `reset_token` or `token` is required, but not both together. A bare
+ * OTP is deliberately NOT accepted here: it must be verified first, so the
+ * password form cannot be reached by skipping verification.
  */
 class ResetPasswordRequest extends FormRequest
 {
@@ -28,12 +31,8 @@ class ResetPasswordRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'token' => ['nullable', 'string', 'required_without:otp'],
-            // Length/shape is checked by PasswordResetOtpService too, but not
-            // here: every invalid, expired, used or over-attempted code must
-            // get the SAME 422 message on the otp field (not Laravel's
-            // "must be 6 digits" message).
-            'otp' => ['nullable', 'string', 'max:20', 'required_without:token'],
+            'token' => ['nullable', 'string', 'required_without:reset_token'],
+            'reset_token' => ['nullable', 'string', 'max:128', 'required_without:token'],
             'email' => ['required', 'string', 'email:rfc', 'max:255'],
             'password' => ['required', 'string', Password::defaults(), 'confirmed'],
         ];

@@ -34,6 +34,22 @@
       "password": "Ilagay ang iyong password."
     }
   },
+  "forgotPassword": {
+    "eyebrow": "Pagbawi ng account",
+    "title": "Nakalimutan ang password?",
+    "subtitle": "Ilagay ang email address na nakarehistro sa iyong account. Kung tugma ito sa aming records, magpapadala kami ng 6-digit verification code.",
+    "emailLabel": "Nakarehistrong email address",
+    "emailPlaceholder": "ikaw@example.com",
+    "emailHint": "Gamitin ang Gmail o email na nakatala sa iyong CVO account.",
+    "submit": "Ipadala ang verification code",
+    "submitting": "Nagpapadala…",
+    "backToLogin": "Bumalik sa sign in",
+    "noEmailNote": "Para sa seguridad, hindi namin sinasabi kung nakarehistro ang isang address. Tingnan ang inbox at spam folder pagkatapos magpadala.",
+    "errors": {
+      "emailRequired": "Ilagay ang iyong email address.",
+      "emailInvalid": "Maglagay ng valid na email address."
+    }
+  },
   "session": {
     "expired": "Nag-expire ang iyong session — mangyaring mag-sign in muli.",
     "inactivity": "Ini-sign out ka dahil sa kawalan ng aktibidad."
@@ -58,35 +74,51 @@
   },
   "resetPassword": {
     "eyebrow": "Pagbawi ng account",
+    "verifyTitle": "Ilagay ang verification code",
+    "verifyIntro": "Nagpadala kami ng 6-digit code sa {{email}}. Ilagay ito sa ibaba para magpatuloy.",
+    "otpLabel": "6-digit verification code",
+    "digitLabel": "Digit {{n}} ng 6",
+    "codeSent": "Kung nasa aming records ang email na iyon, may naipadalang 6-digit code. Maaaring tumagal ng isang minuto bago dumating.",
+    "expiryIn": "Mag-e-expire ang code sa {{time}}",
+    "codeExpired": "Nag-expire na ang code na ito. Humiling ng bago.",
+    "verifySubmit": "I-verify ang code",
+    "verifying": "Nagbe-verify…",
+    "resend": "Ipadala muli ang code",
+    "resendIn": "Ipadala muli sa {{seconds}}s",
+    "resending": "Nagpapadala…",
+    "differentEmail": "Gumamit ng ibang email",
+    "requestNewCode": "Humiling ng bagong code",
     "title": "Pumili ng bagong password",
     "intro": "Magtakda ng bagong password para sa {{email}}. Gagamitin mo ito sa susunod na pag-sign in.",
+    "verifiedIntro": "Na-verify na ang iyong code. Magtakda ng bagong password para sa {{email}}.",
+    "doneTitle": "Na-update ang password",
     "passwordLabel": "Bagong password",
     "confirmLabel": "Kumpirmahin ang bagong password",
-    "submit": "I-reset ang password",
-    "submitting": "Nagre-reset…",
+    "submit": "I-update ang password",
+    "submitting": "Nag-a-update…",
     "success": "Na-reset na ang iyong password. Ilalipat ka sa sign in…",
     "passwordHint": "Hindi bababa sa 8 na karakter na may malaki at maliit na titik, numero at simbolo.",
+    "strengthLabel": "Lakas ng password",
+    "strength": {
+      "weak": "Mahina",
+      "fair": "Katamtaman",
+      "good": "Maganda",
+      "strong": "Malakas"
+    },
+    "requirementLength": "Hindi bababa sa 8 karakter",
+    "requirementLower": "Isang maliit na titik",
+    "requirementUpper": "Isang malaking titik",
+    "requirementNumber": "Isang numero",
+    "requirementSymbol": "Isang simbolo",
     "errors": {
       "passwordRequired": "Ilagay ang bagong password.",
       "passwordWeak": "Gumamit ng hindi bababa sa 8 karakter na may malaki at maliit na titik, numero at simbolo.",
       "passwordMismatch": "Hindi tugma ang mga password.",
       "emailRequired": "Ilagay ang iyong email address.",
-      "codeRequired": "Ilagay ang 6-digit code mula sa email."
+      "codeRequired": "Ilagay ang kumpletong 6-digit code."
     },
     "invalidLinkTitle": "Hindi magagamit ang reset link",
-    "invalidLinkBody": "Kulang ang email o token ng link, o nag-expire na ito. Humiling ng bagong reset code mula sa sign-in page.",
-    "backToLogin": "Bumalik sa sign in",
-    "otpIntro": "Ilagay ang 6-digit code na ipinadala sa {{email}} at pumili ng bagong password.",
-    "emailLabel": "Email address",
-    "otpLabel": "6-digit code",
-    "otpHint": "Mag-e-expire ang code sa loob ng 10 minuto.",
-    "otpPlaceholder": "123456",
-    "resend": "Ipadala muli ang code",
-    "resendIn": "Ipadala muli sa {{seconds}}s",
-    "resending": "Nagpapadala…",
-    "codeSent": "Kung nasa aming records ang email na iyon, may naipadalang 6-digit reset code.",
-    "tokenEmailHint": "Ang setup link na ito ay para sa {{email}}.",
-    "emailRequired": "Ilagay ang iyong email address.",
-    "codeRequired": "Ilagay ang 6-digit code mula sa email."
+    "invalidLinkBody": "Kulang ang email o token ng link, o nag-expire na ito. Humiling ng bagong verification code.",
+    "backToLogin": "Bumalik sa sign in"
   }
 }

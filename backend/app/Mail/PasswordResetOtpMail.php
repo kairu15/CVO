@@ -9,13 +9,17 @@ use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * A six-digit password reset code. Plain text only: it is a short operational
- * message, it never carries a link, and the code must be easy to read in any
- * mail client.
+ * A six-digit password reset code.
+ *
+ * Delivered as a branded HTML message with a plain-text alternative. It never
+ * carries a link: the recipient types the code on the reset screen, so a
+ * link-scanning mail gateway cannot consume it.
  */
 class PasswordResetOtpMail extends Mailable
 {
     use Queueable, SerializesModels;
+
+    public const EXPIRY_MINUTES = 10;
 
     public function __construct(
         public readonly string $recipientName,
@@ -32,7 +36,11 @@ class PasswordResetOtpMail extends Mailable
     public function content(): Content
     {
         return new Content(
-            text: 'emails.password-reset-otp',
+            view: 'emails.password-reset-otp',
+            text: 'emails.password-reset-otp-text',
+            with: [
+                'expiryMinutes' => self::EXPIRY_MINUTES,
+            ],
         );
     }
 }

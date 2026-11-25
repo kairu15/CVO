@@ -103,7 +103,7 @@ class AdminController extends Controller
             fwrite($out, "\xEF\xBB\xBF");
 
             fputcsv($out, [
-                'Name', 'Username', 'Email', 'Role', 'Status',
+                'Name', 'Username', 'Email', 'Role', 'Status', 'Email verification',
                 'Added', 'Last sign-in', 'Deactivated', 'Created by',
             ]);
 
@@ -114,6 +114,9 @@ class AdminController extends Controller
                     $user->email,
                     $user->role,
                     $user->deleted_at === null ? 'Active' : 'Deactivated',
+                    $user->email_verified_at !== null
+                        ? 'Verified'
+                        : ($user->verificationStatus() === 'pending' ? 'Pending verification' : 'Verification expired'),
                     $user->created_at?->toDateString(),
                     $user->last_login_at?->toDateTimeString(),
                     $user->deleted_at?->toDateTimeString(),
@@ -123,6 +126,25 @@ class AdminController extends Controller
 
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * Re-issue the email verification link for a pending account. The new
+     * token replaces the old one, so any earlier link stops working. Returns
+     * whether the mail transport accepted the message, so the admin can retry
+     * when Gmail is unavailable.
+     */
+    public function resendVerificationEmail(AdminUserLifecycleRequest $request, int $id): JsonResponse
+    {
+        $target = User::withTrashed()->findOrFail($id);
+        $result = $this->accounts->resendVerificationEmail($request->user(), $target);
+
+        return response()->json([
+            'message' => $result['email_sent']
+                ? 'A new verification email has been sent to '.$target->email.'.'
+                : 'The verification email could not be sent. Check the mail configuration and try again.',
+            'data' => $result,
+        ]);
     }
 
     /**
@@ -201,7 +223,13 @@ class AdminController extends Controller
         // the office must never be blocked onboarding by missing SMTP — the
         // link can be handed over directly until a mail service goes live.
         return (new UserResource($result['user']))
-            ->additional(['setup_url' => $result['setup_url']])
+            ->additional([
+                'setup_url' => $result['setup_url'],
+                // Whether the branded verification email left the building,
+                // its expiry, and the account's pending state. The account
+                // exists either way; the admin can resend from the table.
+                'verification' => $result['verification'],
+            ])
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
     }
@@ -223,13 +251,32 @@ class AdminController extends Controller
 
     /**
      * Deactivate an account (soft delete + end its sessions). Reversible via
-     * reactivateUser; there is no hard-delete endpoint for accounts.
+     * reactivateUser, and the right answer for any account that has worked.
      */
     public function deactivateUser(AdminUserLifecycleRequest $request, int $id): UserResource
     {
         $user = User::findOrFail($id);
 
         return new UserResource($this->accounts->deactivate($request->user(), $user));
+    }
+
+    /**
+     * Permanently delete an account — irreversible, and only for rows that
+     * never accumulated records (a mistyped invite, an abandoned test
+     * account). The service refuses an account that still holds records and
+     * points the admin at deactivation instead. `withTrashed` because a row
+     * that was deactivated first is exactly what an admin would then delete.
+     */
+    public function permanentlyDeleteUser(AdminUserLifecycleRequest $request, int $id): JsonResponse
+    {
+        $user = User::withTrashed()->findOrFail($id);
+
+        $deleted = $this->accounts->purge($request->user(), $user);
+
+        return response()->json([
+            'message' => $deleted['name'].' has been permanently deleted.',
+            'data' => $deleted,
+        ]);
     }
 
     /**
@@ -280,7 +327,7 @@ class AdminController extends Controller
 
     public function userActivity(AdminUserLifecycleRequest $request, int $id): JsonResponse
     {
-        $user = User::withTrashed()->with('creator:id,name')->findOrFail($id);
+        $user = User::withTrashed()->with(['creator:id,name', 'emailVerificationToken'])->findOrFail($id);
 
         $activity = ActivityLog::query()
             ->with('actor:id,name')
@@ -496,7 +543,7 @@ class AdminController extends Controller
         $dir = $validated['dir'] ?? 'asc';
 
         return User::query()
-            ->with('creator:id,name')
+            ->with(['creator:id,name', 'emailVerificationToken'])
             ->whereIn('role', User::STAFF_ROLES)
             ->when($status === 'deactivated', fn ($q) => $q->onlyTrashed())
             ->when($status === 'all', fn ($q) => $q->withTrashed())

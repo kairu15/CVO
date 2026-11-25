@@ -70,6 +70,10 @@ services:
       APP_DEBUG: "true"
       # Browser/mobile reach the API on the host, so this is a host URL.
       APP_URL: ${API_URL:-http://localhost:8005}
+      # SPA origin used in emailed links (email verification, password reset,
+      # account setup). Laravel 13 defaults it to :3000, which is not this
+      # stack's frontend — keep it in step with the frontend port below.
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       DB_CONNECTION: mysql
       # Service name, NOT 127.0.0.1 — inside the compose network the database
       # lives on a different container.

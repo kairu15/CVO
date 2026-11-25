@@ -21,6 +21,14 @@ return Application::configure(basePath: dirname(__DIR__))
         // for requests originating from SANCTUM_STATEFUL_DOMAINS.
         $middleware->statefulApi();
 
+        // Email verification is opened straight from an email, often in a
+        // browser (or on a phone) with no SPA session or XSRF cookie yet. The
+        // single-use token in the URL is the credential, so CSRF protection
+        // adds nothing here and would reject every fresh-browser click with
+        // "CSRF token mismatch". Exempt only this public, token-bearing
+        // endpoint; the rest of the API keeps Sanctum's CSRF check.
+        $middleware->validateCsrfTokens(except: ['api/v1/email/verify']);
+
         // Absolute ceiling on cookie sessions (item 1): after
         // SECURITY_SESSION_ABSOLUTE minutes from login the session dies even
         // if it never went idle — SESSION_LIFETIME alone is renewed on every

@@ -56,6 +56,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend URL
+    |--------------------------------------------------------------------------
+    |
+    | The SPA origin. Emailed links (email verification, password reset and
+    | account setup) are built against this. Laravel 13's framework default is
+    | http://localhost:3000, which is not this app's Vite dev port, so it is
+    | pinned here to the same default the compose stack uses.
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

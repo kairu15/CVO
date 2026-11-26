@@ -82,7 +82,9 @@ beforeEach(() => {
 describe("LandingPage dispersal map", () => {
   it("shows the live badge, the barangay map and the unified totals when the summary loads", async () => {
     summaryMock.mockResolvedValue(SUMMARY);
-    renderPage();
+    // Awaited: renderPage imports the page asynchronously. Without the await
+    // the render can land after this test ends (and into the next one).
+    await renderPage();
 
     // The badge flips to Live only once data has arrived.
     await waitFor(() => expect(screen.getByText("Live")).toBeInTheDocument());
@@ -104,7 +106,7 @@ describe("LandingPage dispersal map", () => {
 
   it("falls back to the illustrative map and badge when the endpoint fails", async () => {
     summaryMock.mockRejectedValue(new Error("backend down"));
-    renderPage();
+    await renderPage();
 
     // Wait for the rejected promise to settle and the fallback to render.
     await waitFor(() =>

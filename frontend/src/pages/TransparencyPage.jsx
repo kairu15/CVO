@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Icon } from "../components/Icons";
 import { SearchField } from "../components/SearchField";
 import { PublicLayout } from "../components/PublicLayout";
@@ -48,21 +49,45 @@ export default function TransparencyPage() {
 
   return (
     <PublicLayout>
-      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:py-14">
-        <div className="max-w-3xl">
-          <p className="eyebrow">Public transparency dashboard</p>
-          <h1 className="mt-3 font-display text-2xl font-bold text-slate-900 sm:text-3xl">
-            Livestock &amp; poultry dispersal at a glance
+      {/* Institutional page header: breadcrumb, purpose and the promise that
+          sits behind every number below. */}
+      <div className="public-on-dark border-b border-white/10 bg-cvo-navy/85 text-white">
+        <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:py-16">
+          <nav aria-label="Breadcrumb">
+            <ol className="flex items-center gap-2 text-xs text-white/60">
+              <li>
+                <Link
+                  to="/"
+                  className="underline-offset-2 hover:text-white hover:underline"
+                >
+                  Home
+                </Link>
+              </li>
+              <li aria-hidden="true">/</li>
+              <li aria-current="page" className="text-white/90">
+                Transparency
+              </li>
+            </ol>
+          </nav>
+
+          <p className="public-eyebrow mt-6 text-cvo-glint">
+            Public transparency dashboard
+          </p>
+          <h1 className="mt-3 font-display text-2xl font-bold text-white sm:text-4xl">
+            Transparency and Public Information
           </h1>
-          <p className="mt-4 text-base text-slate-600">
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/75">
             Aggregate counts from the {site.office} dispersal program — the same
             ownership records the office's internal reports read. Individual
             farmer and farm records are never shown here.
           </p>
         </div>
+      </div>
 
+      <div className="bg-cvo-mist/85">
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:py-14">
         {error ? (
-          <div className="card mt-8 p-6" role="alert">
+          <div className="public-card mt-8 p-6" role="alert">
             <p className="font-medium text-slate-900">
               The transparency data could not be loaded.
             </p>
@@ -88,6 +113,7 @@ export default function TransparencyPage() {
             ? `As of ${new Date(data.generated_at).toLocaleString()}. Figures are refreshed periodically.`
             : "Figures are refreshed periodically."}
         </p>
+        </div>
       </div>
     </PublicLayout>
   );
@@ -123,8 +149,8 @@ function Totals({ data, loading }) {
       <h2 className="sr-only">Program totals</h2>
       <div className="grid gap-4 sm:grid-cols-3">
         {cards.map((card) => (
-          <article key={card.label} className="card p-6">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-700">
+          <article key={card.label} className="public-card p-6">
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-cvo-mist text-cvo-teal">
               <Icon name={card.icon} className="h-6 w-6" />
             </span>
             <p
@@ -155,10 +181,10 @@ function ReachChart({ series, loading }) {
   const tooSmallToChart = series.length > 0 && activeMonths < 2;
 
   return (
-    <section className="card p-6" aria-label="Dispersals over time" data-testid="reach-chart">
+    <section className="public-card p-6" aria-label="Dispersals over time" data-testid="reach-chart">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Icon name="chart" className="h-5 w-5 text-brand-600" />
+          <Icon name="chart" className="h-5 w-5 text-cvo-teal" />
           <h2 className="font-display text-base font-semibold text-slate-900">
             Animals dispersed over the last 12 months
           </h2>
@@ -169,7 +195,7 @@ function ReachChart({ series, loading }) {
             type="button"
             onClick={() => setShowTable((prev) => !prev)}
             aria-pressed={showTable}
-            className="inline-flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-xs font-medium text-slate-600 ring-1 ring-slate-300 transition hover:bg-brand-50 hover:text-brand-800"
+            className="inline-flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-xs font-medium text-slate-600 ring-1 ring-slate-300 transition hover:bg-cvo-mist hover:text-cvo-navy"
           >
             <Icon name={showTable ? "chart" : "file-text"} className="h-3.5 w-3.5" />
             {showTable ? "Show chart" : "Show as table"}
@@ -221,7 +247,7 @@ function ReachChart({ series, loading }) {
             <div key={month.month} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
               <div className="flex h-32 w-full items-end">
                 <div
-                  className="w-full rounded-t bg-brand-500 transition-all"
+                  className="w-full rounded-t bg-cvo-teal-accent transition-all"
                   style={{ height: `${Math.round((month.animals_dispersed / max) * 100)}%` }}
                   title={`${monthLabel(month.month)}: ${month.animals_dispersed} dispersed`}
                   data-testid="reach-bar"
@@ -249,9 +275,9 @@ function Vaccination({ vaccination, loading }) {
   const percent = rate === null || rate === undefined ? null : Math.round(rate * 100);
 
   return (
-    <section className="card p-6" aria-label="Vaccination compliance" data-testid="vaccination">
+    <section className="public-card p-6" aria-label="Vaccination compliance" data-testid="vaccination">
       <div className="flex items-center gap-2">
-        <Icon name="medical-cross" className="h-5 w-5 text-brand-600" />
+        <Icon name="medical-cross" className="h-5 w-5 text-cvo-teal" />
         <h2 className="font-display text-base font-semibold text-slate-900">
           Vaccination compliance
         </h2>
@@ -276,7 +302,7 @@ function Vaccination({ vaccination, loading }) {
           </p>
           <div className="mt-3 h-2.5 w-full overflow-hidden rounded-pill bg-slate-100">
             <div
-              className="h-full rounded-pill bg-brand-500"
+              className="h-full rounded-pill bg-cvo-teal-accent"
               style={{ width: `${percent}%` }}
               data-testid="vaccination-bar"
             />
@@ -334,13 +360,13 @@ function PublicDocuments() {
 
   return (
     <section
-      className="card overflow-hidden"
+      className="public-card overflow-hidden"
       aria-label="Downloadable public documents"
       data-testid="public-documents"
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
         <div className="flex items-center gap-2">
-          <Icon name="file-text" className="h-5 w-5 text-brand-600" />
+          <Icon name="file-text" className="h-5 w-5 text-cvo-teal" />
           <h2 className="font-display text-base font-semibold text-slate-900">
             Downloadable documents
           </h2>
@@ -391,7 +417,7 @@ function PublicDocuments() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-medium text-slate-800">{document.title}</p>
-                  <span className="rounded-pill bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-800">
+                  <span className="rounded-pill bg-cvo-mist px-2 py-0.5 text-[11px] font-semibold text-cvo-navy">
                     {document.category_label}
                   </span>
                 </div>
@@ -412,7 +438,7 @@ function PublicDocuments() {
                 href={publicDocumentsApi.resolveDownload(document.download_url)}
                 target="_blank"
                 rel="noreferrer"
-                className="btn-secondary shrink-0 !px-3.5 !py-1.5 text-xs"
+                className="public-btn-secondary shrink-0 !px-3.5 !py-1.5 text-xs"
               >
                 <Icon name="file-text" className="h-3.5 w-3.5" />
                 Download
@@ -475,10 +501,10 @@ function PerBarangay({ rows, loading }) {
   }
 
   return (
-    <section className="card overflow-hidden" aria-label="Dispersals per barangay" data-testid="per-barangay">
+    <section className="public-card overflow-hidden" aria-label="Dispersals per barangay" data-testid="per-barangay">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
         <div className="flex items-center gap-2">
-          <Icon name="map" className="h-5 w-5 text-brand-600" />
+          <Icon name="map" className="h-5 w-5 text-cvo-teal" />
           <h2 className="font-display text-base font-semibold text-slate-900">
             Dispersals per barangay
           </h2>
@@ -536,7 +562,7 @@ function PerBarangay({ rows, loading }) {
                     <button
                       type="button"
                       onClick={() => toggleSort(column.key)}
-                      className="inline-flex items-center gap-1 uppercase hover:text-brand-800"
+                      className="inline-flex items-center gap-1 uppercase hover:text-cvo-navy"
                     >
                       {column.label}
                       {sortKey === column.key && <span aria-hidden="true">{sortAsc ? "▲" : "▼"}</span>}

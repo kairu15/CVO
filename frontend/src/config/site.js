@@ -226,6 +226,20 @@ export const officeAbout = {
 };
 
 /**
+ * The six objectives the digital system serves, shown as a numbered strip in
+ * the About section. Each one is implemented in the application — the wording
+ * mirrors the modules rather than promising something the system does not do.
+ */
+export const systemObjectives = [
+  { icon: "users", title: "Centralized beneficiary records", body: "One authoritative household record per beneficiary, with contact, barangay and purok details." },
+  { icon: "map-pin", title: "Geographic identification", body: "Every household and dispersal is pinned to a location and grouped by barangay." },
+  { icon: "truck", title: "Dispersal monitoring", body: "Release, pass-on, re-dispersal and return-to-office events form an auditable chain." },
+  { icon: "route", title: "Organized field documentation", body: "Technicians record visits, photos, health interventions and case notes on site." },
+  { icon: "chart", title: "Transparent reporting", body: "Barangay reports and an aggregate public dashboard are generated from the same records." },
+  { icon: "shield", title: "Administrative coordination", body: "Role-based access, an audit trail and reference data keep the office's work consistent." },
+];
+
+/**
  * The address the Contact section's embedded map and its "Get directions"
  * link target: the office's plus code on the National Road. Deliberately NOT
  * the office's mailing address (that is the contact profile in System
@@ -286,7 +300,11 @@ export const faqs = [
   },
 ];
 
-/** The four capability highlights for the "how the office runs the program" cards. */
+/**
+ * The digital capabilities behind the program, shown as the "How the office
+ * runs the program" cards. Every item corresponds to a module that exists in
+ * the system — none of these is a promise of future work.
+ */
 export const features = [
   {
     icon: "map-pin",
@@ -304,8 +322,18 @@ export const features = [
     body: "Record each dispersal batch, the beneficiary who received it, and the re-dispersal of offspring to the next farmer in line.",
   },
   {
+    icon: "users",
+    title: "Beneficiary Records",
+    body: "Household details, barangay and purok, contact information and technician assignment live in one registry the office maintains.",
+  },
+  {
+    icon: "route",
+    title: "Field Operations",
+    body: "Technicians record visits, GPS fixes and geotagged photos on site; the office reviews each visit in the same system.",
+  },
+  {
     icon: "chart",
-    title: "Reporting",
+    title: "Barangay Reporting",
     body: "Generate consolidated reports per barangay, species or program cycle to support planning and fund utilisation reviews.",
   },
 ];

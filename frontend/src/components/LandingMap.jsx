@@ -40,7 +40,13 @@ import { BarangayMap } from "./BarangayMap";
  * @param {Array<{name: string, count: number}>} [props.barangays]
  *   per-barangay dispersal counts from the public summary (count>0 rows only)
  */
-export function LandingMap({ barangays = [] }) {
+export function LandingMap({
+  barangays = [],
+  // Height classes for the map box. The landing snapshot passes a compact,
+  // responsive height; the default keeps the roomier hero treatment for any
+  // caller that does not.
+  height = "h-[60vh] min-h-[420px]",
+}) {
   const boundaries = useBarangayBoundaries();
 
   // Join the public counts onto the boundary polygons by barangay name —
@@ -86,18 +92,17 @@ export function LandingMap({ barangays = [] }) {
     <BarangayMap
       boundaries={boundaries}
       choropleth={choropleth}
-      // The hero card's centrepiece: at least 60vh on phones too (the 52vh
-      // hero of the old design dropped the map below the mobile minimum).
-      height="h-[60vh] min-h-[420px]"
+      height={height}
       ariaLabel="Map of Bayawan City's barangays, shaded by how many animals were dispersed to each"
       legend={{
         stops: SEQUENTIAL_STOPS,
         minLabel: "fewer dispersals",
         maxLabel: "more",
       }}
-      // Pinned display map: the camera never moves; the labels' collision
-      // pass keeps the city-wide frame readable.
+      // Pinned display map: no pannable app toolbar, but the +/- buttons let
+      // a visitor zoom in on a barangay and back out to the whole city.
       interactive={false}
+      zoomControls
       showLabels
       tooltipHtml={tooltipHtml}
     />

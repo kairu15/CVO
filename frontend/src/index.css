@@ -49,6 +49,21 @@
   --color-earth-600: #825f3c;
   --color-earth-700: #63482e;
 
+  /* Public website — institutional navy & teal.
+     Used only by the public pages (landing, transparency, privacy). These are
+     NEW names rather than edits to brand-*, so the administrator and
+     technician dashboards keep their established green identity. */
+  --color-cvo-navy: #102a36;
+  --color-cvo-navy-deep: #0b1f29;
+  --color-cvo-teal-dark: #133336;
+  --color-cvo-teal: #285f6b;
+  --color-cvo-teal-accent: #367d8a;
+  --color-cvo-glint: #d9f3f2;
+  --color-cvo-mist: #f8fafc;
+  --color-cvo-cloud: #f1f5f9;
+  --color-cvo-ink: #172b36;
+  --color-cvo-muted: #64748b;
+
   /* Shape */
   --radius-card: 1rem;
   --radius-pill: 9999px;
@@ -140,6 +155,17 @@
 
   --color-sky-50: #0d1d29;
   --color-sky-800: #7dd3fc;
+
+  /* Public-site tokens in dark mode: washes darken, accent type brightens, so
+     the navy bands stay navy while the light sections flip with the rest of
+     the app. cvo-navy/teal-dark/glint keep their exact values — they are
+     already dark surfaces. */
+  --color-cvo-mist: #0f172a;
+  --color-cvo-cloud: #1a2333;
+  --color-cvo-ink: #eef3f9;
+  --color-cvo-muted: #a9b8cc;
+  --color-cvo-teal: #8fc4cf;
+  --color-cvo-teal-accent: #a5d3dc;
 }
 
 @layer base {
@@ -1446,5 +1472,163 @@
 
   .no-print {
     display: none !important;
+  }
+}
+
+/* ============================================================================
+   Public website components
+   ----------------------------------------------------------------------------
+   The cvo-* colour tokens themselves live in the main @theme block at the top
+   of this file (Tailwind only compiles theme blocks declared with the other
+   theme tokens). Everything below is the public pages' shared recipes.
+   ============================================================================ */
+@layer components {
+  /* The navy bands (hero, roles, footer, transparency header) must keep WHITE
+     type in both themes. This app's dark mode re-points --color-white to a
+     dark panel, so the band re-declares it locally: `text-white`, `bg-white/10`
+     and friends inside stay literal white without a dark: override on every
+     element. Inherited, so one class per band is enough. */
+  .public-on-dark {
+    --color-white: #ffffff;
+  }
+  /* Card surface for public pages. Uses the semantic tokens (not literal
+     colours) so dark mode keeps working. */
+  .public-card {
+    border-radius: var(--radius-card);
+    border: 1px solid var(--color-slate-200);
+    background: var(--color-white);
+    box-shadow:
+      0 1px 2px rgb(15 23 42 / 0.04),
+      0 18px 44px -32px rgb(16 42 54 / 0.45);
+  }
+
+  .public-btn-primary {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-pill);
+    /* Literal, not the cvo-teal token: dark mode brightens that token for
+       accent TYPE, which would leave white button text under-contrast. */
+    background: #285f6b;
+    padding: 0.625rem 1.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #ffffff;
+    transition:
+      background-color 180ms ease,
+      transform 180ms ease;
+  }
+
+  .public-btn-primary:hover {
+    background: var(--color-cvo-navy);
+  }
+
+  .public-btn-primary:focus-visible {
+    outline: 2px solid var(--color-cvo-teal-accent);
+    outline-offset: 3px;
+  }
+
+  .public-btn-secondary {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-slate-300);
+    background: var(--color-white);
+    padding: 0.625rem 1.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-slate-700);
+    transition:
+      border-color 180ms ease,
+      background-color 180ms ease,
+      color 180ms ease;
+  }
+
+  .public-btn-secondary:hover {
+    border-color: var(--color-cvo-teal-accent);
+    background: var(--color-cvo-mist);
+    color: var(--color-cvo-teal);
+  }
+
+  .public-btn-secondary:focus-visible {
+    outline: 2px solid var(--color-cvo-teal-accent);
+    outline-offset: 3px;
+  }
+
+  /* Outline action for the navy hero/footer. */
+  .public-btn-light {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid rgb(255 255 255 / 0.45);
+    background: rgb(255 255 255 / 0.06);
+    padding: 0.625rem 1.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #ffffff;
+    transition:
+      background-color 180ms ease,
+      border-color 180ms ease;
+  }
+
+  .public-btn-light:hover {
+    border-color: rgb(255 255 255 / 0.85);
+    background: rgb(255 255 255 / 0.14);
+  }
+
+  .public-btn-light:focus-visible {
+    outline: 2px solid var(--color-cvo-glint);
+    outline-offset: 3px;
+  }
+
+  /* Small uppercase label used above public section headings. */
+  .public-eyebrow {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-cvo-teal);
+  }
+
+  /* Scroll reveal: opt-in, one observer per element, disabled for readers who
+     asked for reduced motion. */
+  .public-reveal {
+    opacity: 0;
+    transform: translateY(14px);
+    transition:
+      opacity 550ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 550ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
+  }
+
+  .public-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Print and no-observer fallbacks: the reveal is decoration, never a gate on
+   the content. Without this, a printed page would omit every section the
+   reader had not scrolled past. */
+@media print {
+  .public-reveal {
+    opacity: 1;
+    transform: none;
   }
 }

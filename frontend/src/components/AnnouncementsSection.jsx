@@ -1,5 +1,6 @@
 import { usePublicAnnouncements } from "../hooks/usePublicAnnouncements";
 import { Icon } from "./Icons";
+import { PublicReveal } from "./PublicReveal";
 
 /**
  * The landing page's veterinary announcements — real rows from the
@@ -17,50 +18,57 @@ export function AnnouncementsSection() {
   if (loading || error || announcements.length === 0) return null;
 
   return (
-    <section
-      aria-labelledby="announcements-heading"
-      className="mx-auto max-w-6xl px-4 pt-16 sm:px-6 lg:pt-20"
-    >
-      <div className="max-w-2xl">
-        <p className="eyebrow">Announcements</p>
-        <h2
-          id="announcements-heading"
-          className="mt-3 font-display text-2xl font-bold text-slate-900 sm:text-3xl"
-        >
-          From the City Veterinary Office
-        </h2>
-      </div>
+    <section aria-labelledby="announcements-heading" className="bg-white/85">
+      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
+        <PublicReveal className="max-w-2xl">
+          <p className="public-eyebrow">Announcements</p>
+          <h2
+            id="announcements-heading"
+            className="mt-3 font-display text-2xl font-bold text-slate-900 sm:text-3xl"
+          >
+            From the City Veterinary Office
+          </h2>
+          <p className="mt-3 text-sm text-slate-600">
+            Schedules, advisories and program updates published by the office.
+          </p>
+        </PublicReveal>
 
-      <div className="mt-8 grid gap-5 lg:grid-cols-3">
-        {announcements.map((announcement) => (
-          <article key={announcement.id} className="card flex flex-col p-6">
-            <div className="flex items-center gap-2.5 text-xs text-slate-500">
-              {announcement.is_pinned && (
-                <span className="inline-flex items-center gap-1 rounded-pill bg-brand-100 px-2.5 py-0.5 text-[11px] font-semibold text-brand-800">
-                  <Icon name="pin" className="h-3 w-3" />
-                  Pinned
-                </span>
-              )}
-              <time dateTime={announcement.published_at}>
-                {new Date(announcement.published_at).toLocaleDateString(undefined, {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </time>
-            </div>
+        <div className="mt-8 grid gap-5 lg:grid-cols-3">
+          {announcements.map((announcement, index) => (
+            <PublicReveal
+              key={announcement.id}
+              as="article"
+              delay={index * 60}
+              className="public-card flex h-full flex-col p-6"
+            >
+              <div className="flex items-center gap-2.5 text-xs text-slate-500">
+                {announcement.is_pinned && (
+                  <span className="inline-flex items-center gap-1 rounded-pill bg-cvo-teal/10 px-2.5 py-0.5 text-[11px] font-semibold text-cvo-teal">
+                    <Icon name="pin" className="h-3 w-3" />
+                    Pinned
+                  </span>
+                )}
+                <time dateTime={announcement.published_at}>
+                  {new Date(announcement.published_at).toLocaleDateString(undefined, {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </time>
+              </div>
 
-            <h3 className="mt-2.5 font-display text-base font-semibold text-slate-900">
-              {announcement.title}
-            </h3>
-            {/* whitespace-pre-line: the admin's paragraph breaks are the
-                formatting — no markdown, no editor. Clamped so a long notice
-                cannot stretch its card beyond the row. */}
-            <p className="mt-2 line-clamp-8 flex-1 whitespace-pre-line text-sm leading-relaxed text-slate-600">
-              {announcement.body}
-            </p>
-          </article>
-        ))}
+              <h3 className="mt-2.5 font-display text-base font-semibold text-slate-900">
+                {announcement.title}
+              </h3>
+              {/* whitespace-pre-line: the admin's paragraph breaks are the
+                  formatting — no markdown, no editor. Clamped so a long notice
+                  cannot stretch its card beyond the row. */}
+              <p className="mt-2 line-clamp-8 flex-1 whitespace-pre-line text-sm leading-relaxed text-slate-600">
+                {announcement.body}
+              </p>
+            </PublicReveal>
+          ))}
+        </div>
       </div>
     </section>
   );

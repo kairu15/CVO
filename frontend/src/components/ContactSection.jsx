@@ -235,11 +235,11 @@ export function ContactSection() {
     <section
       id="contact"
       aria-labelledby="contact-heading"
-      className="scroll-mt-20 border-y border-slate-200/70 bg-white"
+      className="scroll-mt-24 border-t border-slate-200/70 bg-white/85"
     >
       <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
         <div className="max-w-2xl">
-          <p className="eyebrow">Contact us</p>
+          <p className="public-eyebrow">Contact us</p>
           <h2
             id="contact-heading"
             className="mt-3 font-display text-2xl font-bold text-slate-900 sm:text-3xl"
@@ -258,7 +258,7 @@ export function ContactSection() {
               boundaries on the SAME shared map the dashboards wear (OSM
               tiles, proper attribution, the shared toolbar). Lazy so the
               heavy MapLibre chunk never rides the landing bundle. */}
-          <div className="card overflow-hidden">
+          <div className="public-card overflow-hidden">
             <Suspense
               fallback={
                 <div
@@ -271,14 +271,14 @@ export function ContactSection() {
             </Suspense>
             <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-5 py-3.5 dark:border-slate-800">
               <span className="flex min-w-0 items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-                <Icon name="map-pin" className="h-4 w-4 shrink-0 text-brand-600" />
+                <Icon name="map-pin" className="h-4 w-4 shrink-0 text-cvo-teal" />
                 <span className="truncate">{officeMap.label}</span>
               </span>
               <button
                 type="button"
                 onClick={getDirections}
                 disabled={directions.status === "locating" || directions.status === "routing"}
-                className="h-11 shrink-0 rounded-pill px-4 text-sm font-semibold text-brand-700 underline-offset-2 hover:bg-brand-50 hover:underline disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 dark:text-brand-300 dark:hover:bg-slate-800/60"
+                className="h-11 shrink-0 rounded-pill px-4 text-sm font-semibold text-cvo-teal underline-offset-2 hover:bg-cvo-mist hover:underline disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cvo-teal dark:text-cvo-glint dark:hover:bg-slate-800/60"
               >
                 Get directions
               </button>
@@ -292,14 +292,14 @@ export function ContactSection() {
               <div className="border-t border-slate-100 px-5 py-4 dark:border-slate-800">
                 {directions.status === "locating" && (
                   <p className="flex items-center gap-2 text-sm text-slate-500" role="status">
-                    <Icon name="locate-fixed" className="h-4 w-4 animate-pulse text-brand-600" />
+                    <Icon name="locate-fixed" className="h-4 w-4 animate-pulse text-cvo-teal" />
                     Getting your location…
                   </p>
                 )}
 
                 {directions.status === "routing" && (
                   <p className="flex items-center gap-2 text-sm text-slate-500" role="status">
-                    <Icon name="route" className="h-4 w-4 animate-pulse text-brand-600" />
+                    <Icon name="route" className="h-4 w-4 animate-pulse text-cvo-teal" />
                     Finding the best route to the office…
                   </p>
                 )}
@@ -311,7 +311,7 @@ export function ContactSection() {
                       href={directionsUrl(officeMap.query)}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 underline-offset-2 hover:underline dark:text-brand-300"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-cvo-teal underline-offset-2 hover:underline dark:text-cvo-glint"
                     >
                       <Icon name="arrow-right" className="h-3.5 w-3.5" />
                       Open directions in Google Maps
@@ -333,7 +333,7 @@ export function ContactSection() {
 
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
-                        <Icon name="route" className="h-4 w-4 shrink-0 text-brand-600" />
+                        <Icon name="route" className="h-4 w-4 shrink-0 text-cvo-teal" />
                         {formatDistance(directions.distance)} ·{" "}
                         {formatDuration(directions.duration)} drive
                       </p>
@@ -341,7 +341,7 @@ export function ContactSection() {
                         href={directionsUrl(officeMap.query)}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-300"
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 hover:text-cvo-teal hover:underline dark:text-slate-400 dark:hover:text-cvo-glint"
                       >
                         Open in Google Maps
                       </a>
@@ -349,7 +349,7 @@ export function ContactSection() {
 
                     <ol className="max-h-44 space-y-1.5 overflow-y-auto pl-4 text-xs leading-relaxed text-slate-600">
                       {directions.steps.map((step, index) => (
-                        <li key={`${index}-${step}`} className="list-decimal marker:text-brand-500">
+                        <li key={`${index}-${step}`} className="list-decimal marker:text-cvo-teal-accent">
                           {step}
                         </li>
                       ))}
@@ -361,10 +361,10 @@ export function ContactSection() {
           </div>
 
           {/* The form — or its confirmation. */}
-          <div className="card p-6 sm:p-8">
+          <div className="public-card p-6 sm:p-8">
             {sent ? (
               <div className="flex h-full flex-col items-center justify-center py-8 text-center" role="status">
-                <span className="grid h-12 w-12 place-items-center rounded-full bg-brand-100 text-brand-700">
+                <span className="grid h-12 w-12 place-items-center rounded-full bg-cvo-teal/10 text-cvo-teal">
                   <Icon name="check" className="h-6 w-6" />
                 </span>
                 <h3 className="mt-4 font-display text-lg font-semibold text-slate-900">
@@ -380,7 +380,7 @@ export function ContactSection() {
                     setForm(EMPTY_FORM);
                     setSent(false);
                   }}
-                  className="btn-secondary mt-6 text-xs"
+                  className="public-btn-secondary mt-6 text-xs"
                 >
                   Send another message
                 </button>
@@ -451,7 +451,7 @@ export function ContactSection() {
                 <button
                   type="submit"
                   disabled={sending}
-                  className="btn-primary mt-6 w-full"
+                  className="public-btn-primary mt-6 w-full"
                 >
                   {sending ? "Sending…" : "Send message"}
                 </button>

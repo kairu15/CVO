@@ -153,6 +153,9 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  *   page keep scrolling; touch needs two fingers. Opt-in: the dashboard maps
  *   own their viewport, so they keep the direct scroll-zoom (default false =
  *   today's behaviour everywhere else).
+ * @param {boolean} [props.zoomControls] show the +/- zoom buttons even on a
+ *   pinned (non-interactive) display map; the buttons zoom programmatically
+ *   without capturing page scroll or drag.
  * @param {boolean} [props.interactive] pan/zoom/handlers at all. When false
  *   the camera is PINNED — the map renders exactly the fitted boundaries
  *   (fitToBoundaries) and ignores every zoom/pan gesture, so an embedded
@@ -192,6 +195,7 @@ function BarangayMapImpl({
   labelCountLabel = "Total Dispersed",
   cooperativeGestures = false,
   interactive = true,
+  zoomControls = false,
   markerLayerIds = [],
   markerLabel = "Markers",
   flows = [],
@@ -277,7 +281,7 @@ function BarangayMapImpl({
     if (!withBoundaries) return;
     const bounds = boundaryBounds(boundaries.collection);
     if (bounds) {
-      mapRef.current?.fitBounds(bounds, { padding: 24, maxZoom: 12, duration: 300 });
+      mapRef.current?.fitBounds(bounds, { padding: 24, maxZoom: 13, duration: 300 });
     }
   }, [withBoundaries, boundaries, clearInternalSelection]);
 
@@ -374,9 +378,9 @@ function BarangayMapImpl({
     containerRef.current.__cvoMap = map;
 
     // The +/− controls sit top-left, matching the barangay-profile maps the
-    // LGU already publishes — except on a pinned (non-interactive) map,
-    // where there is nothing for them to do.
-    if (interactive) {
+    // LGU already publishes. Pinned display maps opt in through zoomControls:
+    // the buttons still zoom, but no drag/scroll gesture is captured.
+    if (interactive || zoomControls) {
       map.addControl(new NavigationControl({ showCompass: false }), "top-left");
     }
     map.addControl(new AttributionControl({ compact: true }), "bottom-right");
@@ -460,6 +464,11 @@ function BarangayMapImpl({
   // municipalities remain visible at the edge.
   useEffect(() => {
     if (!ready || !withBoundaries) return;
+    // Pinned display maps (the landing snapshot) never pan, and a max-bounds
+    // box narrower than their wide viewport at the city-fit zoom would force
+    // MapLibre to zoom IN and crop the outer barangays. Only clamp maps the
+    // user can actually navigate.
+    if (!interactive) return;
     const map = mapRef.current;
     const bounds = boundaryBounds(boundaries.collection);
     if (!map || !bounds) return;
@@ -469,7 +478,7 @@ function BarangayMapImpl({
     } catch {
       // A mid-teardown map can refuse camera options.
     }
-  }, [ready, withBoundaries, boundaries]);
+  }, [ready, withBoundaries, boundaries, interactive]);
 
   // Click / hover behaviour for the polygons, bound once the map is up.
   // Re-bound on picker flips: picker mode takes the raw click instead.
@@ -994,12 +1003,48 @@ function BarangayMapImpl({
     if (!selectedName && withBoundaries) {
       const bounds = boundaryBounds(boundaries.collection);
       if (bounds) {
-        mapRef.current?.fitBounds(bounds, { padding: 24, maxZoom: 12, duration: 0 });
+        mapRef.current?.fitBounds(bounds, { padding: 24, maxZoom: 13, duration: 0 });
       }
     }
     // boundaryBounds depends only on the static asset, not the metric.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, fitToBoundaries, withBoundaries, selectedName]);
+
+  // Re-frame the city when the map BOX changes size. fitBounds runs against
+  // the container it was measured in, so a shorter or narrower container (the
+  // landing snapshot on a phone, a sidebar opening) would otherwise crop the
+  // outer barangays. Skipped while a barangay is selected, so a deliberate
+  // zoom is never snapped back.
+  useEffect(() => {
+    if (!ready || !fitToBoundaries || !withBoundaries || selectedName) {
+      return undefined;
+    }
+
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return undefined;
+
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      window.cancelAnimationFrame(frame);
+      // One frame later: the canvas has taken the new box size by then.
+      frame = window.requestAnimationFrame(() => {
+        const bounds = boundaryBounds(boundaries.collection);
+        if (bounds) {
+          mapRef.current?.fitBounds(bounds, {
+            padding: 24,
+            maxZoom: 13,
+            duration: 0,
+          });
+        }
+      });
+    });
+
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [ready, fitToBoundaries, withBoundaries, selectedName, boundaries]);
 
   const controlClass =
     "inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700";

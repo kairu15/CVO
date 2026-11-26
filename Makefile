@@ -15,7 +15,7 @@ DB            := $(COMPOSE) exec db
 
 .DEFAULT_GOAL := help
 .PHONY: help up down build rebuild restart logs logs-backend logs-frontend ps \
-        migrate seed fresh test test-frontend lint key vendor config \
+        migrate seed fresh test test-frontend test-e2e lint key vendor config \
         shell-backend shell-frontend shell-db \
         prod-up prod-down prod-build prod-logs prod-ps prod-key
 
@@ -63,7 +63,7 @@ logs-frontend: ## Tail the frontend logs
 migrate: ## Run migrations inside the API container
 	$(BACKEND) php artisan migrate --force
 
-seed: ## Seed the demo data (idempotent)
+seed: ## Seed staff accounts and reference data (idempotent)
 	$(BACKEND) php artisan db:seed --force
 
 fresh: ## Drop every table, re-migrate and re-seed
@@ -80,6 +80,9 @@ test: ## Run the backend test suite (sqlite in-memory, does not touch MySQL)
 
 test-frontend: ## Run the frontend unit tests
 	$(COMPOSE) exec frontend npm test
+
+test-e2e: ## Run the browser smoke check in the e2e container
+	$(COMPOSE) --profile e2e run --rm e2e
 
 lint: ## Run the backend formatter check (Pint)
 	$(BACKEND) vendor/bin/pint --test

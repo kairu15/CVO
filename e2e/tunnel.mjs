@@ -16,7 +16,9 @@
 import puppeteer from "puppeteer-core";
 import fs from "node:fs";
 
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const CHROME =
+  process.env.CHROME_PATH ??
+  "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const BASE = (process.argv[2] ?? "").replace(/\/$/, "");
 const PASSWORD = process.argv[3] ?? "password";
 const EMAIL = "kylleacibron@gmail.com";

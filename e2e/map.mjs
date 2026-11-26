@@ -14,7 +14,9 @@
 import fs from "node:fs";
 import puppeteer from "puppeteer-core";
 
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const CHROME =
+  process.env.CHROME_PATH ??
+  "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const BASE = process.env.E2E_BASE ?? "http://localhost:5173";
 const SHOTS = "screenshots";
 fs.mkdirSync(SHOTS, { recursive: true });

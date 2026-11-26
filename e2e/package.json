@@ -1,15 +1,18 @@
 {
-  "name": "e2e",
+  "name": "cvo-e2e",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "description": "Puppeteer browser checks for the CVO web client",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node smoke.mjs",
+    "smoke": "node smoke.mjs",
+    "e2e": "node e2e.mjs",
+    "dashboards": "node dashboards.mjs",
+    "map": "node map.mjs",
+    "flightpath": "node flightpath.mjs",
+    "barangay": "node barangay-dispersal.mjs"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "puppeteer-core": "^25.10.0"
   }

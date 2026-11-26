@@ -10,7 +10,9 @@
 import puppeteer from "puppeteer-core";
 import fs from "node:fs";
 
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const CHROME =
+  process.env.CHROME_PATH ??
+  "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const BASE = "http://localhost:5173";
 const shots = "screenshots/toolbar";
 const WIDTHS = [1920, 1440, 1366, 1024, 768, 430, 390, 360, 320];

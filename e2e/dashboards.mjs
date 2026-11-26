@@ -8,7 +8,9 @@ import puppeteer from "puppeteer-core";
 import fs from "node:fs";
 import { ROLE_KEYS, roles, flatNav } from "../frontend/src/config/roles.js";
 
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const CHROME =
+  process.env.CHROME_PATH ??
+  "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const BASE = "http://localhost:5173";
 const shots = "screenshots";
 fs.mkdirSync(shots, { recursive: true });

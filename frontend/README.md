@@ -61,7 +61,7 @@ root README). Plain `npm run dev` on 5173 is unaffected.
 ## Auth flow (Sanctum SPA)
 
 1. On app load, `AuthProvider` calls `GET /api/v1/user` to restore an existing session.
-2. Before `login`/`register`, the app calls `GET /sanctum/csrf-cookie`; axios then
+2. Before `login`, the app calls `GET /sanctum/csrf-cookie`; axios then
    automatically attaches the `X-XSRF-TOKEN` header from the cookie.
 3. Subsequent requests carry the session cookie (`withCredentials: true`).
 4. A global 401 interceptor clears auth state; `ProtectedRoute` redirects to `/login`.
@@ -73,7 +73,7 @@ src/
 ├── api/          # axios instance + endpoint functions (unwrapped payloads)
 ├── components/   # Layout, routes guards, DispersalMap, CoordinatePicker, …
 ├── config/       # roles.js (nav/permissions), site.js (copy)
-├── context/      # AuthProvider (user, login, register, logout)
+├── context/      # AuthProvider (user, login, logout)
 ├── hooks/        # useMediaQuery, useDebouncedValue
 ├── pages/        # AuthPage, dashboards, MonitoringPage, DispersalMapPage, …
 ├── routes/       # route definitions (map pages are lazy-loaded)
@@ -85,4 +85,4 @@ src/
 - `admin` / kylleacibron@gmail.com — all access (password from `SEED_ACCOUNT_PASSWORD`, local fallback `password`)
 - `technician` / samplekylleuser@gmail.com — field technician
 
-There are no farmer login accounts. Use **Forgot password?** to set a real password; reset codes are emailed through the backend's Gmail SMTP settings.
+There are no beneficiary login accounts. Use **Forgot password?** to set a real password; reset codes are emailed through the backend's Gmail SMTP settings.

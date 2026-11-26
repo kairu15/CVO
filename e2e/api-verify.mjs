@@ -2,7 +2,8 @@
 import puppeteer from "puppeteer-core";
 
 const browser = await puppeteer.launch({
-  executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe",
+  executablePath:
+      process.env.CHROME_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe",
   headless: "new", args: ["--no-sandbox"],
 });
 let failures = 0;

@@ -90,7 +90,7 @@ services:
       # (host:port, no scheme for Sanctum; scheme+host+port for CORS).
       SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost:5173,127.0.0.1:5173}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
-      # Seeds the two staff accounts and sample data. Off by default — startup only
+      # Seeds the two staff accounts and reference data. Off by default — startup only
       # migrates. Set RUN_SEEDERS=true in .env to seed once, or run
       # `php artisan db:seed` explicitly. Shared with prod so the entrypoint
       # behaviour is identical.
@@ -179,10 +179,10 @@ services:
   # ---------------------------------------------------------------------------
   # E2E runner — optional, `--profile e2e`
   #
-  # The e2e scripts use puppeteer-core and currently point at a host Chrome
-  # path, so this service is a convenience shell: install deps and run a script
-  # against the dev stack. Point the scripts' `CHROME` path at the container's
-  # browser (apk add chromium) before expecting them to pass here.
+  # The scripts use puppeteer-core with a CHROME_PATH override, so this service
+  # installs Chromium in the container and runs smoke.mjs against the dev stack.
+  # The container's browser resolves localhost to itself, so the full-stack
+  # suites need E2E_BASE pointed at a host-reachable frontend (see e2e/README.md).
   # ---------------------------------------------------------------------------
   e2e:
     image: node:20-alpine
@@ -190,7 +190,7 @@ services:
       - e2e
     working_dir: /e2e
     environment:
-      E2E_BASE_URL: ${E2E_BASE_URL:-http://frontend:5173}
+      E2E_BASE: ${E2E_BASE:-http://frontend:5173}
     volumes:
       - ./e2e:/e2e
       - e2e_node_modules:/e2e/node_modules
@@ -199,7 +199,7 @@ services:
         condition: service_started
     # Override the command to run a specific suite, e.g.:
     #   docker compose run --rm e2e node e2e.mjs
-    command: sh -lc "npm ci --no-audit --no-fund && node smoke.mjs"
+    command: sh -lc "apk add --no-cache chromium >/dev/null && npm ci --no-audit --no-fund && CHROME_PATH=/usr/bin/chromium node smoke.mjs"
     networks:
       - cvo
 

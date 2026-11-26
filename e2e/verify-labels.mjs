@@ -10,7 +10,9 @@
  */
 import puppeteer from "puppeteer-core";
 
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const CHROME =
+  process.env.CHROME_PATH ??
+  "C:/Program Files/Google/Chrome/Application/chrome.exe";
 // E2E_BASE lets the suite run against a Vite instance on another port
 // (5173 can be captured by WSL/Docker port proxies after a reboot).
 const BASE = process.env.E2E_BASE ?? "http://localhost:5173";

@@ -6,7 +6,9 @@
  */
 import puppeteer from "puppeteer-core";
 
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const CHROME =
+  process.env.CHROME_PATH ??
+  "C:/Program Files/Google/Chrome/Application/chrome.exe";
 // E2E_BASE lets the suite run against a Vite instance on another port
 // (5173 can be captured by WSL/Docker port proxies after a reboot). The
 // host-resolver rule keeps Chrome on IPv4, where php artisan serve listens.

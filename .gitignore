@@ -35,3 +35,9 @@ e2e/screenshots/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local AI/editor tool configuration
+.claude/
+
+# E2E debug output
+e2e/*.log

@@ -36,7 +36,7 @@ npm run ios        # iOS simulator (macOS only)
 
 - `technician` / samplekylleuser@gmail.com — password from `SEED_ACCOUNT_PASSWORD`, local fallback `password` (the GeoTag screen is technician-facing).
 
-There are no farmer or member login accounts.
+There are no beneficiary login accounts.
 
 ## Field geo-tagging
 

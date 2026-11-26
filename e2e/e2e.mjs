@@ -16,7 +16,9 @@
 import puppeteer from "puppeteer-core";
 import fs from "node:fs";
 
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const CHROME =
+  process.env.CHROME_PATH ??
+  "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const BASE = "http://localhost:5173";
 
 const PASSWORD = "password"; // seeded staff accounts use "password"

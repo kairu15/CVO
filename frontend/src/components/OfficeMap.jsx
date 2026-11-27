@@ -12,8 +12,8 @@ import { BarangayMap } from "./BarangayMap";
  * It replaces a keyless Google Maps iframe: the office now sits inside the
  * city's barangay boundaries (its barangay highlighted yellow), on the OSM
  * basemap with proper attribution, wearing the shared toolbar (barangay
- * search, reset, full screen) and permanent name labels. Google Maps
- * survives only as the outbound navigation link next to the card.
+ * search, overlay toggle) and permanent name labels. Google Maps survives
+ * only as the outbound navigation link next to the card.
  *
  * The office's barangay is resolved by point-in-polygon against the static
  * boundary asset (barangayAtPoint), never from coordinates hard-coded here.

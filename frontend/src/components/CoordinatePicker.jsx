@@ -24,12 +24,17 @@ export function CoordinatePicker({ value, onChange, address = "", autoResolve = 
   const [status, setStatus] = useState(null);
   const [locating, setLocating] = useState(false);
   const [finding, setFinding] = useState(false);
+  // The accuracy radius of the LAST device fix, in metres. Only ever set from
+  // a geolocation result — a clicked pin has no measured accuracy, and the
+  // readout must not imply that it does.
+  const [accuracy, setAccuracy] = useState(null);
 
   // Stable pick handler: BarangayMap binds its click listeners through it,
   // so an inline closure would rebind on every keystroke of the form.
   const handlePick = useCallback(
     ([lat, lng]) => {
       onChange([lat, lng]);
+      setAccuracy(null);
       setStatus("Pin set to the clicked map spot.");
     },
     [onChange],
@@ -59,6 +64,7 @@ export function CoordinatePicker({ value, onChange, address = "", autoResolve = 
           return;
         }
         onChange([hit.lat, hit.lng]);
+        setAccuracy(null);
         setStatus(`Pin placed from barangay: ${hit.display_name}`);
       })
       .catch(() => {
@@ -81,14 +87,23 @@ export function CoordinatePicker({ value, onChange, address = "", autoResolve = 
     }
 
     setLocating(true);
+    setAccuracy(null);
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        const radius = Number(position.coords.accuracy);
         onChange([position.coords.latitude, position.coords.longitude]);
+        setAccuracy(Number.isFinite(radius) ? radius : null);
         setStatus("Pin set to your current GPS location.");
         setLocating(false);
       },
-      () => {
-        setStatus("Could not get your location — click the map instead.");
+      (error) => {
+        // Denial, timeout and no-signal are different causes and deserve
+        // different guidance; the manual map pick still works in all three.
+        setStatus(
+          error?.code === 1
+            ? "Location permission was denied — click the map to pin the farm instead."
+            : "Could not get a GPS fix — click the map to pin the farm instead.",
+        );
         setLocating(false);
       },
       { enableHighAccuracy: true, timeout: 10000 },
@@ -126,6 +141,34 @@ export function CoordinatePicker({ value, onChange, address = "", autoResolve = 
           center={value ?? undefined}
           selected={value}
         />
+      </div>
+
+      {/* The coordinate readout is the text alternative to the pin: it names
+          the exact saved pair and, only when a device fix supplied one, the
+          accuracy radius. */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+        {value ? (
+          <span className="font-medium tabular-nums">
+            {Number(value[0]).toFixed(5)}, {Number(value[1]).toFixed(5)}
+          </span>
+        ) : (
+          <span>No pin placed yet.</span>
+        )}
+        {value && accuracy !== null && (
+          <span
+            className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] font-semibold ${
+              accuracy <= 50
+                ? "bg-brand-50 text-brand-800"
+                : "bg-amber-50 text-amber-800"
+            }`}
+          >
+            ±{Math.round(accuracy)} m GPS
+            {accuracy > 50 ? " · weak fix" : ""}
+          </span>
+        )}
+        {value && accuracy === null && (
+          <span className="text-slate-400">Position not measured by GPS</span>
+        )}
       </div>
     </fieldset>
   );

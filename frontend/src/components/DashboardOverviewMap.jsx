@@ -6,7 +6,9 @@ import { getErrorMessage } from "../api/client";
 import { Icon } from "./Icons";
 import { useBarangayBoundaries } from "../hooks/useBarangayBoundaries";
 import { buildChoropleth, SEQUENTIAL_STOPS } from "../lib/barangayBoundaries";
+import { buildCircleFeatures, circleSizeSamples, CIRCLE_PALETTE } from "../lib/mapCircles";
 import { fetchAnimalTrail } from "../lib/ownershipPath";
+import { MapInfoPanel } from "./MapInfoPanel";
 import { FLIGHT_TRAIL_LAYER_IDS } from "./DispersalMap";
 
 // MapLibre is heavy — keep it out of the main bundle and load it only when
@@ -115,9 +117,17 @@ export function DashboardOverviewMap({ roleKey }) {
     });
   }, [boundaries, snapshot]);
 
+  // Circles sized by the same snapshot counts as the polygon fills.
+  const circles = useMemo(
+    () => (choropleth ? buildCircleFeatures(choropleth) : null),
+    [choropleth],
+  );
+  const sizeSamples = useMemo(() => circleSizeSamples(choropleth?.max ?? 0), [choropleth]);
+
   // Click-to-focus: selecting a barangay highlights it and dims every other
   // barangay's journeys, so an administrator can read ONE barangay's trails
-  // out of the city-wide tangle. Click again (or Reset view) to clear.
+  // out of the city-wide tangle. The same selection opens the summary panel;
+  // clicking it again (or closing the panel) clears both.
   const [focusedBarangay, setFocusedBarangay] = useState(null);
   const [focusedFeatureId, setFocusedFeatureId] = useState(null);
   const handleBarangayClick = useCallback(
@@ -132,6 +142,41 @@ export function DashboardOverviewMap({ roleKey }) {
     setFocusedBarangay(null);
     setFocusedFeatureId(null);
   }, []);
+
+  // The panel reads its number from the SAME snapshot rows as the fills, so
+  // it cannot show a different count.
+  const focusedRow = useMemo(() => {
+    if (!focusedBarangay) return null;
+    const row = (snapshot?.barangays ?? []).find(
+      (candidate) => candidate.name === focusedBarangay,
+    );
+    return {
+      name: focusedBarangay,
+      pins: Number(row?.pins ?? row?.count ?? 0),
+    };
+  }, [snapshot, focusedBarangay]);
+
+  const sizeLegend = sizeSamples.length > 0 && (
+    <div className="flex items-center gap-2">
+      <span className="font-semibold">Circle size</span>
+      <span>geo-tagged animals</span>
+      <span className="flex items-end gap-1" aria-hidden="true">
+        {sizeSamples.map((sample) => (
+          <span
+            key={sample.value}
+            className="inline-block rounded-full"
+            style={{
+              width: sample.size,
+              height: sample.size,
+              background: CIRCLE_PALETTE.fill,
+              boxShadow: `0 0 0 2px #fff, 0 0 8px ${CIRCLE_PALETTE.glow}66`,
+            }}
+            title={`${sample.value}`}
+          />
+        ))}
+      </span>
+    </div>
+  );
 
   return (
     <section className="card p-6">
@@ -197,6 +242,61 @@ export function DashboardOverviewMap({ roleKey }) {
                     selectedFeatureId={focusedFeatureId}
                     onBarangayClick={handleBarangayClick}
                     onReset={handleResetFocus}
+                    circles={circles}
+                    selectedCircle={focusedBarangay}
+                    onCircleClick={handleBarangayClick}
+                    circleMetricLabel="geo-tagged animals"
+                    sizeLegend={sizeLegend}
+                    overlay={
+                      <MapInfoPanel
+                        open={Boolean(focusedBarangay)}
+                        onClose={handleResetFocus}
+                        label="Barangay flight-path summary"
+                        badge={
+                          <span className="mb-1.5 inline-flex items-center gap-1 rounded-pill bg-[#285F6B]/10 px-2 py-0.5 text-[10px] font-bold tracking-wide text-[#285F6B] uppercase">
+                            Focused barangay
+                          </span>
+                        }
+                        title={focusedRow?.name ?? ""}
+                        subtitle={
+                          snapshot?.date
+                            ? `Latest recorded day · ${formatDay(snapshot.date)}`
+                            : "Latest recorded snapshot"
+                        }
+                        footer={
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span>The map is now filtered to this barangay's trails.</span>
+                            <Link
+                              to={`/dashboard/${roleKey}/map?barangay=${encodeURIComponent(focusedRow?.name ?? "")}`}
+                              className="inline-flex items-center gap-1 font-semibold text-[#285F6B] hover:underline"
+                            >
+                              Open map
+                              <Icon name="arrow-right" className="h-3 w-3" />
+                            </Link>
+                          </div>
+                        }
+                      >
+                        <div className="map-panel__stats">
+                          <div className="map-panel__stat">
+                            <p className="map-panel__stat-label">Geo-tagged animals</p>
+                            <p className="map-panel__stat-value">
+                              {(focusedRow?.pins ?? 0).toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="map-panel__stat">
+                            <p className="map-panel__stat-label">Recorded day</p>
+                            <p className="map-panel__stat-value">
+                              {snapshot?.date ? formatDay(snapshot.date) : "—"}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-xs leading-relaxed text-slate-600">
+                          {(focusedRow?.pins ?? 0) === 0
+                            ? "No geo-tagged animal in this barangay on the selected snapshot."
+                            : `${(focusedRow?.pins ?? 0).toLocaleString()} animal${focusedRow?.pins === 1 ? "" : "s"} in ${focusedRow?.name} have a journey drawn from the same ownership records as the Dispersal Map.`}
+                        </p>
+                      </MapInfoPanel>
+                    }
                     // Every barangay wears its name and its dispersal
                     // count on the map itself — no hover needed, and no
                     // cursor-side label to cover the controls.

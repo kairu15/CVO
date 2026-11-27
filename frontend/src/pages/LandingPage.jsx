@@ -38,7 +38,7 @@ const OBSERVED_SECTIONS = ["home", "about", "services", "contact"];
  * fold. Shared by the live map, its loading placeholder and the illustrative
  * fallback so the card never jumps between states.
  */
-const SNAPSHOT_MAP_HEIGHT = "h-[260px] sm:h-[320px] lg:h-[380px]";
+const SNAPSHOT_MAP_HEIGHT = "h-[300px] sm:h-[320px] lg:h-[380px]";
 
 export default function LandingPage() {
   const { data, error } = usePublicMapSummary();
@@ -212,6 +212,7 @@ export default function LandingPage() {
                 >
                   <LandingMap
                     barangays={data?.barangays ?? []}
+                    totals={data?.totals ?? null}
                     height={SNAPSHOT_MAP_HEIGHT}
                   />
                 </Suspense>

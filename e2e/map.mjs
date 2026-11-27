@@ -490,9 +490,10 @@ try {
       focusState?.selected === true,
       `${focusClick.name} selected=${Boolean(focusState?.selected)}`,
     );
-    // Reset view clears the focus (the shared toolbar's reset hands off to
-    // onReset) and returns the camera to the whole-city frame.
-    await page.click('button[aria-label="Reset map to the whole city"]');
+    // The detail panel's close control is the way out now: closing it hands
+    // off to the page's onReset, clearing the focus and returning the camera
+    // to the whole-city frame. (The toolbar's Reset view button was removed.)
+    await page.keyboard.press("Escape");
     await sleep(1000);
     const clearedState = await page.evaluate((id) => {
       const map = [...document.querySelectorAll(".cvo-map-shell")].find((el) => el.__cvoMap)?.__cvoMap;
@@ -502,7 +503,7 @@ try {
       };
     }, focusClick.id);
     ok(
-      "Overview: reset view clears the focus and returns to the city frame",
+      "Overview: closing the detail panel clears the focus and returns to the city frame",
       clearedState.state?.selected === false && clearedState.zoom < 12.2,
       `selected=${Boolean(clearedState.state?.selected)}, zoom=${clearedState.zoom?.toFixed(2)}`,
     );

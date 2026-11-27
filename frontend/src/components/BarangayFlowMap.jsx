@@ -17,6 +17,7 @@ import {
   metricValue,
   normalizeBarangayName,
 } from "../lib/barangayBoundaries";
+import { buildCircleFeatures, circleSizeSamples, CIRCLE_PALETTE } from "../lib/mapCircles";
 import { useBarangayBoundaries } from "../hooks/useBarangayBoundaries";
 import { BARANGAY_FILL_LAYER, BarangayMap } from "./BarangayMap";
 import { BarangayDetailPopup } from "./BarangayDetailPopup";
@@ -152,6 +153,18 @@ export function BarangayFlowMap({
     if (boundaries.status !== "ready") return null;
     return buildChoropleth(boundaries.collection, rows, { metric, per1000 });
   }, [boundaries, rows, metric, per1000]);
+
+  // Circle markers: the same metric as the fill, re-stated as AREA at each
+  // barangay's interior label point. Selecting one opens the same detail
+  // popup a polygon click does.
+  const circles = useMemo(
+    () => (choropleth ? buildCircleFeatures(choropleth) : null),
+    [choropleth],
+  );
+  const circleSamples = useMemo(
+    () => circleSizeSamples(choropleth?.max ?? 0),
+    [choropleth],
+  );
 
   // Bubble fallback data — only painted when the boundary asset is missing.
   // Coordinates go through the shared validator: a row whose latitude arrived
@@ -636,6 +649,28 @@ export function BarangayFlowMap({
     [metric, per1000, metricLabel, minRateAnimals],
   );
 
+  const sizeLegend = circleSamples.length > 0 && (
+    <div className="flex items-center gap-2">
+      <span className="font-semibold">Circle size</span>
+      <span>{metricLabel.toLowerCase()}</span>
+      <span className="flex items-end gap-1" aria-hidden="true">
+        {circleSamples.map((sample) => (
+          <span
+            key={sample.value}
+            className="inline-block rounded-full"
+            style={{
+              width: sample.size,
+              height: sample.size,
+              background: CIRCLE_PALETTE.fill,
+              boxShadow: `0 0 0 2px #fff, 0 0 8px ${CIRCLE_PALETTE.glow}66`,
+            }}
+            title={`${sample.value}`}
+          />
+        ))}
+      </span>
+    </div>
+  );
+
   const legendNotesNode = useMemo(
     () => (
       <>
@@ -679,6 +714,11 @@ export function BarangayFlowMap({
         choropleth={choropleth}
         onMapReady={handleMapReady}
         onBarangayClick={handleBarangayClick}
+        circles={circles}
+        selectedCircle={selection?.name ?? null}
+        onCircleClick={handleBarangayClick}
+        circleMetricLabel={metricLabel.toLowerCase()}
+        sizeLegend={sizeLegend}
         selectedName={selection?.name ?? null}
         selectedFeatureId={selection?.featureId ?? null}
         beforeLayerId="barangay-flow-casing"

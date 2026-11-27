@@ -9,6 +9,7 @@ import {
   QUALITY_STOPS,
   SEQUENTIAL_STOPS,
 } from "../lib/barangayBoundaries";
+import { buildCircleFeatures, circleSizeSamples, CIRCLE_PALETTE } from "../lib/mapCircles";
 import { FLOW_LAYER_IDS } from "../lib/mapFlows";
 import { useBarangayBoundaries } from "../hooks/useBarangayBoundaries";
 import { fetchAnimalTrail } from "../lib/ownershipPath";
@@ -400,6 +401,45 @@ export default function DispersalMapPage({ roleKey }) {
     return feature?.id ?? null;
   }, [barangayFilter, choropleth]);
   const selectedFeatureId = clickedFeatureId ?? urlFeatureId;
+
+  // Aggregate circles sized by the same barangay counts the fills use. Zero
+  // rows are skipped here: on the working map the individual pins ARE the
+  // content, and 28 empty dots would just crowd them.
+  const barangayCircles = useMemo(
+    () => (choropleth ? buildCircleFeatures(choropleth, { includeZero: false }) : null),
+    [choropleth],
+  );
+  const circleSamples = useMemo(
+    () => circleSizeSamples(choropleth?.max ?? 0),
+    [choropleth],
+  );
+  // A stable node: BarangayMap is memoised, and a fresh element on every
+  // poll would re-render the whole map subtree for no visual change.
+  const circleLegend = useMemo(
+    () =>
+      circleSamples.length > 0 ? (
+        <div className="flex items-center gap-2">
+          <span className="font-semibold">Circle size</span>
+          <span>{householdView ? "households" : "animals"} per barangay</span>
+          <span className="flex items-end gap-1" aria-hidden="true">
+            {circleSamples.map((sample) => (
+              <span
+                key={sample.value}
+                className="inline-block rounded-full"
+                style={{
+                  width: sample.size,
+                  height: sample.size,
+                  background: CIRCLE_PALETTE.fill,
+                  boxShadow: `0 0 0 2px #fff, 0 0 8px ${CIRCLE_PALETTE.glow}66`,
+                }}
+                title={`${sample.value}`}
+              />
+            ))}
+          </span>
+        </div>
+      ) : null,
+    [circleSamples, householdView],
+  );
 
   useEffect(() => {
     controlsRef.current?.hideFlightPath();
@@ -871,6 +911,11 @@ export default function DispersalMapPage({ roleKey }) {
                       selectedFeatureId={selectedFeatureId}
                       onBarangayClick={handleBarangayClick}
                       onReset={handleResetView}
+                      circles={barangayCircles}
+                      selectedCircle={barangayFilter || null}
+                      onCircleClick={handleBarangayClick}
+                      circleMetricLabel={householdView ? "households" : "animals"}
+                      sizeLegend={circleLegend}
                       flows={movementFlows}
                       ariaLabel={`Map of Bayawan City's barangays with ${
                         householdView ? "household" : "animal"

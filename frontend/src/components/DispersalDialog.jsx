@@ -915,7 +915,13 @@ export function DispersalDialog({
                     type="button"
                     className="btn-secondary !px-3.5 !py-1.5 text-xs"
                     onClick={() => {
-                      setForm((prev) => ({ ...prev, latitude: null, longitude: null, source: null }));
+                      setForm((prev) => ({
+                        ...prev,
+                        latitude: null,
+                        longitude: null,
+                        source: null,
+                        accuracyM: null,
+                      }));
                       setLocationTouched(true);
                     }}
                   >
@@ -926,7 +932,16 @@ export function DispersalDialog({
 
               <BarangayPickMap
                 onPick={([lat, lng]) => {
-                  setForm((prev) => ({ ...prev, latitude: lat, longitude: lng, source: "manual_pin" }));
+                  // A manual pin has no GPS accuracy: the previous fix's radius
+                  // must not be carried onto a coordinate the device did not
+                  // measure, or the saved record would overstate its quality.
+                  setForm((prev) => ({
+                    ...prev,
+                    latitude: lat,
+                    longitude: lng,
+                    source: "manual_pin",
+                    accuracyM: null,
+                  }));
                   setLocationTouched(true);
                 }}
                 center={hasCoordinates ? [form.latitude, form.longitude] : undefined}
@@ -937,7 +952,7 @@ export function DispersalDialog({
                 {hasCoordinates
                   ? `Handover location: ${form.latitude}, ${form.longitude}${
                       form.source ? ` (${form.source.replace("_", " ")})` : ""
-                    }.`
+                    }${form.accuracyM != null ? ` · ±${Math.round(form.accuracyM)} m GPS accuracy` : ""}.`
                   : "No handover location recorded — the path will fall back to the owner's pin or the barangay centre."}
               </p>
             </fieldset>

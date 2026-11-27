@@ -25,6 +25,17 @@ import {
   FLOW_LAYER_IDS,
   FLOW_SOURCE,
 } from "../lib/mapFlows";
+import {
+  CIRCLE_CLUSTER_LAYER,
+  CIRCLE_CORE_LAYER,
+  CIRCLE_LAYER_IDS,
+  CIRCLE_MAIN_LAYER,
+  CIRCLE_SOURCE,
+  circleClusterLayerSpecs,
+  circleLayerSpecs,
+  circlePaintForMode,
+  circleSourceOptions,
+} from "../lib/mapCircles";
 
 /**
  * A label shows only when its barangay spans at least this many on-screen
@@ -39,24 +50,51 @@ const LABEL_FALLBACK_WIDTH = 70;
 const LABEL_FALLBACK_HEIGHT = 22;
 const LABEL_COLLISION_GAP = 3;
 
+/**
+ * Vertical shift for a name label when circle markers are on. The circle sits
+ * AT the barangay's interior point; without the shift the bold name (with its
+ * white halo) is painted straight over the marker and hides every small
+ * circle. Moving the label down leaves the dot as the anchor — the marker +
+ * name pattern the reference map uses.
+ */
+const LABEL_OFFSET_WITH_MARKERS = 14;
+
 /** Metres per screen pixel at a given zoom, for a given latitude. */
 function metresPerPixel(zoom, latitude) {
   return (156543.03392 * Math.cos((latitude * Math.PI) / 180)) / 2 ** zoom;
 }
 
 /**
- * Keep the camera near Bayawan: pad the city bounds by ~a third of their
- * size, so neighbouring municipalities peek in at the edge but a user cannot
- * lose the city. MapLibre takes [[west, south], [east, north]].
+ * The camera's panning box, sized for the map box's own aspect ratio.
+ *
+ * A tight box around the city cannot contain a short, wide viewport: fitting
+ * the city's north–south extent needs a much wider longitude span than the
+ * city itself, so MapLibre would honour maxBounds by zooming IN and cropping
+ * the outer barangays (the exact opposite of a city-wide view). Expanding the
+ * box to the viewport's aspect, plus a small margin, keeps the whole-city fit
+ * possible while still confining the camera to Bayawan.
+ *
+ * boundaryBounds() returns [west, south, east, north]; MapLibre takes
+ * [[west, south], [east, north]].
  */
-function clampBounds(bounds) {
-  // boundaryBounds() returns [west, south, east, north].
+function cameraBounds(bounds, container, margin = 1.08) {
   const [west, south, east, north] = bounds;
-  const padX = (east - west) * 0.35;
-  const padY = (north - south) * 0.35;
+  const lngSpan = east - west;
+  const latSpan = north - south;
+  if (!(lngSpan > 0) || !(latSpan > 0)) return null;
+
+  const aspect =
+    container && container.clientHeight > 0
+      ? container.clientWidth / container.clientHeight
+      : lngSpan / latSpan;
+  const boxLng = Math.max(lngSpan, latSpan * aspect) * margin;
+  const boxLat = Math.max(latSpan, boxLng / aspect);
+  const centerLng = (west + east) / 2;
+  const centerLat = (south + north) / 2;
+
   return [
-    [west - padX, south - padY],
-    [east + padX, north + padY],
+    [centerLng - boxLng / 2, centerLat - boxLat / 2],
+    [centerLng + boxLng / 2, centerLat + boxLat / 2],
   ];
 }
 
@@ -118,10 +156,10 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  *   feature id — painted yellow through feature-state `selected`, above hover
  * @param {(name: string|null) => void} [props.onBarangayClick]
  *   polygon click; the parent owns selection state (click again = clear)
- * @param {() => void} [props.onReset] fired when the toolbar's "Reset view"
- *   is used — pages that mirror selection state in the URL clear it here, so
- *   "reset" returns the whole feature (camera AND selection) to the
- *   city-wide view.
+ * @param {() => void} [props.onReset] fired when the search focus is cleared
+ *   (the toolbar's Reset view button was removed) — pages that mirror
+ *   selection state in the URL clear it here, so a cleared search returns
+ *   the whole feature (camera AND selection) to the city-wide view.
  * @param {string[]} [props.clickThroughLayers] parent layer ids that SWALLOW
  *   a click/hover — MapLibre layer events are not occlusion-aware, so
  *   without this gate a click on a pin or flow line would ALSO select the
@@ -171,6 +209,38 @@ export const BARANGAY_FILL_LAYER = FILL_LAYER;
  * @param {boolean} [props.preserveDrawingBuffer] keep the WebGL canvas
  *   readable after a frame for the Admin Map's PNG export. Opt-in: the cost
  *   is only paid by the one map that offers that action.
+ * @param {object|null} [props.circles] paint-ready circle features from
+ *   buildCircleFeatures(): one marker per barangay at its interior label
+ *   point, sized by its value. Painted as four layers (glow, halo, marker,
+ *   centre) UNDER the parent's own overlay, so pins stay on top.
+ * @param {string|null} [props.selectedCircle] the selected circle's barangay
+ *   name — hover/selection ride feature-state, so no source rebuilds.
+ * @param {(name: string, feature: object, event: object) => void} [props.onCircleClick]
+ *   a circle was clicked; falls back to onBarangayClick when absent.
+ * @param {import("react").ReactNode} [props.sizeLegend] the circle-size
+ *   legend item ("circle size = …"), shown beside the colour ramp.
+ * @param {boolean} [props.showToolbar] render the app toolbar. Compact
+ *   embedded maps (the landing snapshot) hide it but keep map gestures.
+ * @param {import("react").ReactNode} [props.overlay] content rendered inside
+ *   the map box's own stacking context (the shared detail panel), so it is
+ *   positioned against the canvas rather than the page.
+ * @param {boolean} [props.clusterCircles] group overlapping circles into one
+ *   bubble until zoom 12 (default true). The bubble's size is the number of
+ *   barangays it groups, its hover label reports the summed value, and a
+ *   click zooms to split it. Set false for a map where every barangay must
+ *   be separately visible at every zoom.
+ * @param {string} [props.circleMetricLabel] what the circle/cluster values
+ *   count, for the cluster hover label ("beneficiaries", "animals"…).
+ * @param {"whole"|"circles"|"glow"} [props.circleMode] display mode for the
+ *   markers. "whole" is the app default; "circles" removes the glow and keeps
+ *   sizes exactly proportional; "glow" enlarges the radial light and the
+ *   growth so the pulse reads as an illuminated hotspot.
+ * @param {boolean} [props.pulseCircles] breathe every marker continuously
+ *   (public hotspot map) instead of only the selected one. Always off for
+ *   reduced-motion users and in "circles" mode.
+ * @param {string} [props.shellClassName] extra class on the map box itself,
+ *   for page-specific chrome (the landing map tags it to keep its mode switch
+ *   clear of the attribution on phones).
  */
 function BarangayMapImpl({
   boundaries,
@@ -200,9 +270,19 @@ function BarangayMapImpl({
   markerLabel = "Markers",
   flows = [],
   preserveDrawingBuffer = false,
+  circles = null,
+  selectedCircle = null,
+  onCircleClick = null,
+  sizeLegend = null,
+  showToolbar = true,
+  overlay = null,
+  clusterCircles = true,
+  circleMetricLabel = "records",
+  circleMode = "whole",
+  pulseCircles = false,
+  shellClassName = "",
 }) {
   const containerRef = useRef(null);
-  const shellRef = useRef(null);
   const mapRef = useRef(null);
   const popupRef = useRef(null);
   const labelMarkersRef = useRef([]);
@@ -216,12 +296,10 @@ function BarangayMapImpl({
   const clickThroughRef = useRef(clickThroughLayers);
   const internalSelectedRef = useRef(null);
   const onResetRef = useRef(onReset);
+  const onCircleClickRef = useRef(onCircleClick);
+  const selectedCircleIdRef = useRef(null);
   const [ready, setReady] = useState(false);
-  const [labelsOn, setLabelsOn] = useState(Boolean(showLabels));
-  const [boundariesOn, setBoundariesOn] = useState(true);
   const [markersOn, setMarkersOn] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [cssFullscreen, setCssFullscreen] = useState(false);
   const [focusName, setFocusName] = useState("");
 
   useEffect(() => {
@@ -242,6 +320,9 @@ function BarangayMapImpl({
   useEffect(() => {
     onResetRef.current = onReset;
   }, [onReset]);
+  useEffect(() => {
+    onCircleClickRef.current = onCircleClick;
+  }, [onCircleClick]);
 
   const withBoundaries = boundaries?.status === "ready";
 
@@ -251,12 +332,6 @@ function BarangayMapImpl({
       (a, b) => a.localeCompare(b),
     );
   }, [boundaries]);
-
-  // The toolbar can switch labels, but pages still decide the default; reset
-  // it when a page changes that default (e.g. a pinned display map).
-  useEffect(() => {
-    setLabelsOn(Boolean(showLabels));
-  }, [showLabels]);
 
   const clearInternalSelection = useCallback(() => {
     const map = mapRef.current;
@@ -321,44 +396,6 @@ function BarangayMapImpl({
     },
     [choropleth, clearInternalSelection],
   );
-
-  const toggleFullscreen = useCallback(async () => {
-    const node = shellRef.current ?? containerRef.current;
-    if (!node) return;
-    if (document.fullscreenElement === node) {
-      await document.exitFullscreen?.();
-      return;
-    }
-    if (cssFullscreen) {
-      setCssFullscreen(false);
-      return;
-    }
-    try {
-      if (!node.requestFullscreen) {
-        setCssFullscreen(true);
-        return;
-      }
-      await node.requestFullscreen();
-      // Some headless/embedded browsers resolve the promise without actually
-      // entering fullscreen; use the fallback when that happens.
-      if (document.fullscreenElement !== node) setCssFullscreen(true);
-    } catch {
-      // Headless browsers, iframes and some phone browsers refuse the native
-      // API. Fall back to a fixed full-viewport card so the control still
-      // does what it says.
-      setCssFullscreen(true);
-    }
-  }, [cssFullscreen]);
-
-  // Escape closes the CSS fallback (native fullscreen handles its own Esc).
-  useEffect(() => {
-    if (!cssFullscreen) return undefined;
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") setCssFullscreen(false);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [cssFullscreen]);
 
   // Map created once; the container owns it for its whole life.
   useEffect(() => {
@@ -440,25 +477,6 @@ function BarangayMapImpl({
     };
   }, [ready]);
 
-  // Native fullscreen changes the container box without a window resize; the
-  // observer above usually catches it, this is the belt-and-braces path for
-  // browsers that paint fullscreen before layout settles.
-  useEffect(() => {
-    const onFullscreenChange = () => {
-      setIsFullscreen(document.fullscreenElement === shellRef.current);
-      if (!document.fullscreenElement) setCssFullscreen(false);
-      window.setTimeout(() => {
-        try {
-          mapRef.current?.resize();
-        } catch {
-          // Map already torn down.
-        }
-      }, 60);
-    };
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
-
   // Keep the camera around Bayawan. The city bounds are static, so this runs
   // once per successful boundary load; maxBounds is padded so the surrounding
   // municipalities remain visible at the edge.
@@ -472,8 +490,10 @@ function BarangayMapImpl({
     const map = mapRef.current;
     const bounds = boundaryBounds(boundaries.collection);
     if (!map || !bounds) return;
+    const box = cameraBounds(bounds, containerRef.current);
+    if (!box) return;
     try {
-      map.setMaxBounds?.(clampBounds(bounds));
+      map.setMaxBounds?.(box);
       map.setMinZoom?.(9);
     } catch {
       // A mid-teardown map can refuse camera options.
@@ -492,11 +512,35 @@ function BarangayMapImpl({
     // reports the polygon underneath. When the topmost feature at the
     // pointer belongs to a parent layer (pins, flow lines), the polygons
     // stand down so the parent's own handler owns the interaction.
-    const polygonBlocked = (event) => {
-      const layers = clickThroughRef.current;
-      if (!layers || layers.length === 0) return false;
-      const top = map.queryRenderedFeatures(event.point);
-      return top.some((feature) => layers.includes(feature.layer?.id));
+    // Returns what is on top of the polygon: "circle", "parent", or null.
+    // The KIND matters for hover — a circle owns its own cursor tooltip, a
+    // parent pin/trail does not.
+    const polygonBlocker = (event) => {
+      // Circles are ours and sit above the polygons: their own handler owns
+      // the click. Parent layers (pins, trails) are passed in by the page.
+      // Querying is restricted to those layers — and skipped entirely when a
+      // page has neither — so a plain polygon map keeps its old cheap hover.
+      const circleLayers = map.getSource(CIRCLE_SOURCE)
+        ? CIRCLE_LAYER_IDS.filter((id) => map.getLayer(id))
+        : [];
+      if (
+        circleLayers.length > 0 &&
+        map.queryRenderedFeatures(event.point, { layers: circleLayers }).length > 0
+      ) {
+        return "circle";
+      }
+
+      const parentLayers = Array.isArray(clickThroughRef.current)
+        ? clickThroughRef.current.filter((id) => map.getLayer(id))
+        : [];
+      if (
+        parentLayers.length > 0 &&
+        map.queryRenderedFeatures(event.point, { layers: parentLayers }).length > 0
+      ) {
+        return "parent";
+      }
+
+      return null;
     };
 
     const clearHover = () => {
@@ -514,9 +558,14 @@ function BarangayMapImpl({
     };
 
     const onMove = (event) => {
-      if (polygonBlocked(event)) {
+      const blocker = polygonBlocker(event);
+      if (blocker) {
         clearHover();
-        popupRef.current?.remove();
+        // MapLibre fires this fill handler for the same pointer that is over
+        // a circle, after the circle's own handler has shown its tooltip.
+        // Removing the popup here would wipe it out immediately; only a
+        // parent pin/trail makes the polygon stand down completely.
+        if (blocker === "parent") popupRef.current?.remove();
         return;
       }
       const feature = event.features?.[0];
@@ -569,7 +618,7 @@ function BarangayMapImpl({
     }
 
     const polygonClick = (event) => {
-      if (polygonBlocked(event)) return;
+      if (polygonBlocker(event)) return;
       const name = event.features?.[0]?.properties?.name ?? null;
       // The event rides along: a parent that opens an anchored card needs the
       // clicked lngLat and the polygon geometry, not just the name.
@@ -627,7 +676,17 @@ function BarangayMapImpl({
         type: "geojson",
         data: choropleth.collection,
       });
-      const insertBefore = beforeLayerId && map.getLayer(beforeLayerId) ? beforeLayerId : undefined;
+      // The choropleth goes directly above the raster basemap, i.e. at the
+      // BOTTOM of the app's own stack. Appending at the top (what an undefined
+      // insertBefore does) would land the fill above overlays that were added
+      // while the boundaries were still fetching — circles, movement lines —
+      // and its 0.92 opacity would bury them. Inserting before the lowest
+      // app layer keeps the fill under every overlay however late it arrives,
+      // while `beforeLayerId` remains the hint for pages that want pins above.
+      const layers = map.getStyle?.()?.layers ?? [];
+      const basemapIndex = layers.findIndex((layer) => layer.id === "osm");
+      const insertBefore =
+        basemapIndex >= 0 ? layers[basemapIndex + 1]?.id : layers[0]?.id;
       map.addLayer(
         {
           id: FILL_LAYER,
@@ -647,6 +706,8 @@ function BarangayMapImpl({
               ["get", "color"],
             ],
             "fill-opacity": 0.92,
+            // Mode switches dim the fill with a cross-fade instead of a jump.
+            "fill-opacity-transition": { duration: 320, delay: 0 },
           },
         },
         insertBefore,
@@ -754,18 +815,407 @@ function BarangayMapImpl({
     }
   }, [ready, flows, beforeLayerId]);
 
-  // Layer toggles: boundaries and labels are ours; marker layers belong to
-  // the parent but are hidden by id. Declared AFTER the layer effect so the
-  // first paint already carries the current toggle state.
+  // Circle markers: one data-driven source and four layers (glow, halo,
+  // marker, centre dot), added UNDER the parent's overlay so pins and trails
+  // keep their own clicks. Feature ids come from the choropleth's stable
+  // indices, so hover/selection state survives a fresh snapshot.
+  useEffect(() => {
+    if (!ready) return;
+    const map = mapRef.current;
+    if (!map) return;
+
+    const data = circles ?? { type: "FeatureCollection", features: [] };
+    const insertBefore = beforeLayerId && map.getLayer(beforeLayerId) ? beforeLayerId : undefined;
+
+    if (!map.getSource(CIRCLE_SOURCE)) {
+      map.addSource(CIRCLE_SOURCE, {
+        type: "geojson",
+        data,
+        ...circleSourceOptions(clusterCircles),
+      });
+      // Cluster bubbles first so the individual markers paint above them.
+      if (clusterCircles) {
+        for (const layer of circleClusterLayerSpecs()) map.addLayer({ ...layer }, insertBefore);
+      }
+      for (const layer of circleLayerSpecs(circleMode)) map.addLayer({ ...layer }, insertBefore);
+    } else {
+      map.getSource(CIRCLE_SOURCE).setData(data);
+    }
+
+    // Seed the state keys the paint expressions read. Without this a
+    // feature-state read on a feature that has never been hovered can be
+    // null inside arithmetic; zero keeps the resting paint exact.
+    for (const feature of data.features ?? []) {
+      if (feature.id === undefined || feature.id === null) continue;
+      try {
+        map.setFeatureState(
+          { source: CIRCLE_SOURCE, id: feature.id },
+          { hover: false, selected: false, pulse: 0 },
+        );
+      } catch {
+        // Source torn down with the map.
+      }
+    }
+    // A clustering change after the source exists cannot be applied to a
+    // live GeoJSON source; pages set it once (as they do their overlays).
+  }, [ready, circles, beforeLayerId, clusterCircles, circleMode]);
+
+  // Display modes: recolour the four marker layers and let the polygon fill
+  // step back so the glow reads. Only paint properties change — never the
+  // layers or the source — so a mode switch cannot move a marker or a click.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready) return;
-    const visibility = boundariesOn ? "visible" : "none";
-    for (const id of [FILL_LAYER, OUTLINE_CASING_LAYER, OUTLINE_LAYER]) {
-      if (map.getLayer?.(id)) map.setLayoutProperty?.(id, "visibility", visibility);
-    }
-  }, [ready, boundariesOn, choropleth]);
+    if (!map || !ready || !map.getLayer(CIRCLE_MAIN_LAYER)) return;
+    // Cordless test doubles expose getLayer but not the paint API.
+    if (typeof map.setPaintProperty !== "function") return;
 
+    const paint = circlePaintForMode(circleMode);
+    const reduced =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    try {
+      for (const [layerId, properties] of Object.entries(paint)) {
+        for (const [key, value] of Object.entries(properties)) {
+          map.setPaintProperty(layerId, key, value);
+        }
+        // A mode switch is a cross-fade; reduced motion gets the final frame.
+        if (reduced) {
+          for (const key of [
+            "circle-radius-transition",
+            "circle-opacity-transition",
+            "circle-color-transition",
+            "circle-stroke-width-transition",
+            "circle-stroke-opacity-transition",
+          ]) {
+            map.setPaintProperty(layerId, key, { duration: 0, delay: 0 });
+          }
+        }
+      }
+
+      // The choropleth steps back so the hotspot layer carries the emphasis,
+      // but it never disappears: the fills still encode the same metric.
+      if (withBoundaries && map.getLayer(FILL_LAYER)) {
+        map.setPaintProperty(
+          FILL_LAYER,
+          "fill-opacity",
+          circleMode === "glow" ? 0.2 : circleMode === "circles" ? 0.42 : 0.92,
+        );
+        if (reduced) {
+          map.setPaintProperty(FILL_LAYER, "fill-opacity-transition", { duration: 0, delay: 0 });
+        }
+      }
+    } catch {
+      // Layers torn down with the map.
+    }
+  }, [ready, circleMode, circles, withBoundaries]);
+
+  // Circle hover highlight, cursor feedback and click. Bound lazily: the
+  // source is created by the effect above, which may land after map load.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !circles) return undefined;
+
+    let bound = false;
+    let hovered = null;
+
+    const clearHover = () => {
+      if (hovered !== null) {
+        try {
+          map.setFeatureState({ source: CIRCLE_SOURCE, id: hovered }, { hover: false });
+        } catch {
+          // Source already torn down with the map.
+        }
+      }
+      hovered = null;
+      map.getCanvas().style.cursor = "";
+    };
+
+    const onMove = (event) => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      if (hovered !== null && hovered !== feature.id) {
+        try {
+          map.setFeatureState({ source: CIRCLE_SOURCE, id: hovered }, { hover: false });
+        } catch {
+          // Source already torn down with the map.
+        }
+      }
+      hovered = feature.id ?? null;
+      if (feature.id !== undefined && feature.id !== null) {
+        try {
+          map.setFeatureState({ source: CIRCLE_SOURCE, id: feature.id }, { hover: true });
+        } catch {
+          // Source already torn down with the map.
+        }
+      }
+      map.getCanvas().style.cursor = "pointer";
+      if (tooltipRef.current) {
+        popupRef.current
+          ?.setLngLat(event.lngLat)
+          .setHTML(tooltipRef.current(feature.properties ?? {}))
+          .addTo(map);
+      }
+    };
+
+    const onClick = (event) => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      const name = feature.properties?.name ?? null;
+      if (!name) return;
+      // Hand the page an event-shaped object with the circle's id and lngLat:
+      // the same handlers that serve polygon clicks then work unchanged (the
+      // circle and its polygon share the choropleth's stable id), so the
+      // detail card anchors to the circle and the polygon highlight follows.
+      const eventLike = {
+        lngLat: event.lngLat,
+        point: event.point,
+        features: [feature],
+      };
+      if (onCircleClickRef.current) {
+        onCircleClickRef.current(name, eventLike, event);
+      } else {
+        clickRef.current?.(name, eventLike);
+      }
+    };
+
+    const leave = () => {
+      clearHover();
+      popupRef.current?.remove();
+    };
+
+    const bind = () => {
+      if (bound || !map.getLayer(CIRCLE_CORE_LAYER)) return;
+      // The marker layer is the hit target: the glow and halo are larger
+      // than the value-scaled circle and would swallow neighbouring clicks.
+      const hitLayer = map.getLayer(CIRCLE_MAIN_LAYER) ? CIRCLE_MAIN_LAYER : CIRCLE_CORE_LAYER;
+      map.on("mousemove", hitLayer, onMove);
+      map.on("mouseleave", hitLayer, leave);
+      map.on("click", hitLayer, onClick);
+      bound = true;
+    };
+
+    let clusterBound = false;
+
+    const clusterTooltip = (properties) => {
+      const count = Number(properties?.point_count) || 0;
+      const total = Number(properties?.total) || 0;
+      return (
+        `<div style="min-width:160px">` +
+        `<p style="margin:0;font-weight:600;color:#f8fafc">${count} barangay${count === 1 ? "" : "s"} grouped</p>` +
+        `<p style="margin:2px 0 0;font-size:12px;color:#cbd5e1">${total.toLocaleString()} ${circleMetricLabel} in total</p>` +
+        `<p style="margin:3px 0 0;font-size:11px;color:#94a3b8">Click to zoom in and separate them</p>` +
+        `</div>`
+      );
+    };
+
+    const onClusterMove = (event) => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      map.getCanvas().style.cursor = "pointer";
+      popupRef.current
+        ?.setLngLat(event.lngLat)
+        .setHTML(clusterTooltip(feature.properties ?? {}))
+        .addTo(map);
+    };
+
+    const onClusterLeave = () => {
+      map.getCanvas().style.cursor = "";
+      popupRef.current?.remove();
+    };
+
+    const onClusterClick = (event) => {
+      const feature = event.features?.[0];
+      const clusterId = feature?.properties?.cluster_id;
+      const source = map.getSource(CIRCLE_SOURCE);
+      if (clusterId === undefined || !source?.getClusterExpansionZoom) return;
+
+      const center = feature.geometry.coordinates.slice();
+      const reduced =
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      // Zoom to the level where this cluster splits; the same gesture the
+      // reference map uses, with a short eased camera move.
+      Promise.resolve(source.getClusterExpansionZoom(clusterId))
+        .then((zoom) => {
+          map.easeTo({
+            center,
+            zoom: Math.max(Number(zoom) || map.getZoom() + 1, map.getZoom()),
+            duration: reduced ? 0 : 450,
+          });
+        })
+        .catch(() => {
+          map.easeTo({
+            center,
+            zoom: Math.min(15, map.getZoom() + 2),
+            duration: reduced ? 0 : 450,
+          });
+        });
+    };
+
+    const bindClusters = () => {
+      if (clusterBound || !map.getLayer(CIRCLE_CLUSTER_LAYER)) return;
+      map.on("mousemove", CIRCLE_CLUSTER_LAYER, onClusterMove);
+      map.on("mouseleave", CIRCLE_CLUSTER_LAYER, onClusterLeave);
+      map.on("click", CIRCLE_CLUSTER_LAYER, onClusterClick);
+      clusterBound = true;
+    };
+
+    bind();
+    bindClusters();
+    map.on("sourcedata", bind);
+    map.on("sourcedata", bindClusters);
+
+    return () => {
+      try {
+        map.off("sourcedata", bind);
+        map.off("sourcedata", bindClusters);
+        if (bound) {
+          map.off("mousemove", CIRCLE_MAIN_LAYER, onMove);
+          map.off("mouseleave", CIRCLE_MAIN_LAYER, leave);
+          map.off("click", CIRCLE_MAIN_LAYER, onClick);
+        }
+        if (clusterBound) {
+          map.off("mousemove", CIRCLE_CLUSTER_LAYER, onClusterMove);
+          map.off("mouseleave", CIRCLE_CLUSTER_LAYER, onClusterLeave);
+          map.off("click", CIRCLE_CLUSTER_LAYER, onClusterClick);
+        }
+      } catch {
+        // Map already removed — nothing left to unbind.
+      }
+      clearHover();
+      popupRef.current?.remove();
+    };
+  }, [ready, circles]);
+
+  // The selected circle: a heavier halo, a larger marker and a brighter
+  // glow, all through feature-state — the source is never rebuilt.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !circles) return;
+
+    const target = selectedCircle
+      ? (circles.features ?? []).find(
+          (feature) =>
+            normalizeBarangayName(feature.properties?.name) ===
+            normalizeBarangayName(selectedCircle),
+        )
+      : null;
+    const nextId = target?.id ?? null;
+
+    try {
+      if (selectedCircleIdRef.current !== null && selectedCircleIdRef.current !== nextId) {
+        map.setFeatureState(
+          { source: CIRCLE_SOURCE, id: selectedCircleIdRef.current },
+          { selected: false, pulse: 0 },
+        );
+      }
+      if (nextId !== null) {
+        map.setFeatureState({ source: CIRCLE_SOURCE, id: nextId }, { selected: true });
+      }
+    } catch {
+      // Source already torn down with the map.
+    }
+
+    selectedCircleIdRef.current = nextId;
+  }, [ready, circles, selectedCircle]);
+
+  // Hotspot pulse. The selected circle always breathes; when a page asks for
+  // it (the public map), EVERY circle breathes, each on its own phase so the
+  // city shimmers rather than blinking in unison. ~24fps, feature-state only
+  // (no React renders), paused while the tab is hidden, and replaced by a
+  // static state under prefers-reduced-motion.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return undefined;
+
+    const features = (circles?.features ?? []).filter(
+      (feature) => feature.id !== undefined && feature.id !== null,
+    );
+    if (features.length === 0) return undefined;
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return undefined;
+    }
+
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const selectedId = selectedCircleIdRef.current;
+    const pulseAll = Boolean(pulseCircles) && circleMode !== "circles" && !reduced;
+    const pulseSelected = selectedId !== null && !reduced;
+
+    const reset = () => {
+      for (const feature of features) {
+        try {
+          map.setFeatureState({ source: CIRCLE_SOURCE, id: feature.id }, { pulse: 0 });
+        } catch {
+          return;
+        }
+      }
+    };
+
+    if (!pulseAll && !pulseSelected) {
+      reset();
+      return undefined;
+    }
+
+    let frame = 0;
+    let last = 0;
+    const start = performance.now();
+    const period = 2800;
+
+    // Only write feature-state while the map is on screen: the landing page is
+    // long, and this animation must not cost anything once scrolled past.
+    let visible = true;
+    let observer = null;
+    if (typeof IntersectionObserver === "function" && containerRef.current) {
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          visible = entry.isIntersecting;
+        },
+        { rootMargin: "120px" },
+      );
+      observer.observe(containerRef.current);
+    }
+
+    const tick = (now) => {
+      if (now - last >= 42) {
+        last = now;
+        if (!document.hidden && visible) {
+          for (let index = 0; index < features.length; index += 1) {
+            const feature = features[index];
+            const isSelected = feature.id === selectedId;
+            if (!pulseAll && !isSelected) continue;
+            // A fixed offset per marker keeps neighbours out of phase without
+            // random values that would jump on every refetch.
+            const delay = ((index * 0.37) % 1) * period;
+            const wave =
+              0.5 + 0.5 * Math.sin((((now - start) + delay) / period) * Math.PI * 2);
+            try {
+              map.setFeatureState(
+                { source: CIRCLE_SOURCE, id: feature.id },
+                { pulse: isSelected ? Math.max(wave, 0.4) : wave },
+              );
+            } catch {
+              return;
+            }
+          }
+        }
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+      reset();
+    };
+  }, [ready, circles, selectedCircle, pulseCircles, circleMode]);
+
+  // Layer toggle: the parent's marker overlay is hidden by id. Boundaries
+  // and labels are always on — the requested toolbar no longer offers them.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || markerLayerIds.length === 0) return;
@@ -823,7 +1273,7 @@ function BarangayMapImpl({
   // (a fresh snapshot) only refresh the count line, in place.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready || !withBoundaries || !labelsOn || !choropleth) return;
+    if (!map || !ready || !withBoundaries || !showLabels || !choropleth) return;
 
     const collection = choropleth.collection;
     const features = Array.isArray(collection?.features) ? collection.features : [];
@@ -843,8 +1293,12 @@ function BarangayMapImpl({
         const countLine = document.createElement("p");
         countLine.className = "cvo-barangay-label-count";
         element.appendChild(countLine);
+        // Always shifted: a page's circle data can arrive a render after the
+        // labels, and re-creating markers later would flash the names. The
+        // shift is small enough to read as a caption on maps without circles.
+        const offsetY = LABEL_OFFSET_WITH_MARKERS;
         try {
-          const marker = new Marker({ element, anchor: "center" })
+          const marker = new Marker({ element, anchor: "center", offset: [0, offsetY] })
             .setLngLat(point)
             .addTo(map);
           created.push({
@@ -854,6 +1308,7 @@ function BarangayMapImpl({
             name: normalizeBarangayName(name),
             spanMeters: barangayLabelSpanMeters(feature),
             point,
+            offsetY,
           });
         } catch {
           // A map mid-teardown can refuse a marker — skip it rather than
@@ -880,7 +1335,10 @@ function BarangayMapImpl({
           }
           let projected = null;
           try {
-            projected = map.project(entry.point);
+            const anchor = map.project(entry.point);
+            // The marker's DOM box is centred on the anchor PLUS its pixel
+            // offset, so the collision test must use the shifted point.
+            projected = { x: anchor.x, y: anchor.y + (entry.offsetY ?? 0) };
           } catch {
             // Projection is unavailable before the first paint; fall through
             // and let the size test alone decide.
@@ -943,18 +1401,18 @@ function BarangayMapImpl({
         }
       }
     }
-  }, [ready, withBoundaries, labelsOn, labelShowCounts, labelCountLabel, choropleth]);
+  }, [ready, withBoundaries, showLabels, labelShowCounts, labelCountLabel, choropleth, circles]);
 
-  // Labels switched off (or the component unmounting): take the markers down
-  // and unbind their visibility handler.
+  // A page that asked for no labels: take the markers down and unbind their
+  // visibility handler.
   useEffect(() => {
-    if (labelsOn) return;
+    if (showLabels) return;
     const map = mapRef.current;
     if (map && labelVisibilityRef.current) map.off("move", labelVisibilityRef.current);
     labelVisibilityRef.current = null;
     for (const entry of labelMarkersRef.current) entry.marker.remove();
     labelMarkersRef.current = [];
-  }, [labelsOn]);
+  }, [showLabels]);
 
   // The selected barangay's label gets a non-colour cue to match the heavier
   // polygon outline: bolder, darker type (see .cvo-barangay-label--active in
@@ -968,7 +1426,7 @@ function BarangayMapImpl({
         Boolean(active) && entry.name === active,
       );
     }
-  }, [selectedName, focusName, labelsOn, ready, withBoundaries]);
+  }, [selectedName, focusName, showLabels, ready, withBoundaries]);
 
   useEffect(
     () => () => {
@@ -1030,6 +1488,10 @@ function BarangayMapImpl({
       frame = window.requestAnimationFrame(() => {
         const bounds = boundaryBounds(boundaries.collection);
         if (bounds) {
+          // The box depends on the map box's aspect, so a breakpoint change
+          // needs a fresh camera box before the city is re-framed.
+          const box = cameraBounds(bounds, container);
+          if (box) mapRef.current?.setMaxBounds?.(box);
           mapRef.current?.fitBounds(bounds, {
             padding: 24,
             maxZoom: 13,
@@ -1050,20 +1512,12 @@ function BarangayMapImpl({
     "inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700";
   const pressedClass =
     "border-brand-600 bg-brand-50 text-brand-800";
-  const fullscreenActive = isFullscreen || cssFullscreen;
-  // Native fullscreen and the CSS fallback share the same explicit frame: a
-  // full-viewport flex column, so the canvas takes the space left by the
-  // toolbar and legend instead of collapsing to its pre-fullscreen height.
-  const frameClass = fullscreenActive
-    ? "cvo-map-frame fixed inset-0 z-[70] flex h-screen w-screen flex-col gap-3 overflow-auto bg-slate-50 p-3"
-    : "cvo-map-frame";
-  const mapBoxClass = fullscreenActive
-    ? "cvo-map-shell min-h-0 w-full flex-1 rounded-none border-0"
-    : `cvo-map-shell ${height} rounded-xl border border-slate-200 dark:border-slate-700`;
+  const mapBoxClass =
+    `cvo-map-shell ${height} ${shellClassName} rounded-xl border border-slate-200 dark:border-slate-700`.trim();
 
   return (
-    <div ref={shellRef} className={frameClass}>
-      {interactive && (
+    <div className="cvo-map-frame">
+      {interactive && showToolbar && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {barangayNames.length > 0 && (
             <BarangaySearch
@@ -1074,59 +1528,11 @@ function BarangayMapImpl({
             />
           )}
 
-          <button
-            type="button"
-            onClick={resetView}
-            className={controlClass}
-            aria-label="Reset map to the whole city"
-            title="Fit the whole city in view"
-          >
-            <Icon name="focus" className="h-3.5 w-3.5" />
-            Reset view
-          </button>
-
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className={controlClass}
-            aria-pressed={fullscreenActive}
-            aria-label={fullscreenActive ? "Exit map full screen" : "View map full screen"}
-            title={fullscreenActive ? "Exit full screen (Esc)" : "View map full screen"}
-          >
-            <Icon
-              name={fullscreenActive ? "compress" : "expand"}
-              className="h-3.5 w-3.5"
-            />
-            {fullscreenActive ? "Exit full screen" : "Full screen"}
-          </button>
-
           <div
             role="group"
             aria-label="Map layers"
             className="flex flex-wrap items-center gap-2"
           >
-            <button
-              type="button"
-              onClick={() => setBoundariesOn((value) => !value)}
-              className={`${controlClass} ${boundariesOn ? pressedClass : ""}`}
-              aria-pressed={boundariesOn}
-              title="Show or hide the barangay boundary lines"
-            >
-              <Icon name="layers" className="h-3.5 w-3.5" />
-              Boundaries
-            </button>
-            {showLabels && (
-              <button
-                type="button"
-                onClick={() => setLabelsOn((value) => !value)}
-                className={`${controlClass} ${labelsOn ? pressedClass : ""}`}
-                aria-pressed={labelsOn}
-                title="Show or hide the barangay name labels"
-              >
-                <Icon name="type" className="h-3.5 w-3.5" />
-                Labels
-              </button>
-            )}
             {markerLayerIds.length > 0 && (
               <button
                 type="button"
@@ -1143,9 +1549,7 @@ function BarangayMapImpl({
         </div>
       )}
 
-      <div
-        className={`relative ${fullscreenActive ? "flex min-h-0 flex-1 flex-col" : ""}`}
-      >
+      <div className="relative">
         <div
           ref={containerRef}
           className={mapBoxClass}
@@ -1189,9 +1593,11 @@ function BarangayMapImpl({
             </div>
           </div>
         )}
+
+        {overlay}
       </div>
 
-      {(legend || showCredit || legendNotes) && (
+      {(legend || showCredit || legendNotes || sizeLegend) && (
         <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-600">
           {legend && (
             <div className="flex items-center gap-2">
@@ -1207,6 +1613,12 @@ function BarangayMapImpl({
             </div>
           )}
           {legendNotes}
+          {circles && clusterCircles && (
+            <span className="text-slate-500">
+              Clusters group overlapping barangays — zoom in to separate them
+            </span>
+          )}
+          {sizeLegend}
           {showCredit && (
             <span className="text-slate-400">
               Boundaries: UN OCHA COD-AB (PSA) · © OpenStreetMap contributors

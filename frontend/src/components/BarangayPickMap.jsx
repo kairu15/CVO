@@ -13,8 +13,8 @@ import { DispersalMap } from "./DispersalMap";
  * with no barangay boundaries, no city camera clamp and no reset — the one
  * map experience the rest of the app shares stopped at the forms. Composition
  * gives them the city polygons, permanent name labels (a pin can be placed
- * while looking at the barangay's own shape), the "Find a barangay" jump,
- * reset-to-city and full screen from the shared component.
+ * while looking at the barangay's own shape) and the "Find a barangay" jump
+ * from the shared component.
  *
  * A picker has no metric to shade, so every barangay wears the same neutral
  * fill: the boundaries frame the pin without implying a value.

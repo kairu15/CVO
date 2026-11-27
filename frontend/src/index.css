@@ -1632,3 +1632,113 @@
     transform: none;
   }
 }
+
+/* ============================================================================
+   Sign-in page
+   ----------------------------------------------------------------------------
+   The auth shell puts the shared HeroBackdrop behind a translucent navy/teal
+   brand panel and a near-opaque form card. Motion here is CSS only: the
+   project ships no animation library, the entrance is a single transform +
+   opacity tween, and every rule below is switched off under
+   prefers-reduced-motion. Nothing animates the form itself, so credentials can
+   be typed before the entrance finishes.
+   ============================================================================ */
+@layer components {
+  /* Primary action on the sign-in card. Teal (not brand-700) to match the
+     institutional identity of the auth shell; literal background keeps white
+     label text at AA in dark mode. */
+  .auth-btn {
+    display: inline-flex;
+    min-height: 48px;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-pill);
+    background: #285f6b;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #ffffff;
+    box-shadow: 0 10px 24px -14px rgb(16 42 54 / 0.65);
+    transition:
+      background-color 180ms ease,
+      box-shadow 180ms ease,
+      transform 120ms ease;
+  }
+
+  .auth-btn:hover:not(:disabled) {
+    background: #133336;
+    box-shadow: 0 12px 28px -14px rgb(16 42 54 / 0.75);
+  }
+
+  .auth-btn:active:not(:disabled) {
+    transform: translateY(1px) scale(0.995);
+  }
+
+  .auth-btn:focus-visible {
+    outline: 2px solid var(--color-cvo-teal-accent);
+    outline-offset: 3px;
+  }
+
+  .auth-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+    box-shadow: none;
+  }
+
+  /* Teal focus treatment for the shared `.field` inside the sign-in card,
+     so the form reads as one navy/teal surface while every other screen keeps
+     the green brand focus. */
+  .auth-form .field:focus {
+    border-color: var(--color-cvo-teal-accent);
+    box-shadow: 0 0 0 4px rgb(54 125 138 / 0.18);
+  }
+}
+
+@keyframes auth-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes auth-alert-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.auth-enter {
+  animation: auth-enter 520ms var(--ease-panel) both;
+  animation-delay: var(--auth-delay, 0ms);
+}
+
+.auth-alert-in {
+  animation: auth-alert-in 220ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-enter,
+  .auth-alert-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .auth-btn {
+    transition: background-color 120ms ease;
+  }
+
+  .auth-btn:active:not(:disabled) {
+    transform: none;
+  }
+}

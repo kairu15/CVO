@@ -135,13 +135,15 @@ export function LoginForm({ idPrefix = "login" }) {
   }
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} noValidate className="w-full">
-      <h1 className="font-display text-[1.65rem] leading-tight font-bold text-slate-900 sm:text-3xl">
-        {t("login.welcome")}
-      </h1>
-      <p className="mt-2 text-sm leading-relaxed text-slate-500">
-        {t("login.subtitle", { office: site.office })}
-      </p>
+    <form ref={formRef} onSubmit={handleSubmit} noValidate className="auth-form w-full">
+      <div className="auth-enter" style={{ "--auth-delay": "90ms" }}>
+        <h1 className="font-display text-[1.65rem] leading-tight font-bold text-slate-900 sm:text-3xl">
+          {t("login.welcome")}
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-slate-500">
+          {t("login.subtitle", { office: site.office })}
+        </p>
+      </div>
 
       {notice && NOTICE_KEYS[notice] && (
         <div className="mt-5">
@@ -149,7 +151,10 @@ export function LoginForm({ idPrefix = "login" }) {
         </div>
       )}
 
-      <div className="mt-6 space-y-4">
+      <div
+        className="auth-enter mt-6 space-y-4"
+        style={{ "--auth-delay": "150ms" }}
+      >
         <TextField
           id={`${idPrefix}-identifier`}
           label={t("login.identifierLabel")}
@@ -213,21 +218,21 @@ export function LoginForm({ idPrefix = "login" }) {
             onChange={(event) =>
               setForm((prev) => ({ ...prev, remember: event.target.checked }))
             }
-            className="h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-2 focus:ring-brand-700 dark:border-slate-400"
+            className="h-4 w-4 rounded border-slate-300 accent-cvo-teal focus:ring-2 focus:ring-cvo-teal dark:border-slate-400"
           />
           {t("login.remember")}
         </label>
 
         <Link
           to="/forgot-password"
-          className="rounded text-sm font-semibold text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+          className="rounded text-sm font-semibold text-cvo-teal underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cvo-teal"
         >
           {t("login.forgot")}
         </Link>
       </div>
 
       {formError && (
-        <div className="mt-4">
+        <div className="auth-alert-in mt-4">
           <InlineAlert
             tone="error"
             message={formError}
@@ -240,7 +245,7 @@ export function LoginForm({ idPrefix = "login" }) {
         type="submit"
         disabled={submitting}
         aria-busy={submitting}
-        className="btn-primary mt-5 w-full py-3"
+        className="auth-btn mt-5 w-full py-3"
       >
         {submitting ? (
           <>

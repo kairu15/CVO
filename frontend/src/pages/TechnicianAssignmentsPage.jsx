@@ -578,7 +578,7 @@ export default function TechnicianAssignmentsPage() {
                         <p
                           className={`text-[11px] ${
                             technician.due_households > 0
-                              ? "text-amber-700 dark:text-amber-500"
+                              ? "text-amber-800 dark:text-amber-500"
                               : "text-slate-500"
                           }`}
                         >
@@ -632,7 +632,7 @@ export default function TechnicianAssignmentsPage() {
             <div>
               <h3 className="font-display text-sm font-semibold text-slate-900">
                 Unassigned households
-                <span className="ml-2 rounded-pill bg-amber-50 px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-amber-700 uppercase ring-1 ring-amber-200">
+                <span className="ml-2 rounded-pill bg-amber-50 px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-amber-800 uppercase ring-1 ring-amber-200">
                   {unassigned.total}
                 </span>
               </h3>

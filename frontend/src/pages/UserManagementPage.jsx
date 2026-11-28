@@ -1140,7 +1140,7 @@ export default function UserManagementPage() {
                               {relativeTime(row.last_login_at)}
                             </span>
                           ) : (
-                            <span className="font-semibold text-amber-700">Never</span>
+                            <span className="font-semibold text-amber-800">Never</span>
                           )}
                         </td>
                         <td className="hidden px-4 py-2.5 whitespace-nowrap text-slate-500 lg:table-cell">
@@ -1152,7 +1152,7 @@ export default function UserManagementPage() {
                               type="button"
                               onClick={() => resendVerification(row)}
                               disabled={securityBusy === `verification-${row.id}`}
-                              className="mr-1 rounded-pill px-3 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-50 disabled:opacity-50"
+                              className="mr-1 rounded-pill px-3 py-1 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-50 disabled:opacity-50"
                             >
                               {securityBusy === `verification-${row.id}`
                                 ? "Sending…"
@@ -1164,7 +1164,7 @@ export default function UserManagementPage() {
                               type="button"
                               onClick={() => sendSetupLink(row)}
                               disabled={securityBusy === `setup-${row.id}`}
-                              className="mr-1 rounded-pill px-3 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-50 disabled:opacity-50"
+                              className="mr-1 rounded-pill px-3 py-1 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-50 disabled:opacity-50"
                             >
                               {securityBusy === `setup-${row.id}` ? "Sending…" : "Setup link"}
                             </button>
@@ -1748,7 +1748,7 @@ export default function UserManagementPage() {
                     type="button"
                     onClick={() => sendSetupLink(activity.user)}
                     disabled={securityBusy === `setup-${activity.user.id}`}
-                    className="rounded-pill border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-50 disabled:opacity-50"
+                    className="rounded-pill border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-50 disabled:opacity-50"
                   >
                     {securityBusy === `setup-${activity.user.id}`
                       ? "Sending…"

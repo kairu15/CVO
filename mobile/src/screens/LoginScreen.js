@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import { getErrorMessage } from "../api/client";
+import { colors } from "../theme";
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -63,7 +64,7 @@ export default function LoginScreen() {
         disabled={submitting}
       >
         {submitting ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={colors.textOnDark} />
         ) : (
           <Text style={styles.buttonText}>Log in</Text>
         )}
@@ -77,28 +78,28 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     padding: 24,
-    backgroundColor: "#f8fafc",
+    backgroundColor: colors.background,
   },
-  title: { fontSize: 28, fontWeight: "700", textAlign: "center" },
+  title: { fontSize: 28, fontWeight: "700", textAlign: "center", color: colors.brandDark },
   subtitle: {
     fontSize: 15,
-    color: "#64748b",
+    color: colors.textSecondary,
     textAlign: "center",
     marginTop: 4,
     marginBottom: 24,
   },
   error: {
-    color: "#dc2626",
-    backgroundColor: "#fee2e2",
+    color: colors.error,
+    backgroundColor: colors.errorSoft,
     padding: 10,
     borderRadius: 8,
     marginBottom: 12,
     textAlign: "center",
   },
   input: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
+    borderColor: colors.borderStrong,
     borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -106,12 +107,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   button: {
-    backgroundColor: "#4f46e5",
+    backgroundColor: colors.brand,
     borderRadius: 8,
     paddingVertical: 14,
     alignItems: "center",
     marginTop: 4,
   },
   buttonDisabled: { opacity: 0.5 },
-  buttonText: { color: "#fff", fontWeight: "600", fontSize: 15 },
+  buttonText: { color: colors.textOnDark, fontWeight: "600", fontSize: 15 },
 });

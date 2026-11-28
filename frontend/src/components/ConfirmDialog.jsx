@@ -63,7 +63,7 @@ export function ConfirmDialog({
         className="card relative z-10 w-full max-w-md p-6"
       >
         <div className="flex items-start gap-3.5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-amber-50 text-amber-700">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-amber-50 text-amber-800">
             <Icon name="alert-circle" className="h-5 w-5" />
           </span>
           <div className="min-w-0">

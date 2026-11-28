@@ -281,7 +281,7 @@ export default function AdminOverviewPage() {
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={monthly(monitoring?.records_by_month)} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e2d9" vertical={false} />
                   <XAxis dataKey="short" tick={AXIS_STYLE} tickLine={false} axisLine={false} />
                   <YAxis tick={AXIS_STYLE} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip formatter={(value) => [num(value), "Records"]} />
@@ -330,7 +330,7 @@ export default function AdminOverviewPage() {
               >
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={monthly(beneficiaries?.registrations_by_month)} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e2d9" vertical={false} />
                     <XAxis dataKey="short" tick={AXIS_STYLE} tickLine={false} axisLine={false} />
                     <YAxis tick={AXIS_STYLE} tickLine={false} axisLine={false} allowDecimals={false} />
                     <Tooltip formatter={(value) => [num(value), "Enrolled"]} />
@@ -409,7 +409,7 @@ export default function AdminOverviewPage() {
               >
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={monthly(field_visits?.by_month)} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e2d9" vertical={false} />
                     <XAxis dataKey="short" tick={AXIS_STYLE} tickLine={false} axisLine={false} />
                     <YAxis tick={AXIS_STYLE} tickLine={false} axisLine={false} allowDecimals={false} />
                     <Tooltip formatter={(value) => [num(value), "Visits"]} />
@@ -552,7 +552,7 @@ export default function AdminOverviewPage() {
                       layout="vertical"
                       margin={{ top: 4, right: 16, left: 8, bottom: 0 }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e2d9" horizontal={false} />
                       <XAxis type="number" tick={AXIS_STYLE} tickLine={false} axisLine={false} allowDecimals={false} />
                       <YAxis
                         type="category"
@@ -655,7 +655,7 @@ export default function AdminOverviewPage() {
           >
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={monthly(dispersal?.trend)} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e2d9" vertical={false} />
                 <XAxis dataKey="short" tick={AXIS_STYLE} tickLine={false} axisLine={false} />
                 <YAxis tick={AXIS_STYLE} tickLine={false} axisLine={false} allowDecimals={false} />
                 <Tooltip />

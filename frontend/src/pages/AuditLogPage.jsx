@@ -684,7 +684,7 @@ function StatCard({ label, value, tone }) {
     tone === "alert"
       ? "text-rose-700"
       : tone === "critical"
-        ? "text-amber-700"
+        ? "text-amber-800"
         : "text-slate-900 dark:text-slate-100";
 
   return (

@@ -12,6 +12,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { projectsApi } from "../api/projectsApi";
 import { getErrorMessage } from "../api/client";
+import { colors } from "../theme";
 
 export default function ProjectsScreen() {
   const { user, logout } = useAuth();
@@ -66,7 +67,7 @@ export default function ProjectsScreen() {
   if (loading) {
     return (
       <View style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color="#4f46e5" />
+        <ActivityIndicator size="large" color={colors.brand} />
       </View>
     );
   }
@@ -128,19 +129,19 @@ export default function ProjectsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, paddingTop: 60, backgroundColor: "#f8fafc" },
+  container: { flex: 1, padding: 16, paddingTop: 60, backgroundColor: colors.background },
   center: { justifyContent: "center", alignItems: "center" },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  headerTitle: { fontSize: 24, fontWeight: "700" },
-  logout: { color: "#dc2626", fontWeight: "600" },
-  welcome: { color: "#64748b", marginBottom: 16 },
+  headerTitle: { fontSize: 24, fontWeight: "700", color: colors.brandDark },
+  logout: { color: colors.error, fontWeight: "600" },
+  welcome: { color: colors.textSecondary, marginBottom: 16 },
   error: {
-    color: "#dc2626",
-    backgroundColor: "#fee2e2",
+    color: colors.error,
+    backgroundColor: colors.errorSoft,
     padding: 10,
     borderRadius: 8,
     marginBottom: 12,
@@ -148,43 +149,43 @@ const styles = StyleSheet.create({
   createRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
   createInput: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
+    borderColor: colors.borderStrong,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   createButton: {
-    backgroundColor: "#4f46e5",
+    backgroundColor: colors.brand,
     borderRadius: 8,
     paddingHorizontal: 18,
     justifyContent: "center",
   },
-  createButtonText: { color: "#fff", fontWeight: "600" },
+  createButtonText: { color: colors.textOnDark, fontWeight: "600" },
   card: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderRadius: 10,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
   },
   cardBody: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  cardTitle: { fontSize: 16, fontWeight: "600" },
+  cardTitle: { fontSize: 16, fontWeight: "600", color: colors.textPrimary },
   cardStatus: {
     fontSize: 12,
-    color: "#4f46e5",
-    backgroundColor: "#e0e7ff",
+    color: colors.brand,
+    backgroundColor: colors.brandSoft,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 999,
     overflow: "hidden",
   },
-  cardDescription: { color: "#64748b", marginTop: 4 },
-  deleteText: { color: "#dc2626", fontWeight: "600", marginTop: 8 },
-  empty: { textAlign: "center", color: "#64748b", marginTop: 24 },
+  cardDescription: { color: colors.textSecondary, marginTop: 4 },
+  deleteText: { color: colors.error, fontWeight: "600", marginTop: 8 },
+  empty: { textAlign: "center", color: colors.textSecondary, marginTop: 24 },
 });

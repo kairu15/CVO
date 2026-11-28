@@ -21,16 +21,17 @@ export const BOUNDARY_URL = `${import.meta.env.BASE_URL}geojson/bayawan-city-bar
 export const NO_ROW_COLOR = "#dbe3ec";
 
 /** Single-hue sequential scale (the brand green), light → dark. */
-export const SEQUENTIAL_STOPS = ["#eaf3dd", "#c7e2a6", "#8bc34a", "#558b2f", "#33691e"];
+/** Evergreen sequential: Morning Mist → Soft Pine → Cedar → Spruce. */
+export const SEQUENTIAL_STOPS = ["#e8f0eb", "#cde0d5", "#a3c6b3", "#4e8a6b", "#20523b"];
 
-/** Diverging scale for net flow, centered on zero: blue out, amber in. */
-export const DIVERGING_STOPS = ["#075985", "#7dd3fc", "#cbd5e1", "#fdba74", "#b45309"];
+/** Diverging scale for net flow, centered on zero: Ink out, Jasmine in. */
+export const DIVERGING_STOPS = ["#324e69", "#7992a8", "#efefea", "#f0d174", "#af851c"];
 
-/** Amber scale for data quality: darker = more approximate/missing pins. */
-export const QUALITY_STOPS = ["#fffbeb", "#fde68a", "#f59e0b", "#d97706", "#b45309"];
+/** Jasmine scale for data quality: darker = more approximate/missing pins. */
+export const QUALITY_STOPS = ["#fefdf3", "#fbf1cc", "#f5df95", "#cda334", "#896408"];
 
-/** Greyed colour for values that cannot be ranked (no data / n < minimum). */
-export const NO_DATA_COLOR = "#94a3b8";
+/** Neutral (Ink-2) for values that cannot be ranked (no data / n < minimum). */
+export const NO_DATA_COLOR = "#9eb2c3";
 
 const DIACRITICS = /[\u0300-\u036f]/g;
 
@@ -69,8 +70,8 @@ export function choroplethTooltipHtml(properties) {
 
   return (
     `<div style="min-width:140px">` +
-    `<p style="margin:0;font-weight:600;color:#f8fafc">${escaped}</p>` +
-    `<p style="margin:2px 0 0;font-size:12px;color:#cbd5e1">Pins: <strong>${count}</strong></p>` +
+    `<p style="margin:0;font-weight:600;color:#ffffff">${escaped}</p>` +
+    `<p style="margin:2px 0 0;font-size:12px;color:#c3d1dc">Pins: <strong>${count}</strong></p>` +
     `</div>`
   );
 }
@@ -99,7 +100,7 @@ export function bubbleColor(value, max, metric) {
     const intensity = Math.min(2, Math.floor((Math.abs(value) / peak) * 3));
     return value < 0
       ? ["#7dd3fc", "#38bdf8", "#075985"][intensity]
-      : ["#fdba74", "#fb923c", "#b45309"][intensity];
+      : ["#fdba74", "#fb923c", "#af851c"][intensity];
   }
 
   if (metric === "quality") {

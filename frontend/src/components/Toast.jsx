@@ -42,7 +42,7 @@ const VARIANTS = {
     label: "Warning",
     role: "alert",
     icon: "alert-triangle",
-    iconWrap: "bg-amber-50 text-amber-700 dark:bg-amber-100 dark:text-amber-800",
+    iconWrap: "bg-amber-50 text-amber-800 dark:bg-amber-100 dark:text-amber-800",
     progress: "bg-amber-500",
   },
   info: {

@@ -197,7 +197,7 @@ export function LoginForm({ idPrefix = "login" }) {
           {capsLock && !errors.password && (
             <p
               role="status"
-              className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-800"
+              className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-800"
             >
               <Icon name="alert-circle" className="h-3.5 w-3.5 shrink-0" />
               {t("login.capsLock")}

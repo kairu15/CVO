@@ -54,7 +54,7 @@ function fullscreenElement() {
   return document.fullscreenElement ?? document.webkitFullscreenElement ?? null;
 }
 
-const RE_DISPERSAL_COLOR = "#2d4d19";
+const RE_DISPERSAL_COLOR = "#163b2a";
 
 /*
  * The per-beneficiary "flight path": the chronological trail from an
@@ -106,14 +106,14 @@ const NO_ALL_PATHS = {
 };
 
 /** Trail endpoints, from the brand ramp — deliberately NOT an animal colour. */
-const PATH_OLD_COLOR = "#a5d6a7"; // brand-300, the faded origin end
-const PATH_NEW_COLOR = "#2d4d19"; // brand-900, the saturated recent end
+const PATH_OLD_COLOR = "#a3c6b3"; // brand-300, the faded origin end
+const PATH_NEW_COLOR = "#163b2a"; // brand-900, the saturated recent end
 
 /** Flag glyph for the origin: a pole with a pennant, in the brand green. */
 const ORIGIN_FLAG_SVG =
   '<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">' +
-  '<path d="M5 2v16" stroke="#2d4d19" stroke-width="2.2" stroke-linecap="round" fill="none"/>' +
-  '<path d="M6 3h8l-2.6 3L14 9H6z" fill="#2d4d19"/>' +
+  '<path d="M5 2v16" stroke="#163b2a" stroke-width="2.2" stroke-linecap="round" fill="none"/>' +
+  '<path d="M6 3h8l-2.6 3L14 9H6z" fill="#163b2a"/>' +
   "</svg>";
 
 /** Arrowhead pointing UP the page; `icon-rotate` then swings it by bearing. */
@@ -121,7 +121,7 @@ const PATH_ARROW_SVG =
   // width/height are not decoration: an SVG with only a viewBox decodes to a
   // zero-sized image in Chrome, and MapLibre then refuses to register it.
   '<svg viewBox="0 0 12 12" width="12" height="12" xmlns="http://www.w3.org/2000/svg">' +
-  '<path d="M6 0.7 10.9 10.5 6 8.1 1.1 10.5Z" fill="#2d4d19" stroke="#ffffff" stroke-width="0.9" stroke-linejoin="round"/>' +
+  '<path d="M6 0.7 10.9 10.5 6 8.1 1.1 10.5Z" fill="#163b2a" stroke="#ffffff" stroke-width="0.9" stroke-linejoin="round"/>' +
   "</svg>";
 
 /**
@@ -135,28 +135,28 @@ function popupHtml(
   { flightActive = false, showFlightPath = false, offerRedisperse = false } = {},
 ) {
   const badge = beneficiary.is_re_dispersal
-    ? '<p style="margin:4px 0 0;padding:1px 8px;display:inline-block;border-radius:9999px;background:#e7efdd;color:#2d4d19;font-size:10px;font-weight:600;text-transform:uppercase">Re-dispersal recipient</p>'
+    ? '<p style="margin:4px 0 0;padding:1px 8px;display:inline-block;border-radius:9999px;background:#e8f0eb;color:#163b2a;font-size:10px;font-weight:600;text-transform:uppercase">Re-dispersal recipient</p>'
     : "";
   // The pin's own "Re-disperse" action: a dispersal starts where the animal
   // already is, so the map pin is the natural place to record one.
   const redisperse = offerRedisperse
     ? '<button type="button" class="cvo-redisperse"' +
       ` data-redisperse-id="${escapeHtml(String(beneficiary.id))}"` +
-      ' style="margin-top:8px;margin-left:6px;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:3px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">' +
+      ' style="margin-top:8px;margin-left:6px;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #cde0d5;background:#e8f0eb;padding:3px 10px;font-size:11px;font-weight:600;color:#20523b;cursor:pointer">' +
       "Re-disperse</button>"
     : "";
   const toggle = showFlightPath
     ? '<button type="button" class="cvo-path-toggle"' +
       ` data-path-id="${escapeHtml(String(beneficiary.id))}"` +
-      ' style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:3px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">' +
+      ' style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #cde0d5;background:#e8f0eb;padding:3px 10px;font-size:11px;font-weight:600;color:#20523b;cursor:pointer">' +
       `<svg viewBox="0 0 20 20" width="11" height="11" aria-hidden="true" style="flex:none"><path d="M5 2v16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M6 3h8l-2.6 3L14 9H6z" fill="currentColor"/></svg>` +
       (flightActive ? "Hide flight path" : "Show flight path") +
       "</button>"
     : "";
   return (
     `<div style="min-width:12rem;font-size:13px;line-height:1.4">` +
-    `<p style="margin:0;font-weight:600;color:#0f172a">${escapeHtml(beneficiary.name_of_farmer)}</p>` +
-    `<p style="margin:0;font-size:12px;color:#64748b">${escapeHtml(beneficiary.address)} &middot; ${escapeHtml(beneficiary.animal_type)}</p>` +
+    `<p style="margin:0;font-weight:600;color:#0c141e">${escapeHtml(beneficiary.name_of_farmer)}</p>` +
+    `<p style="margin:0;font-size:12px;color:#536f8b">${escapeHtml(beneficiary.address)} &middot; ${escapeHtml(beneficiary.animal_type)}</p>` +
     badge +
     toggle +
     redisperse +
@@ -169,12 +169,12 @@ function pathPointHtml(properties) {
   const label = properties.label ?? "";
   return (
     `<div style="min-width:10rem;font-size:13px;line-height:1.4">` +
-    `<p style="margin:0;font-weight:600;color:#0f172a">${escapeHtml(properties.title ?? "")}</p>` +
+    `<p style="margin:0;font-weight:600;color:#0c141e">${escapeHtml(properties.title ?? "")}</p>` +
     (label
-      ? `<p style="margin:0;font-size:12px;color:#64748b">${escapeHtml(label)}</p>`
+      ? `<p style="margin:0;font-size:12px;color:#536f8b">${escapeHtml(label)}</p>`
       : "") +
     (properties.subtitle
-      ? `<p style="margin:2px 0 0;font-size:12px;color:#64748b">${escapeHtml(properties.subtitle)}</p>`
+      ? `<p style="margin:2px 0 0;font-size:12px;color:#536f8b">${escapeHtml(properties.subtitle)}</p>`
       : "") +
     `</div>`
   );
@@ -273,7 +273,7 @@ function ensurePinLayers(map) {
     source: PIN_SOURCE,
     filter: ["has", "point_count"],
     paint: {
-      "circle-color": "#3f6b22",
+      "circle-color": "#20523b",
       "circle-stroke-color": "#ffffff",
       "circle-stroke-width": 2,
       "circle-opacity": 0.9,
@@ -315,7 +315,7 @@ function ensurePinLayers(map) {
     paint: {
       "circle-radius": 11,
       "circle-color": "transparent",
-      "circle-stroke-color": "#2d4d19",
+      "circle-stroke-color": "#163b2a",
       "circle-stroke-width": 3,
     },
   });
@@ -353,8 +353,8 @@ function infoRow(label, value) {
   if (value === null || value === undefined || value === "") return "";
   return (
     `<tr>` +
-    `<td style="padding:1px 14px 1px 0;font-size:10px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#94a3b8;white-space:nowrap;vertical-align:top">${label}</td>` +
-    `<td style="padding:1px 0;font-size:12px;font-weight:600;color:#0f172a">${value}</td>` +
+    `<td style="padding:1px 14px 1px 0;font-size:10px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#7992a8;white-space:nowrap;vertical-align:top">${label}</td>` +
+    `<td style="padding:1px 0;font-size:12px;font-weight:600;color:#0c141e">${value}</td>` +
     `</tr>`
   );
 }
@@ -387,20 +387,20 @@ function pinPopupHtml(pin, {
   // animal-level detail back to the records panel.
   if (pin.household) {
     const approximate = pin.approximate
-      ? '<span style="margin-left:6px;padding:1px 8px;border-radius:9999px;background:#fef9c3;color:#854d0e;font-size:10px;font-weight:600;text-transform:uppercase">Approximate</span>'
+      ? '<span style="margin-left:6px;padding:1px 8px;border-radius:9999px;background:#fdf8e2;color:#896408;font-size:10px;font-weight:600;text-transform:uppercase">Approximate</span>'
       : "";
     const types = (pin.animal_types ?? []).filter(Boolean).join(", ") || "Unspecified";
     const lastEvent = pin.last_event_date
       ? `${escapeHtml(formatPopupDate(pin.last_event_date))}${pin.event_type ? ` · ${escapeHtml(EVENT_TYPE_LABELS[pin.event_type] ?? pin.event_type)}` : ""}`
       : null;
     const open = offerOpenHousehold
-      ? `<button type="button" class="cvo-open-household" data-household-id="${escapeHtml(String(pin.owner?.id ?? ""))}" data-barangay="${escapeHtml(pin.barangay ?? "")}" style="margin-top:2px;width:100%;justify-content:center;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:5px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">View household animals</button>`
+      ? `<button type="button" class="cvo-open-household" data-household-id="${escapeHtml(String(pin.owner?.id ?? ""))}" data-barangay="${escapeHtml(pin.barangay ?? "")}" style="margin-top:2px;width:100%;justify-content:center;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #cde0d5;background:#e8f0eb;padding:5px 10px;font-size:11px;font-weight:600;color:#20523b;cursor:pointer">View household animals</button>`
       : "";
 
     return (
       `<div style="min-width:230px;max-width:290px;font-size:13px;line-height:1.45">` +
-      `<p style="margin:0 0 1px;font-weight:700;font-size:13.5px;color:#0f172a">${ownerLabel}</p>` +
-      `<p style="margin:0 0 8px;font-size:12px;color:#64748b">${escapeHtml(pin.barangay ?? "No barangay on record")}${approximate}</p>` +
+      `<p style="margin:0 0 1px;font-weight:700;font-size:13.5px;color:#0c141e">${ownerLabel}</p>` +
+      `<p style="margin:0 0 8px;font-size:12px;color:#536f8b">${escapeHtml(pin.barangay ?? "No barangay on record")}${approximate}</p>` +
       `<table style="border-collapse:collapse;width:100%;margin:0 0 8px"><tbody>` +
       infoRow("Household animals", escapeHtml(String(pin.animal_count ?? 0))) +
       infoRow("Species", escapeHtml(types)) +
@@ -413,10 +413,10 @@ function pinPopupHtml(pin, {
   }
 
   const maskedNote = pin.owner?.masked
-    ? '<span style="margin-left:6px;padding:1px 8px;border-radius:9999px;background:#f1f5f9;color:#64748b;font-size:10px;font-weight:600;text-transform:uppercase">Hidden</span>'
+    ? '<span style="margin-left:6px;padding:1px 8px;border-radius:9999px;background:#efefea;color:#536f8b;font-size:10px;font-weight:600;text-transform:uppercase">Hidden</span>'
     : "";
   const approximateNote = pin.approximate
-    ? '<span style="margin-left:6px;padding:1px 8px;border-radius:9999px;background:#fef9c3;color:#854d0e;font-size:10px;font-weight:600;text-transform:uppercase">Approximate</span>'
+    ? '<span style="margin-left:6px;padding:1px 8px;border-radius:9999px;background:#fdf8e2;color:#896408;font-size:10px;font-weight:600;text-transform:uppercase">Approximate</span>'
     : "";
 
   const sourceLabel = pin.location_source
@@ -433,13 +433,13 @@ function pinPopupHtml(pin, {
   const redisperse = offerRedisperse && pin.owner?.id !== null && !pin.owner?.masked
     ? `<button type="button" class="cvo-redisperse"` +
       ` data-redisperse-id="${escapeHtml(String(pin.animal_id))}"` +
-      ` style="flex:1;justify-content:center;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:4px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">` +
+      ` style="flex:1;justify-content:center;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #cde0d5;background:#e8f0eb;padding:4px 10px;font-size:11px;font-weight:600;color:#20523b;cursor:pointer">` +
       `Re-disperse</button>`
     : "";
   const toggle = showFlightPath
     ? `<button type="button" class="cvo-path-toggle"` +
       ` data-path-id="${escapeHtml(String(pin.animal_id))}"` +
-      ` style="flex:1;justify-content:center;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #c8e6c9;background:#f3f9ee;padding:4px 10px;font-size:11px;font-weight:600;color:#3f6b22;cursor:pointer">` +
+      ` style="flex:1;justify-content:center;display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid #cde0d5;background:#e8f0eb;padding:4px 10px;font-size:11px;font-weight:600;color:#20523b;cursor:pointer">` +
       `<svg viewBox="0 0 20 20" width="11" height="11" aria-hidden="true" style="flex:none"><path d="M5 2v16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M6 3h8l-2.6 3L14 9H6z" fill="currentColor"/></svg>` +
       (flightActive ? "Hide flight path" : "Show flight path") +
       `</button>`
@@ -449,8 +449,8 @@ function pinPopupHtml(pin, {
 
   return (
     `<div style="min-width:230px;max-width:290px;font-size:13px;line-height:1.45">` +
-    `<p style="margin:0 0 1px;font-weight:700;font-size:13.5px;color:#0f172a">${ownerLabel}${maskedNote}</p>` +
-    `<p style="margin:0 0 8px;font-size:12px;color:#64748b">${escapeHtml(pin.barangay ?? "No barangay on record")}${approximateNote}</p>` +
+    `<p style="margin:0 0 1px;font-weight:700;font-size:13.5px;color:#0c141e">${ownerLabel}${maskedNote}</p>` +
+    `<p style="margin:0 0 8px;font-size:12px;color:#536f8b">${escapeHtml(pin.barangay ?? "No barangay on record")}${approximateNote}</p>` +
     `<table style="border-collapse:collapse;width:100%;margin:0 0 8px">` +
     `<tbody>` +
     infoRow("Animal", escapeHtml(pin.animal_type ?? "Unspecified")) +
@@ -1243,7 +1243,7 @@ export function DispersalMap({
       hoverPopupRef.current
         .setLngLat(event.lngLat)
         .setHTML(
-          `<p style="margin:0;font-size:12px;font-weight:600;color:#0f172a">${escapeHtml(
+          `<p style="margin:0;font-size:12px;font-weight:600;color:#0c141e">${escapeHtml(
             dateRangeLabel(from, to),
           )}</p>`,
         )
@@ -1928,7 +1928,7 @@ export function DispersalMap({
                 <span
                   aria-hidden="true"
                   className="h-3 w-3 rounded-full ring-2 ring-white"
-                  style={{ backgroundColor: colorFor({ animal_type: type }), boxShadow: "0 0 0 1px rgb(15 23 42 / 0.2)" }}
+                  style={{ backgroundColor: colorFor({ animal_type: type }), boxShadow: "0 0 0 1px rgb(12 20 30 / 0.2)" }}
                 />
                 {type}
               </span>
@@ -1938,7 +1938,7 @@ export function DispersalMap({
               <span
                 aria-hidden="true"
                 className="h-3 w-3 rounded-full ring-2 ring-white"
-                style={{ backgroundColor: colorFor({ household: true }), boxShadow: "0 0 0 1px rgb(15 23 42 / 0.2)" }}
+                style={{ backgroundColor: colorFor({ household: true }), boxShadow: "0 0 0 1px rgb(12 20 30 / 0.2)" }}
               />
               Household · badge counts animals
             </span>
@@ -2370,7 +2370,7 @@ function ensurePathLayers(map) {
         PATH_NEW_COLOR,
         "current",
         PATH_NEW_COLOR,
-        "#3f6b22",
+        "#20523b",
       ],
       "circle-stroke-color": "#ffffff",
       "circle-stroke-width": 2,

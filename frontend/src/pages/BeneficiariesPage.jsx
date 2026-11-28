@@ -952,7 +952,7 @@ export default function BeneficiariesPage() {
                                 {beneficiary.technician_id ? (
                                   technicianName(beneficiary.technician_id)
                                 ) : (
-                                  <span className="font-medium text-amber-700">
+                                  <span className="font-medium text-amber-800">
                                     Unassigned
                                   </span>
                                 )}

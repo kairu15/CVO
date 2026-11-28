@@ -257,7 +257,7 @@ export function AuditDetailDrawer({
                     {formatDateTime(entry.created_at, true)}
                   </span>
                   {entry.context?.device_created_at && (
-                    <span className="mt-0.5 block text-[11px] text-amber-700">
+                    <span className="mt-0.5 block text-[11px] text-amber-800">
                       Device time: {formatDateTime(entry.context.device_created_at, true)}
                     </span>
                   )}

@@ -128,7 +128,7 @@ export function DirectionsMap({ route, origin, destination }) {
         source: ROUTE_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#4d7c0f",
+          "line-color": "#20523b",
           "line-width": 4.5,
           "line-opacity": 0.95,
         },

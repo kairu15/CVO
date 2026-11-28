@@ -700,9 +700,9 @@ function BarangayMapImpl({
             "fill-color": [
               "case",
               ["boolean", ["feature-state", "selected"], false],
-              "#fde047",
+              "#f0d174",
               ["boolean", ["feature-state", "hover"], false],
-              "#fde047",
+              "#f0d174",
               ["get", "color"],
             ],
             "fill-opacity": 0.92,
@@ -736,7 +736,7 @@ function BarangayMapImpl({
           source: BOUNDARY_SOURCE,
           layout: { "line-join": "round" },
           paint: {
-            "line-color": "#2d4d19",
+            "line-color": "#163b2a",
             // ONE zoom interpolate (MapLibre allows only one per expression);
             // the selected barangay's stop values widen the line — a
             // non-colour "which one is picked" cue alongside the yellow fill.
@@ -781,7 +781,7 @@ function BarangayMapImpl({
           source: FLOW_SOURCE,
           layout: { "line-join": "round", "line-cap": "round" },
           paint: {
-            "line-color": "#b45309",
+            "line-color": "#af851c",
             "line-width": ["interpolate", ["linear"], ["get", "total"], 1, 1.4, 10, 5],
             "line-opacity": 0.82,
             "line-dasharray": [2, 1.2],
@@ -802,7 +802,7 @@ function BarangayMapImpl({
             "text-padding": 3,
           },
           paint: {
-            "text-color": "#92400e",
+            "text-color": "#896408",
             "text-halo-color": "#ffffff",
             "text-halo-width": 1.5,
           },
@@ -1003,9 +1003,9 @@ function BarangayMapImpl({
       const total = Number(properties?.total) || 0;
       return (
         `<div style="min-width:160px">` +
-        `<p style="margin:0;font-weight:600;color:#f8fafc">${count} barangay${count === 1 ? "" : "s"} grouped</p>` +
-        `<p style="margin:2px 0 0;font-size:12px;color:#cbd5e1">${total.toLocaleString()} ${circleMetricLabel} in total</p>` +
-        `<p style="margin:3px 0 0;font-size:11px;color:#94a3b8">Click to zoom in and separate them</p>` +
+        `<p style="margin:0;font-weight:600;color:#ffffff">${count} barangay${count === 1 ? "" : "s"} grouped</p>` +
+        `<p style="margin:2px 0 0;font-size:12px;color:#c3d1dc">${total.toLocaleString()} ${circleMetricLabel} in total</p>` +
+        `<p style="margin:3px 0 0;font-size:11px;color:#7992a8">Click to zoom in and separate them</p>` +
         `</div>`
       );
     };

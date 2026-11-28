@@ -251,7 +251,7 @@ export function BarangayDetailPopup({
           <StatTile
             label="Net flow"
             value={row ? `${net >= 0 ? "+" : ""}${net}` : "—"}
-            tone={row ? (net >= 0 ? "text-brand-700" : "text-amber-700") : ""}
+            tone={row ? (net >= 0 ? "text-brand-700" : "text-amber-800") : ""}
           />
         </div>
 

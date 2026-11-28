@@ -706,7 +706,7 @@ export default function RolesPermissionsPage({ roleKey = "admin" }) {
                                       {permission.key}
                                     </code>
                                     {(permission.requires ?? []).length > 0 && (
-                                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-700">
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-800">
                                         <Icon name="lock" className="h-3 w-3" />
                                         Needs {permission.requires.map(permissionLabel).join(", ")}
                                       </span>

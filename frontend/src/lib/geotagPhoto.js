@@ -208,12 +208,12 @@ function drawMetadataPanel(ctx, width, height, meta) {
 
   ctx.save();
   ctx.globalAlpha = 0.62;
-  ctx.fillStyle = "#0f172a"; // slate-900
+  ctx.fillStyle = "#0c141e"; // slate-900
   ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
   ctx.restore();
 
   ctx.save();
-  ctx.fillStyle = "#f8fafc"; // slate-50
+  ctx.fillStyle = "#ffffff"; // slate-50
   ctx.textBaseline = "top";
   rows.forEach((row, i) => {
     ctx.fillText(row, panelX + padding, panelY + padding + i * lineHeight);

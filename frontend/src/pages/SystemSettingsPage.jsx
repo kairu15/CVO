@@ -1099,7 +1099,7 @@ export default function SystemSettingsPage({ roleKey = "admin" }) {
                           <span className="flex items-center gap-2 text-xs text-slate-700">
                             {purok.name}
                             {purok.is_placeholder && (
-                              <span className="rounded-pill bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 uppercase">
+                              <span className="rounded-pill bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 uppercase">
                                 Placeholder
                               </span>
                             )}

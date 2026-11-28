@@ -8,22 +8,27 @@
  */
 
 export const CHART_COLORS = {
-  primary: "#558b2f", // brand-700
-  accent: "#8bc34a", // brand-400
-  deep: "#2d4d19", // brand-900
-  earth: "#a1784d", // earth-500
-  sand: "#d2b48c", // earth-300
-  clay: "#bb9469", // earth-400
+  primary: "#2d6a4f", // Evergreen — Classic Evergreen
+  accent: "#4e8a6b", // Evergreen — Cedar Leaf
+  deep: "#163b2a", // Evergreen — Deep Fir
+  sage: "#558167", // Brunswick/Sage 500
+  olive: "#6c7a3c", // Olive 600 (agriculture)
+  earth: "#ac805b", // Frappe 500 (historical / warm)
+  sand: "#d1b497", // Frappe 300
+  clay: "#936340", // Frappe 600
+  highlight: "#af851c", // Jasmine 800 — 3.5:1 on white
+  ink: "#324e69", // Ink 500 (info / neutral comparison)
+  neutral: "#7992a8", // Ink 300
 };
 
-/** The donut's slice palette: greens for the herd, earth tones for the rest. */
+/** The donut's slice palette: greens for the herd, warm and olive for the rest. */
 export const PIE_COLORS = [
   CHART_COLORS.primary,
   CHART_COLORS.accent,
+  CHART_COLORS.olive,
   CHART_COLORS.earth,
-  CHART_COLORS.sand,
+  CHART_COLORS.highlight,
   CHART_COLORS.deep,
-  CHART_COLORS.clay,
 ];
 
-export const AXIS_STYLE = { fontSize: 11, fill: "#64748b" };
+export const AXIS_STYLE = { fontSize: 11, fill: "#536f8b" };

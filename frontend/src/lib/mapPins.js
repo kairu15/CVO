@@ -10,32 +10,33 @@
 /**
  * Legend colors keyed by animal type.
  *
- * Deliberately avoids red, blue, green and yellow: those either disappear into
- * the basemap (water, parks, roads) or clash with the green flight path, so the
- * palette stays within brown, gray, purple, orange and pink. Types are
- * administered in Settings, so a type added later falls through to a stable
- * pick from the same palette instead of sharing one green.
+ * Deliberately avoids red and bright semantic green: red is reserved for
+ * errors and the flight path owns green, so species live in the Olive,
+ * Frappe, Jasmine and Ink families — coordinated with the Evergreen identity
+ * but still distinguishable from each other. Types are administered in
+ * Settings, so a type added later falls through to a stable pick from the
+ * same palette instead of sharing one colour.
  */
 export const ANIMAL_COLORS = {
-  Carabao: "#ea580c", // orange
-  Cattle: "#7e22ce", // purple
-  Goat: "#78350f", // brown
-  Poultry: "#db2777", // pink
-  Swine: "#57534e", // gray
-  Boar: "#9a3412", // burnt orange
-  Unspecified: "#78716c", // light gray
+  Carabao: "#ac805b", // Frappe 500 — warm brown
+  Cattle: "#324e69", // Ink 500 — slate blue
+  Goat: "#936340", // Frappe 600 — leather
+  Poultry: "#af851c", // Jasmine 800 — amber
+  Swine: "#6c7a3c", // Olive 600 — olive
+  Boar: "#764a29", // Frappe 700 — deep earth
+  Unspecified: "#7992a8", // Ink 300 — neutral
 };
 
-/** Allowed pin palette for animal types added later — no red/blue/green/yellow. */
+/** Allowed pin palette for animal types added later. */
 export const ANIMAL_FALLBACK_COLORS = [
-  "#ea580c", // orange
-  "#7e22ce", // purple
-  "#78350f", // brown
-  "#db2777", // pink
-  "#57534e", // gray
-  "#9a3412", // burnt orange
-  "#6b21a8", // deep purple
-  "#78716c", // light gray
+  "#ac805b", // Frappe 500
+  "#324e69", // Ink 500
+  "#936340", // Frappe 600
+  "#af851c", // Jasmine 800
+  "#6c7a3c", // Olive 600
+  "#764a29", // Frappe 700
+  "#515c29", // Olive 700
+  "#7992a8", // Ink 300
 ];
 
 /** Same type always gets the same colour, across reloads and devices. */
@@ -48,8 +49,8 @@ export function fallbackColor(animalType) {
 export function colorFor(beneficiary) {
   // A household pin is deliberately neutral: it stands for several animals
   // and may hold more than one species, so a species colour would lie.
-  if (beneficiary.household) return "#2d4d19";
-  if (beneficiary.is_re_dispersal) return "#2d4d19";
+  if (beneficiary.household) return "#163b2a";
+  if (beneficiary.is_re_dispersal) return "#163b2a";
   const animalType = beneficiary.animal_type ?? "";
   return ANIMAL_COLORS[animalType] ?? fallbackColor(animalType);
 }

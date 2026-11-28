@@ -60,7 +60,7 @@ export function HealthConcernHints({ text, animalType = null, className = "" }) 
               type="button"
               onClick={() => setDismissed((prev) => [...prev, rule.id])}
               aria-label={`Dismiss hint: ${rule.label}`}
-              className="shrink-0 rounded-lg p-1 text-amber-700/70 transition hover:bg-amber-100 hover:text-amber-900"
+              className="shrink-0 rounded-lg p-1 text-amber-800/70 transition hover:bg-amber-100 hover:text-amber-900"
             >
               <Icon name="close" className="h-3.5 w-3.5" />
             </button>

@@ -544,7 +544,7 @@ function PerBarangay({ rows, loading }) {
             <caption className="sr-only">
               Animals dispersed and re-dispersals per barangay, sortable
             </caption>
-            <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-slate-500 uppercase shadow-[0_1px_0_#e2e8f0]">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-slate-500 uppercase shadow-[0_1px_0_#e5e2d9]">
               <tr>
                 {columns.map((column) => (
                   <th

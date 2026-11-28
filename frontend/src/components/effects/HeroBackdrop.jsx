@@ -69,7 +69,7 @@ export function HeroBackdrop({ className = "", fixed = false }) {
       {/* Static fallback: always present, so no-WebGL and reduced-motion
           visitors see a finished hero rather than a flat block. */}
       <div className="absolute inset-0 bg-cvo-navy" />
-      <div className="absolute inset-0 bg-[radial-gradient(120%_110%_at_12%_0%,#285f6b_0%,#133336_42%,#0b1f29_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(120%_110%_at_12%_0%,#2d6a4f_0%,#163b2a_42%,#0d261b_100%)]" />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(16,42,54,0.10)_0%,rgba(11,31,41,0.72)_100%)]" />
 
       {mode !== "static" && (
@@ -77,9 +77,9 @@ export function HeroBackdrop({ className = "", fixed = false }) {
           <MicroSlats
             className="absolute inset-0 h-full w-full"
             preset="tide"
-            color="#367D8A"
-            glintColor="#D9F3F2"
-            backgroundColor="#102A36"
+            color="#4e8a6b"
+            glintColor="#cde0d5"
+            backgroundColor="#0c141e"
             slatWidth={mode === "calm" ? 14 : 10}
             slatHeight={mode === "calm" ? 30 : 25}
             gap={mode === "calm" ? 4 : 3}

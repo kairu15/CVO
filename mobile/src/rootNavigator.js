@@ -2,6 +2,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { colors, navigationTheme, stackScreenOptions } from "../theme";
 import LoginScreen from "../screens/LoginScreen";
 import ProjectsScreen from "../screens/ProjectsScreen";
 import GeoTagScreen from "../screens/GeoTagScreen";
@@ -13,15 +14,15 @@ export default function RootNavigator() {
 
   if (bootstrapping) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color="#4f46e5" />
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.brand} />
       </View>
     );
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator>
+    <NavigationContainer theme={navigationTheme}>
+      <Stack.Navigator screenOptions={stackScreenOptions}>
         {isAuthenticated ? (
           <>
             <Stack.Screen

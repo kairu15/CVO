@@ -54,7 +54,7 @@ export function SignaturePad({
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.strokeStyle = "#0f172a";
+    ctx.strokeStyle = "#0c141e";
   }, []);
 
   function pointFrom(event) {

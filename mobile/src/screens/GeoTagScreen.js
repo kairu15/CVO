@@ -14,6 +14,7 @@ import {
 import * as Location from "expo-location";
 import { beneficiariesApi } from "../api/beneficiariesApi";
 import { getErrorMessage } from "../api/client";
+import { colors } from "../theme";
 
 const ANIMAL_TYPES = ["Carabao", "Cattle", "Goat", "Swine", "Boar"];
 
@@ -142,7 +143,7 @@ export default function GeoTagScreen() {
           <View style={styles.gpsRow}>
             <Text style={styles.gpsLabel}>GPS fine-tune (optional)</Text>
             {locating ? (
-              <ActivityIndicator size="small" color="#558b2f" />
+              <ActivityIndicator size="small" color={colors.brand} />
             ) : coords ? (
               <Text style={styles.gpsBadge}>Captured</Text>
             ) : null}
@@ -228,7 +229,7 @@ export default function GeoTagScreen() {
           disabled={saving}
         >
           {saving ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.textOnDark} />
           ) : (
             <Text style={styles.submitText}>Save geo-tagged beneficiary</Text>
           )}
@@ -239,59 +240,59 @@ export default function GeoTagScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" },
+  container: { flex: 1, backgroundColor: colors.background },
   scroll: { padding: 16, paddingBottom: 40 },
-  title: { fontSize: 22, fontWeight: "700", color: "#0f172a" },
-  subtitle: { color: "#64748b", marginTop: 4, marginBottom: 16 },
+  title: { fontSize: 22, fontWeight: "700", color: colors.textPrimary },
+  subtitle: { color: colors.textSecondary, marginTop: 4, marginBottom: 16 },
   error: {
-    color: "#dc2626",
-    backgroundColor: "#fee2e2",
+    color: colors.error,
+    backgroundColor: colors.errorSoft,
     padding: 10,
     borderRadius: 8,
     marginBottom: 12,
   },
   notice: {
-    color: "#3f6b22",
-    backgroundColor: "#e3f1d9",
+    color: colors.success,
+    backgroundColor: colors.successSoft,
     padding: 10,
     borderRadius: 8,
     marginBottom: 12,
   },
   gpsCard: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
     padding: 14,
     marginBottom: 16,
   },
   gpsRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  gpsLabel: { fontWeight: "600", color: "#0f172a" },
+  gpsLabel: { fontWeight: "600", color: colors.textPrimary },
   gpsBadge: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#3f6b22",
-    backgroundColor: "#e3f1d9",
+    color: colors.success,
+    backgroundColor: colors.successSoft,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 999,
     overflow: "hidden",
     textTransform: "uppercase",
   },
-  gpsValue: { color: "#64748b", marginTop: 6, fontVariant: ["tabular-nums"] },
+  gpsValue: { color: colors.textSecondary, marginTop: 6, fontVariant: ["tabular-nums"] },
   gpsButton: {
     marginTop: 10,
-    backgroundColor: "#558b2f",
+    backgroundColor: colors.brand,
     borderRadius: 8,
     paddingVertical: 10,
     alignItems: "center",
   },
   gpsButtonText: { color: "#fff", fontWeight: "600" },
-  label: { fontWeight: "600", color: "#0f172a", marginBottom: 6, marginTop: 4 },
+  label: { fontWeight: "600", color: colors.textPrimary, marginBottom: 6, marginTop: 4 },
   input: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
+    borderColor: colors.borderStrong,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -300,17 +301,17 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
   chip: {
     borderWidth: 1,
-    borderColor: "#cbd5e1",
+    borderColor: colors.borderStrong,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
   },
-  chipActive: { backgroundColor: "#558b2f", borderColor: "#558b2f" },
-  chipText: { color: "#334155", fontSize: 13 },
+  chipActive: { backgroundColor: colors.brand, borderColor: colors.brand },
+  chipText: { color: colors.textSecondary, fontSize: 13 },
   chipTextActive: { color: "#fff", fontWeight: "600" },
   submit: {
-    backgroundColor: "#558b2f",
+    backgroundColor: colors.brand,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: "center",

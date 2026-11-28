@@ -659,7 +659,7 @@ export function FieldVisitFormModal({
           {locationNote ? (
             <p
               className={`mt-2 text-xs ${
-                locationNote.tone === "ok" ? "text-brand-800" : "text-amber-700"
+                locationNote.tone === "ok" ? "text-brand-800" : "text-amber-800"
               }`}
             >
               {locationNote.text}
@@ -762,7 +762,7 @@ export function FieldVisitFormModal({
           {captureNote ? (
             <p
               className={`mt-2 text-xs ${
-                captureNote.tone === "error" ? "text-red-700" : "text-amber-700"
+                captureNote.tone === "error" ? "text-red-700" : "text-amber-800"
               }`}
             >
               {captureNote.text}

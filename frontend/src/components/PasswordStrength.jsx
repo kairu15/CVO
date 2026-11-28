@@ -13,7 +13,7 @@ const CHECKS = [
 const LEVEL_TONES = {
   weak: { text: "text-red-600", bar: "bg-red-500" },
   fair: { text: "text-amber-600", bar: "bg-amber-500" },
-  good: { text: "text-lime-700", bar: "bg-lime-600" },
+  good: { text: "text-emerald-700", bar: "bg-emerald-600" },
   strong: { text: "text-brand-700", bar: "bg-brand-600" },
 };
 

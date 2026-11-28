@@ -130,7 +130,7 @@ export function QrScanner({ open, onClose, onResult, title = "Scan animal ear ta
         </div>
       )}
 
-      {error && <p className="mt-3 text-xs font-medium text-amber-700">{error}</p>}
+      {error && <p className="mt-3 text-xs font-medium text-amber-800">{error}</p>}
 
       {/* Manual fallback: also the only path when the browser has no scanner. */}
       <form onSubmit={submitManual} className="mt-4">

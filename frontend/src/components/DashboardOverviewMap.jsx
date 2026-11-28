@@ -253,7 +253,7 @@ export function DashboardOverviewMap({ roleKey }) {
                         onClose={handleResetFocus}
                         label="Barangay flight-path summary"
                         badge={
-                          <span className="mb-1.5 inline-flex items-center gap-1 rounded-pill bg-[#285F6B]/10 px-2 py-0.5 text-[10px] font-bold tracking-wide text-[#285F6B] uppercase">
+                          <span className="mb-1.5 inline-flex items-center gap-1 rounded-pill bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold tracking-wide text-brand-500 uppercase">
                             Focused barangay
                           </span>
                         }
@@ -268,7 +268,7 @@ export function DashboardOverviewMap({ roleKey }) {
                             <span>The map is now filtered to this barangay's trails.</span>
                             <Link
                               to={`/dashboard/${roleKey}/map?barangay=${encodeURIComponent(focusedRow?.name ?? "")}`}
-                              className="inline-flex items-center gap-1 font-semibold text-[#285F6B] hover:underline"
+                              className="inline-flex items-center gap-1 font-semibold text-brand-500 hover:underline"
                             >
                               Open map
                               <Icon name="arrow-right" className="h-3 w-3" />

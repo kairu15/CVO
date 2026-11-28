@@ -791,7 +791,7 @@ export default function ReportsPage({ roleKey = "admin" }) {
           >
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trend} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e2d9" />
                 <XAxis dataKey="label" tick={AXIS_STYLE} tickLine={false} />
                 <YAxis allowDecimals={false} tick={AXIS_STYLE} tickLine={false} />
                 <Tooltip />
@@ -834,7 +834,7 @@ export default function ReportsPage({ roleKey = "admin" }) {
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={byBarangay} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e2d9" vertical={false} />
                   <XAxis
                     dataKey="barangay"
                     tick={{ ...AXIS_STYLE, fontSize: 10 }}
@@ -872,7 +872,7 @@ export default function ReportsPage({ roleKey = "admin" }) {
             >
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={compliance} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e2d9" />
                   <XAxis dataKey="label" tick={AXIS_STYLE} tickLine={false} />
                   <YAxis
                     domain={[0, 100]}
@@ -939,7 +939,7 @@ export default function ReportsPage({ roleKey = "admin" }) {
                   layout="vertical"
                   margin={{ top: 8, right: 24, bottom: 0, left: 24 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e2d9" horizontal={false} />
                   <XAxis type="number" allowDecimals={false} tick={AXIS_STYLE} tickLine={false} />
                   <YAxis
                     type="category"

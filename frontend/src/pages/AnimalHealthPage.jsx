@@ -62,7 +62,7 @@ const HEALTH_STATUS = {
 
 const VACCINATION_STATUS = {
   overdue: { label: "Vaccination overdue", tone: "text-red-700" },
-  "due-soon": { label: "Vaccination due soon", tone: "text-amber-700" },
+  "due-soon": { label: "Vaccination due soon", tone: "text-amber-800" },
   scheduled: { label: "Vaccination scheduled", tone: "text-brand-800" },
   never: { label: "Never vaccinated", tone: "text-slate-500" },
 };
@@ -188,12 +188,12 @@ function AnimalHealthMap({
             "match",
             ["get", "status"],
             "attention",
-            "#b91c1c",
+            "#b42318",
             "observation",
-            "#b45309",
+            "#af851c",
             "healthy",
             "#2d6a4f",
-            "#64748b",
+            "#536f8b",
           ],
           "circle-stroke-width": 1.5,
           "circle-stroke-color": "#ffffff",

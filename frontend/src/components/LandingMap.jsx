@@ -124,8 +124,8 @@ export function LandingMap({
     const safeName = escapeHtml(name);
     return (
       `<div style="min-width:150px">` +
-      `<p style="margin:0;font-weight:600;color:#f8fafc">${safeName}</p>` +
-      `<p style="margin:2px 0 0;font-size:12px;color:#cbd5e1">${count === 0 ? "No beneficiaries recorded yet" : `<strong>${count}</strong> beneficiar${count === 1 ? "y" : "ies"} recorded`}</p>` +
+      `<p style="margin:0;font-weight:600;color:#ffffff">${safeName}</p>` +
+      `<p style="margin:2px 0 0;font-size:12px;color:#c3d1dc">${count === 0 ? "No beneficiaries recorded yet" : `<strong>${count}</strong> beneficiar${count === 1 ? "y" : "ies"} recorded`}</p>` +
       `</div>`
     );
   }, []);
@@ -222,7 +222,7 @@ export function LandingMap({
           onClose={clearSelection}
           label="Public barangay summary"
           badge={
-            <span className="mb-1.5 inline-flex items-center gap-1 rounded-pill bg-[#285F6B]/10 px-2 py-0.5 text-[10px] font-bold tracking-wide text-[#285F6B] uppercase">
+            <span className="mb-1.5 inline-flex items-center gap-1 rounded-pill bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold tracking-wide text-brand-500 uppercase">
               Public aggregate
             </span>
           }
@@ -231,7 +231,7 @@ export function LandingMap({
           footer={
             <Link
               to="/transparency"
-              className="inline-flex items-center gap-1 font-semibold text-[#285F6B] hover:underline"
+              className="inline-flex items-center gap-1 font-semibold text-brand-500 hover:underline"
             >
               Citywide transparency dashboard
               <Icon name="arrow-right" className="h-3 w-3" />
@@ -258,7 +258,7 @@ export function LandingMap({
           </p>
 
           <p className="mt-2.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-500">
-            <Icon name="info" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#367D8A]" />
+            <Icon name="info" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-400" />
             Figures are barangay-level aggregates from the office's records. The map
             intentionally carries no household pins on the public site.
           </p>

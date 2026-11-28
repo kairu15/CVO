@@ -61,14 +61,14 @@ export const CIRCLE_CLUSTER = { radius: 46, maxZoom: 12, minPoints: 2 };
 
 /** Circle chrome. Kept beside the layers so every page looks the same. */
 export const CIRCLE_PALETTE = {
-  fill: "#285F6B",
-  hover: "#367D8A",
-  glow: "#367D8A",
-  stroke: "#FFFFFF",
-  core: "#FFFFFF",
-  // Slightly darker than slate-400 so a zero-value circle still reads on the
-  // pale sequential fill it sits on.
-  muted: "#7C8FA3",
+  fill: "#2d6a4f", // Evergreen — Classic Evergreen
+  hover: "#20523b", // Evergreen — Spruce
+  glow: "#4e8a6b", // Evergreen — Cedar Leaf
+  stroke: "#ffffff",
+  core: "#ffffff",
+  // Ink-3: a zero-value circle still reads on the pale morning-mist fill it
+  // sits on, without competing with a ranked marker.
+  muted: "#7992a8",
 };
 
 /**
@@ -78,10 +78,10 @@ export const CIRCLE_PALETTE = {
  * Zero stays muted — "covered, nothing recorded" is not "low".
  */
 export const INTENSITY_STOPS = [
-  { id: "high", label: "High", color: "#B42318" },
-  { id: "medium-high", label: "Medium-high", color: "#C2410C" },
-  { id: "medium", label: "Medium", color: "#B7791F" },
-  { id: "low", label: "Low", color: "#2F6B4F" },
+  { id: "high", label: "High", color: "#b42318" }, // functional error red
+  { id: "medium-high", label: "Medium-high", color: "#c2410c" }, // heat orange
+  { id: "medium", label: "Medium", color: "#af851c" }, // Jasmine 800
+  { id: "low", label: "Low", color: "#2d6a4f" }, // Classic Evergreen
 ];
 
 /** Screen-pixel radius range. Small enough to read, large enough to tap. */

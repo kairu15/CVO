@@ -64,18 +64,18 @@ const CARD_GAP = 16;
 
 const FLOW_ARROW_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">' +
-  '<path d="M6 0 L11.5 11 L6 8.4 L0.5 11 Z" fill="#2d4d19" stroke="#ffffff" stroke-width="0.8"/></svg>';
+  '<path d="M6 0 L11.5 11 L6 8.4 L0.5 11 Z" fill="#163b2a" stroke="#ffffff" stroke-width="0.8"/></svg>';
 
 function bubblePopupHtml(row, { metric, per1000, metricLabel, minRateAnimals }) {
   const rateText = formatMetricReadout(row, metric, per1000, minRateAnimals);
 
   return (
     `<div style="min-width:200px">` +
-    `<p style="margin:0;font-weight:600;color:#0f172a">${escapeHtml(row.name)}</p>` +
-    `<p style="margin:2px 0 6px;font-size:12px;color:#64748b">${escapeHtml(metricLabel)}: <strong>${escapeHtml(rateText)}</strong></p>` +
-    `<p style="margin:0;font-size:12px;color:#64748b">Dispersed: ${row.dispersed} &middot; Out: ${row.redispersed_out} &middot; In: ${row.redispersed_in}</p>` +
-    `<p style="margin:0;font-size:12px;color:#64748b">Within barangay: ${row.within_barangay} &middot; Net: ${row.net_flow >= 0 ? "+" : ""}${row.net_flow}</p>` +
-    `<p style="margin:2px 0 0;font-size:11px;color:#94a3b8">Rate denominator: ${row.rate_denominator} animals${row.rate_eligible ? "" : ` (n < ${minRateAnimals})`}</p>` +
+    `<p style="margin:0;font-weight:600;color:#0c141e">${escapeHtml(row.name)}</p>` +
+    `<p style="margin:2px 0 6px;font-size:12px;color:#536f8b">${escapeHtml(metricLabel)}: <strong>${escapeHtml(rateText)}</strong></p>` +
+    `<p style="margin:0;font-size:12px;color:#536f8b">Dispersed: ${row.dispersed} &middot; Out: ${row.redispersed_out} &middot; In: ${row.redispersed_in}</p>` +
+    `<p style="margin:0;font-size:12px;color:#536f8b">Within barangay: ${row.within_barangay} &middot; Net: ${row.net_flow >= 0 ? "+" : ""}${row.net_flow}</p>` +
+    `<p style="margin:2px 0 0;font-size:11px;color:#7992a8">Rate denominator: ${row.rate_denominator} animals${row.rate_eligible ? "" : ` (n < ${minRateAnimals})`}</p>` +
     `</div>`
   );
 }
@@ -85,8 +85,8 @@ function barangayTooltipHtml(row, name, { metric, per1000, metricLabel, minRateA
   if (!row) {
     return (
       `<div style="min-width:140px">` +
-      `<p style="margin:0;font-weight:600;color:#f8fafc">${escapeHtml(name)}</p>` +
-      `<p style="margin:2px 0 0;font-size:11px;color:#94a3b8">No dispersals recorded in this period</p>` +
+      `<p style="margin:0;font-weight:600;color:#ffffff">${escapeHtml(name)}</p>` +
+      `<p style="margin:2px 0 0;font-size:11px;color:#7992a8">No dispersals recorded in this period</p>` +
       `</div>`
     );
   }
@@ -95,9 +95,9 @@ function barangayTooltipHtml(row, name, { metric, per1000, metricLabel, minRateA
 
   return (
     `<div style="min-width:170px">` +
-    `<p style="margin:0;font-weight:600;color:#f8fafc">${escapeHtml(name)}</p>` +
-    `<p style="margin:2px 0 4px;font-size:12px;color:#cbd5e1">${escapeHtml(metricLabel)}: <strong>${escapeHtml(rateText)}</strong></p>` +
-    `<p style="margin:0;font-size:11px;color:#94a3b8">Out: ${row.redispersed_out} &middot; In: ${row.redispersed_in} &middot; Net: ${row.net_flow >= 0 ? "+" : ""}${row.net_flow}</p>` +
+    `<p style="margin:0;font-weight:600;color:#ffffff">${escapeHtml(name)}</p>` +
+    `<p style="margin:2px 0 4px;font-size:12px;color:#c3d1dc">${escapeHtml(metricLabel)}: <strong>${escapeHtml(rateText)}</strong></p>` +
+    `<p style="margin:0;font-size:11px;color:#7992a8">Out: ${row.redispersed_out} &middot; In: ${row.redispersed_in} &middot; Net: ${row.net_flow >= 0 ? "+" : ""}${row.net_flow}</p>` +
     `</div>`
   );
 }
@@ -105,8 +105,8 @@ function barangayTooltipHtml(row, name, { metric, per1000, metricLabel, minRateA
 function flowPopupHtml(flow) {
   return (
     `<div style="min-width:180px">` +
-    `<p style="margin:0;font-weight:600;color:#0f172a">${escapeHtml(flow.properties.origin_name)} → ${escapeHtml(flow.properties.destination_name)}</p>` +
-    `<p style="margin:2px 0 0;font-size:12px;color:#64748b">${flow.properties.count} animal${flow.properties.count === 1 ? "" : "s"} re-dispersed</p>` +
+    `<p style="margin:0;font-weight:600;color:#0c141e">${escapeHtml(flow.properties.origin_name)} → ${escapeHtml(flow.properties.destination_name)}</p>` +
+    `<p style="margin:2px 0 0;font-size:12px;color:#536f8b">${flow.properties.count} animal${flow.properties.count === 1 ? "" : "s"} re-dispersed</p>` +
     `</div>`
   );
 }
@@ -248,7 +248,7 @@ export function BarangayFlowMap({
       layout: { "line-cap": "round" },
       paint: {
         "line-width": ["+", 1, ["*", 1.8, ["get", "width"]]],
-        "line-color": "#558b2f",
+        "line-color": "#20523b",
         "line-opacity": 0.8,
       },
     });

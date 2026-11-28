@@ -10,6 +10,7 @@ import { Modal } from "./Modal";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ButtonSpinner } from "./LoadingSpinner";
 import { TextField } from "./TextField";
+import { SignaturePad } from "./SignaturePad";
 import { Icon } from "./Icons";
 
 const EMPTY_FORM = {
@@ -37,13 +38,32 @@ const DATE_FIELDS = [
 const isOnline = () =>
   typeof navigator === "undefined" ? true : navigator.onLine !== false;
 
+/** A titled block; the monitoring sheet is read top-to-bottom, like the form. */
+function Section({ title, icon, children }) {
+  return (
+    <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-200/70">
+      <h3 className="flex items-center gap-1.5 font-display text-xs font-semibold tracking-wider text-brand-800 uppercase">
+        <Icon name={icon} className="h-3.5 w-3.5" />
+        {title}
+      </h3>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
 /**
  * Technician's "Log a Visit" form.
  *
- * The four identity fields (name of farmer, address, animal type, sex) render
+ * The identity fields (name of farmer, address, animal type, sex) render
  * read-only from the beneficiary record — the technician only fills the
  * visit-specific fields, exactly like the paper form except the first four
  * columns can never be retyped.
+ *
+ * The farmer's confirmation is captured as a signature on the device and
+ * belongs to this monitoring record. On an existing record the saved
+ * signature is shown, and it is only replaced when the technician explicitly
+ * chooses to re-sign: editing remarks or a vaccination date must never
+ * discard it.
  *
  * @param {object} props
  * @param {boolean} props.open
@@ -57,6 +77,9 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [beneficiaryId, setBeneficiaryId] = useState("");
+  const [signature, setSignature] = useState(null);
+  const [replacingSignature, setReplacingSignature] = useState(false);
+  const [signatureError, setSignatureError] = useState(null);
   const toast = useToast();
   const notifyOfflineSaved = useNotifyOfflineSaved();
   const { user } = useAuth();
@@ -80,6 +103,10 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
     () => beneficiaries.find((b) => String(b.id) === String(beneficiaryId)) ?? record?.beneficiary ?? null,
     [beneficiaries, beneficiaryId, record],
   );
+
+  const savedSignatureUrl = record?.farmer_signature_url ?? null;
+  const hasSavedSignature = Boolean(record?.has_farmer_signature && savedSignatureUrl);
+  const showSignaturePad = !editing || !hasSavedSignature || replacingSignature;
 
   useEffect(() => {
     if (!open) {
@@ -113,6 +140,9 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
       setBeneficiaryId(beneficiaries.length === 1 ? String(beneficiaries[0].id) : "");
     }
 
+    setSignature(null);
+    setReplacingSignature(false);
+    setSignatureError(null);
     setErrors({});
     setFormError(null);
     setDirty(false);
@@ -126,6 +156,13 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
       setErrors((prev) => ({ ...prev, [field]: undefined }));
       markDirty();
     };
+  }
+
+  function captureSignature(dataUrl) {
+    setSignature(dataUrl);
+    setSignatureError(null);
+    setErrors((prev) => ({ ...prev, signature: undefined }));
+    markDirty();
   }
 
   /** Close — asking first when there is unsaved input to lose. */
@@ -187,6 +224,7 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError(null);
+    setSignatureError(null);
 
     if (!editing && !beneficiaryId) {
       setErrors((prev) => ({ ...prev, beneficiary_id: "Choose the beneficiary visited." }));
@@ -196,6 +234,12 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
       setErrors((prev) => ({ ...prev, date_monitored: "Enter the visit date." }));
       return;
     }
+    // Chose to replace the saved signature but did not draw one: keep the
+    // existing signature rather than silently deleting the farmer's record.
+    if (editing && hasSavedSignature && replacingSignature && !signature) {
+      setSignatureError("Sign below to replace the saved signature, or keep the existing one.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -203,6 +247,13 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
         ...form,
         bcs: form.bcs === "" ? null : Number(form.bcs),
       };
+
+      // Only a newly drawn signature is sent. Omitting the key on a normal
+      // edit is what tells the server to preserve the existing one.
+      if (signature) {
+        payload.signature = signature;
+        payload.signature_signed_at = new Date().toISOString();
+      }
 
       if (editing) {
         // Offline: queue the edit; the queue replays it and flags a conflict
@@ -248,8 +299,12 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
       onClose();
     } catch (error) {
       const fields = getFieldErrors(error);
-      if (fields) setErrors(fields);
-      else setFormError(getErrorMessage(error));
+      if (fields) {
+        setErrors(fields);
+        if (fields.signature) setSignatureError(fields.signature);
+      } else {
+        setFormError(getErrorMessage(error));
+      }
     } finally {
       setSaving(false);
     }
@@ -263,115 +318,202 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
         onClose={requestClose}
       >
       <form onSubmit={handleSubmit} noValidate>
-        {/* Identity block — read-only, from the beneficiary record. */}
-        <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4">
-          <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-brand-800 uppercase">
-            <Icon name="lock" className="h-3.5 w-3.5" />
-            From beneficiary record — read-only
-          </p>
-          {beneficiary ? (
-            <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
-              {[
-                ["Name of Farmer", beneficiary.name_of_farmer],
-                ["Address", beneficiary.address],
-                ["Type of Animal", beneficiary.animal_type],
-                ["Sex", beneficiary.sex],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <dt className="text-slate-500">{label}</dt>
-                  <dd className="mt-0.5 font-semibold text-slate-900">{value || "—"}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : (
-            <p className="mt-2 text-xs text-slate-500">
-              Pick a beneficiary below to load their details.
-            </p>
-          )}
-        </div>
-
         {formError && (
           <div
             role="alert"
-            className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700"
+            className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700"
           >
             {formError}
           </div>
         )}
 
-        {!editing && (
-          <div className="mt-4">
-            <label htmlFor="visit-beneficiary" className="block text-sm font-medium text-slate-700">
-              Beneficiary visited
-            </label>
-            <select
-              id="visit-beneficiary"
-              className="field mt-1.5"
-              value={beneficiaryId}
-              onChange={(event) => {
-                setBeneficiaryId(event.target.value);
-                setErrors((prev) => ({ ...prev, beneficiary_id: undefined }));
-                markDirty();
-              }}
-            >
-              <option value="">Select a beneficiary…</option>
-              {beneficiaries.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name_of_farmer} — {b.animal_type} ({b.sex}) · {b.address}
-                </option>
-              ))}
-            </select>
-            {errors.beneficiary_id && (
-              <p className="mt-1.5 text-xs font-medium text-red-600">{errors.beneficiary_id}</p>
+        {/* ── Beneficiary information ─────────────────────────────────── */}
+        <Section title="Beneficiary information" icon="users">
+          <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4">
+            <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-brand-800 uppercase">
+              <Icon name="lock" className="h-3.5 w-3.5" />
+              From beneficiary record — read-only
+            </p>
+            {beneficiary ? (
+              <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
+                {[
+                  ["Name of Farmer", beneficiary.name_of_farmer],
+                  ["Address", beneficiary.address],
+                  ["Type of Animal", beneficiary.animal_type],
+                  ["Sex", beneficiary.sex],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt className="text-slate-500">{label}</dt>
+                    <dd className="mt-0.5 font-semibold text-slate-900">{value || "—"}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">
+                Pick a beneficiary below to load their details.
+              </p>
             )}
           </div>
-        )}
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {DATE_FIELDS.map(([field, label]) => (
+          {!editing && (
+            <div className="mt-3">
+              <label htmlFor="visit-beneficiary" className="block text-sm font-medium text-slate-700">
+                Beneficiary visited
+              </label>
+              <select
+                id="visit-beneficiary"
+                className="field mt-1.5"
+                value={beneficiaryId}
+                onChange={(event) => {
+                  setBeneficiaryId(event.target.value);
+                  setErrors((prev) => ({ ...prev, beneficiary_id: undefined }));
+                  markDirty();
+                }}
+              >
+                <option value="">Select a beneficiary…</option>
+                {beneficiaries.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name_of_farmer} — {b.animal_type} ({b.sex}) · {b.address}
+                  </option>
+                ))}
+              </select>
+              {errors.beneficiary_id && (
+                <p className="mt-1.5 text-xs font-medium text-red-600">{errors.beneficiary_id}</p>
+              )}
+            </div>
+          )}
+        </Section>
+
+        {/* ── Monitoring information ─────────────────────────────────── */}
+        <Section title="Monitoring information" icon="clipboard">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {DATE_FIELDS.map(([field, label]) => (
+              <TextField
+                key={field}
+                id={`visit-${field}`}
+                label={label}
+                type="date"
+                value={form[field]}
+                onChange={update(field)}
+                error={errors[field]}
+              />
+            ))}
+
             <TextField
-              key={field}
-              id={`visit-${field}`}
-              label={label}
-              type="date"
-              value={form[field]}
-              onChange={update(field)}
-              error={errors[field]}
+              id="visit-bcs"
+              label="BCS (1–5)"
+              type="number"
+              min="1"
+              max="5"
+              placeholder="3"
+              value={form.bcs}
+              onChange={update("bcs")}
+              error={errors.bcs}
             />
-          ))}
+          </div>
+        </Section>
 
-          <TextField
-            id="visit-bcs"
-            label="BCS (1–5)"
-            type="number"
-            min="1"
-            max="5"
-            placeholder="3"
-            value={form.bcs}
-            onChange={update("bcs")}
-            error={errors.bcs}
-          />
+        {/* ── Farmer confirmation ────────────────────────────────────── */}
+        <Section title="Farmer confirmation" icon="check">
+          <dl className="grid gap-x-4 gap-y-2 text-xs sm:grid-cols-2">
+            <div>
+              <dt className="text-slate-500">Farmer's name</dt>
+              <dd className="mt-0.5 font-semibold text-slate-900">
+                {beneficiary?.name_of_farmer || "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Technician recording this visit</dt>
+              <dd className="mt-0.5 font-semibold text-slate-900">
+                {record?.technician?.name ?? user?.name ?? "—"}
+              </dd>
+            </div>
+          </dl>
 
-          <TextField
-            id="visit-signature"
-            label="Farmer's signature"
-            type="text"
-            placeholder="Typed confirmation"
-            value={form.farmers_signature}
-            onChange={update("farmers_signature")}
-            error={errors.farmers_signature}
-            hint="Name of the farmer confirming the visit."
-          />
-        </div>
+          <p className="mt-3 text-xs text-slate-600">
+            Please ask the farmer to sign below to confirm the monitoring visit.
+          </p>
 
-        <div className="mt-3">
-          <label htmlFor="visit-remarks" className="block text-sm font-medium text-slate-700">
+          {!showSignaturePad && (
+            <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50/50 p-3">
+              <p className="text-[10px] font-semibold tracking-wider text-brand-800 uppercase">
+                Saved signature
+              </p>
+              <img
+                src={savedSignatureUrl}
+                alt={`Saved signature of ${beneficiary?.name_of_farmer ?? "the farmer"}`}
+                className="mx-auto mt-2 max-h-28 w-auto max-w-full rounded-lg bg-white object-contain p-1"
+                style={{ backgroundColor: "#ffffff" }}
+              />
+              <p className="mt-2 text-xs text-slate-600">
+                Signed{" "}
+                {record?.farmer_signed_at
+                  ? new Date(record.farmer_signed_at).toLocaleString()
+                  : "previously"}
+                {record?.signature_captured_by_name
+                  ? ` · captured by ${record.signature_captured_by_name}`
+                  : ""}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setReplacingSignature(true);
+                  setSignatureError(null);
+                  markDirty();
+                }}
+                className="mt-2 rounded-lg px-2.5 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-100"
+              >
+                Replace signature
+              </button>
+            </div>
+          )}
+
+          {showSignaturePad && (
+            <>
+              {editing && hasSavedSignature && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReplacingSignature(false);
+                    setSignature(null);
+                    setSignatureError(null);
+                  }}
+                  className="mt-2 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 dark:hover:bg-slate-200/60"
+                >
+                  Keep the saved signature instead
+                </button>
+              )}
+
+              <div className="mt-2">
+                <SignaturePad
+                  id="visit-farmer-signature"
+                  label="Farmer's signature"
+                  hint="Signature area. Ask the farmer to sign with a finger, stylus or mouse."
+                  onChange={captureSignature}
+                  error={signatureError ?? errors.signature}
+                  disabled={saving}
+                  showPreview
+                />
+              </div>
+            </>
+          )}
+
+          <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-600 dark:bg-slate-100/60">
+            By signing, the farmer confirms that the monitoring visit represented by this
+            record took place. The technician operates the device; the farmer is the person
+            signing.
+          </p>
+        </Section>
+
+        {/* ── Additional remarks ─────────────────────────────────────── */}
+        <Section title="Additional remarks" icon="file-text">
+          <label htmlFor="visit-remarks" className="sr-only">
             Remarks
           </label>
           <textarea
             id="visit-remarks"
             rows={3}
-            className="field mt-1.5"
+            className="field"
             placeholder='e.g. "Healthy"'
             value={form.remarks}
             onChange={update("remarks")}
@@ -379,7 +521,7 @@ export function VisitFormModal({ open, onClose, beneficiaries = [], record = nul
           {errors.remarks && (
             <p className="mt-1.5 text-xs font-medium text-red-600">{errors.remarks}</p>
           )}
-        </div>
+        </Section>
 
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={requestClose} className="btn-secondary">

@@ -1,16 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * Canvas signature pad for dispersal agreements (item 7).
+ * Canvas signature pad.
  *
  * Hand-rolled rather than pulling in `signature_pad`: the whole component is
  * a pointer-events-to-canvas bridge, and the app already ships no drawing
  * dependency. Pointer events cover finger, stylus and mouse with one code
  * path; the pad exports a PNG data URL on pen-up.
  *
- * The signature is a legal record — this component only captures it. Whether
- * it is required, and the immutability of a signed agreement, are enforced by
- * the form and the server respectively.
+ * Strokes are kept as points in CSS-pixel space, not as pixels. That makes
+ * the pad survive a resize or a device rotation (the canvas is re-sized and
+ * the strokes re-drawn at the new backing-store resolution rather than
+ * smeared or lost) and gives Undo something to pop.
+ *
+ * The signature is a record of farmer confirmation — this component only
+ * captures it. Whether it is required, and whether an existing signature is
+ * replaced, are enforced by the form and the server respectively.
  *
  * @param {object} props
  * @param {string} [props.id]
@@ -19,6 +24,7 @@ import { useEffect, useRef, useState } from "react";
  * @param {(dataUrl: string|null) => void} [props.onChange] — null when cleared
  * @param {string} [props.error]
  * @param {boolean} [props.disabled]
+ * @param {boolean} [props.showPreview] render the captured image beneath the pad
  */
 export function SignaturePad({
   id = "signature",
@@ -27,15 +33,49 @@ export function SignaturePad({
   onChange,
   error,
   disabled = false,
+  showPreview = false,
 }) {
   const canvasRef = useRef(null);
   const drawingRef = useRef(false);
-  const lastPointRef = useRef(null);
+  // One array of {x, y} points per completed/active stroke.
+  const strokesRef = useRef([]);
   const [signed, setSigned] = useState(false);
+  const [preview, setPreview] = useState(null);
 
-  // Size the backing store to the CSS box × device pixel ratio once, so the
-  // line is crisp on high-DPI screens without re-sizing on every stroke.
-  useEffect(() => {
+  /** Re-draw every stored stroke at the canvas's current scale. */
+  const redraw = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#111827";
+
+    for (const stroke of strokesRef.current) {
+      if (stroke.length < 2) continue;
+
+      ctx.beginPath();
+      ctx.moveTo(stroke[0].x, stroke[0].y);
+
+      for (const point of stroke.slice(1)) {
+        ctx.lineTo(point.x, point.y);
+      }
+
+      ctx.stroke();
+    }
+  }, []);
+
+  /**
+   * Size the backing store to the CSS box × device pixel ratio and redraw.
+   * Runs on mount and on resize/rotation; `canvas.width = …` resets the
+   * context transform, so scaling is applied exactly once per sizing.
+   */
+  const resize = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -51,11 +91,22 @@ export function SignaturePad({
     if (!ctx) return;
 
     ctx.scale(dpr, dpr);
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = "#0c141e";
-  }, []);
+    redraw();
+  }, [redraw]);
+
+  useEffect(() => {
+    resize();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", resize);
+      return () => window.removeEventListener("resize", resize);
+    }
+
+    const observer = new ResizeObserver(() => resize());
+    if (canvasRef.current) observer.observe(canvasRef.current);
+
+    return () => observer.disconnect();
+  }, [resize]);
 
   function pointFrom(event) {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -67,8 +118,9 @@ export function SignaturePad({
 
   function start(event) {
     if (disabled) return;
+
     drawingRef.current = true;
-    lastPointRef.current = pointFrom(event);
+    strokesRef.current.push([pointFrom(event)]);
     event.currentTarget.setPointerCapture?.(event.pointerId);
     event.preventDefault();
   }
@@ -77,48 +129,61 @@ export function SignaturePad({
     if (!drawingRef.current || disabled) return;
 
     const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) return;
+    const stroke = strokesRef.current[strokesRef.current.length - 1];
+    if (!ctx || !stroke) return;
 
     const next = pointFrom(event);
-    const last = lastPointRef.current ?? next;
+    const last = stroke[stroke.length - 1] ?? next;
+
+    stroke.push(next);
 
     ctx.beginPath();
     ctx.moveTo(last.x, last.y);
     ctx.lineTo(next.x, next.y);
     ctx.stroke();
 
-    lastPointRef.current = next;
     event.preventDefault();
   }
 
   function end() {
     if (!drawingRef.current) return;
     drawingRef.current = false;
-    lastPointRef.current = null;
     emit();
   }
 
   function emit() {
+    const hasInk = strokesRef.current.length > 0;
+
     let dataUrl = null;
-    try {
-      dataUrl = canvasRef.current?.toDataURL("image/png") ?? null;
-    } catch {
-      dataUrl = null; // jsdom / unsupported canvas: no signature to export
+    if (hasInk) {
+      try {
+        dataUrl = canvasRef.current?.toDataURL("image/png") ?? null;
+      } catch {
+        dataUrl = null; // jsdom / unsupported canvas: no signature to export
+      }
     }
 
-    setSigned(Boolean(dataUrl));
-    onChange?.(dataUrl);
+    setSigned(hasInk);
+    setPreview(dataUrl);
+    onChange?.(hasInk ? dataUrl : null);
   }
 
   function clear() {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+    strokesRef.current = [];
     drawingRef.current = false;
-    lastPointRef.current = null;
+    redraw();
+
     setSigned(false);
+    setPreview(null);
     onChange?.(null);
+  }
+
+  function undo() {
+    if (strokesRef.current.length === 0) return;
+
+    strokesRef.current.pop();
+    redraw();
+    emit();
   }
 
   return (
@@ -127,14 +192,24 @@ export function SignaturePad({
         <label htmlFor={id} className="block text-sm font-medium text-slate-700">
           {label}
         </label>
-        <button
-          type="button"
-          onClick={clear}
-          disabled={disabled}
-          className="rounded-lg px-2 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-50 disabled:opacity-50"
-        >
-          Clear
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={undo}
+            disabled={disabled || !signed}
+            className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-200/60"
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            onClick={clear}
+            disabled={disabled || !signed}
+            className="rounded-lg px-2 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-50 disabled:opacity-40"
+          >
+            Clear
+          </button>
+        </div>
       </div>
 
       <canvas
@@ -143,16 +218,19 @@ export function SignaturePad({
         role="img"
         aria-label={
           hint ??
-          "Signature area. Draw the recipient's signature with a finger, stylus or mouse."
+          "Signature area. Draw the farmer's signature with a finger, stylus or mouse."
         }
         data-testid="signature-canvas"
         data-signed={signed ? "true" : "false"}
         onPointerDown={start}
         onPointerMove={move}
         onPointerUp={end}
-        onPointerLeave={end}
         onPointerCancel={end}
-        style={{ touchAction: "none" }}
+        // A signature is captured on white paper regardless of the app theme:
+        // the dark palette re-points `bg-white` to a dark surface, which would
+        // paint dark ink onto a dark canvas. The explicit background keeps the
+        // export legible and matches what the administrator will view.
+        style={{ touchAction: "none", backgroundColor: "#ffffff" }}
         className={`mt-1.5 h-40 w-full rounded-xl border bg-white ${
           error ? "border-red-400" : "border-slate-300"
         } ${disabled ? "opacity-60" : ""}`}
@@ -163,6 +241,19 @@ export function SignaturePad({
           ? "Signature captured."
           : "Sign inside the box with a finger, stylus or mouse."}
       </p>
+
+      {showPreview && preview && (
+        <div
+          className="mt-2 rounded-xl border border-brand-200 bg-white p-2"
+          style={{ backgroundColor: "#ffffff" }}
+        >
+          <img
+            src={preview}
+            alt="Preview of the captured signature"
+            className="mx-auto max-h-24 w-auto object-contain"
+          />
+        </div>
+      )}
 
       {error && <p className="mt-1.5 text-xs font-medium text-red-600">{error}</p>}
     </div>

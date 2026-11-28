@@ -6,12 +6,18 @@ use App\Models\Beneficiary;
 use App\Models\FieldVisitPhoto;
 use App\Models\MonitoringRecord;
 use App\Models\User;
+use App\Rules\PngSignatureDataUrl;
 use App\Support\Barangays;
 use App\Support\Like;
 use App\Support\Pagination;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class MonitoringRecordService
 {
@@ -67,6 +73,7 @@ class MonitoringRecordService
                 'beneficiary.animalType',
                 'beneficiary.animalClassification',
                 'technician',
+                'signatureCapturedBy',
             ])
             ->when($month !== null, fn (Builder $q) => $this->applyMonthFilter($q, $month))
             // Animal type lives on the beneficiary. Filtering with whereHas
@@ -442,6 +449,7 @@ class MonitoringRecordService
             $record->load([
                 'beneficiary',
                 'technician',
+                'signatureCapturedBy',
                 'beneficiary.technician',
                 'beneficiary.animalType',
                 'beneficiary.animalClassification',
@@ -465,22 +473,125 @@ class MonitoringRecordService
     /**
      * Log a monitoring visit. The actor is always recorded as the
      * technician of the visit; assignment is verified by the FormRequest.
+     *
+     * A captured signature is written to the private disk INSIDE the same
+     * transaction as the visit row: if the insert or the audit write fails,
+     * the freshly written file is removed so a failed submission leaves no
+     * orphan behind. "Who captured it" is always the authenticated actor,
+     * never a client-supplied id.
      */
     public function create(User $technician, array $data): MonitoringRecord
     {
-        // One transaction: the visit row and the audit row App\Models\Concerns
-        // \Auditable writes for it commit together — or neither does.
-        return \Illuminate\Support\Facades\DB::transaction(fn (): MonitoringRecord => MonitoringRecord::create([
-            ...$data,
-            'technician_id' => $technician->id,
-        ]));
+        $signaturePath = null;
+
+        try {
+            return DB::transaction(function () use ($technician, $data, &$signaturePath): MonitoringRecord {
+                if (! empty($data['signature'])) {
+                    $signaturePath = $this->storeSignature($data['signature']);
+                }
+
+                return MonitoringRecord::create([
+                    ...$this->withoutSignatureInput($data),
+                    'technician_id' => $technician->id,
+                    'farmer_signature_path' => $signaturePath,
+                    'signature_mime_type' => $signaturePath ? 'image/png' : null,
+                    'farmer_signed_at' => $signaturePath ? ($data['signature_signed_at'] ?? now()) : null,
+                    'signature_captured_by' => $signaturePath ? $technician->id : null,
+                ]);
+            });
+        } catch (Throwable $error) {
+            if ($signaturePath !== null) {
+                Storage::disk('secure')->delete($signaturePath);
+            }
+
+            throw $error;
+        }
     }
 
+    /**
+     * Correct a monitoring row.
+     *
+     * Signature semantics are deliberately additive: only a present, non-empty
+     * `signature` payload replaces the sheet, and only then is the old file
+     * deleted (after the new row commits). Omitting the key — the normal case
+     * when a technician edits remarks or a vaccination date — preserves the
+     * existing signature and its provenance untouched.
+     */
     public function update(User $actor, MonitoringRecord $record, array $data): MonitoringRecord
     {
-        \Illuminate\Support\Facades\DB::transaction(fn () => $record->update($data));
+        $previousPath = $record->farmer_signature_path;
+        $newPath = null;
+
+        try {
+            DB::transaction(function () use ($actor, $record, $data, &$newPath): void {
+                $attributes = $this->withoutSignatureInput($data);
+
+                if (! empty($data['signature'])) {
+                    $newPath = $this->storeSignature($data['signature']);
+
+                    $attributes['farmer_signature_path'] = $newPath;
+                    $attributes['signature_mime_type'] = 'image/png';
+                    $attributes['farmer_signed_at'] = $data['signature_signed_at'] ?? now();
+                    $attributes['signature_captured_by'] = $actor->id;
+                }
+
+                $record->update($attributes);
+            });
+        } catch (Throwable $error) {
+            // The transaction rolled back; the file it wrote must not survive.
+            if ($newPath !== null) {
+                Storage::disk('secure')->delete($newPath);
+            }
+
+            throw $error;
+        }
+
+        // Committed: the replaced image is no longer referenced by any row.
+        if ($newPath !== null && $previousPath !== null && $previousPath !== $newPath) {
+            Storage::disk('secure')->delete($previousPath);
+        }
 
         return $record->refresh();
+    }
+
+    /**
+     * Strip the capture-only fields so they can never be mass-assigned as
+     * ordinary columns; the service translates them into the signature columns.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function withoutSignatureInput(array $data): array
+    {
+        unset($data['signature'], $data['signature_signed_at']);
+
+        return $data;
+    }
+
+    /**
+     * Decode a validated PNG data URL and store it on the private `secure`
+     * disk under a server-generated name. The client's filename is never used,
+     * mirroring dispersal signatures and uploaded photos.
+     */
+    private function storeSignature(string $dataUrl): string
+    {
+        $binary = PngSignatureDataUrl::decode($dataUrl);
+
+        if ($binary === null) {
+            throw ValidationException::withMessages([
+                'signature' => 'The signature image could not be read. Please sign again.',
+            ]);
+        }
+
+        $path = 'monitoring-signatures/'.strtolower(Str::random(40)).'.png';
+
+        if (! Storage::disk('secure')->put($path, $binary)) {
+            throw ValidationException::withMessages([
+                'signature' => 'The signature could not be saved. Please try again.',
+            ]);
+        }
+
+        return $path;
     }
 
     /**

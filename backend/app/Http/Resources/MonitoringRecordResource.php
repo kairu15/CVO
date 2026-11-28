@@ -93,7 +93,30 @@ class MonitoringRecordResource extends JsonResource
             'date_breed' => $this->date_breed?->toDateString(),
             'date_calved' => $this->date_calved?->toDateString(),
             'bcs' => $this->bcs,
+            // Legacy typed confirmation. Kept for historical rows; new visits
+            // capture the farmer's actual signature below.
             'farmers_signature' => $this->farmers_signature,
+
+            // Digital farmer signature. The image lives on the private
+            // `secure` disk and is exposed only as a short-lived signed URL
+            // to callers already authorized to view this record — never a
+            // public path. `has_farmer_signature` lets the table render its
+            // "no signature recorded" state without probing the URL.
+            'has_farmer_signature' => $this->farmer_signature_path !== null,
+            'farmer_signature_url' => $this->farmer_signature_path
+                ? \App\Support\SecureMedia::temporaryUrl(
+                    $this->farmer_signature_path,
+                    now()->addMinutes((int) config('security.signed_url_minutes', 30)),
+                )
+                : null,
+            'signature_mime_type' => $this->signature_mime_type,
+            'farmer_signed_at' => $this->farmer_signed_at?->toIso8601String(),
+            'signature_captured_by' => $this->signature_captured_by,
+            'signature_captured_by_name' => $this->whenLoaded(
+                'signatureCapturedBy',
+                fn () => $this->signatureCapturedBy?->name,
+            ),
+
             'remarks' => $this->remarks,
 
             'created_at' => $this->created_at?->toIso8601String(),

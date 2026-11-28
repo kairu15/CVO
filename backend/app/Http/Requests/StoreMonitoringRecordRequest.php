@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\MonitoringRecord;
+use App\Rules\PngSignatureDataUrl;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -33,6 +34,12 @@ class StoreMonitoringRecordRequest extends FormRequest
             'date_calved' => ['nullable', 'date'],
             'bcs' => ['nullable', 'integer', 'between:1,5'],
             'farmers_signature' => ['nullable', 'string', 'max:255'],
+            // Digital farmer confirmation: a PNG drawn on the device. The
+            // signature is optional so a visit can still be logged when the
+            // farmer is unavailable to sign; the admin view then reports
+            // "No farmer signature recorded" rather than an empty frame.
+            'signature' => ['nullable', 'string', 'max:3000000', new PngSignatureDataUrl],
+            'signature_signed_at' => ['nullable', 'date'],
             'remarks' => ['nullable', 'string', 'max:2000'],
         ];
     }

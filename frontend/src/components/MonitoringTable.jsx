@@ -5,6 +5,7 @@ import { Icon } from "./Icons";
 import { SkeletonList } from "./Skeleton";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { VerificationBadge } from "./VerificationBadge";
+import { FarmerSignatureDialog } from "./FarmerSignatureDialog";
 
 /**
  * Table columns mirroring the CVO's Excel monitoring sheet, in order.
@@ -216,6 +217,7 @@ export function MonitoringTable({
 }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [photoRecord, setPhotoRecord] = useState(null);
+  const [signatureRecord, setSignatureRecord] = useState(null);
 
   const hasSelection = Boolean(onToggleRow);
   const hasActions = Boolean(onEdit || onDelete || onDispersal);
@@ -414,6 +416,62 @@ export function MonitoringTable({
                             );
                           }
 
+                          if (col.key === "farmers_signature") {
+                            // The farmer's digital confirmation. A row saved
+                            // before signature capture existed may still carry
+                            // the legacy typed name — show it rather than
+                            // implying the visit had no confirmation at all.
+                            if (record.has_farmer_signature && record.farmer_signature_url) {
+                              return (
+                                <td key={col.key} className="px-4 py-2.5 whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSignatureRecord(record)}
+                                    aria-label={`View the farmer signature for ${record.name_of_farmer}`}
+                                    className="inline-flex items-center gap-2 rounded-lg transition hover:opacity-80"
+                                  >
+                                    <img
+                                      src={record.farmer_signature_url}
+                                      alt=""
+                                      loading="lazy"
+                                      decoding="async"
+                                      className="h-8 w-14 rounded bg-white object-contain p-0.5 ring-1 ring-slate-200 dark:ring-slate-300/40"
+                                    />
+                                    <span className="text-xs font-semibold text-brand-800">
+                                      View
+                                    </span>
+                                  </button>
+                                </td>
+                              );
+                            }
+
+                            // Even with no digital signature the cell opens
+                            // the Farmer Confirmation view, where the record
+                            // explicitly reports "No farmer signature
+                            // recorded" rather than leaving the admin with a
+                            // dead cell.
+                            return (
+                              <td key={col.key} className="px-4 py-2.5 whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() => setSignatureRecord(record)}
+                                  aria-label={`View farmer confirmation for ${record.name_of_farmer}`}
+                                  className="rounded-lg text-left transition hover:opacity-80"
+                                >
+                                  {record.farmers_signature ? (
+                                    <span className="text-slate-600">
+                                      {record.farmers_signature}
+                                    </span>
+                                  ) : (
+                                    <span className="italic text-slate-400 underline decoration-slate-300 decoration-dotted underline-offset-2">
+                                      Not recorded
+                                    </span>
+                                  )}
+                                </button>
+                              </td>
+                            );
+                          }
+
                           if (col.key === "moa_signed") {
                             return (
                               <td key={col.key} className="px-4 py-2.5 whitespace-nowrap">
@@ -570,6 +628,12 @@ export function MonitoringTable({
           </section>
         );
       })}
+
+      <FarmerSignatureDialog
+        open={signatureRecord !== null}
+        record={signatureRecord}
+        onClose={() => setSignatureRecord(null)}
+      />
 
       <PhotoLightbox
         open={photoRecord !== null}

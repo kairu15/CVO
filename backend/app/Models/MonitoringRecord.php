@@ -24,6 +24,10 @@ class MonitoringRecord extends Model
         'date_calved',
         'bcs',
         'farmers_signature',
+        'farmer_signature_path',
+        'signature_mime_type',
+        'farmer_signed_at',
+        'signature_captured_by',
         'remarks',
     ];
 
@@ -42,7 +46,20 @@ class MonitoringRecord extends Model
             'vaccination_date' => 'date',
             'date_breed' => 'date',
             'date_calved' => 'date',
+            'farmer_signed_at' => 'datetime',
         ];
+    }
+
+    /** Whether this visit carries a captured farmer signature. */
+    public function hasFarmerSignature(): bool
+    {
+        return $this->farmer_signature_path !== null;
+    }
+
+    /** The authenticated staff member who captured the signature, if on record. */
+    public function signatureCapturedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'signature_captured_by');
     }
 
     public function beneficiary(): BelongsTo

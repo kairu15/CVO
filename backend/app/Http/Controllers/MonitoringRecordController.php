@@ -100,7 +100,7 @@ class MonitoringRecordController extends Controller
     {
         $record = $this->records->create($request->user(), $request->validated());
 
-        return (new MonitoringRecordResource($record->load('beneficiary', 'technician')))
+        return (new MonitoringRecordResource($record->load('beneficiary', 'technician', 'signatureCapturedBy')))
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
     }
@@ -114,7 +114,7 @@ class MonitoringRecordController extends Controller
 
         abort_unless($record, Response::HTTP_NOT_FOUND);
 
-        return new MonitoringRecordResource($record->load('beneficiary', 'technician'));
+        return new MonitoringRecordResource($record->load('beneficiary', 'technician', 'signatureCapturedBy'));
     }
 
     /**
@@ -127,7 +127,7 @@ class MonitoringRecordController extends Controller
         $this->authorize('update', $record);
 
         return new MonitoringRecordResource(
-            $this->records->update($request->user(), $record, $request->validated())->load('beneficiary', 'technician'),
+            $this->records->update($request->user(), $record, $request->validated())->load('beneficiary', 'technician', 'signatureCapturedBy'),
         );
     }
 
